@@ -139,4 +139,6 @@ jobs:
             --sellerId $env:STORE_SELLER_ID `
             --clientId $env:STORE_CLIENT_ID `
             --clientSecret $env:STORE_CLIENT_SECRET
-          msstore publish "pkg\CyberCTF.msix" --id $env:STORE_PRODUCT_ID --verbose
+          # The package path is the positional arg; msstore resolves the Store app from
+          # the package identity (F4K.CyberCTF) and commits a new submission.
+          msstore publish "pkg\CyberCTF.msix"
