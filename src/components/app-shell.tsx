@@ -7,6 +7,7 @@ import { Labs } from "@/components/Labs";
 import { HomeScreen } from "@/components/screens/home-screen";
 import { MachineScreen } from "@/components/screens/machine-screen";
 import { SettingsScreen } from "@/components/screens/settings-screen";
+import { Onboarding } from "@/components/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
 import { Icon } from "@/components/ui/icon";
 import { systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
@@ -14,15 +15,42 @@ import { cn } from "@/lib/utils";
 
 type Tab = "home" | "labs" | "machine" | "settings";
 
+const ONBOARDED_KEY = "cyberctf.onboarded";
+
 export function AppShell() {
   const [tab, setTab] = useState<Tab>("home");
   const [report, setReport] = useState<SystemReport | null>(null);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
+  // First run shows the onboarding wizard. Default to onboarded on storage errors so a
+  // broken localStorage never traps the user on the wizard.
+  const [onboarded, setOnboarded] = useState(true);
+  const [ready, setReady] = useState(false);
 
   const check = () => systemCheck().then(setReport).catch(() => setReport(null));
   useEffect(() => {
     check();
+    try {
+      setOnboarded(localStorage.getItem(ONBOARDED_KEY) === "1");
+    } catch {
+      setOnboarded(true);
+    }
+    setReady(true);
   }, []);
+
+  function completeOnboarding() {
+    try {
+      localStorage.setItem(ONBOARDED_KEY, "1");
+    } catch {
+      /* ignore - we still advance past onboarding for this session */
+    }
+    setOnboarded(true);
+    setTab("labs");
+    check();
+  }
+
+  // Avoid a flash of the shell before we know whether to onboard.
+  if (!ready) return <div className="h-dvh bg-background" />;
+  if (!onboarded) return <Onboarding onComplete={completeOnboarding} />;
 
   const nav: { id: Tab; label: string }[] = [
     { id: "home", label: "Home" },
