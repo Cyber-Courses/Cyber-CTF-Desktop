@@ -1,12 +1,18 @@
 name: MSIX (Microsoft Store)
 
-# Builds an unsigned MSIX package of the Cyber CTF launcher for the Microsoft Store.
-# The Store signs the package at distribution, so no code-signing cert is needed here.
-# Run manually (workflow_dispatch) and download the .msix artifact, then upload it to
-# Partner Center. Once the submission API is wired, a later job will auto-submit.
+# Builds an unsigned MSIX of the Cyber CTF launcher for the Microsoft Store (the Store
+# signs it at distribution, so no code-signing cert is needed here) and optionally
+# submits it to the Store via the Microsoft Store Developer CLI (msstore).
 #
-# Prereq: src-tauri/msix/AppxManifest.xml must carry the real Identity Name / Publisher
-# / PublisherDisplayName from Partner Center > Product Identity.
+# - Always: builds the MSIX and uploads it as a downloadable artifact.
+# - When "submit" is true: also creates + commits a Store submission for the package.
+#
+# Prereqs:
+#   - src-tauri/msix/AppxManifest.xml carries the real Identity from Partner Center.
+#   - For submit: repo secrets STORE_TENANT_ID, STORE_SELLER_ID, STORE_CLIENT_ID,
+#     STORE_CLIENT_SECRET, and the Azure AD app associated in Partner Center (Manager role).
+#   - The listing must have passed certification once manually (the API cannot complete
+#     the very first submission on an incomplete listing).
 
 on:
   workflow_dispatch:
@@ -14,10 +20,18 @@ on:
       version:
         description: "MSIX version (4 parts, last must be .0, higher than the published package)"
         required: true
-        default: "0.1.1.0"
+        default: "1.1.0.0"
+      submit:
+        description: "Also submit to the Microsoft Store"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+
+env:
+  # Store ID from Partner Center > Product Identity (public; used as the product id).
+  STORE_PRODUCT_ID: "9P9L4WZ0N8ZJ"
 
 jobs:
   msix:
@@ -58,7 +72,7 @@ jobs:
 
           # Tile / logo assets referenced by the manifest.
           $icons = "src-tauri\icons"
-          foreach ($a in @("StoreLogo.png","Square44x44Logo.png","Square71x71Logo.png","Square150x150Logo.png","Square310x310Logo.png")) {
+          foreach ($a in @("StoreLogo.png","Square44x44Logo.png","Square71x71Logo.png","Square150x150Logo.png")) {
             Copy-Item "$icons\$a" "$layout\Assets\$a"
           }
 
@@ -86,3 +100,36 @@ jobs:
           name: CyberCTF-msix
           path: ${{ runner.temp }}/CyberCTF.msix
           if-no-files-found: error
+
+  submit:
+    needs: msix
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.submit }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: CyberCTF-msix
+          path: pkg
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.x"
+
+      - name: Install Microsoft Store Developer CLI
+        run: dotnet tool install --global MSStore.CLI
+
+      - name: Configure + submit to the Store
+        shell: pwsh
+        env:
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_SELLER_ID: ${{ secrets.STORE_SELLER_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          msstore reconfigure `
+            --tenantId $env:STORE_TENANT_ID `
+            --sellerId $env:STORE_SELLER_ID `
+            --clientId $env:STORE_CLIENT_ID `
+            --clientSecret $env:STORE_CLIENT_SECRET
+          msstore publish "pkg\CyberCTF.msix" --id $env:STORE_PRODUCT_ID --verbose
