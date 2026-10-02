@@ -1,0 +1,88 @@
+name: MSIX (Microsoft Store)
+
+# Builds an unsigned MSIX package of the Cyber CTF launcher for the Microsoft Store.
+# The Store signs the package at distribution, so no code-signing cert is needed here.
+# Run manually (workflow_dispatch) and download the .msix artifact, then upload it to
+# Partner Center. Once the submission API is wired, a later job will auto-submit.
+#
+# Prereq: src-tauri/msix/AppxManifest.xml must carry the real Identity Name / Publisher
+# / PublisherDisplayName from Partner Center > Product Identity.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "MSIX version (4 parts, last must be .0, higher than the published package)"
+        required: true
+        default: "0.1.1.0"
+
+permissions:
+  contents: read
+
+jobs:
+  msix:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Compile the release binary with the frontend embedded, without producing the
+      # NSIS/MSI bundles (we only need the raw .exe for the MSIX payload).
+      - name: Build Tauri binary
+        run: pnpm tauri build --no-bundle
+
+      - name: Assemble MSIX layout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $layout = "$env:RUNNER_TEMP\msix"
+          New-Item -ItemType Directory -Force -Path "$layout\Assets" | Out-Null
+
+          # App payload: the release binary, renamed to match the manifest Executable.
+          Copy-Item "src-tauri\target\release\cyberctf-desktop.exe" "$layout\CyberCTF.exe"
+
+          # Tile / logo assets referenced by the manifest.
+          $icons = "src-tauri\icons"
+          foreach ($a in @("StoreLogo.png","Square44x44Logo.png","Square71x71Logo.png","Square150x150Logo.png","Square310x310Logo.png")) {
+            Copy-Item "$icons\$a" "$layout\Assets\$a"
+          }
+
+          # Manifest with the build version substituted in.
+          $manifest = Get-Content "src-tauri\msix\AppxManifest.xml" -Raw
+          $manifest = $manifest.Replace("__VERSION__", "${{ inputs.version }}")
+          Set-Content -Path "$layout\AppxManifest.xml" -Value $manifest -Encoding utf8
+
+          Write-Host "Layout contents:"
+          Get-ChildItem -Recurse $layout | Select-Object FullName
+
+      - name: Pack MSIX
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $sdk = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Directory |
+                 Where-Object { Test-Path "$($_.FullName)\x64\makeappx.exe" } |
+                 Sort-Object Name -Descending | Select-Object -First 1
+          $makeappx = "$($sdk.FullName)\x64\makeappx.exe"
+          Write-Host "Using $makeappx"
+          & $makeappx pack /o /d "$env:RUNNER_TEMP\msix" /p "$env:RUNNER_TEMP\CyberCTF.msix"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CyberCTF-msix
+          path: ${{ runner.temp }}/CyberCTF.msix
+          if-no-files-found: error
