@@ -25,6 +25,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         // macOS app menu: Tauri's default menu labels the About/Hide/Quit items with the
         // crate name (cyberctf-desktop); build it explicitly so they read "Cyber CTF".
         // Edit + Window are kept so clipboard shortcuts and window controls still work.

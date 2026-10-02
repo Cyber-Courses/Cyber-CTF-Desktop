@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
+use tauri_plugin_notification::NotificationExt;
 
 use crate::api;
 use crate::auth;
@@ -136,7 +137,15 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
             message: Some("Running on your machine"),
         },
     )
-    .await
+    .await?;
+    // A lab launched from the website just started here: let the player know on this machine.
+    let _ = app
+        .notification()
+        .builder()
+        .title("Lab running")
+        .body("A lab launched from the website is now running on this machine.")
+        .show();
+    Ok(())
 }
 
 /// Picks up and runs every pending launch aimed at this agent.

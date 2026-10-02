@@ -13,6 +13,7 @@ import { LogConsole } from "@/components/labs/log-console";
 import { LabDetail } from "@/components/labs/lab-detail";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, useLabs, type Lab } from "@/lib/use-labs";
 import { labLaunch, labStop } from "@/lib/tauri";
+import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 
 export function Labs({ loggedIn, hostArch }: { loggedIn: boolean; hostArch: string }) {
@@ -37,6 +38,7 @@ export function Labs({ loggedIn, hostArch }: { loggedIn: boolean; hostArch: stri
       const provider = lab.runtime.runtime === "VM" ? (lab.runtime.providers[0] ?? null) : null;
       await labLaunch(lab.id, provider, (line) => setLogs((l) => [...l, line]));
       setLogs((l) => [...l, "✓ Lab is running"]);
+      notify("Lab ready", `${lab.title} is running on this machine.`);
     } catch (e) {
       setLogs((l) => [...l, `✗ ${String(e)}`]);
     } finally {
