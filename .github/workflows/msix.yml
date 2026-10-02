@@ -139,6 +139,6 @@ jobs:
             --sellerId $env:STORE_SELLER_ID `
             --clientId $env:STORE_CLIENT_ID `
             --clientSecret $env:STORE_CLIENT_SECRET
-          # The Store app id is the positional arg; --inputDirectory is where the .msix is.
-          # (Passing only the package makes msstore fail with "Failed to find the AppId".)
-          msstore publish $env:STORE_PRODUCT_ID --inputDirectory pkg
+          # Positional is the package path; --appId names the Store app (the positional is
+          # NOT an id, and the flag is --appId, not --id).
+          msstore publish "pkg\CyberCTF.msix" --appId $env:STORE_PRODUCT_ID
