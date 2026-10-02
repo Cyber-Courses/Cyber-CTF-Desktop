@@ -9,11 +9,13 @@ import { MachineScreen } from "@/components/screens/machine-screen";
 import { SettingsScreen } from "@/components/screens/settings-screen";
 import { Onboarding } from "@/components/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
-import { Icon } from "@/components/ui/icon";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Icon, type IconName } from "@/components/ui/icon";
 import { systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-type Tab = "home" | "labs" | "machine" | "settings";
+type Tab = "home" | "labs" | "machine" | "homelab" | "cloud" | "settings";
 
 const ONBOARDED_KEY = "cyberctf.onboarded";
 
@@ -52,11 +54,13 @@ export function AppShell() {
   if (!ready) return <div className="h-dvh bg-background" />;
   if (!onboarded) return <Onboarding onComplete={completeOnboarding} />;
 
-  const nav: { id: Tab; label: string }[] = [
-    { id: "home", label: "Home" },
-    { id: "labs", label: "Labs" },
-    { id: "machine", label: "This machine" },
-    { id: "settings", label: "Settings" },
+  const nav: { id: Tab; label: string; icon: IconName; soon?: boolean }[] = [
+    { id: "home", label: "Home", icon: "home" },
+    { id: "labs", label: "Labs", icon: "labs" },
+    { id: "machine", label: "Machine", icon: "machine" },
+    { id: "homelab", label: "Home lab", icon: "server", soon: true },
+    { id: "cloud", label: "Cloud", icon: "cloud", soon: true },
+    { id: "settings", label: "Settings", icon: "settings" },
   ];
 
   return (
@@ -77,10 +81,14 @@ export function AppShell() {
               className={cn(
                 "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
                 tab === n.id ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                n.soon && tab !== n.id && "opacity-55",
               )}
             >
-              <Icon name={n.id} />
-              {n.label}
+              <Icon name={n.icon} />
+              <span className="flex-1 text-left">{n.label}</span>
+              {n.soon && (
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[0.6rem] font-medium uppercase tracking-wide text-muted-foreground">Soon</span>
+              )}
             </button>
           ))}
         </nav>
@@ -95,11 +103,23 @@ export function AppShell() {
         <div data-tauri-drag-region className="h-8 shrink-0" />
         <div className="flex-1 overflow-y-auto">
           <UpdateBanner />
-          <div className="mx-auto max-w-3xl px-8 pb-10 pt-2">
+          <div className="w-full px-8 pb-10 pt-2">
             <Screen tab={tab} report={report} auth={auth} onRefresh={check} onNavigate={setTab} />
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+function ComingSoon({ icon, title, description }: { icon: IconName; title: string; description: string }) {
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-2.5">
+        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        <Badge variant="accent">Coming soon</Badge>
+      </div>
+      <EmptyState icon={icon} title={`${title} is on the way`} description={description} />
     </div>
   );
 }
@@ -109,6 +129,12 @@ function Screen({ tab, report, auth, onRefresh, onNavigate }: { tab: Tab; report
   if (tab === "settings") return <SettingsScreen auth={auth} />;
   if (tab === "machine") {
     return report ? <MachineScreen report={report} onRefresh={onRefresh} /> : <p className="text-sm text-muted-foreground">Checking this machine…</p>;
+  }
+  if (tab === "homelab") {
+    return <ComingSoon icon="server" title="Home lab" description="Connect your own servers (VMware ESXi, Proxmox) and run heavier VM labs on dedicated hardware." />;
+  }
+  if (tab === "cloud") {
+    return <ComingSoon icon="cloud" title="Cloud" description="Spin up labs in the cloud with zero local setup, then open them right here." />;
   }
   return (
     <div className="space-y-4">

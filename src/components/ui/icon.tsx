@@ -28,7 +28,8 @@ export type IconName =
   | "sparkles"
   | "plug"
   | "arrowRight"
-  | "alert";
+  | "alert"
+  | "cloud";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   home: (
@@ -52,8 +53,8 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
   settings: (
     <>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 2.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H7a1.6 1.6 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V7a1.6 1.6 0 0 0 1.5 1H23a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z" />
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1M18.4 18.4l-2.1-2.1M7.7 7.7 5.6 5.6" />
     </>
   ),
   play: <path d="M7 4.5v15l12-7.5-12-7.5Z" />,
@@ -140,6 +141,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M12 10v4M12 17h.01" />
     </>
   ),
+  cloud: <path d="M7 18.5a4.5 4.5 0 0 1-.5-8.97 5.5 5.5 0 0 1 10.64-1.1A4 4 0 0 1 17 18.5H7Z" />,
 };
 
 export function Icon({ name, className, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) {

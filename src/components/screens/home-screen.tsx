@@ -1,24 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Icon } from "@/components/ui/icon";
-import { Spinner } from "@/components/ui/spinner";
+import { Icon, type IconName } from "@/components/ui/icon";
 import { useLabs, type Lab } from "@/lib/use-labs";
 import { labStop, type AuthStatus, type SystemReport } from "@/lib/tauri";
 
 type Tab = "labs" | "machine" | "settings";
 
-function Stat({ value, label, hint, tone }: { value: string | number; label: string; hint?: string; tone?: "ok" | "warn" }) {
+function Stat({ icon, label, value, hint }: { icon: IconName; label: string; value: ReactNode; hint?: string }) {
   return (
-    <Card className="p-5">
-      <p className={`text-3xl font-semibold tracking-tight tabular-nums ${tone === "ok" ? "text-emerald-500" : tone === "warn" ? "text-amber-500" : "text-foreground"}`}>{value}</p>
-      <p className="mt-1 text-sm text-foreground">{label}</p>
-      {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
+    <Card className="p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+        <Icon name={icon} className="size-4 text-muted-foreground" />
+      </div>
+      <div className="mt-3 text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
+      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
     </Card>
+  );
+}
+
+function DotValue({ ok, children }: { ok: boolean; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className={`size-2 rounded-full ${ok ? "bg-emerald-500" : "bg-amber-500"}`} />
+      {children}
+    </span>
   );
 }
 
@@ -58,9 +69,9 @@ export function HomeScreen({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Stat value={error ? "—" : (labs?.length ?? "…")} label="Labs available" hint={error ? "Backend unreachable" : "Across every technique"} />
-        <Stat value={dockerReady ? "Ready" : "Not ready"} label="Containers" hint={dockerReady ? "Container labs can run" : "Set it up in This machine"} tone={dockerReady ? "ok" : "warn"} />
-        <Stat value={hypervisors} label={hypervisors === 1 ? "Hypervisor ready" : "Hypervisors ready"} hint="For VM labs" />
+        <Stat icon="labs" label="Labs" value={error ? "—" : (labs?.length ?? "…")} hint={error ? "Backend unreachable" : "Available to run"} />
+        <Stat icon="container" label="Containers" value={<DotValue ok={dockerReady}>{dockerReady ? "Ready" : "Not ready"}</DotValue>} hint={dockerReady ? "Container labs can run" : "Set up in Machine"} />
+        <Stat icon="cpu" label="Hypervisors" value={hypervisors} hint={hypervisors ? "Ready for VM labs" : "None installed"} />
       </div>
 
       {running.length > 0 && (
@@ -76,7 +87,7 @@ export function HomeScreen({
                 <Card key={lab.id} className="flex items-center justify-between gap-4 p-4">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-foreground">{lab.title}</p>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{url ?? "Running on this machine"}</p>
+                    <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{url ?? "Running on this machine"}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {url && (
