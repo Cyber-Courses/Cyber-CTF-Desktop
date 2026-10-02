@@ -4,17 +4,19 @@ import Image from "next/image";
 import { useEffect, useState, type ReactNode } from "react";
 import { Account } from "@/components/Account";
 import { Labs } from "@/components/Labs";
+import { HomeScreen } from "@/components/screens/home-screen";
 import { MachineScreen } from "@/components/screens/machine-screen";
 import { SettingsScreen } from "@/components/screens/settings-screen";
 import { systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-type Tab = "labs" | "machine" | "settings";
+type Tab = "home" | "labs" | "machine" | "settings";
 
 function Icon({ name, className }: { name: Tab; className?: string }) {
   const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   return (
     <svg viewBox="0 0 24 24" className={cn("size-4 shrink-0", className)} {...common} aria-hidden>
+      {name === "home" && <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" /></>}
       {name === "labs" && <><path d="M9 3h6" /><path d="M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3" /><path d="M7 15h10" /></>}
       {name === "machine" && <><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></>}
       {name === "settings" && <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 2.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H7a1.6 1.6 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V7a1.6 1.6 0 0 0 1.5 1H23a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z" /></>}
@@ -23,7 +25,7 @@ function Icon({ name, className }: { name: Tab; className?: string }) {
 }
 
 export function AppShell() {
-  const [tab, setTab] = useState<Tab>("labs");
+  const [tab, setTab] = useState<Tab>("home");
   const [report, setReport] = useState<SystemReport | null>(null);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
 
@@ -33,6 +35,7 @@ export function AppShell() {
   }, []);
 
   const nav: { id: Tab; label: string }[] = [
+    { id: "home", label: "Home" },
     { id: "labs", label: "Labs" },
     { id: "machine", label: "This machine" },
     { id: "settings", label: "Settings" },
@@ -69,14 +72,15 @@ export function AppShell() {
       {/* Content */}
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-8 py-10">
-          <Screen tab={tab} report={report} auth={auth} onRefresh={check} />
+          <Screen tab={tab} report={report} auth={auth} onRefresh={check} onNavigate={setTab} />
         </div>
       </main>
     </div>
   );
 }
 
-function Screen({ tab, report, auth, onRefresh }: { tab: Tab; report: SystemReport | null; auth: AuthStatus | null; onRefresh: () => void | Promise<void> }): ReactNode {
+function Screen({ tab, report, auth, onRefresh, onNavigate }: { tab: Tab; report: SystemReport | null; auth: AuthStatus | null; onRefresh: () => void | Promise<void>; onNavigate: (t: Tab) => void }): ReactNode {
+  if (tab === "home") return <HomeScreen report={report} auth={auth} onNavigate={onNavigate} />;
   if (tab === "settings") return <SettingsScreen auth={auth} />;
   if (tab === "machine") {
     return report ? <MachineScreen report={report} onRefresh={onRefresh} /> : <p className="text-sm text-muted-foreground">Checking this machine…</p>;

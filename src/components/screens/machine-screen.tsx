@@ -75,8 +75,8 @@ export function MachineScreen({ report, onRefresh }: { report: SystemReport; onR
       {/* Docker */}
       <Card className="p-5">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-sm font-medium">Docker labs</p>
-          {(!report.docker.installed || !report.dockerRunning) && <Install id="docker" onClick={() => installDep("docker", "Installing Docker…")}>Install Docker</Install>}
+          <p className="text-sm font-medium">Containers</p>
+          {(!report.docker.installed || !report.dockerRunning) && <Install id="docker" onClick={() => installDep("docker", "Installing the container engine…")}>Install</Install>}
         </div>
         <ul className="space-y-0.5">
           {[

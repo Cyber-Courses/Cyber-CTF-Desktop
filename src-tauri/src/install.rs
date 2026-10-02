@@ -1,14 +1,7 @@
-//! Assisted, one-click install of lab dependencies (Docker, Vagrant, VM providers).
-//! Detection lives in `system`; this runs the platform package manager and streams its
-//! output. It is not silent: the OS / package manager handles its own elevation prompt.
-//!
-//! Elevation per platform:
-//!  - macOS: Homebrew. Docker is Colima + the docker CLI (userland, NO admin). Casks that
-//!    need admin (Vagrant, VirtualBox) fail from a GUI app because brew's internal `sudo`
-//!    has no terminal, so we first prime sudo through a GUI askpass dialog; brew then finds
-//!    cached credentials.
-//!  - Windows: winget (its own UAC prompt).
-//!  - Linux: pkexec (a graphical polkit prompt).
+//! Assisted, one-click install of lab dependencies, streaming the package manager's output.
+//! It never shows a custom password prompt: anything that needs admin either uses a
+//! userland path (macOS Docker via Colima) or the OS's own trusted flow (winget's UAC,
+//! Linux pkexec, or opening the official installer for macOS casks that need admin).
 
 use std::path::Path;
 use std::process::Stdio;
@@ -31,18 +24,28 @@ pub enum Dependency {
 struct Step {
     program: String,
     args: Vec<String>,
-    /// macOS only: prime GUI sudo before this step (brew casks that need admin).
-    needs_admin: bool,
+    /// A note shown before the step (e.g. when we open a download instead of installing).
+    note: Option<String>,
 }
 
-fn step(program: impl Into<String>, args: &[&str], needs_admin: bool) -> Step {
-    Step { program: program.into(), args: args.iter().map(|s| s.to_string()).collect(), needs_admin }
+fn step(program: impl Into<String>, args: &[&str]) -> Step {
+    Step { program: program.into(), args: args.iter().map(|s| s.to_string()).collect(), note: None }
 }
 
 #[cfg(target_os = "macos")]
 fn brew_bin() -> Option<String> {
-    // GUI apps don't inherit the shell PATH, so resolve brew's known locations.
     ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].into_iter().find(|p| Path::new(p).exists()).map(String::from)
+}
+
+// Download the installer with brew (no admin needed), then open it so the tool's own
+// native installer runs and the user finishes there (trusted OS prompts, no custom dialog).
+#[cfg(target_os = "macos")]
+fn fetch_and_open(brew: &str, cask: &str, name: &str) -> Step {
+    Step {
+        program: "sh".into(),
+        args: vec!["-c".into(), format!("'{brew}' fetch --cask {cask} && open \"$('{brew}' --cache --cask {cask})\"")],
+        note: Some(format!("Downloading {name}; its native installer will open - follow the prompts, then re-check this machine.")),
+    }
 }
 
 /// The ordered install steps for a dependency on this OS.
@@ -50,16 +53,19 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
     #[cfg(target_os = "macos")]
     {
         let brew = brew_bin().ok_or_else(|| Error::Invalid("Homebrew is required. Install it from https://brew.sh, then try again.".into()))?;
-        let bin_dir = Path::new(&brew).parent().map(Path::to_path_buf).unwrap_or_default();
-        let colima = bin_dir.join("colima").to_string_lossy().into_owned();
         Ok(match dep {
-            // Colima + docker CLI: a userland Docker engine, no admin, no Docker Desktop licence.
-            Dependency::Docker => vec![
-                step(brew, &["install", "colima", "docker", "docker-compose"], false),
-                Step { program: colima, args: vec!["start".into()], needs_admin: false },
-            ],
-            Dependency::Vagrant => vec![step(brew, &["install", "--cask", "vagrant"], true)],
-            Dependency::Virtualbox => vec![step(brew, &["install", "--cask", "virtualbox"], true)],
+            // Colima + docker CLI: a userland Docker engine, no admin, no password prompt.
+            Dependency::Docker => {
+                let bin_dir = Path::new(&brew).parent().map(Path::to_path_buf).unwrap_or_default();
+                let colima = bin_dir.join("colima").to_string_lossy().into_owned();
+                vec![
+                    step(brew, &["install", "colima", "docker", "docker-compose"]),
+                    Step { program: colima, args: vec!["start".into()], note: None },
+                ]
+            }
+            // Admin-requiring: download with brew, then open the tool's native installer.
+            Dependency::Vagrant => vec![fetch_and_open(&brew, "vagrant", "Vagrant")],
+            Dependency::Virtualbox => vec![fetch_and_open(&brew, "virtualbox", "VirtualBox")],
         })
     }
     #[cfg(target_os = "windows")]
@@ -69,52 +75,22 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Vagrant => "Hashicorp.Vagrant",
             Dependency::Virtualbox => "Oracle.VirtualBox",
         };
-        Ok(vec![step("winget", &["install", "-e", "--id", id, "--accept-source-agreements", "--accept-package-agreements"], false)])
+        Ok(vec![step("winget", &["install", "-e", "--id", id, "--accept-source-agreements", "--accept-package-agreements"])])
     }
     #[cfg(target_os = "linux")]
     {
         // pkexec raises a graphical password prompt (polkit) for the privileged install.
         Ok(match dep {
-            Dependency::Docker => vec![step("pkexec", &["sh", "-c", "curl -fsSL https://get.docker.com | sh"], false)],
-            Dependency::Vagrant => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y vagrant"], false)],
-            Dependency::Virtualbox => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y virtualbox"], false)],
+            Dependency::Docker => vec![step("pkexec", &["sh", "-c", "curl -fsSL https://get.docker.com | sh"])],
+            Dependency::Vagrant => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y vagrant"])],
+            Dependency::Virtualbox => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y virtualbox"])],
         })
     }
 }
 
-/// macOS: cache sudo credentials via a native GUI password dialog, so a later brew cask
-/// (which calls `sudo` without a terminal) succeeds. `sudo -A -v` reads the password from
-/// SUDO_ASKPASS and refreshes the timestamp for this session.
-#[cfg(target_os = "macos")]
-async fn prime_sudo(on_line: &mut impl FnMut(String)) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let script = std::env::temp_dir().join("cyberctf-askpass.sh");
-    std::fs::write(
-        &script,
-        "#!/bin/sh\nosascript -e 'display dialog \"Cyber CTF needs your macOS password to install this tool.\" default answer \"\" with hidden answer with title \"Cyber CTF\"' -e 'text returned of result'\n",
-    )?;
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700))?;
-    on_line("Requesting administrator access…".into());
-    let status = Command::new("sudo")
-        .args(["-A", "-v"])
-        .env("SUDO_ASKPASS", &script)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .await
-        .map_err(Error::Io)?;
-    let _ = std::fs::remove_file(&script);
-    if !status.success() {
-        return Err(Error::Invalid("Administrator access was not granted.".into()));
-    }
-    Ok(())
-}
-
 async fn run_step(step: &Step, on_line: &mut impl FnMut(String)) -> Result<()> {
-    #[cfg(target_os = "macos")]
-    if step.needs_admin {
-        prime_sudo(on_line).await?;
+    if let Some(note) = &step.note {
+        on_line(note.clone());
     }
     let mut child = Command::new(&step.program)
         .args(&step.args)
@@ -150,7 +126,9 @@ pub async fn install_dependency(dependency: Dependency, logs: Channel<String>) -
     };
     let steps = plan(dependency).inspect_err(|e| on_line(e.to_string()))?;
     for step in &steps {
-        on_line(format!("$ {} {}", step.program, step.args.join(" ")));
+        if step.note.is_none() {
+            on_line(format!("$ {} {}", step.program, step.args.join(" ")));
+        }
         run_step(step, &mut on_line).await?;
     }
     on_line("Done. Re-checking this machine…".into());
@@ -170,7 +148,7 @@ pub async fn install_vagrant_plugin(plugin: String, logs: Channel<String>) -> Re
     let mut on_line = move |line: String| {
         let _ = logs.send(line);
     };
-    let step = Step { program: "vagrant".into(), args: vec!["plugin".into(), "install".into(), plugin], needs_admin: false };
+    let step = Step { program: "vagrant".into(), args: vec!["plugin".into(), "install".into(), plugin], note: None };
     on_line(format!("$ {} {}", step.program, step.args.join(" ")));
     run_step(&step, &mut on_line).await?;
     on_line("Done. Re-checking this machine…".into());
