@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { installDependency, installVagrantPlugin, type Dependency, type ProviderStatus, type SystemReport, type Tool } from "@/lib/tauri";
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -63,7 +64,26 @@ export function MachineScreen({ report, onRefresh }: { report: SystemReport; onR
 
   // Local hypervisors (the VM software) vs the Vagrant layer (tool + per-provider plugins).
   const hypervisors = report.vmProviders.filter((p) => !p.remote);
-  const pluginProviders = report.vmProviders.filter((p) => p.plugin);
+  // Only surface a Vagrant plugin for a local hypervisor you actually have (or already
+  // have the plugin for) - no point offering e.g. the VMware plugin with no VMware.
+  const localPlugins = report.vmProviders.filter((p) => p.plugin && !p.remote && (p.hypervisor === true || p.pluginInstalled));
+  // Remote providers (ESXi, Proxmox) are the home-lab story: run VM labs on your own servers.
+  const homeLab = report.vmProviders.filter((p) => p.plugin && p.remote);
+
+  const pluginRow = (p: ProviderStatus) => (
+    <li key={p.provider} className="flex items-center justify-between gap-4 border-b border-border py-2 text-sm last:border-0">
+      <span className="min-w-0">
+        <span className="text-foreground">{label(p)}</span>
+        <span className="ml-2 font-mono text-xs text-muted-foreground">{p.plugin}</span>
+      </span>
+      <span className="flex items-center gap-3">
+        <Status ok={p.pluginInstalled} detail={p.pluginInstalled ? "installed" : "not installed"} />
+        {report.vagrant.installed && !p.pluginInstalled && p.plugin && (
+          <Install id={p.plugin} onClick={() => installPlugin(p.plugin!)}>Install</Install>
+        )}
+      </span>
+    </li>
+  );
 
   return (
     <div className="space-y-4">
@@ -119,25 +139,30 @@ export function MachineScreen({ report, onRefresh }: { report: SystemReport; onR
           {!report.vagrant.installed && <Install id="vagrant" onClick={() => installDep("vagrant", "Installing Vagrant…")}>Install Vagrant</Install>}
         </div>
         <ul className="space-y-0.5">
-          <li className="flex items-baseline justify-between gap-4 border-b border-border py-2 text-sm">
+          <li className="flex items-baseline justify-between gap-4 border-b border-border py-2 text-sm last:border-0">
             <span className="text-foreground">Vagrant</span>
             <Status ok={report.vagrant.installed} detail={tool(report.vagrant)} />
           </li>
-          {pluginProviders.map((p) => (
-            <li key={p.provider} className="flex items-center justify-between gap-4 border-b border-border py-2 text-sm last:border-0">
-              <span className="min-w-0">
-                <span className="text-foreground">{label(p)}</span>
-                <span className="ml-2 font-mono text-xs text-muted-foreground">{p.plugin}</span>
-              </span>
-              <span className="flex items-center gap-3">
-                <Status ok={p.pluginInstalled} detail={p.pluginInstalled ? "installed" : "not installed"} />
-                {report.vagrant.installed && !p.pluginInstalled && p.plugin && (
-                  <Install id={p.plugin} onClick={() => installPlugin(p.plugin!)}>Install</Install>
-                )}
-              </span>
-            </li>
-          ))}
+          {localPlugins.map(pluginRow)}
         </ul>
+        {localPlugins.length === 0 && (
+          <p className="pt-2 text-xs text-muted-foreground">Your installed hypervisors don’t need an extra Vagrant plugin.</p>
+        )}
+      </Card>
+
+      {/* Home lab (advanced): remote hypervisors you own - run VM labs on your own servers */}
+      <Card className="p-5">
+        <div className="mb-1 flex items-center gap-2">
+          <p className="text-sm font-medium">Home lab</p>
+          <span className="rounded-md bg-muted px-1.5 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">Advanced</span>
+        </div>
+        <p className="mb-3 text-xs text-muted-foreground">Run VM labs on your own servers. Install the Vagrant plugin for your platform, then connect it from a lab.</p>
+        <ul className="space-y-0.5">{homeLab.map(pluginRow)}</ul>
+        {homeLab.length === 0 && <p className="pt-1 text-xs text-muted-foreground">No remote providers available.</p>}
+        <p className="mt-3 flex items-start gap-2 rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+          <Icon name="server" className="mt-0.5 size-3.5 shrink-0" />
+          Point the launcher at a VMware ESXi or Proxmox host to run heavier VM labs on dedicated hardware instead of this machine.
+        </p>
       </Card>
 
       {(busy || log.length > 0) && (
