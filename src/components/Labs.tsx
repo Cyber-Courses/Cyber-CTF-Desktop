@@ -1,75 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRequestedLab } from "@/lib/deep-link";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { apiQuery, labLaunch, labStatus, labStop, type LabStatus, type Provider, type Runtime } from "@/lib/tauri";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Icon } from "@/components/ui/icon";
+import { Spinner } from "@/components/ui/spinner";
+import { LogConsole } from "@/components/labs/log-console";
+import { DIFFICULTY_DOT, DIFFICULTY_LABEL, useLabs, type Lab } from "@/lib/use-labs";
+import { labLaunch, labStop } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-interface LabRuntime {
-  runtime: Runtime;
-  architectures: string[];
-  providers: Provider[];
-}
-
-interface Lab {
-  id: string;
-  slug: string;
-  title: string;
-  description: string | null;
-  question: string | null;
-  difficulty: number;
-  category: string;
-  runtime: LabRuntime | null;
-}
-
-const DIFFICULTY = ["", "Easy", "Medium", "Hard"];
-const DIFFICULTY_DOT = ["", "bg-emerald-500", "bg-amber-500", "bg-rose-500"];
-
-function Badge({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <span className={cn("inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[0.7rem] font-medium text-muted-foreground", className)}>
-      {children}
-    </span>
-  );
-}
-
 export function Labs({ loggedIn, hostArch }: { loggedIn: boolean; hostArch: string }) {
-  const [labs, setLabs] = useState<Lab[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [statuses, setStatuses] = useState<Record<string, LabStatus>>({});
+  const { labs, error, statuses, refreshStatus } = useLabs(loggedIn);
   const [busy, setBusy] = useState<string | null>(null);
   const [activeLab, setActiveLab] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  const logEnd = useRef<HTMLDivElement>(null);
   const requested = useRequestedLab();
 
-  function refreshStatus(lab: Lab) {
-    if (!lab.runtime) return;
-    const runtime = lab.runtime.runtime;
-    labStatus(lab.id, runtime)
-      .then((s) => setStatuses((m) => ({ ...m, [lab.id]: s })))
-      .catch(() => {
-        /* not running / no project yet - leave unknown */
-      });
-  }
-
-  useEffect(() => {
-    apiQuery<{ labs: Lab[] }>(
-      `{ labs(sort: [{ title: ASC }]) { id slug title description question difficulty category
-         runtime { runtime architectures providers } } }`,
-    )
-      .then((d) => {
-        setLabs(d.labs);
-        d.labs.forEach(refreshStatus);
-      })
-      .catch((e) => setError(String(e)));
-  }, [loggedIn]);
-
-  useEffect(() => logEnd.current?.scrollIntoView({ block: "end" }), [logs]);
-
-  // A cyberctf://labs/<slug> link: bring that lab into view (the player still clicks Start).
+  // A cyberctf://labs/<slug> link brings that lab into view (the player still clicks Start).
   useEffect(() => {
     if (requested && labs) document.getElementById(`lab-${requested}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [requested, labs]);
@@ -80,7 +32,6 @@ export function Labs({ loggedIn, hostArch }: { loggedIn: boolean; hostArch: stri
     setActiveLab(lab.id);
     setLogs([]);
     try {
-      // VM labs: first provider the lab supports; provider choice UI comes with settings.
       const provider = lab.runtime.runtime === "VM" ? (lab.runtime.providers[0] ?? null) : null;
       await labLaunch(lab.id, provider, (line) => setLogs((l) => [...l, line]));
       setLogs((l) => [...l, "✓ Lab is running"]);
@@ -108,9 +59,9 @@ export function Labs({ loggedIn, hostArch }: { loggedIn: boolean; hostArch: stri
     }
   }
 
-  if (error) return <p className="text-sm text-destructive">{error}</p>;
-  if (!labs) return <p className="text-sm text-muted-foreground">Loading labs…</p>;
-  if (labs.length === 0) return <p className="text-sm text-muted-foreground">No labs published yet.</p>;
+  if (error) return <EmptyState icon="alert" title="Can’t reach the lab catalogue" description="Check your connection or sign in, then try again." />;
+  if (!labs) return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Loading labs…</div>;
+  if (labs.length === 0) return <EmptyState icon="labs" title="No labs published yet" description="Published labs will show up here, ready to run on this machine." />;
   const missing = requested && !labs.some((l) => l.slug === requested);
 
   return (
@@ -125,7 +76,7 @@ export function Labs({ loggedIn, hostArch }: { loggedIn: boolean; hostArch: stri
           const isBusy = busy === lab.id;
           const highlighted = lab.slug === requested;
           return (
-            <Card key={lab.id} id={`lab-${lab.slug}`} className={cn("p-5", highlighted && "ring-1 ring-learn")}>
+            <Card key={lab.id} id={`lab-${lab.slug}`} className={cn("p-5 transition-colors", highlighted && "ring-1 ring-learn")}>
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -147,11 +98,11 @@ export function Labs({ loggedIn, hostArch }: { loggedIn: boolean; hostArch: stri
                     {lab.difficulty > 0 && (
                       <Badge>
                         <span className={cn("size-1.5 rounded-full", DIFFICULTY_DOT[lab.difficulty])} />
-                        {DIFFICULTY[lab.difficulty]}
+                        {DIFFICULTY_LABEL[lab.difficulty]}
                       </Badge>
                     )}
                     {rt && <Badge>{rt.runtime === "VM" ? "VM" : "Container"}</Badge>}
-                    {rt && !native && <Badge className="text-amber-500">emulated (slower)</Badge>}
+                    {rt && !native && <Badge variant="warning">emulated (slower)</Badge>}
                   </div>
                   {running && status && status.machines.length > 0 && (
                     <p className="mt-2 text-xs text-muted-foreground">
@@ -161,9 +112,16 @@ export function Labs({ loggedIn, hostArch }: { loggedIn: boolean; hostArch: stri
                 </div>
                 <div className="flex shrink-0 flex-col items-stretch gap-2">
                   {running ? (
-                    <Button variant="destructive" size="sm" onClick={() => stop(lab)} disabled={isBusy}>
-                      {isBusy ? "Stopping…" : "Stop"}
-                    </Button>
+                    <>
+                      {status?.url && (
+                        <Button variant="learn" size="sm" onClick={() => openUrl(status.url!).catch(() => {})}>
+                          <Icon name="external" className="size-3.5" /> Open
+                        </Button>
+                      )}
+                      <Button variant="destructive" size="sm" onClick={() => stop(lab)} disabled={isBusy}>
+                        {isBusy ? "Stopping…" : "Stop"}
+                      </Button>
+                    </>
                   ) : (
                     <Button
                       variant="learn"
@@ -172,17 +130,12 @@ export function Labs({ loggedIn, hostArch }: { loggedIn: boolean; hostArch: stri
                       disabled={!loggedIn || !rt || busy !== null}
                       title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}
                     >
-                      {isBusy ? "Starting…" : "Start"}
+                      {isBusy ? (<><Spinner className="size-3.5" /> Starting…</>) : (<><Icon name="play" className="size-3.5" /> Start</>)}
                     </Button>
                   )}
                 </div>
               </div>
-              {activeLab === lab.id && logs.length > 0 && (
-                <pre className="mt-4 max-h-64 overflow-auto rounded-lg bg-muted p-3 text-xs text-muted-foreground">
-                  {logs.join("\n")}
-                  <div ref={logEnd} />
-                </pre>
-              )}
+              {activeLab === lab.id && <LogConsole lines={logs} className="mt-4" />}
             </Card>
           );
         })}
