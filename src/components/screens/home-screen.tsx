@@ -30,9 +30,9 @@ export function HomeScreen({
   const [apiError, setApiError] = useState(false);
 
   useEffect(() => {
-    apiQuery<{ challenges: { id: string }[] }>("{ challenges { id } }")
+    apiQuery<{ labs: { id: string }[] }>("{ labs { id } }")
       .then((d) => {
-        setLabCount(d.challenges.length);
+        setLabCount(d.labs.length);
         setApiError(false);
       })
       .catch(() => setApiError(true));

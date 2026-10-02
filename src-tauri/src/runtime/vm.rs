@@ -31,7 +31,7 @@ pub async fn status(dir: &Path) -> Result<LabStatus> {
     let out = run("vagrant", &["status", "--machine-readable"], Some(dir)).await?;
     let machines = parse_status(&out);
     let running = !machines.is_empty() && machines.iter().all(|m| m.state == "running");
-    Ok(LabStatus { running, machines })
+    Ok(LabStatus { running, machines, url: None })
 }
 
 #[cfg(test)]

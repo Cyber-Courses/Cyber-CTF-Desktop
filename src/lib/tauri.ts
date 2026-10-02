@@ -46,6 +46,8 @@ export interface SystemReport {
 export interface LabStatus {
   running: boolean;
   machines: { name: string; state: string }[];
+  /** Loopback URL where the lab is reachable, once running (null for VM labs / no port). */
+  url: string | null;
 }
 
 export const systemCheck = () => invoke<SystemReport>("system_check");

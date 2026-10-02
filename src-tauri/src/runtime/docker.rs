@@ -84,16 +84,18 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
         Some(dir),
     )
     .await?;
-    let all: Vec<Machine> = parse_ps(&out)
-        .into_iter()
-        .map(|e| Machine { name: e.service, state: e.state })
-        .collect();
+    let entries = parse_ps(&out);
     // Labs have one-shot init services (e.g. evidence, place-evidence) that exit 0 after
     // doing their job, so the lab is "running" when at least one service is up, not when
     // every service is. Only the live services are reported to the UI.
-    let running = all.iter().any(|m| m.state == "running");
-    let machines = all.into_iter().filter(|m| m.state == "running").collect();
-    Ok(LabStatus { running, machines })
+    let running = entries.iter().any(|e| e.state == "running");
+    let url = if running { first_published_url(&entries) } else { None };
+    let machines = entries
+        .into_iter()
+        .filter(|e| e.state == "running")
+        .map(|e| Machine { name: e.service, state: e.state })
+        .collect();
+    Ok(LabStatus { running, machines, url })
 }
 
 /// Where the lab is reachable on this machine (its first published port), once running.

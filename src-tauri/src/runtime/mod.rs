@@ -34,6 +34,9 @@ pub struct Machine {
 pub struct LabStatus {
     pub running: bool,
     pub machines: Vec<Machine>,
+    /// Loopback URL where the lab is reachable on this machine, once running (Docker labs
+    /// with a published port). None for VM labs or when nothing is published yet.
+    pub url: Option<String>,
 }
 
 fn validate_id(id: &str) -> Result<()> {
