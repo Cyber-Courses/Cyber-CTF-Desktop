@@ -84,11 +84,15 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
         Some(dir),
     )
     .await?;
-    let machines: Vec<Machine> = parse_ps(&out)
+    let all: Vec<Machine> = parse_ps(&out)
         .into_iter()
         .map(|e| Machine { name: e.service, state: e.state })
         .collect();
-    let running = !machines.is_empty() && machines.iter().all(|m| m.state == "running");
+    // Labs have one-shot init services (e.g. evidence, place-evidence) that exit 0 after
+    // doing their job, so the lab is "running" when at least one service is up, not when
+    // every service is. Only the live services are reported to the UI.
+    let running = all.iter().any(|m| m.state == "running");
+    let machines = all.into_iter().filter(|m| m.state == "running").collect();
     Ok(LabStatus { running, machines })
 }
 
