@@ -25,6 +25,50 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // macOS app menu: Tauri's default menu labels the About/Hide/Quit items with the
+        // crate name (cyberctf-desktop); build it explicitly so they read "Cyber CTF".
+        // Edit + Window are kept so clipboard shortcuts and window controls still work.
+        .menu(|handle| {
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{AboutMetadata, MenuBuilder, PredefinedMenuItem, SubmenuBuilder};
+                let about = AboutMetadata {
+                    name: Some("Cyber CTF".into()),
+                    version: Some(env!("CARGO_PKG_VERSION").into()),
+                    ..Default::default()
+                };
+                let app_menu = SubmenuBuilder::new(handle, "Cyber CTF")
+                    .item(&PredefinedMenuItem::about(handle, Some("About Cyber CTF"), Some(about))?)
+                    .separator()
+                    .services()
+                    .separator()
+                    .item(&PredefinedMenuItem::hide(handle, Some("Hide Cyber CTF"))?)
+                    .hide_others()
+                    .show_all()
+                    .separator()
+                    .item(&PredefinedMenuItem::quit(handle, Some("Quit Cyber CTF"))?)
+                    .build()?;
+                let edit_menu = SubmenuBuilder::new(handle, "Edit")
+                    .undo()
+                    .redo()
+                    .separator()
+                    .cut()
+                    .copy()
+                    .paste()
+                    .select_all()
+                    .build()?;
+                let window_menu = SubmenuBuilder::new(handle, "Window")
+                    .minimize()
+                    .separator()
+                    .close_window()
+                    .build()?;
+                MenuBuilder::new(handle).items(&[&app_menu, &edit_menu, &window_menu]).build()
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                tauri::menu::Menu::default(handle)
+            }
+        })
         .setup(|app| {
             // Linux and Windows dev builds: register cyberctf:// at runtime (installers do it otherwise).
             #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]

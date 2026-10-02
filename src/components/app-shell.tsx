@@ -46,9 +46,9 @@ export function AppShell() {
     <div className="flex h-dvh overflow-hidden">
       {/* Sidebar */}
       <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-surface">
-        <div className="flex items-center gap-2.5 px-5 py-5">
-          <Image src="/logo-mark.svg" alt="" width={24} height={24} className="size-6" priority />
-          <span className="text-sm font-semibold tracking-tight">Cyber CTF</span>
+        <div data-tauri-drag-region className="flex items-center gap-2.5 px-5 pb-4 pt-9">
+          <Image src="/logo-mark.svg" alt="" width={24} height={24} className="size-6 pointer-events-none" priority />
+          <span className="pointer-events-none text-sm font-semibold tracking-tight">Cyber CTF</span>
         </div>
         <nav className="flex-1 space-y-1 px-3">
           {nav.map((n) => (
