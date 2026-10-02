@@ -91,3 +91,21 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      # tauri-action notarizes + staples the .app but ships the DMG wrapper un-notarized.
+      # Notarize + staple the DMG itself and replace it on the release so a downloaded
+      # DMG opens with no Gatekeeper warning. macOS + tag builds only.
+      - name: Notarize + staple the DMG (macOS)
+        if: matrix.platform == 'macos-latest' && github.ref_type == 'tag' && env.APPLE_API_KEY_PATH != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          dmg=$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)
+          echo "Notarizing $dmg"
+          xcrun notarytool submit "$dmg" \
+            --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
+          xcrun stapler staple "$dmg"
+          spctl -a -vvv -t open --context context:primary-signature "$dmg"
+          gh release upload "${{ github.ref_name }}" "$dmg" --clobber --repo "${{ github.repository }}"
