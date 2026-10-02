@@ -1,7 +1,7 @@
 //! Assisted, one-click install of lab dependencies, streaming the package manager's output.
-//! It never shows a custom password prompt: anything that needs admin either uses a
-//! userland path (macOS Docker via Colima) or the OS's own trusted flow (winget's UAC,
-//! Linux pkexec, or opening the official installer for macOS casks that need admin).
+//! It never shows a custom password prompt: it uses the OS's own trusted flow (winget's
+//! UAC, Linux pkexec, or downloading the official app/installer for macOS casks and
+//! letting the tool's own installer run).
 
 use std::path::Path;
 use std::process::Stdio;
@@ -28,6 +28,7 @@ struct Step {
     note: Option<String>,
 }
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn step(program: impl Into<String>, args: &[&str]) -> Step {
     Step { program: program.into(), args: args.iter().map(|s| s.to_string()).collect(), note: None }
 }
@@ -54,15 +55,9 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
     {
         let brew = brew_bin().ok_or_else(|| Error::Invalid("Homebrew is required. Install it from https://brew.sh, then try again.".into()))?;
         Ok(match dep {
-            // Colima + docker CLI: a userland Docker engine, no admin, no password prompt.
-            Dependency::Docker => {
-                let bin_dir = Path::new(&brew).parent().map(Path::to_path_buf).unwrap_or_default();
-                let colima = bin_dir.join("colima").to_string_lossy().into_owned();
-                vec![
-                    step(brew, &["install", "colima", "docker", "docker-compose"]),
-                    Step { program: colima, args: vec!["start".into()], note: None },
-                ]
-            }
+            // Docker Desktop: download the app with brew, then open its installer; the user
+            // finishes in Docker's own flow (includes the docker CLI + compose).
+            Dependency::Docker => vec![fetch_and_open(&brew, "docker-desktop", "Docker Desktop")],
             // Admin-requiring: download with brew, then open the tool's native installer.
             Dependency::Vagrant => vec![fetch_and_open(&brew, "vagrant", "Vagrant")],
             Dependency::Virtualbox => vec![fetch_and_open(&brew, "virtualbox", "VirtualBox")],
