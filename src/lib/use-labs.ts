@@ -54,6 +54,14 @@ export function useLabs(reloadKey: unknown = 0) {
       .catch((e) => setError(String(e)));
   }, [reloadKey, refreshStatus]);
 
+  // Poll local status so labs launched from the website (claimed + run by the agent)
+  // surface here within a few seconds without a manual refresh.
+  useEffect(() => {
+    if (!labs) return;
+    const t = setInterval(() => labs.forEach(refreshStatus), 6000);
+    return () => clearInterval(t);
+  }, [labs, refreshStatus]);
+
   return { labs, error, statuses, refreshStatus };
 }
 

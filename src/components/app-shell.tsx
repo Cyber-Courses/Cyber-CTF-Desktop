@@ -92,7 +92,14 @@ export function AppShell() {
             </button>
           ))}
         </nav>
-        <div className="border-t border-border px-4 py-3">
+        <div className="space-y-3 border-t border-border px-4 py-3">
+          <div
+            className="flex items-center gap-2 px-1 text-xs"
+            title={auth?.loggedIn ? "Labs launched from the website run on this machine." : "Sign in so labs launched from the website can run here."}
+          >
+            <span className={cn("size-1.5 shrink-0 rounded-full", auth?.loggedIn ? "bg-emerald-500" : "bg-muted-foreground/40")} />
+            <span className="text-muted-foreground">{auth?.loggedIn ? "Launcher online" : "Launcher offline"}</span>
+          </div>
           <Account onChange={setAuth} />
         </div>
       </aside>
