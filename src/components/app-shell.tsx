@@ -7,6 +7,7 @@ import { Labs } from "@/components/Labs";
 import { HomeScreen } from "@/components/screens/home-screen";
 import { MachineScreen } from "@/components/screens/machine-screen";
 import { SettingsScreen } from "@/components/screens/settings-screen";
+import { UpdateBanner } from "@/components/update-banner";
 import { systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
@@ -71,6 +72,7 @@ export function AppShell() {
 
       {/* Content */}
       <main className="flex-1 overflow-y-auto">
+        <UpdateBanner />
         <div className="mx-auto max-w-3xl px-8 py-10">
           <Screen tab={tab} report={report} auth={auth} onRefresh={check} onNavigate={setTab} />
         </div>

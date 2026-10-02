@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Cyber CTF",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "org.cyberctf.desktop",
   "build": {
     "frontendDist": "../out",
@@ -47,7 +47,8 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "deep-link": {
@@ -56,6 +57,12 @@
           "cyberctf"
         ]
       }
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/Cyber-Courses/Cyber-CTF-Desktop/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNEQzhGOTUxOTQ0MzAzRjQKUldUMEEwT1VVZm5JUFpyQjkzUUpScFh6MTRtM3FOTis0d1pwRXFWb0V5aVJEdG1NaXpCOVN6WmkK"
     }
   }
 }

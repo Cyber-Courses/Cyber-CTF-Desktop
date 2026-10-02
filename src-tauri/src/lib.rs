@@ -24,6 +24,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // Linux and Windows dev builds: register cyberctf:// at runtime (installers do it otherwise).
             #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
