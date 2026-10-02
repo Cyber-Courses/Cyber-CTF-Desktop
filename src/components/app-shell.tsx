@@ -46,7 +46,9 @@ export function AppShell() {
     <div className="flex h-dvh overflow-hidden">
       {/* Sidebar */}
       <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-surface">
-        <div data-tauri-drag-region className="flex items-center gap-2.5 px-5 pb-4 pt-9">
+        {/* Draggable strip under the macOS traffic lights (Overlay title bar). */}
+        <div data-tauri-drag-region className="h-8 shrink-0" />
+        <div data-tauri-drag-region className="flex items-center gap-2.5 px-5 pb-4 pt-1">
           <Image src="/logo-mark.svg" alt="" width={24} height={24} className="size-6 pointer-events-none" priority />
           <span className="pointer-events-none text-sm font-semibold tracking-tight">Cyber CTF</span>
         </div>
@@ -71,10 +73,14 @@ export function AppShell() {
       </aside>
 
       {/* Content */}
-      <main className="flex-1 overflow-y-auto">
-        <UpdateBanner />
-        <div className="mx-auto max-w-3xl px-8 py-10">
-          <Screen tab={tab} report={report} auth={auth} onRefresh={check} onNavigate={setTab} />
+      <main className="flex flex-1 flex-col overflow-hidden">
+        {/* Full-width draggable title-bar strip (no native bar with Overlay style). */}
+        <div data-tauri-drag-region className="h-8 shrink-0" />
+        <div className="flex-1 overflow-y-auto">
+          <UpdateBanner />
+          <div className="mx-auto max-w-3xl px-8 pb-10 pt-2">
+            <Screen tab={tab} report={report} auth={auth} onRefresh={check} onNavigate={setTab} />
+          </div>
         </div>
       </main>
     </div>

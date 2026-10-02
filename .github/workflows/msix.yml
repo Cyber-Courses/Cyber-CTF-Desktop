@@ -111,12 +111,19 @@ jobs:
           name: CyberCTF-msix
           path: pkg
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.x"
-
+      # The Store Developer CLI is a self-contained binary from GitHub releases
+      # (not a NuGet/dotnet tool), so download + unzip it and put it on PATH.
       - name: Install Microsoft Store Developer CLI
-        run: dotnet tool install --global MSStore.CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zip = "$env:RUNNER_TEMP\msstore.zip"
+          Invoke-WebRequest -Uri "https://github.com/microsoft/msstore-cli/releases/latest/download/MSStoreCLI-win-x64.zip" -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath "$env:RUNNER_TEMP\msstore" -Force
+          $exe = Get-ChildItem -Recurse "$env:RUNNER_TEMP\msstore" -Filter "msstore.exe" | Select-Object -First 1
+          if (-not $exe) { $exe = Get-ChildItem -Recurse "$env:RUNNER_TEMP\msstore" -Filter "*.exe" | Select-Object -First 1 }
+          Write-Host "msstore at $($exe.FullName)"
+          Add-Content -Path $env:GITHUB_PATH -Value $exe.Directory.FullName
 
       - name: Configure + submit to the Store
         shell: pwsh
