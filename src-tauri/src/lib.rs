@@ -9,7 +9,6 @@ mod install;
 mod labs;
 mod runtime;
 mod system;
-mod terminal;
 
 use tauri::Manager;
 
@@ -27,7 +26,6 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
-        .manage(terminal::Shells::default())
         // macOS app menu: Tauri's default menu labels the About/Hide/Quit items with the
         // crate name (cyberctf-desktop); build it explicitly so they read "Cyber CTF".
         // Edit + Window are kept so clipboard shortcuts and window controls still work.
@@ -108,10 +106,6 @@ pub fn run() {
             runtime::exegol_start,
             runtime::exegol_stop,
             runtime::exegol_shell,
-            terminal::exegol_shell_open,
-            terminal::exegol_shell_write,
-            terminal::exegol_shell_resize,
-            terminal::exegol_shell_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running CyberCTF");

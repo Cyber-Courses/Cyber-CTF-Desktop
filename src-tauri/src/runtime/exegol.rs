@@ -8,7 +8,7 @@ use crate::error::{Error, Result};
 use crate::exec::{run, stream};
 
 fn container(id: &str) -> String {
-    format!("cyberctf-{id}-exegol")
+    format!("cyberctf-{id}-attacker")
 }
 
 /// Guards an image reference so it can't be read as a flag or smuggle extra args.
@@ -69,7 +69,7 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
     log(format!("Starting the attack box on {net}…"));
     stream(
         "docker",
-        &["run", "-d", "--name", &name, "--network", &net, "--hostname", "exegol", "--cap-add", "NET_ADMIN", image, "sleep", "infinity"],
+        &["run", "-d", "--name", &name, "--network", &net, "--hostname", "attacker", "--cap-add", "NET_ADMIN", image, "sleep", "infinity"],
         None,
         &[],
         &mut log,
@@ -89,20 +89,23 @@ pub async fn stop(id: &str, mut log: impl FnMut(String)) -> Result<()> {
 pub fn shell(id: &str) -> Result<()> {
     let name = container(id);
     // bash is present on Kali/Parrot/Exegol alike (keeps native-terminal quoting simple).
-    let attach = format!("docker exec -it {name} bash");
     #[cfg(target_os = "macos")]
     {
-        let script = format!("tell application \"Terminal\"\nactivate\ndo script \"{attach}\"\nend tell");
+        // do script opens a new window; then give it a clean title instead of the raw command.
+        let script = format!(
+            "tell application \"Terminal\"\nactivate\ndo script \"docker exec -it {name} bash\"\nset custom title of front window to \"CyberCTF attack box\"\nend tell"
+        );
         std::process::Command::new("osascript").arg("-e").arg(script).spawn()?;
         Ok(())
     }
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd").args(["/c", "start", "cmd", "/k", &attach]).spawn()?;
+        std::process::Command::new("cmd").args(["/c", "start", "CyberCTF attack box", "cmd", "/k", &format!("docker exec -it {name} bash")]).spawn()?;
         Ok(())
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
+        let attach = format!("docker exec -it {name} bash");
         for term in ["x-terminal-emulator", "gnome-terminal", "konsole", "xterm"] {
             if std::process::Command::new(term).args(["-e", "sh", "-c", &attach]).spawn().is_ok() {
                 return Ok(());

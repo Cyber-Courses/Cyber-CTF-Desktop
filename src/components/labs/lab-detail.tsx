@@ -9,7 +9,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/labs/log-console";
 import { Markdown } from "@/components/labs/markdown";
 import { NetworkDiagram } from "@/components/labs/network-diagram";
-import { AttackTerminal } from "@/components/labs/attack-terminal";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/lib/use-labs";
 import { apiQuery, exegolShell, exegolStart, exegolStatus, exegolStop, type ExegolStatus, type LabStatus } from "@/lib/tauri";
 import { getAttackImage } from "@/lib/settings";
@@ -40,7 +39,6 @@ export function LabDetail({
   const [exegol, setExegol] = useState<ExegolStatus | null>(null);
   const [exegolBusy, setExegolBusy] = useState(false);
   const [exegolLog, setExegolLog] = useState<string[]>([]);
-  const [shellOpen, setShellOpen] = useState(false);
   const exegolLogEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,7 +65,6 @@ export function LabDetail({
   useEffect(() => {
     if (!running || !isDocker) {
       setExegol(null);
-      setShellOpen(false);
       return;
     }
     refreshExegol();
@@ -129,16 +126,6 @@ export function LabDetail({
             <Panel>
               <PanelHeader title="Network" />
               <p className="px-4 py-10 text-center text-[12.5px] text-muted-foreground">Start the lab to see its containers and network.</p>
-            </Panel>
-          )}
-
-          {running && isDocker && shellOpen && exegol?.running && (
-            <Panel>
-              <PanelHeader
-                title={<span className="flex items-center gap-1.5"><Terminal className="size-3.5 text-learn" /> Attack shell <span className="font-mono text-[11px] text-muted-foreground">{getAttackImage()}</span></span>}
-                action={<button onClick={() => setShellOpen(false)} className="text-[11.5px] text-muted-foreground transition-colors hover:text-foreground">Close</button>}
-              />
-              <AttackTerminal labId={lab.id} />
             </Panel>
           )}
 
@@ -212,13 +199,10 @@ export function LabDetail({
                 <div className="space-y-2">
                   {exegol?.running ? (
                     <>
-                      <Button variant="learn" className="w-full" onClick={() => setShellOpen(true)}>
-                        <Terminal className="size-4" /> {shellOpen ? "Shell open below" : "Open shell"}
+                      <Button variant="learn" className="w-full" onClick={() => exegolShell(lab.id).catch(() => {})}>
+                        <Terminal className="size-4" /> Open shell
                       </Button>
-                      <Button variant="outline" className="w-full" onClick={() => exegolShell(lab.id).catch(() => {})}>
-                        <ExternalLink className="size-3.5" /> Open in Terminal
-                      </Button>
-                      <Button variant="outline" className="w-full" onClick={() => { setShellOpen(false); runExegol((l) => exegolStop(lab.id, l), "Removing the attack box…"); }} disabled={exegolBusy}>
+                      <Button variant="outline" className="w-full" onClick={() => runExegol((l) => exegolStop(lab.id, l), "Removing the attack box…")} disabled={exegolBusy}>
                         <Square className="size-3.5" /> {exegolBusy ? "Working…" : "Stop attack box"}
                       </Button>
                     </>
