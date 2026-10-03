@@ -235,6 +235,22 @@ export function cloudLogin(provider: CloudProvider, onLog: (line: string) => voi
   return invoke<void>("cloud_login", { provider, logs });
 }
 
+export interface ProvisioningImage {
+  name: string;
+  image: string;
+  present: boolean;
+}
+
+/** The Docker images provisioning uses (Terraform, Ansible) and whether each is pulled. */
+export const provisioningImages = () => invoke<ProvisioningImage[]>("provisioning_images");
+
+/** Pulls a provisioning image, streaming docker's output. */
+export function provisioningPull(image: string, onLog: (line: string) => void) {
+  const logs = new Channel<string>();
+  logs.onmessage = onLog;
+  return invoke<void>("provisioning_pull", { image, logs });
+}
+
 /** Installs a Vagrant plugin (userland), streaming the output. */
 export function installVagrantPlugin(plugin: string, onLog: (line: string) => void) {
   const logs = new Channel<string>();

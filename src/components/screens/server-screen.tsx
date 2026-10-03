@@ -10,6 +10,8 @@ import { KIND } from "@/components/server/host-setup";
 import {
   cloudLogin,
   installDependency,
+  provisioningImages,
+  provisioningPull,
   SERVER_CHANGED,
   serverList,
   serverOpenSetup,
@@ -19,6 +21,7 @@ import {
   systemCheck,
   type CloudProvider,
   type Dependency,
+  type ProvisioningImage,
   type ServerHost,
   type ServerTest,
   type SystemReport,
@@ -61,11 +64,28 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
     const [tests, setTests] = useState<Record<string, ServerTest | "testing">>({});
   const [report, setReport] = useState<SystemReport | null>(null);
   const [cliBusy, setCliBusy] = useState<string | null>(null);
+  const [provImages, setProvImages] = useState<ProvisioningImage[] | null>(null);
+  const [pullBusy, setPullBusy] = useState<string | null>(null);
 
-  // The Cloud view provisions via a cloud CLI; show which are installed and offer installs.
+  // The Cloud view provisions via a cloud CLI + container images; show what's ready and offer installs.
   useEffect(() => {
-    if (cloud) systemCheck().then(setReport).catch(() => {});
+    if (!cloud) return;
+    systemCheck().then(setReport).catch(() => {});
+    provisioningImages().then(setProvImages).catch(() => {});
   }, [cloud]);
+
+  async function pull(image: string) {
+    setPullBusy(image);
+    setError(null);
+    try {
+      await provisioningPull(image, () => {});
+      setProvImages(await provisioningImages());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setPullBusy(null);
+    }
+  }
 
   const [loginBusy, setLoginBusy] = useState<string | null>(null);
 
@@ -179,6 +199,19 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
           <CliRow name="AWS CLI" provider="aws" tool={report?.cloudClis.aws} busy={cliBusy === "awscli"} loginBusy={loginBusy === "aws"} onInstall={() => installCli("awscli")} onLogin={() => login("aws")} />
           <CliRow name="Azure CLI" provider="azure" tool={report?.cloudClis.azure} busy={cliBusy === "azurecli"} loginBusy={loginBusy === "azure"} onInstall={() => installCli("azurecli")} onLogin={() => login("azure")} />
           <CliRow name="Google Cloud CLI" provider="gcp" tool={report?.cloudClis.gcloud} busy={cliBusy === "gcloud"} loginBusy={loginBusy === "gcp"} onInstall={() => installCli("gcloud")} onLogin={() => login("gcp")} />
+        </Panel>
+      )}
+
+      {cloud && (
+        <Panel>
+          <PanelHeader title="Provisioning images" action={<span className="text-[11.5px] text-muted-foreground">Terraform creates, Ansible configures, both run in Docker</span>} />
+          {provImages === null ? (
+            <div className="flex items-center gap-2 px-3.5 py-4 text-[12.5px] text-muted-foreground"><Spinner className="size-4" /> Checking…</div>
+          ) : (
+            provImages.map((img) => (
+              <ImageRow key={img.image} image={img} busy={pullBusy === img.image} onPull={() => pull(img.image)} />
+            ))
+          )}
         </Panel>
       )}
 
@@ -321,6 +354,26 @@ function CliRow({ name, provider, tool, busy, loginBusy, onInstall, onLogin }: {
             {busy ? "Installing…" : "Install"}
           </Button>
         ) : null}
+      </span>
+    </div>
+  );
+}
+
+function ImageRow({ image, busy, onPull }: { image: ProvisioningImage; busy: boolean; onPull: () => void }) {
+  return (
+    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
+      <span className="font-medium text-foreground">{image.name}</span>
+      <code className="truncate rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{image.image}</code>
+      <span className="ml-auto flex items-center gap-3">
+        <span className={cn("flex items-center gap-1.5", image.present ? "text-emerald-500" : "text-muted-foreground")}>
+          {image.present && <span className="size-1.5 rounded-full bg-emerald-500" />}
+          {image.present ? "pulled" : "not pulled"}
+        </span>
+        {!image.present && (
+          <Button variant="learn" size="sm" onClick={onPull} disabled={busy}>
+            {busy ? "Pulling…" : "Pull"}
+          </Button>
+        )}
       </span>
     </div>
   );

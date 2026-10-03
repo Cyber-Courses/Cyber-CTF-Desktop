@@ -9,6 +9,7 @@ mod error;
 mod exec;
 mod install;
 mod labs;
+mod provisioning;
 mod runtime;
 mod system;
 
@@ -103,6 +104,8 @@ pub fn run() {
             agent::agent_info,
             install::install_dependency,
             cloud::cloud_login,
+            provisioning::provisioning_images,
+            provisioning::provisioning_pull,
             install::install_vagrant_plugin,
             labs::lab_launch,
             runtime::lab_start,
