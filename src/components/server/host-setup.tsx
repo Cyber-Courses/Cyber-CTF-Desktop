@@ -2,8 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { CheckCircle2, Cloud, ExternalLink, Server, XCircle } from "lucide-react";
-import { Panel, PanelHeader } from "@/components/ui/panel";
+import { ArrowLeft, CheckCircle2, Cloud, ExternalLink, HardDrive, Network, Play, Server, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/labs/log-console";
@@ -19,7 +18,8 @@ import {
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-// The server setup flow, shown in its own window (src/app/server-setup).
+// The server setup flow, a step-by-step wizard shown in its own window (src/app/server-setup).
+// Matches the "Set up this machine" wizard (components/machine/machine-setup.tsx).
 
 export const KIND: Record<RemoteProvider, { label: string; note: string; port: number; user: string; plugin: string }> = {
   proxmox: { label: "Proxmox VE", note: "Signs in to the Proxmox API", port: 8006, user: "root@pam", plugin: "vagrant-proxmox" },
@@ -29,7 +29,6 @@ export const KIND: Record<RemoteProvider, { label: string; note: string; port: n
 
 /** Server hypervisors, as opposed to cloud accounts. */
 export const SERVER_KINDS: RemoteProvider[] = ["proxmox", "vmware_esxi"];
-
 
 export const EMPTY_HOST: ServerHostInput = {
   id: null,
@@ -50,9 +49,8 @@ export const EMPTY_HOST: ServerHostInput = {
 /** A new AWS account: region + access keys. */
 export const EMPTY_CLOUD: ServerHostInput = { ...EMPTY_HOST, provider: "aws", insecureTls: false, autoStopHours: 4 };
 
-/** Proxmox's own logo (official media kit, unaltered), or a neutral mark for ESXi. */
+/** Proxmox's own logo (official media kit, unaltered), or a neutral mark for ESXi / AWS. */
 export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
-  // AWS logos need Amazon's approval too: a neutral mark.
   if (provider === "aws")
     return (
       <span className="flex h-5 items-center gap-1.5 text-[13px] font-semibold tracking-tight">
@@ -70,6 +68,15 @@ export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
   );
 }
 
+type StepKey = "hypervisor" | "connection" | "placement" | "account" | "test";
+const STEP_LABEL: Record<StepKey, string> = {
+  hypervisor: "Hypervisor",
+  connection: "Connection",
+  placement: "Placement",
+  account: "Account",
+  test: "Test",
+};
+
 export function HostSetupPage({
   initial,
   report,
@@ -85,117 +92,36 @@ export function HostSetupPage({
   /** Setup finished or cancelled: the window closes. */
   onDone: () => void;
 }) {
-  const [saved, setSaved] = useState<ServerHost | null>(null);
-  const [draft, setDraft] = useState<ServerHostInput>(initial);
-  const [test, setTest] = useState<ServerTest | "testing" | null>(null);
-
-  async function runTest(id: string) {
-    setTest("testing");
-    try {
-      setTest(await serverTest(id));
-    } catch (e) {
-      setTest({ ok: false, reachable: false, authenticated: null, latencyMs: null, message: String(e) });
-    }
-  }
-
-  return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">
-          {draft.id !== null && !saved ? `Edit ${draft.name}` : saved ? `${saved.name} connected` : draft.provider === "aws" ? "Connect AWS" : "Connect a host"}
-        </h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
-          {saved
-            ? "Saved. Here's what the launcher could check from this machine."
-            : draft.provider === "aws"
-              ? "Run labs in your own AWS account. The secret key goes to your OS keychain, never to CyberCTF."
-              : "Point the launcher at your hypervisor. The password goes to your OS keychain, never to CyberCTF."}
-        </p>
-      </div>
-
-      {saved ? (
-        <Panel>
-          <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-            <HypervisorMark provider={saved.provider} />
-            <span className="ml-auto font-mono text-[11.5px] text-muted-foreground">{saved.username}@{saved.host}:{saved.port}</span>
-          </div>
-          <div className="p-4">
-            {test === null || test === "testing" ? (
-              <p className="flex items-center gap-2 text-[13px] text-muted-foreground"><Spinner className="size-4" /> Testing the connection…</p>
-            ) : (
-              <p className={cn("flex items-start gap-2 text-[13px]", test.ok ? "text-emerald-500" : "text-rose-400")}>
-                {test.ok ? <CheckCircle2 className="mt-px size-4 shrink-0" /> : <XCircle className="mt-px size-4 shrink-0" />}
-                <span>
-                  {test.message}
-                  {test.latencyMs != null && <span className="ml-1.5 font-mono text-[11.5px] text-muted-foreground">{test.latencyMs} ms</span>}
-                </span>
-              </p>
-            )}
-          </div>
-          <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
-            <Button variant="ghost" size="sm" onClick={() => runTest(saved.id)} disabled={test === "testing"}>Test again</Button>
-            <Button variant="outline" size="sm" onClick={() => { setDraft({ ...saved, password: null }); setSaved(null); setTest(null); }}>Edit</Button>
-            <Button variant="learn" size="sm" onClick={onDone}>Done</Button>
-          </div>
-        </Panel>
-      ) : (
-        <HostForm
-          key={draft.id ?? "new"}
-          initial={draft}
-          report={report}
-          onRefresh={onRefresh}
-          onCancel={onDone}
-          onSaved={(h) => {
-            setSaved(h);
-            onSaved(h);
-            runTest(h.id);
-          }}
-        />
-      )}
-
-      <p className="text-[11px] text-muted-foreground/70">
-        Proxmox® is a registered trademark of Proxmox Server Solutions GmbH.{" "}
-        <button onClick={() => openUrl("https://www.proxmox.com").catch(() => {})} className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline">
-          proxmox.com <ExternalLink className="size-3" />
-        </button>{" "}
-        VMware and ESXi are trademarks of Broadcom. Amazon Web Services and AWS are trademarks of Amazon.com, Inc. CyberCTF isn&apos;t affiliated with any of them.
-      </p>
-    </div>
-  );
-}
-
-function HostForm({
-  initial,
-  report,
-  onRefresh,
-  onCancel,
-  onSaved,
-}: {
-  initial: ServerHostInput;
-  report: SystemReport | null;
-  onRefresh: () => void;
-  onCancel: () => void;
-  onSaved: (h: ServerHost) => void;
-}) {
   const [v, setV] = useState<ServerHostInput>(initial);
+  const [i, setI] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<ServerHost | null>(null);
+  const [test, setTest] = useState<ServerTest | "testing" | null>(null);
   const [pluginLog, setPluginLog] = useState<string[] | null>(null);
+
   const editing = initial.id !== null;
   const cloud = v.provider === "aws";
   const kind = KIND[v.provider];
-  // Server setup is a short wizard; editing skips the hypervisor choice. Cloud stays one step.
-  const steps: Step[] = cloud ? ["connection"] : editing ? ["connection", "placement"] : ["hypervisor", "connection", "placement"];
-  const [step, setStep] = useState(0);
-  const current = steps[step];
-  const last = step === steps.length - 1;
-  const canNext = current !== "connection" || (v.host.trim() !== "" && v.username.trim() !== "" && (editing || cloud || (v.password ?? "") !== ""));
   const status = report?.vmProviders.find((p) => p.provider === v.provider);
+
+  // The ordered steps for this setup. Editing skips the hypervisor choice.
+  const steps: StepKey[] = cloud
+    ? ["account", "test"]
+    : editing
+      ? ["connection", "placement", "test"]
+      : ["hypervisor", "connection", "placement", "test"];
+  const key = steps[Math.min(i, steps.length - 1)];
+
   const set = <K extends keyof ServerHostInput>(k: K, value: ServerHostInput[K]) => setV((s) => ({ ...s, [k]: value }));
   const text = (k: "name" | "host" | "username" | "datastore" | "network" | "node") => ({
     value: (v[k] as string | null) ?? "",
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, e.target.value),
   });
+
+  const connectionOk = v.host.trim() !== "" && v.username.trim() !== "" && (editing || (v.password ?? "") !== "");
+  const next = () => setI((n) => Math.min(n + 1, steps.length - 1));
+  const back = () => setI((n) => Math.max(n - 1, 0));
 
   async function installPlugin() {
     setPluginLog([`Installing ${kind.plugin}…`]);
@@ -209,13 +135,41 @@ function HostForm({
     }
   }
 
+  async function runTest(id: string) {
+    setTest("testing");
+    try {
+      setTest(await serverTest(id));
+    } catch (e) {
+      setTest({ ok: false, reachable: false, authenticated: null, latencyMs: null, message: String(e) });
+    }
+  }
+
+  // Save, then move to the Test step and test the saved host.
+  async function saveAndTest() {
+    setSaving(true);
+    setError(null);
+    try {
+      const h = await serverSave({ ...v, name: v.name.trim() || v.host.trim() });
+      setSaved(h);
+      onSaved(h);
+      next();
+      runTest(h.id);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const title = saved ? `${saved.name} connected` : editing ? `Edit ${initial.name}` : cloud ? "Connect AWS" : "Connect a host";
+
   const esxiPluginNotice =
     v.provider === "vmware_esxi" && status && !status.pluginInstalled ? (
       <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
           <p className="min-w-0 flex-1 text-[12px] text-amber-500">{status.reason ?? `Needs the Vagrant plugin ${kind.plugin}.`}</p>
           {report?.vagrant.installed && (
-            <Button type="button" variant="outline" size="sm" onClick={installPlugin} disabled={pluginLog !== null && !pluginLog.at(-1)?.match(/^[✓✗]/)}>
+            <Button variant="outline" size="sm" onClick={installPlugin} disabled={pluginLog !== null && !pluginLog.at(-1)?.match(/^[✓✗]/)}>
               Install {kind.plugin}
             </Button>
           )}
@@ -224,27 +178,30 @@ function HostForm({
       </div>
     ) : null;
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      onSaved(await serverSave({ ...v, name: v.name.trim() || v.host.trim() }));
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
-    <Panel>
-      <PanelHeader title={cloud ? "AWS account" : STEP_TITLE[current]} action={steps.length > 1 ? <Stepper steps={steps} at={step} /> : undefined} />
-      <form onSubmit={submit} className="space-y-4 p-4">
-        {cloud ? (
-          <AwsFields v={v} set={set} text={text} editing={editing} />
-        ) : current === "hypervisor" ? (
-          <>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          {cloud
+            ? "Run labs in your own AWS account. The secret key goes to your OS keychain, never to CyberCTF."
+            : "Point the launcher at your server. The password goes to your OS keychain, never to CyberCTF."}
+        </p>
+      </div>
+
+      {/* Segmented progress, one bar per step. */}
+      <div className="flex gap-1.5">
+        {steps.map((s, n) => (
+          <div key={s} className={cn("h-1 flex-1 rounded-full transition-colors", n <= i ? "bg-learn" : "bg-muted")} />
+        ))}
+      </div>
+      <p className="-mt-3 text-[11px] text-muted-foreground">
+        Step {i + 1} of {steps.length} · {STEP_LABEL[key]}
+      </p>
+
+      <div key={key} className="animate-rise-in rounded-xl border border-border bg-card p-5">
+        {key === "hypervisor" && (
+          <Step icon={Server} title="Choose your hypervisor" description="Where the launcher will create and run VM labs.">
             <div className="grid grid-cols-2 gap-2">
               {SERVER_KINDS.map((p) => (
                 <button
@@ -261,104 +218,148 @@ function HostForm({
                 </button>
               ))}
             </div>
-            {esxiPluginNotice}
-          </>
-        ) : current === "connection" ? (
-          <>
-            {esxiPluginNotice}
+            {esxiPluginNotice && <div className="mt-4">{esxiPluginNotice}</div>}
+            <Nav right={<Button variant="learn" onClick={next}>Continue</Button>} />
+          </Step>
+        )}
+
+        {key === "connection" && (
+          <Step
+            icon={Network}
+            title={`Connect to ${KIND[v.provider].label}`}
+            description={v.provider === "proxmox" ? "The launcher signs in to the Proxmox API." : "The launcher drives the host over SSH."}
+          >
+            {esxiPluginNotice && <div className="mb-4">{esxiPluginNotice}</div>}
             <div className="grid gap-3 sm:grid-cols-[1fr_1fr_110px]">
               <Field label="Name"><Input {...text("name")} placeholder={v.provider === "proxmox" ? "Garage Proxmox" : "ESXi box"} /></Field>
-              <Field label="Host"><Input {...text("host")} placeholder="192.168.1.20 or pve.lan" required /></Field>
+              <Field label="Host"><Input {...text("host")} placeholder="192.168.1.20 or pve.lan" /></Field>
               <Field label={v.provider === "proxmox" ? "API port" : "SSH port"}>
-                <Input
-                  type="number"
-                  min={1}
-                  max={65535}
-                  value={v.port ?? ""}
-                  onChange={(e) => set("port", e.target.value ? Number(e.target.value) : null)}
-                  placeholder={String(kind.port)}
-                />
+                <Input type="number" min={1} max={65535} value={v.port ?? ""} onChange={(e) => set("port", e.target.value ? Number(e.target.value) : null)} placeholder={String(kind.port)} />
               </Field>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Username" hint={v.provider === "proxmox" ? "Include the realm, e.g. root@pam" : undefined}>
-                <Input {...text("username")} placeholder={kind.user} required />
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Field label="Username" hint={v.provider === "proxmox" ? "With realm, e.g. root@pam" : undefined}>
+                <Input {...text("username")} placeholder={kind.user} />
               </Field>
               <Field label="Password" hint="Stored in your OS keychain">
-                <Input
-                  type="password"
-                  value={v.password ?? ""}
-                  onChange={(e) => set("password", e.target.value || null)}
-                  placeholder={editing ? "Unchanged" : ""}
-                  required={!editing}
-                  autoComplete="off"
-                />
+                <Input type="password" value={v.password ?? ""} onChange={(e) => set("password", e.target.value || null)} placeholder={editing ? "Unchanged" : ""} autoComplete="off" />
               </Field>
             </div>
-          </>
-        ) : (
-          <>
-            <p className="text-[12px] text-muted-foreground">Where labs are placed on the host. Leave blank for the host&apos;s defaults.</p>
+            <Nav
+              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
+              right={<Button variant="learn" onClick={next} disabled={!connectionOk}>Continue</Button>}
+            />
+          </Step>
+        )}
+
+        {key === "placement" && (
+          <Step icon={HardDrive} title="Placement" description="Where labs are placed on the host. Leave blank for the host's defaults.">
             <div className={cn("grid gap-3", v.provider === "proxmox" ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
               {v.provider === "proxmox" && <Field label="Node" hint="Optional"><Input {...text("node")} placeholder="pve" /></Field>}
-              <Field label={v.provider === "proxmox" ? "Storage" : "Datastore"} hint="Optional">
-                <Input {...text("datastore")} placeholder={v.provider === "proxmox" ? "local-lvm" : "datastore1"} />
-              </Field>
-              <Field label={v.provider === "proxmox" ? "Bridge" : "Port group"} hint="Optional">
-                <Input {...text("network")} placeholder={v.provider === "proxmox" ? "vmbr0" : "VM Network"} />
-              </Field>
+              <Field label={v.provider === "proxmox" ? "Storage" : "Datastore"} hint="Optional"><Input {...text("datastore")} placeholder={v.provider === "proxmox" ? "local-lvm" : "datastore1"} /></Field>
+              <Field label={v.provider === "proxmox" ? "Bridge" : "Port group"} hint="Optional"><Input {...text("network")} placeholder={v.provider === "proxmox" ? "vmbr0" : "VM Network"} /></Field>
             </div>
             {v.provider === "proxmox" && (
-              <label className="flex cursor-pointer items-start gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={v.insecureTls}
-                  onChange={(e) => set("insecureTls", e.target.checked)}
-                  className="mt-0.5 size-3.5 accent-[var(--learn)]"
-                />
+              <label className="mt-4 flex cursor-pointer items-start gap-2.5">
+                <input type="checkbox" checked={v.insecureTls} onChange={(e) => set("insecureTls", e.target.checked)} className="mt-0.5 size-3.5 accent-[var(--learn)]" />
                 <span>
                   <span className="block text-[12.5px]">Self-signed certificate</span>
                   <span className="block text-[11.5px] text-muted-foreground">Proxmox uses one by default. Turn off if your host has a trusted certificate.</span>
                 </span>
               </label>
             )}
-          </>
+            {error && <p className="mt-3 text-[12px] text-destructive">{error}</p>}
+            <Nav
+              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
+              right={<Button variant="learn" onClick={saveAndTest} disabled={saving}>{saving && <Spinner className="size-4" />} Save and test</Button>}
+            />
+          </Step>
         )}
 
-        {error && <p className="text-[12px] text-destructive">{error}</p>}
+        {key === "account" && (
+          <Step icon={Cloud} title="AWS account" description="An IAM user's access keys and a region. Labs run as EC2 instances in your account.">
+            <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[12px] text-amber-500">
+              Labs on AWS run in your account and are billed there (about $0.05/hour for the default t3.medium) until you stop them. Stop destroys everything the lab created.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Name"><Input {...text("name")} placeholder="My AWS" /></Field>
+              <Field label="Region"><Input {...text("host")} placeholder="eu-west-3" /></Field>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Field label="Access key ID" hint="An IAM user with EC2 access"><Input {...text("username")} placeholder="AKIA…" /></Field>
+              <Field label="Secret access key" hint="Stored in your OS keychain">
+                <Input type="password" value={v.password ?? ""} onChange={(e) => set("password", e.target.value || null)} placeholder={editing ? "Unchanged" : ""} autoComplete="off" />
+              </Field>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Field label="Instance type" hint="Optional"><Input {...text("datastore")} placeholder="t3.medium" /></Field>
+              <Field label="Auto-stop after (hours)" hint="0 = never">
+                <Input type="number" min={0} max={72} value={v.autoStopHours ?? 4} onChange={(e) => set("autoStopHours", e.target.value === "" ? null : Number(e.target.value))} />
+              </Field>
+            </div>
+            <p className="mt-2 text-[11.5px] text-muted-foreground">The instance terminates itself when the time is up, even if this machine is off.</p>
+            {error && <p className="mt-3 text-[12px] text-destructive">{error}</p>}
+            <Nav
+              left={<Button variant="ghost" onClick={onDone}>Cancel</Button>}
+              right={<Button variant="learn" onClick={saveAndTest} disabled={saving || !connectionOk}>{saving && <Spinner className="size-4" />} Save and test</Button>}
+            />
+          </Step>
+        )}
 
-        <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
-          <Button type="button" variant="ghost" size="sm" onClick={step === 0 ? onCancel : () => setStep((s) => s - 1)}>
-            {step === 0 ? "Cancel" : "Back"}
-          </Button>
-          {last ? (
-            <Button type="submit" variant="learn" size="sm" disabled={saving || !canNext}>
-              {saving && <Spinner className="size-3.5" />} {editing ? "Save" : "Add and test"}
-            </Button>
-          ) : (
-            <Button type="button" variant="learn" size="sm" disabled={!canNext} onClick={() => setStep((s) => s + 1)}>
-              Next
-            </Button>
-          )}
-        </div>
-      </form>
-    </Panel>
+        {key === "test" && (
+          <Step icon={CheckCircle2} title="Connection test" description="Saved. Here's what the launcher could check from this machine.">
+            {test === null || test === "testing" ? (
+              <p className="flex items-center gap-2 text-[13px] text-muted-foreground"><Spinner className="size-4" /> Testing the connection…</p>
+            ) : (
+              <div className={cn("flex items-start gap-3 rounded-lg border p-3.5", test.ok ? "border-emerald-500/25 bg-emerald-500/10" : "border-rose-500/25 bg-rose-500/10")}>
+                {test.ok ? <CheckCircle2 className="mt-px size-5 shrink-0 text-emerald-500" /> : <XCircle className="mt-px size-5 shrink-0 text-rose-400" />}
+                <p className={cn("text-[13px]", test.ok ? "text-foreground" : "text-rose-300")}>
+                  {test.message}
+                  {test.latencyMs != null && <span className="ml-1.5 font-mono text-[11.5px] text-muted-foreground">{test.latencyMs} ms</span>}
+                </p>
+              </div>
+            )}
+            <Nav
+              left={<Button variant="outline" onClick={() => saved && runTest(saved.id)} disabled={test === "testing"}>Test again</Button>}
+              right={<Button variant="learn" onClick={onDone}><Play className="size-4" /> Done</Button>}
+            />
+          </Step>
+        )}
+      </div>
+
+      <p className="text-[11px] text-muted-foreground/70">
+        Proxmox® is a registered trademark of Proxmox Server Solutions GmbH.{" "}
+        <button onClick={() => openUrl("https://www.proxmox.com").catch(() => {})} className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline">
+          proxmox.com <ExternalLink className="size-3" />
+        </button>{" "}
+        VMware and ESXi are trademarks of Broadcom. Amazon Web Services and AWS are trademarks of Amazon.com, Inc. CyberCTF isn&apos;t affiliated with any of them.
+      </p>
+    </div>
   );
 }
 
-type Step = "hypervisor" | "connection" | "placement";
-const STEP_TITLE: Record<Step, string> = { hypervisor: "Hypervisor", connection: "Connection", placement: "Placement" };
-
-function Stepper({ steps, at }: { steps: Step[]; at: number }) {
+function Step({ icon: Icon, title, description, children }: { icon: typeof Server; title: string; description: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-1.5">
-      {steps.map((s, i) => (
-        <span key={s} className="flex items-center gap-1.5">
-          <span className={cn("size-1.5 rounded-full", i === at ? "bg-learn" : i < at ? "bg-learn/50" : "bg-muted-foreground/30")} />
-          <span className={cn("text-[11px]", i === at ? "text-foreground" : "text-muted-foreground")}>{STEP_TITLE[s]}</span>
-          {i < steps.length - 1 && <span className="text-muted-foreground/40">·</span>}
+    <div>
+      <div className="flex items-start gap-3.5">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface">
+          <Icon className="size-5 text-foreground" />
         </span>
-      ))}
+        <div className="min-w-0 pt-0.5">
+          <h2 className="text-[15px] font-semibold tracking-tight">{title}</h2>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <div className="mt-5">{children}</div>
+    </div>
+  );
+}
+
+function Nav({ left, right }: { left?: ReactNode; right: ReactNode }) {
+  return (
+    <div className="mt-6 flex items-center justify-between gap-2 border-t border-border pt-4">
+      <div>{left}</div>
+      <div>{right}</div>
     </div>
   );
 }
@@ -382,55 +383,5 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
       {...props}
       className="w-full rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring"
     />
-  );
-}
-
-function AwsFields({
-  v,
-  set,
-  text,
-  editing,
-}: {
-  v: ServerHostInput;
-  set: <K extends keyof ServerHostInput>(k: K, value: ServerHostInput[K]) => void;
-  text: (k: "name" | "host" | "username" | "datastore") => { value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void };
-  editing: boolean;
-}) {
-  return (
-    <>
-      <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[12px] text-amber-500">
-        Labs you start on AWS run in your account and are billed there (about $0.05/hour for the default t3.medium) until you stop them. Stop destroys everything the lab created.
-      </p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Name"><Input {...text("name")} placeholder="My AWS" /></Field>
-        <Field label="Region"><Input {...text("host")} placeholder="eu-west-3" required /></Field>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Access key ID" hint="An IAM user with EC2 access"><Input {...text("username")} placeholder="AKIA…" required /></Field>
-        <Field label="Secret access key" hint="Stored in your OS keychain">
-          <Input
-            type="password"
-            value={v.password ?? ""}
-            onChange={(e) => set("password", e.target.value || null)}
-            placeholder={editing ? "Unchanged" : ""}
-            required={!editing}
-            autoComplete="off"
-          />
-        </Field>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Instance type" hint="Optional"><Input {...text("datastore")} placeholder="t3.medium" /></Field>
-        <Field label="Auto-stop after (hours)" hint="0 = never">
-          <Input
-            type="number"
-            min={0}
-            max={72}
-            value={v.autoStopHours ?? 4}
-            onChange={(e) => set("autoStopHours", e.target.value === "" ? null : Number(e.target.value))}
-          />
-        </Field>
-      </div>
-      <p className="-mt-1 text-[11.5px] text-muted-foreground">The instance terminates itself when the time is up, even if this machine is off.</p>
-    </>
   );
 }
