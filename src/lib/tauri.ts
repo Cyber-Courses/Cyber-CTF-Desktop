@@ -45,7 +45,7 @@ export interface SystemReport {
 
 export interface LabStatus {
   running: boolean;
-  machines: { name: string; state: string; image: string; ports: { published: number; target: number }[] }[];
+  machines: { name: string; state: string; image: string; ip: string; ports: { published: number; target: number }[] }[];
   /** Loopback URL where the lab is reachable, once running (null for VM labs / no port). */
   url: string | null;
 }

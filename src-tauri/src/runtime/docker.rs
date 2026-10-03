@@ -44,6 +44,8 @@ struct PsEntry {
     state: String,
     #[serde(rename = "Image", default)]
     image: String,
+    #[serde(rename = "Name", default)]
+    name: String,
     #[serde(rename = "Publishers", default)]
     publishers: Vec<Publisher>,
 }
@@ -70,6 +72,29 @@ fn first_published_url(entries: &[PsEntry]) -> Option<String> {
         .map(|port| format!("http://127.0.0.1:{port}"))
 }
 
+/// Each running container's address on the lab network, keyed by container name.
+/// `docker compose ps` doesn't carry the IP, so we inspect the live containers once.
+/// Best effort: an empty map (e.g. inspect failed) just means the UI shows no IPs.
+async fn container_ips(dir: &Path, names: &[String]) -> std::collections::HashMap<String, String> {
+    use std::collections::HashMap;
+    if names.is_empty() {
+        return HashMap::new();
+    }
+    let mut args: Vec<&str> = vec!["inspect", "-f", "{{.Name}}\t{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}"];
+    args.extend(names.iter().map(String::as_str));
+    let out = match run("docker", &args, Some(dir)).await {
+        Ok(out) => out,
+        Err(_) => return HashMap::new(),
+    };
+    out.lines()
+        .filter_map(|line| {
+            let (name, rest) = line.split_once('\t')?;
+            let ip = rest.split_whitespace().next()?.to_string();
+            Some((name.trim_start_matches('/').to_string(), ip))
+        })
+        .collect()
+}
+
 // `docker compose ps --format json` prints either a JSON array (older Compose)
 // or one JSON object per line (Compose >= 2.21).
 fn parse_ps(out: &str) -> Vec<PsEntry> {
@@ -94,6 +119,8 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     // every service is. Only the live services are reported to the UI.
     let running = entries.iter().any(|e| e.state == "running");
     let url = if running { first_published_url(&entries) } else { None };
+    let run_names: Vec<String> = entries.iter().filter(|e| e.state == "running").map(|e| e.name.clone()).collect();
+    let ips = container_ips(dir, &run_names).await;
     let machines = entries
         .into_iter()
         .filter(|e| e.state == "running")
@@ -104,7 +131,8 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
                 .filter(|p| (p.target_port > 0 || p.published_port > 0) && (p.protocol.is_empty() || p.protocol == "tcp"))
                 .map(|p| Port { published: p.published_port, target: p.target_port })
                 .collect();
-            Machine { name: e.service, state: e.state, image: e.image, ports }
+            let ip = ips.get(&e.name).cloned().unwrap_or_default();
+            Machine { name: e.service, state: e.state, image: e.image, ip, ports }
         })
         .collect();
     Ok(LabStatus { running, machines, url })

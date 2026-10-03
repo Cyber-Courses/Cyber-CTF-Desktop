@@ -40,6 +40,9 @@ pub struct Machine {
     /// The image = the software running inside the container, e.g. "mysql:8.0".
     #[serde(default)]
     pub image: String,
+    /// The container's address on the lab network, e.g. "172.20.0.4" (empty if unknown).
+    #[serde(default)]
+    pub ip: String,
     /// Ports the software inside it binds (for the network diagram).
     #[serde(default)]
     pub ports: Vec<Port>,

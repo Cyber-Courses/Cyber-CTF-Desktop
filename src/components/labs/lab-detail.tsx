@@ -89,9 +89,7 @@ export function LabDetail({
             <Panel>
               <PanelHeader title="Network" action={running ? <span className="text-[11.5px] text-muted-foreground">{status?.machines.length ?? 0} services</span> : undefined} />
               {running && status && status.machines.length > 0 ? (
-                <div className="p-4">
-                  <NetworkDiagram machines={status.machines} />
-                </div>
+                <NetworkDiagram machines={status.machines} />
               ) : (
                 <p className="px-4 py-8 text-center text-[12.5px] text-muted-foreground">Start the lab to see its containers and network.</p>
               )}
