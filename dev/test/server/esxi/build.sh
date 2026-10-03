@@ -35,6 +35,9 @@ vim-cmd hostsvc/enable_ssh
 vim-cmd hostsvc/start_ssh
 vim-cmd hostsvc/enable_esx_shell
 esxcli system settings advanced set -o /UserVars/SuppressShellWarning -i 1
+# Nested lab VMs have their own MACs: let vSwitch0 pass them (Fusion must also allow the
+# ESXi VM into promiscuous mode, see README).
+esxcli network vswitch standard policy security set -v vSwitch0 --allow-promiscuous=true --allow-forged-transmits=true --allow-mac-change=true
 KS
 
 # 2. Repack the ISO with the kickstart, booting it automatically (BIOS + UEFI).
@@ -93,7 +96,13 @@ VMX
 
 "$VMRUN" -T fusion start "$VM/$NAME.vmx" nogui || { echo "VM failed to start, see $VM/vmware.log"; exit 1; }
 echo "Installing ESXi (unattended, ~10 min)..."
-guest_ip() { "$VMRUN" -T fusion getGuestIPAddress "$VM/$NAME.vmx" 2>/dev/null || true; }
+# ESXi's built-in tools report the IP late or not at all: fall back to Fusion's NAT DHCP
+# lease for the VM's MAC address.
+lease_ip() {
+  mac=$(grep -i '^ethernet0.generatedAddress ' "$VM/$NAME.vmx" | cut -d'"' -f2)
+  [ -n "$mac" ] && grep -B8 -i "hardware ethernet $mac" /var/db/vmware/vmnet-dhcpd-vmnet8.leases 2>/dev/null | awk '/^lease/{ip=$2} END{print ip}'
+}
+guest_ip() { "$VMRUN" -T fusion getGuestIPAddress "$VM/$NAME.vmx" 2>/dev/null || lease_ip || true; }
 while :; do
   IP=$(guest_ip)
   case "$IP" in [0-9]*) nc -z -G 3 "$IP" 22 2>/dev/null && break ;; esac

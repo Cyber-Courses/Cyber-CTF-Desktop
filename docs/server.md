@@ -108,7 +108,7 @@ resolves `web` and `database` on the lab network.
   evidence claimed and placed, the attack box reads the invoice.
 - `vagrant-vmware-esxi` 2.5.5 installs on Vagrant 2.4.9. `vagrant-proxmox` 0.0.10 (2016) does
   not (activesupport 4.0 vs Vagrant's i18n 1.14.7), hence Terraform for Proxmox.
-- Terraform on a test Proxmox VE 8 (`dev/server-test/proxmox`), end to end: image download,
+- Terraform on a test Proxmox VE 8 (`dev/test/server/proxmox`), end to end: image download,
   snippet upload over SSH, VM, cloud-init, Ansible, compose healthy, the attack box reads the
   invoice; `destroy` removes VM, snippet and image. The test host has no nested KVM (VirtualBox
   on this Intel Mac), so the lab VM ran with `kvm: 0` and `cpu_type = x86-64-v2-AES` (plain

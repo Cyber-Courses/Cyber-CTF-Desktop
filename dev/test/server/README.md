@@ -73,6 +73,14 @@ gives its OSData partition up to 128 GB and leaves no room for `datastore1` ("No
 datastores found on target"). The VM has nested virtualization on (`vhv.enable`), and the
 `.vmx` needs the standard PCIe bridge entries or Fusion can't attach the disk controller.
 
+**Nested networking.** Lab VMs on ESXi have their own MAC addresses, so two things must
+let them through: ESXi's `vSwitch0` (the kickstart allows promiscuous mode and forged
+transmits) and Fusion itself, which on macOS needs an admin's approval to put the ESXi VM's
+network card in promiscuous ("network monitoring") mode. Without it lab VMs get no IPv4
+address (Vagrant times out waiting for "running"). If you dismissed Fusion's prompt,
+disconnect and reconnect the VM's network adapter in Fusion to be asked again. ESXi's own
+tools may not report its IP to Fusion; `build.sh` then reads it from Fusion's NAT DHCP leases.
+
 In the launcher: Server, Add host, VMware ESXi, the IP, user `root`, password from
 `.state/secrets.env`, SSH port 22.
 
