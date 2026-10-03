@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity, Cloud, Cpu, Gauge, HardDrive, MemoryStick, RefreshCw, Server, Wrench, type LucideIcon } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { Activity, Cloud, Cpu, ExternalLink, Gauge, HardDrive, MemoryStick, RefreshCw, Server, Wrench, type LucideIcon } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Meter } from "@/components/ui/meter";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,16 @@ const PROVIDER_LABELS: Record<string, string> = {
   utm: "UTM",
   vmware_esxi: "VMware ESXi (remote)",
   proxmox: "Proxmox VE (remote)",
+};
+
+// Where to get each hypervisor we don't auto-install (some are behind a login/paywall).
+const DOWNLOAD: Record<string, string> = {
+  vmware_desktop: "https://www.vmware.com/products/desktop-hypervisor/workstation-and-fusion",
+  parallels: "https://www.parallels.com/products/desktop/",
+  qemu: "https://www.qemu.org/download/",
+  utm: "https://mac.getutm.app/",
+  libvirt: "https://libvirt.org/downloads.html",
+  hyperv: "https://learn.microsoft.com/virtualization/hyper-v-on-windows/quick-start/enable-hyper-v",
 };
 
 const gb = (b: number) => b / 1e9;
@@ -209,7 +220,15 @@ export function MachineScreen({
             name={providerLabel(p)}
             ok={p.hypervisor === true}
             detail={p.hypervisor === true ? "installed" : p.hypervisor === false ? "not installed" : "built in"}
-            action={p.hypervisor === false && p.provider === "virtualbox" ? <Install id="virtualbox" onClick={() => installDep("virtualbox", "Installing VirtualBox…")}>Install</Install> : undefined}
+            action={
+              p.hypervisor === true
+                ? undefined
+                : p.provider === "virtualbox"
+                  ? <Install id="virtualbox" onClick={() => installDep("virtualbox", "Installing VirtualBox…")}>Install</Install>
+                  : DOWNLOAD[p.provider]
+                    ? <Button variant="outline" size="sm" onClick={() => openUrl(DOWNLOAD[p.provider]!).catch(() => {})}><ExternalLink className="size-3.5" /> Get</Button>
+                    : undefined
+            }
           />
         ))}
         <Row
