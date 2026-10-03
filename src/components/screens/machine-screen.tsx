@@ -18,39 +18,12 @@ import {
   type Tool,
 } from "@/lib/tauri";
 import { assessRam } from "@/lib/capacity";
+import { DOWNLOAD, INSTALLABLE, providerLabel, usableHypervisors } from "@/lib/hypervisors";
 import { cn } from "@/lib/utils";
-
-const PROVIDER_LABELS: Record<string, string> = {
-  virtualbox: "VirtualBox",
-  vmware_desktop: "VMware Workstation / Fusion",
-  hyperv: "Hyper-V",
-  parallels: "Parallels",
-  libvirt: "libvirt (KVM)",
-  qemu: "QEMU",
-  utm: "UTM",
-  vmware_esxi: "VMware ESXi (remote)",
-  proxmox: "Proxmox VE (remote)",
-};
-
-// Hypervisors we can install in one click (per-OS plans live in the Rust installer).
-const INSTALLABLE: Record<string, Dependency> = {
-  virtualbox: "virtualbox",
-  qemu: "qemu",
-  utm: "utm",
-  libvirt: "libvirt",
-};
-
-// The rest are behind a login/paywall (or an OS feature), so we just link to them.
-const DOWNLOAD: Record<string, string> = {
-  vmware_desktop: "https://www.vmware.com/products/desktop-hypervisor/workstation-and-fusion",
-  parallels: "https://www.parallels.com/products/desktop/",
-  hyperv: "https://learn.microsoft.com/virtualization/hyper-v-on-windows/quick-start/enable-hyper-v",
-};
 
 const gb = (b: number) => b / 1e9;
 const fmtGB = (b: number) => `${gb(b).toFixed(gb(b) < 10 ? 1 : 0)} GB`;
 const toolText = (t: Tool) => (t.installed ? (t.version ?? "installed") : "not installed");
-const providerLabel = (p: ProviderStatus) => PROVIDER_LABELS[p.provider] ?? p.provider;
 function fmtUptime(s: number) {
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);
@@ -144,17 +117,7 @@ export function MachineScreen({
   }
 
   const dockerReady = report.docker.installed && report.dockerRunning;
-  // Only show local hypervisors usable on this OS + arch (but always keep ones already
-  // installed). VirtualBox has no Apple-Silicon support; UTM is for Apple Silicon.
-  const isMac = report.os === "macos";
-  const isArm = report.arch === "aarch64" || report.arch === "arm64";
-  const hypervisors = report.vmProviders.filter((p) => {
-    if (p.remote) return false;
-    if (p.hypervisor === true) return true;
-    if (p.provider === "virtualbox" && isMac && isArm) return false;
-    if (p.provider === "utm" && isMac && !isArm) return false;
-    return true;
-  });
+  const hypervisors = usableHypervisors(report);
   const localPlugins = report.vmProviders.filter((p) => p.plugin && !p.remote && (p.hypervisor === true || p.pluginInstalled));
   const memPct = m && m.memTotal ? (m.memUsed / m.memTotal) * 100 : 0;
   const diskPct = m && m.diskTotal ? (m.diskUsed / m.diskTotal) * 100 : 0;

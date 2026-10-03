@@ -1,0 +1,44 @@
+import type { Dependency, ProviderStatus, SystemReport } from "@/lib/tauri";
+
+export const PROVIDER_LABELS: Record<string, string> = {
+  virtualbox: "VirtualBox",
+  vmware_desktop: "VMware Workstation / Fusion",
+  hyperv: "Hyper-V",
+  parallels: "Parallels",
+  libvirt: "libvirt (KVM)",
+  qemu: "QEMU",
+  utm: "UTM",
+  vmware_esxi: "VMware ESXi (remote)",
+  proxmox: "Proxmox VE (remote)",
+};
+
+export const providerLabel = (p: ProviderStatus) => PROVIDER_LABELS[p.provider] ?? p.provider;
+
+/** Hypervisors we can install in one click (per-OS plans live in the Rust installer). */
+export const INSTALLABLE: Record<string, Dependency> = {
+  virtualbox: "virtualbox",
+  qemu: "qemu",
+  utm: "utm",
+  libvirt: "libvirt",
+};
+
+/** The rest are behind a login / paywall (or an OS feature), so we link to them. */
+export const DOWNLOAD: Record<string, string> = {
+  vmware_desktop: "https://www.vmware.com/products/desktop-hypervisor/workstation-and-fusion",
+  parallels: "https://www.parallels.com/products/desktop/",
+  hyperv: "https://learn.microsoft.com/virtualization/hyper-v-on-windows/quick-start/enable-hyper-v",
+};
+
+/** Local hypervisors usable on this OS + arch (always keeps ones already installed).
+ *  VirtualBox has no Apple-Silicon support; UTM is for Apple Silicon. */
+export function usableHypervisors(report: SystemReport): ProviderStatus[] {
+  const isMac = report.os === "macos";
+  const isArm = report.arch === "aarch64" || report.arch === "arm64";
+  return report.vmProviders.filter((p) => {
+    if (p.remote) return false;
+    if (p.hypervisor === true) return true;
+    if (p.provider === "virtualbox" && isMac && isArm) return false;
+    if (p.provider === "utm" && isMac && !isArm) return false;
+    return true;
+  });
+}

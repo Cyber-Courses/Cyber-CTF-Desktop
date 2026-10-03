@@ -2,10 +2,11 @@
 
 import { useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, Check, CheckCircle2, Container, Copy, Cpu, ExternalLink, Play, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, Container, Copy, Cpu, ExternalLink, Play, RefreshCw, Server, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { installDependency, type SystemReport } from "@/lib/tauri";
+import { installDependency, type Dependency, type SystemReport } from "@/lib/tauri";
+import { DOWNLOAD, INSTALLABLE, providerLabel, usableHypervisors } from "@/lib/hypervisors";
 import { cn } from "@/lib/utils";
 
 /** The guided "set up this machine" flow, shown in its own window. OS-aware: Windows gets
@@ -14,9 +15,10 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
   const os = report?.os ?? "";
   const isWin = os === "windows";
   const isMac = os === "macos";
-  const steps: readonly string[] = isWin ? ["virtualization", "docker", "ready"] : ["docker", "ready"];
+  const steps: readonly string[] = isWin ? ["virtualization", "docker", "vm", "ready"] : ["docker", "vm", "ready"];
   const [i, setI] = useState(0);
   const key = steps[i];
+  const [vmBusy, setVmBusy] = useState<string | null>(null);
 
   const [installing, setInstalling] = useState(false);
   const [installerOpened, setInstallerOpened] = useState(false);
@@ -40,6 +42,22 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
       setLogs((l) => [...l, `✗ ${String(e)}`]);
     } finally {
       setInstalling(false);
+      onRefresh();
+    }
+  }
+
+  async function installVm(id: string, dep: Dependency, label: string) {
+    setVmBusy(id);
+    setLogs([`Installing ${label}…`]);
+    try {
+      await installDependency(dep, (line) => {
+        setLogs((l) => [...l, line]);
+        requestAnimationFrame(() => logEnd.current?.scrollIntoView({ block: "end" }));
+      });
+    } catch (e) {
+      setLogs((l) => [...l, `✗ ${String(e)}`]);
+    } finally {
+      setVmBusy(null);
       onRefresh();
     }
   }
@@ -122,6 +140,44 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
             <Nav
               left={isWin ? <Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button> : undefined}
               right={<Button variant="learn" onClick={next}>{dockerReady ? "Continue" : "Skip for now"}</Button>}
+            />
+          </Step>
+        )}
+
+        {key === "vm" && (
+          <Step icon={Server} title="Virtual machines (optional)" description="Some labs are full VMs (routers, Windows, multi-host networks). Install a hypervisor to run those, or skip, you can do it later from the Machine page.">
+            {report && usableHypervisors(report).length > 0 ? (
+              <div className="overflow-hidden rounded-lg border border-border">
+                {usableHypervisors(report).map((p) => (
+                  <div key={p.provider} className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
+                    <span className="text-foreground">{providerLabel(p)}</span>
+                    <span className={cn("ml-auto flex items-center gap-1.5", p.hypervisor === true ? "text-emerald-500" : "text-muted-foreground")}>
+                      {p.hypervisor === true && <span className="size-1.5 rounded-full bg-emerald-500" />}
+                      {p.hypervisor === true ? "installed" : "not installed"}
+                      {p.hypervisor !== true && INSTALLABLE[p.provider] && (
+                        <Button variant="learn" size="sm" onClick={() => installVm(p.provider, INSTALLABLE[p.provider]!, providerLabel(p))} disabled={vmBusy !== null}>
+                          {vmBusy === p.provider ? "Installing…" : "Install"}
+                        </Button>
+                      )}
+                      {p.hypervisor !== true && !INSTALLABLE[p.provider] && DOWNLOAD[p.provider] && (
+                        <Button variant="outline" size="sm" onClick={() => openUrl(DOWNLOAD[p.provider]!).catch(() => {})}><ExternalLink className="size-3.5" /> Get</Button>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[12.5px] text-muted-foreground">No local hypervisor applies to this machine. You can run VM labs on a Server (ESXi / Proxmox) instead.</p>
+            )}
+            {logs.length > 0 && (
+              <pre className="mt-3 max-h-40 overflow-auto rounded-lg border border-border bg-[#070707] p-3 font-mono text-[11.5px] leading-relaxed text-muted-foreground">
+                {logs.join("\n")}
+                <div ref={logEnd} />
+              </pre>
+            )}
+            <Nav
+              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
+              right={<Button variant="learn" onClick={next}>Continue</Button>}
             />
           </Step>
         )}
