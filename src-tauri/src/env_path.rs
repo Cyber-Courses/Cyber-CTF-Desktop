@@ -61,6 +61,24 @@ pub fn augment() {
 mod tests {
     use super::*;
 
+    /// On this machine, with the PATH a Finder-launched app gets, the tools labs need are
+    /// found after `augment()` (opt-in: it changes the process PATH; run single-threaded):
+    ///   cargo test --lib finder_path_finds_tools -- --ignored --test-threads=1
+    #[test]
+    #[ignore]
+    fn finder_path_finds_tools() {
+        // SAFETY: opt-in test, run with --test-threads=1.
+        unsafe { std::env::set_var("PATH", "/usr/bin:/bin:/usr/sbin:/sbin") };
+        let found = |tool: &str| std::process::Command::new(tool).arg("--version").output().is_ok();
+        assert!(!found("docker"), "docker should be missing on the bare Finder PATH");
+        augment();
+        for tool in ["docker", "vagrant"] {
+            assert!(found(tool), "{tool} not found after augment(); PATH={:?}", std::env::var("PATH"));
+        }
+        let compose = std::process::Command::new("docker").args(["compose", "version", "--short"]).output().unwrap();
+        assert!(compose.status.success(), "docker compose plugin not found");
+    }
+
     #[test]
     fn appends_existing_dirs_once_and_keeps_order() {
         let tmp = std::env::temp_dir();
