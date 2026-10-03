@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/labs/log-console";
 import {
+  cloudLogin,
   serverSave,
   serverTest,
   installVagrantPlugin,
+  type CloudProvider,
   type ServerHost,
   type ServerHostInput,
   type ServerTest,
@@ -68,13 +70,23 @@ export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
   );
 }
 
-type StepKey = "hypervisor" | "connection" | "placement" | "account" | "test";
+type StepKey = "provider" | "hypervisor" | "connection" | "placement" | "account" | "connect" | "test";
 const STEP_LABEL: Record<StepKey, string> = {
+  provider: "Provider",
   hypervisor: "Hypervisor",
   connection: "Connection",
   placement: "Placement",
   account: "Account",
+  connect: "Connect",
   test: "Test",
+};
+
+/** Cloud providers offered in the cloud setup. AWS is the supported target; Azure and GCP
+ *  connect via their CLI's own sign-in (no lab provisioning yet). */
+const CLOUD_META: Record<CloudProvider, { label: string; cli: string; color: string; ready: boolean }> = {
+  aws: { label: "Amazon Web Services", cli: "aws", color: "#ff9900", ready: true },
+  azure: { label: "Microsoft Azure", cli: "az", color: "#3b8eea", ready: false },
+  gcp: { label: "Google Cloud", cli: "gcloud", color: "#34a853", ready: false },
 };
 
 export function HostSetupPage({
@@ -99,6 +111,9 @@ export function HostSetupPage({
   const [saved, setSaved] = useState<ServerHost | null>(null);
   const [test, setTest] = useState<ServerTest | "testing" | null>(null);
   const [pluginLog, setPluginLog] = useState<string[] | null>(null);
+  const [cloudProvider, setCloudProvider] = useState<CloudProvider>("aws");
+  const [signingIn, setSigningIn] = useState(false);
+  const [signInLog, setSignInLog] = useState<string[] | null>(null);
 
   const editing = initial.id !== null;
   const cloud = v.provider === "aws";
@@ -107,7 +122,11 @@ export function HostSetupPage({
 
   // The ordered steps for this setup. Editing skips the hypervisor choice.
   const steps: StepKey[] = cloud
-    ? ["account", "test"]
+    ? editing
+      ? ["account", "test"]
+      : cloudProvider === "aws"
+        ? ["provider", "account", "test"]
+        : ["provider", "connect"]
     : editing
       ? ["connection", "placement", "test"]
       : ["hypervisor", "connection", "placement", "test"];
@@ -161,7 +180,20 @@ export function HostSetupPage({
     }
   }
 
-  const title = saved ? `${saved.name} connected` : editing ? `Edit ${initial.name}` : cloud ? "Connect AWS" : "Connect a host";
+  async function signIn() {
+    setSigningIn(true);
+    setSignInLog([`Signing in to ${CLOUD_META[cloudProvider].label}…`]);
+    try {
+      await cloudLogin(cloudProvider, (l) => setSignInLog((x) => [...(x ?? []), l]));
+      setSignInLog((x) => [...(x ?? []), "✓ Signed in"]);
+    } catch (e) {
+      setSignInLog((x) => [...(x ?? []), `✗ ${String(e)}`]);
+    } finally {
+      setSigningIn(false);
+    }
+  }
+
+  const title = saved ? `${saved.name} connected` : editing ? `Edit ${initial.name}` : cloud ? "Set up cloud provider" : "Connect a host";
 
   const esxiPluginNotice =
     v.provider === "vmware_esxi" && status && !status.pluginInstalled ? (
@@ -184,7 +216,7 @@ export function HostSetupPage({
         <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
           {cloud
-            ? "Run labs in your own AWS account. The secret key goes to your OS keychain, never to CyberCTF."
+            ? "Run labs as throwaway instances in your own cloud account. Credentials stay on this machine, never with CyberCTF."
             : "Point the launcher at your server. The password goes to your OS keychain, never to CyberCTF."}
         </p>
       </div>
@@ -202,21 +234,27 @@ export function HostSetupPage({
       <div key={key} className="animate-rise-in rounded-xl border border-border bg-card p-5">
         {key === "hypervisor" && (
           <Step icon={Server} title="Choose your hypervisor" description="Where the launcher will create and run VM labs.">
-            <div className="grid grid-cols-2 gap-2">
-              {SERVER_KINDS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setV((s) => ({ ...s, provider: p, port: null }))}
-                  className={cn(
-                    "rounded-lg border px-3.5 py-3 text-left transition-colors",
-                    v.provider === p ? "border-learn/60 bg-learn/5" : "border-border hover:border-ring/60",
-                  )}
-                >
-                  <HypervisorMark provider={p} />
-                  <p className="mt-2 text-[11.5px] text-muted-foreground">{KIND[p].note}</p>
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-2.5">
+              {SERVER_KINDS.map((p) => {
+                const selected = v.provider === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setV((s) => ({ ...s, provider: p, port: null }))}
+                    className={cn(
+                      "relative rounded-xl border p-4 text-left transition-colors",
+                      selected ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60",
+                    )}
+                  >
+                    <span className={cn("absolute right-3 top-3 grid size-4 place-items-center rounded-full border transition-colors", selected ? "border-learn bg-learn text-white" : "border-muted-foreground/30")}>
+                      {selected && <CheckCircle2 className="size-3" />}
+                    </span>
+                    <HypervisorMark provider={p} />
+                    <p className="mt-2 text-[11.5px] text-muted-foreground">{KIND[p].note}</p>
+                  </button>
+                );
+              })}
             </div>
             {esxiPluginNotice && <div className="mt-4">{esxiPluginNotice}</div>}
             <Nav right={<Button variant="learn" onClick={next}>Continue</Button>} />
@@ -300,8 +338,62 @@ export function HostSetupPage({
             <p className="mt-2 text-[11.5px] text-muted-foreground">The instance terminates itself when the time is up, even if this machine is off.</p>
             {error && <p className="mt-3 text-[12px] text-destructive">{error}</p>}
             <Nav
-              left={<Button variant="ghost" onClick={onDone}>Cancel</Button>}
+              left={i > 0 ? <Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button> : <Button variant="ghost" onClick={onDone}>Cancel</Button>}
               right={<Button variant="learn" onClick={saveAndTest} disabled={saving || !connectionOk}>{saving && <Spinner className="size-4" />} Save and test</Button>}
+            />
+          </Step>
+        )}
+
+        {key === "provider" && (
+          <Step icon={Cloud} title="Choose a cloud provider" description="Where labs run as throwaway instances in your own account.">
+            <div className="grid grid-cols-3 gap-2.5">
+              {(Object.keys(CLOUD_META) as CloudProvider[]).map((p) => {
+                const m = CLOUD_META[p];
+                const selected = cloudProvider === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setCloudProvider(p)}
+                    className={cn(
+                      "relative rounded-xl border p-4 text-left transition-colors",
+                      selected ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60",
+                    )}
+                  >
+                    <span className={cn("absolute right-3 top-3 grid size-4 place-items-center rounded-full border transition-colors", selected ? "border-learn bg-learn text-white" : "border-muted-foreground/30")}>
+                      {selected && <CheckCircle2 className="size-3" />}
+                    </span>
+                    <span className="grid size-6 place-items-center rounded-md" style={{ background: `${m.color}22`, color: m.color }}>
+                      <Cloud className="size-3.5" />
+                    </span>
+                    <p className="mt-2 text-[12.5px] font-medium">{m.label}</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">{m.ready ? "Available" : "Sign-in only"}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <Nav left={<Button variant="ghost" onClick={onDone}>Cancel</Button>} right={<Button variant="learn" onClick={next}>Continue</Button>} />
+          </Step>
+        )}
+
+        {key === "connect" && (
+          <Step icon={Cloud} title={`Connect ${CLOUD_META[cloudProvider].label}`} description="Sign in with the provider's CLI. Nothing is stored by CyberCTF; Terraform uses the CLI's credentials.">
+            <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[12px] text-amber-500">
+              Lab provisioning for {CLOUD_META[cloudProvider].label} is coming. Sign in now so the CLI is ready; AWS is the supported target today.
+            </p>
+            {report?.cloudClis[cloudProvider === "gcp" ? "gcloud" : cloudProvider]?.installed ? (
+              <>
+                <Button variant="learn" onClick={signIn} disabled={signingIn}>
+                  {signingIn && <Spinner className="size-4" />} Sign in with {CLOUD_META[cloudProvider].cli}
+                </Button>
+                {signInLog && <div className="mt-3"><LogConsole lines={signInLog} /></div>}
+              </>
+            ) : (
+              <p className="text-[12.5px] text-muted-foreground">The {CLOUD_META[cloudProvider].cli} CLI isn&apos;t installed. Install it from the Cloud page first, then come back.</p>
+            )}
+            <Nav
+              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
+              right={<Button variant="learn" onClick={onDone}>Done</Button>}
             />
           </Step>
         )}
@@ -326,15 +418,20 @@ export function HostSetupPage({
           </Step>
         )}
       </div>
-
-      <p className="text-[11px] text-muted-foreground/70">
-        Proxmox® is a registered trademark of Proxmox Server Solutions GmbH.{" "}
-        <button onClick={() => openUrl("https://www.proxmox.com").catch(() => {})} className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline">
-          proxmox.com <ExternalLink className="size-3" />
-        </button>{" "}
-        VMware and ESXi are trademarks of Broadcom. Amazon Web Services and AWS are trademarks of Amazon.com, Inc. CyberCTF isn&apos;t affiliated with any of them.
-      </p>
     </div>
+  );
+}
+
+/** Trademark line, shown pinned at the bottom of the setup window. */
+export function SetupTrademarks() {
+  return (
+    <p className="text-[11px] leading-relaxed text-muted-foreground/70">
+      Proxmox® is a registered trademark of Proxmox Server Solutions GmbH.{" "}
+      <button onClick={() => openUrl("https://www.proxmox.com").catch(() => {})} className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline">
+        proxmox.com <ExternalLink className="size-3" />
+      </button>{" "}
+      VMware and ESXi are trademarks of Broadcom. Amazon Web Services and AWS are trademarks of Amazon.com, Inc. CyberCTF isn&apos;t affiliated with any of them.
+    </p>
   );
 }
 
