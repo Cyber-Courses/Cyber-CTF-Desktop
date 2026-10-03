@@ -144,7 +144,17 @@ export function MachineScreen({
   }
 
   const dockerReady = report.docker.installed && report.dockerRunning;
-  const hypervisors = report.vmProviders.filter((p) => !p.remote);
+  // Only show local hypervisors usable on this OS + arch (but always keep ones already
+  // installed). VirtualBox has no Apple-Silicon support; UTM is for Apple Silicon.
+  const isMac = report.os === "macos";
+  const isArm = report.arch === "aarch64" || report.arch === "arm64";
+  const hypervisors = report.vmProviders.filter((p) => {
+    if (p.remote) return false;
+    if (p.hypervisor === true) return true;
+    if (p.provider === "virtualbox" && isMac && isArm) return false;
+    if (p.provider === "utm" && isMac && !isArm) return false;
+    return true;
+  });
   const localPlugins = report.vmProviders.filter((p) => p.plugin && !p.remote && (p.hypervisor === true || p.pluginInstalled));
   const memPct = m && m.memTotal ? (m.memUsed / m.memTotal) * 100 : 0;
   const diskPct = m && m.diskTotal ? (m.diskUsed / m.diskTotal) * 100 : 0;
