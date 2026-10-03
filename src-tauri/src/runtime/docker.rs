@@ -93,7 +93,15 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     let machines = entries
         .into_iter()
         .filter(|e| e.state == "running")
-        .map(|e| Machine { name: e.service, state: e.state })
+        .map(|e| {
+            let ports = e
+                .publishers
+                .iter()
+                .filter(|p| p.published_port > 0 && (p.protocol.is_empty() || p.protocol == "tcp"))
+                .map(|p| p.published_port)
+                .collect();
+            Machine { name: e.service, state: e.state, ports }
+        })
         .collect();
     Ok(LabStatus { running, machines, url })
 }

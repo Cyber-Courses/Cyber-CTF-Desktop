@@ -27,6 +27,9 @@ pub enum Runtime {
 pub struct Machine {
     pub name: String,
     pub state: String,
+    /// Host ports this service publishes on 127.0.0.1 (for the network diagram).
+    #[serde(default)]
+    pub ports: Vec<u16>,
 }
 
 #[derive(Serialize)]

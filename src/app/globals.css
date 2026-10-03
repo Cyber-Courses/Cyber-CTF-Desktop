@@ -93,3 +93,14 @@ body {
 .animate-rise-in {
   animation: rise-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* Flowing dashed edges for the lab network diagram. */
+@keyframes dash-flow {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+.animate-dash {
+  stroke-dasharray: 4 5;
+  animation: dash-flow 0.8s linear infinite;
+}
