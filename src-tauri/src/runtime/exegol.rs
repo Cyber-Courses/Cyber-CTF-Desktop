@@ -52,7 +52,7 @@ pub async fn status(id: &str, image: &str) -> ExegolStatus {
         }
         Err(_) => (false, String::new()),
     };
-    ExegolStatus { image_present, running, ip, shell_cmd: format!("docker exec -it {name} zsh") }
+    ExegolStatus { image_present, running, ip, shell_cmd: format!("docker exec -it {name} bash") }
 }
 
 pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result<()> {
@@ -88,7 +88,8 @@ pub async fn stop(id: &str, mut log: impl FnMut(String)) -> Result<()> {
 /// Opens the player's own terminal attached to the attack box.
 pub fn shell(id: &str) -> Result<()> {
     let name = container(id);
-    let attach = format!("docker exec -it {name} zsh");
+    // bash is present on Kali/Parrot/Exegol alike (keeps native-terminal quoting simple).
+    let attach = format!("docker exec -it {name} bash");
     #[cfg(target_os = "macos")]
     {
         let script = format!("tell application \"Terminal\"\nactivate\ndo script \"{attach}\"\nend tell");

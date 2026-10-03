@@ -219,7 +219,7 @@ function build(machines: Machine[], attacker: Attacker): { nodes: Node[]; edges:
       parentId: "lab",
       extent: "parent",
       position: { x: 46, y: labH / 2 - 52 },
-      data: { label: "Exegol", subtitle: atkOn ? attacker!.ip : "not started", running: atkOn },
+      data: { label: "Attack box", subtitle: atkOn ? attacker!.ip : "not started", running: atkOn },
     },
   ];
 

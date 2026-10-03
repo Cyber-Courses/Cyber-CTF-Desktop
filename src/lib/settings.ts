@@ -1,29 +1,33 @@
 /** Per-machine launcher preferences, kept locally. */
 
-const EXEGOL_KEY = "cyberctf.exegol.image";
+const ATTACK_IMAGE_KEY = "cyberctf.attackbox.image";
 
-export const DEFAULT_EXEGOL_IMAGE = "nwodtuhs/exegol:free";
+/**
+ * Default attack box: a simple Kali base. Exegol is licensed (free for personal use,
+ * paid for pro/commercial), so it's only an opt-in preset until we have the Exegol
+ * team's go-ahead to bundle it.
+ */
+export const DEFAULT_ATTACK_IMAGE = "kalilinux/kali-rolling";
 
-/** Common Exegol images; the field is free text so any tag/registry still works. */
-export const EXEGOL_PRESETS: { image: string; label: string; note: string }[] = [
-  { image: "nwodtuhs/exegol:free", label: "Free", note: "Smallest full toolbox" },
-  { image: "nwodtuhs/exegol:light", label: "Light", note: "Minimal, quickest to pull" },
-  { image: "nwodtuhs/exegol:full", label: "Full", note: "Everything (very large)" },
-  { image: "nwodtuhs/exegol:ad", label: "Active Directory", note: "AD-focused tooling" },
-  { image: "nwodtuhs/exegol:web", label: "Web", note: "Web pentest tooling" },
+/** Common attack-box images; the field is free text so any tag/registry still works. */
+export const ATTACK_PRESETS: { image: string; label: string; note: string }[] = [
+  { image: "kalilinux/kali-rolling", label: "Kali", note: "Official Kali base, add tools as needed" },
+  { image: "parrotsec/security", label: "Parrot", note: "Parrot Security toolset" },
+  { image: "nwodtuhs/exegol:free", label: "Exegol Free", note: "Needs an Exegol license for pro/commercial use" },
+  { image: "nwodtuhs/exegol:full", label: "Exegol Full", note: "Large, needs an Exegol license" },
 ];
 
-export function getExegolImage(): string {
+export function getAttackImage(): string {
   try {
-    return localStorage.getItem(EXEGOL_KEY) || DEFAULT_EXEGOL_IMAGE;
+    return localStorage.getItem(ATTACK_IMAGE_KEY) || DEFAULT_ATTACK_IMAGE;
   } catch {
-    return DEFAULT_EXEGOL_IMAGE;
+    return DEFAULT_ATTACK_IMAGE;
   }
 }
 
-export function setExegolImage(image: string) {
+export function setAttackImage(image: string) {
   try {
-    localStorage.setItem(EXEGOL_KEY, image.trim() || DEFAULT_EXEGOL_IMAGE);
+    localStorage.setItem(ATTACK_IMAGE_KEY, image.trim() || DEFAULT_ATTACK_IMAGE);
   } catch {
     /* ignore */
   }

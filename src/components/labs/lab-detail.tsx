@@ -12,7 +12,7 @@ import { NetworkDiagram } from "@/components/labs/network-diagram";
 import { AttackTerminal } from "@/components/labs/attack-terminal";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/lib/use-labs";
 import { apiQuery, exegolShell, exegolStart, exegolStatus, exegolStop, type ExegolStatus, type LabStatus } from "@/lib/tauri";
-import { getExegolImage } from "@/lib/settings";
+import { getAttackImage } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 export function LabDetail({
@@ -62,7 +62,7 @@ export function LabDetail({
   // The attack box lives on the lab's Docker network, so it's only relevant while a
   // container lab is up. Poll its status so Launch/running/IP stay current.
   const refreshExegol = useCallback(() => {
-    exegolStatus(lab.id, getExegolImage()).then(setExegol).catch(() => setExegol(null));
+    exegolStatus(lab.id, getAttackImage()).then(setExegol).catch(() => setExegol(null));
   }, [lab.id]);
   useEffect(() => {
     if (!running || !isDocker) {
@@ -135,7 +135,7 @@ export function LabDetail({
           {running && isDocker && shellOpen && exegol?.running && (
             <Panel>
               <PanelHeader
-                title={<span className="flex items-center gap-1.5"><Terminal className="size-3.5 text-learn" /> Attack shell <span className="font-mono text-[11px] text-muted-foreground">exegol</span></span>}
+                title={<span className="flex items-center gap-1.5"><Terminal className="size-3.5 text-learn" /> Attack shell <span className="font-mono text-[11px] text-muted-foreground">{getAttackImage()}</span></span>}
                 action={<button onClick={() => setShellOpen(false)} className="text-[11.5px] text-muted-foreground transition-colors hover:text-foreground">Close</button>}
               />
               <AttackTerminal labId={lab.id} />
@@ -193,7 +193,7 @@ export function LabDetail({
 
           {running && isDocker && (
             <Panel>
-              <PanelHeader title="Attack box" action={<span className="text-[11.5px] text-muted-foreground">Exegol</span>} />
+              <PanelHeader title="Attack box" action={<span className="font-mono text-[11px] text-muted-foreground">{getAttackImage()}</span>} />
               <div className="space-y-3 p-4">
                 <div className="flex items-center gap-2 text-[13px]">
                   <Crosshair className="size-4 text-learn" />
@@ -205,9 +205,9 @@ export function LabDetail({
                     <span className="text-muted-foreground">Not started</span>
                   )}
                 </div>
-                <p className="text-[11.5px] text-muted-foreground">Attack the targets from Exegol, a toolbox container on this lab’s network.</p>
+                <p className="text-[11.5px] text-muted-foreground">Attack the targets from a toolbox container on this lab’s network.</p>
                 {exegol && !exegol.imagePresent && !exegol.running && (
-                  <p className="text-[11.5px] text-amber-500">First launch downloads <span className="font-mono">{getExegolImage()}</span> (several GB).</p>
+                  <p className="text-[11.5px] text-amber-500">First launch downloads <span className="font-mono">{getAttackImage()}</span> (several GB).</p>
                 )}
                 <div className="space-y-2">
                   {exegol?.running ? (
@@ -223,7 +223,7 @@ export function LabDetail({
                       </Button>
                     </>
                   ) : (
-                    <Button variant="learn" className="w-full" onClick={() => runExegol((l) => exegolStart(lab.id, getExegolImage(), l), "Starting the attack box…")} disabled={exegolBusy}>
+                    <Button variant="learn" className="w-full" onClick={() => runExegol((l) => exegolStart(lab.id, getAttackImage(), l), "Starting the attack box…")} disabled={exegolBusy}>
                       {exegolBusy ? <Spinner className="size-4" /> : <Play className="size-4" />} Launch attack box
                     </Button>
                   )}

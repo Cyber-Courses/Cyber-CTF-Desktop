@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { agentInfo, type AgentInfo, type AuthStatus } from "@/lib/tauri";
-import { DEFAULT_EXEGOL_IMAGE, EXEGOL_PRESETS, getExegolImage, setExegolImage } from "@/lib/settings";
+import { ATTACK_PRESETS, DEFAULT_ATTACK_IMAGE, getAttackImage, setAttackImage } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 const ONBOARDED_KEY = "cyberctf.onboarded";
@@ -25,17 +25,17 @@ export function SettingsScreen({ auth }: { auth: AuthStatus | null }) {
   const [agent, setAgent] = useState<AgentInfo | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [upd, setUpd] = useState<"idle" | "checking" | "none" | { version: string }>("idle");
-  const [exegolImage, setExegolImageState] = useState(DEFAULT_EXEGOL_IMAGE);
+  const [attackImage, setAttackImageState] = useState(DEFAULT_ATTACK_IMAGE);
 
   useEffect(() => {
     agentInfo().then(setAgent).catch(() => setAgent(null));
     getVersion().then(setVersion).catch(() => setVersion(null));
-    setExegolImageState(getExegolImage());
+    setAttackImageState(getAttackImage());
   }, []);
 
-  function saveExegolImage(image: string) {
-    setExegolImage(image);
-    setExegolImageState(image);
+  function saveAttackImage(image: string) {
+    setAttackImage(image);
+    setAttackImageState(image);
   }
 
   async function checkUpdates() {
@@ -87,16 +87,16 @@ export function SettingsScreen({ auth }: { auth: AuthStatus | null }) {
 
       <Card className="p-5">
         <p className="mb-1 text-sm font-medium">Attack box</p>
-        <p className="mb-3 text-xs text-muted-foreground">The Exegol image run as your attack box on each lab’s network. First launch of an image downloads it (can be several GB).</p>
+        <p className="mb-3 text-xs text-muted-foreground">The image run as your attack box on each lab’s network. First launch of an image downloads it (can be several GB). Default is a simple Kali base; Exegol is an option but needs your own Exegol license for professional or commercial use.</p>
         <div className="flex flex-wrap gap-1.5">
-          {EXEGOL_PRESETS.map((p) => (
+          {ATTACK_PRESETS.map((p) => (
             <button
               key={p.image}
-              onClick={() => saveExegolImage(p.image)}
+              onClick={() => saveAttackImage(p.image)}
               title={`${p.image} — ${p.note}`}
               className={cn(
                 "rounded-md border px-2.5 py-1 text-xs transition-colors",
-                exegolImage === p.image ? "border-learn bg-learn/10 text-learn" : "border-border bg-card text-muted-foreground hover:border-ring/60 hover:text-foreground",
+                attackImage === p.image ? "border-learn bg-learn/10 text-learn" : "border-border bg-card text-muted-foreground hover:border-ring/60 hover:text-foreground",
               )}
             >
               {p.label}
@@ -105,15 +105,15 @@ export function SettingsScreen({ auth }: { auth: AuthStatus | null }) {
         </div>
         <div className="mt-3 flex items-center gap-2">
           <input
-            value={exegolImage}
-            onChange={(e) => setExegolImageState(e.target.value)}
-            onBlur={(e) => saveExegolImage(e.target.value)}
+            value={attackImage}
+            onChange={(e) => setAttackImageState(e.target.value)}
+            onBlur={(e) => saveAttackImage(e.target.value)}
             spellCheck={false}
             className="min-w-0 flex-1 rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-foreground outline-none focus:border-ring"
-            placeholder={DEFAULT_EXEGOL_IMAGE}
+            placeholder={DEFAULT_ATTACK_IMAGE}
           />
-          {exegolImage !== DEFAULT_EXEGOL_IMAGE && (
-            <Button variant="outline" size="sm" onClick={() => saveExegolImage(DEFAULT_EXEGOL_IMAGE)}>Reset</Button>
+          {attackImage !== DEFAULT_ATTACK_IMAGE && (
+            <Button variant="outline" size="sm" onClick={() => saveAttackImage(DEFAULT_ATTACK_IMAGE)}>Reset</Button>
           )}
         </div>
       </Card>

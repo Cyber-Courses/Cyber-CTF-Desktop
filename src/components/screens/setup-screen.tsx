@@ -241,16 +241,16 @@ export function SetupScreen({ report, onRefresh, onNavigate }: { report: SystemR
         {step === 2 && (
           <StepBody
             icon={Crosshair}
-            title="Attack toolbox"
-            description="You attack the lab targets from Exegol, an offensive toolbox that runs as its own container on the lab network, so your tools sit right next to the targets."
+            title="Attack box"
+            description="You attack the lab targets from an attack box, a toolbox container that runs on the lab's network, right next to the targets."
           >
             <div className="flex items-start gap-3 rounded-lg border border-learn/25 bg-learn/5 p-3.5">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-learn/30 bg-learn/10 text-learn">
                 <Box className="size-4" />
               </span>
               <div className="min-w-0">
-                <p className="text-[13px] font-medium text-foreground">Exegol <span className="ml-1.5 rounded border border-border px-1.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground/70">Soon</span></p>
-                <p className="mt-1 text-[12px] text-muted-foreground">One-click Exegol provisioning is on the way. Until then, labs still run, attack them with your own tools against the exposed <span className="font-mono">127.0.0.1</span> ports shown in each lab’s network map.</p>
+                <p className="text-[13px] font-medium text-foreground">Launched per lab</p>
+                <p className="mt-1 text-[12px] text-muted-foreground">Start a lab, then “Launch attack box” on its page for a shell on the lab network. The default is a simple Kali image; pick another in Settings. Exegol is available there once you have your own Exegol license.</p>
               </div>
             </div>
             <StepNav left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>} right={<Button variant="learn" onClick={next}>Continue</Button>} />

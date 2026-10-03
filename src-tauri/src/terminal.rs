@@ -53,7 +53,8 @@ pub fn exegol_shell_open(id: String, cols: u16, rows: u16, output: Channel<Strin
         .map_err(pty_err)?;
 
     let mut cmd = CommandBuilder::new("docker");
-    cmd.args(["exec", "-it", &container(&id), "zsh"]);
+    // Prefer zsh (Exegol), fall back to bash (Kali/Parrot) or sh, so any attack image works.
+    cmd.args(["exec", "-it", &container(&id), "sh", "-c", "exec $(command -v zsh || command -v bash || command -v sh)"]);
     let child = pair.slave.spawn_command(cmd).map_err(pty_err)?;
     drop(pair.slave);
 
