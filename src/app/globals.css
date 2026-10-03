@@ -147,6 +147,21 @@ body {
 .copy-ico { opacity: 0; transition: opacity .12s; color: #8f8f8f; }
 .copy-chip:hover .copy-ico { opacity: .7; }
 .copy-ok { color: #54c171; }
+/* Network bridge (switch) node. */
+.bridge { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 1px solid #2e2e2e; border-radius: 10px; background: linear-gradient(180deg, #161616, #101010); color: #9a9a9a; }
+.bridge > svg { color: #8a8a8a; }
+.bridge-label { font-size: 9px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; color: #7a7a7a; }
+.bridge-attack { border-color: rgba(240,97,109,.3); }
+.bridge-attack > svg { color: #f0616d; }
+.bridge-attack .bridge-label { color: #c98f93; }
+/* Open ports shown as doors on a machine. */
+.doors { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+.door { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border: 1px solid #2f2f2f; border-radius: 7px; background: #1b1b1b; font-size: 10.5px; color: #b0b0b0; }
+.door > svg { color: #8a8a8a; }
+.door-pub { border-color: rgba(84,193,113,.32); background: rgba(84,193,113,.09); color: #8fd3a0; }
+.door-pub > svg { color: #54c171; }
+.door-host { color: #54c171; }
+.door-none { font-size: 10.5px; color: #707070; }
 .react-flow__pane { cursor: grab; }
 .react-flow__pane:active { cursor: grabbing; }
 .react-flow__background pattern circle { fill: #292929; }
