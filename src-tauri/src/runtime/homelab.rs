@@ -378,6 +378,19 @@ pub fn connection(app: &AppHandle, id: &str) -> Result<Connection> {
     })
 }
 
+/// The player's hosts and cloud accounts as launch targets for the website
+/// (`{ id, name, provider }`), reported by the launcher agent.
+pub fn launch_targets(app: &AppHandle) -> Vec<serde_json::Value> {
+    load(app)
+        .map(|s| s.hosts.iter().map(|h| serde_json::json!({ "id": h.id, "name": h.name, "provider": h.provider.id() })).collect())
+        .unwrap_or_default()
+}
+
+/// A host's display name, if it exists.
+pub fn host_name(app: &AppHandle, id: &str) -> Option<String> {
+    load(app).ok()?.hosts.into_iter().find(|h| h.id == id).map(|h| h.name)
+}
+
 /// The host marked as default, if any (used for VM labs launched from the website).
 pub fn default_host(app: &AppHandle) -> Option<String> {
     let store = load(app).ok()?;

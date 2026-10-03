@@ -18,6 +18,7 @@ use crate::auth;
 use crate::colocation;
 use crate::error::{Error, Result};
 use crate::labs;
+use crate::runtime::homelab;
 
 /// A stable identifier for this installation, generated once and kept in the app data
 /// dir. It is the merge key for the agent, so reinstalling re-registers the same machine
@@ -70,8 +71,8 @@ fn capabilities() -> Vec<String> {
 /// Upserts this machine as the player's launcher agent and returns the server agent id.
 async fn register(app: &AppHandle) -> Result<String> {
     let data = api::graphql(
-        "mutation ($i: ID!, $n: String!, $c: [String!]!, $a: String) { registerLauncher(installId: $i, name: $n, capabilities: $c, arch: $a) { id } }",
-        json!({ "i": install_id(app)?, "n": machine_name(), "c": capabilities(), "a": arch() }),
+        "mutation ($i: ID!, $n: String!, $c: [String!]!, $a: String, $t: [LaunchTargetInput!]) { registerLauncher(installId: $i, name: $n, capabilities: $c, arch: $a, targets: $t) { id } }",
+        json!({ "i": install_id(app)?, "n": machine_name(), "c": capabilities(), "a": arch(), "t": homelab::launch_targets(app) }),
         true,
     )
     .await?;
@@ -81,11 +82,20 @@ async fn register(app: &AppHandle) -> Result<String> {
         .ok_or_else(|| Error::Invalid("registerLauncher returned no id".into()))
 }
 
-async fn heartbeat(agent_id: &str) -> Result<()> {
-    api::graphql("mutation ($id: ID!) { launcherHeartbeat(agentId: $id) { id } }", json!({ "id": agent_id }), true)
-        .await
-        .map(|_| ())
+/// Keep-alive, re-reporting the targets so hosts added since registering show on the website.
+async fn heartbeat(app: &AppHandle, agent_id: &str) -> Result<()> {
+    api::graphql(
+        "mutation ($id: ID!, $t: [LaunchTargetInput!]) { launcherHeartbeat(agentId: $id, targets: $t) { id } }",
+        json!({ "id": agent_id, "t": homelab::launch_targets(app) }),
+        true,
+    )
+    .await
+    .map(|_| ())
 }
+
+/// Attack box for labs launched from the website onto a host: the default image (the
+/// per-machine setting lives in the webview). Matches DEFAULT_ATTACK_IMAGE in settings.ts.
+const DEFAULT_ATTACK_IMAGE: &str = "kalilinux/kali-rolling";
 
 #[derive(Default)]
 struct Progress<'a> {
@@ -113,7 +123,7 @@ fn random_hex() -> String {
 /// Claims one pending session and runs its lab on this machine.
 async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
     let data = api::graphql(
-        "mutation ($id: ID!) { claimLaunch(sessionId: $id) { labId runtime repository commit env { name value } } }",
+        "mutation ($id: ID!) { claimLaunch(sessionId: $id) { labId runtime repository commit target env { name value } } }",
         json!({ "id": session_id }),
         true,
     )
@@ -122,10 +132,15 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
     // Run the lab locally and report where its target is reachable, plus a loopback control
     // endpoint + one-time token/nonce so the website can verify co-location before trusting
     // the 127.0.0.1 URL. The relay path for a remote/headless agent is the next step.
-    // VM labs launched from the website go to the player's default home-lab host, if set;
-    // Docker labs run here.
-    let host = (data["claimLaunch"]["runtime"] == "VM").then(|| crate::runtime::homelab::default_host(app)).flatten();
-    let url = labs::run(app, data["claimLaunch"].clone(), None, host.as_deref(), None, |_line: String| {}).await?;
+    // Where to run it: the target picked on the website (one of this launcher's hosts or
+    // cloud accounts); else VM labs go to the default home-lab host and Docker labs run here.
+    let host = match data["claimLaunch"]["target"].as_str() {
+        Some(target) => Some(homelab::host_name(app, target).map(|_| target.to_string()).ok_or_else(|| Error::Invalid("that host is no longer set up in the launcher".into()))?),
+        None => (data["claimLaunch"]["runtime"] == "VM").then(|| homelab::default_host(app)).flatten(),
+    };
+    let image = host.as_ref().map(|_| DEFAULT_ATTACK_IMAGE);
+    let url = labs::run(app, data["claimLaunch"].clone(), None, host.as_deref(), image, |_line: String| {}).await?;
+    let running_on = host.as_deref().and_then(|h| homelab::host_name(app, h)).map(|n| format!("Running on {n}"));
     let token = random_hex();
     let nonce = random_hex();
     let control_url = colocation::serve(token.clone(), nonce.clone()).await.ok().map(|port| format!("http://127.0.0.1:{port}"));
@@ -137,7 +152,7 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
             control_url: control_url.as_deref(),
             token: Some(&token),
             nonce: Some(&nonce),
-            message: Some("Running on your machine"),
+            message: Some(running_on.as_deref().unwrap_or("Running on your machine")),
         },
     )
     .await?;
@@ -188,7 +203,7 @@ pub fn spawn(app: AppHandle) {
         loop {
             if auth::access_token().await.is_ok() {
                 if tick % 5 == 0 {
-                    let _ = heartbeat(&agent_id).await;
+                    let _ = heartbeat(&app, &agent_id).await;
                 }
                 let _ = poll_once(&app, &agent_id).await;
             }
