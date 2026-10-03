@@ -12,11 +12,45 @@ pub struct Tool {
     pub version: Option<String>,
 }
 
+/// The OS package manager our one-click installs rely on (brew / winget / apt).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PkgManager {
+    pub name: String,
+    pub installed: bool,
+}
+
+async fn package_manager() -> PkgManager {
+    let name = if cfg!(target_os = "windows") {
+        "winget"
+    } else if cfg!(target_os = "linux") {
+        "apt"
+    } else {
+        "Homebrew"
+    };
+    let installed = {
+        #[cfg(target_os = "macos")]
+        {
+            ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].iter().any(|p| std::path::Path::new(p).exists())
+        }
+        #[cfg(target_os = "windows")]
+        {
+            run("winget", &["--version"], None).await.is_ok()
+        }
+        #[cfg(target_os = "linux")]
+        {
+            run("apt-get", &["--version"], None).await.is_ok()
+        }
+    };
+    PkgManager { name: name.to_string(), installed }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemReport {
     pub os: &'static str,
     pub arch: &'static str,
+    pub pkg_manager: PkgManager,
     pub docker: Tool,
     /// The Docker daemon answers (Docker Desktop / engine is started).
     pub docker_running: bool,
@@ -48,6 +82,7 @@ pub async fn system_check() -> SystemReport {
     SystemReport {
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
+        pkg_manager: package_manager().await,
         docker,
         docker_running: daemon.is_ok(),
         docker_compose,

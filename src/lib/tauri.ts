@@ -37,6 +37,7 @@ export interface ProviderStatus {
 export interface SystemReport {
   os: string;
   arch: string;
+  pkgManager: { name: string; installed: boolean };
   docker: Tool;
   dockerRunning: boolean;
   dockerCompose: Tool;

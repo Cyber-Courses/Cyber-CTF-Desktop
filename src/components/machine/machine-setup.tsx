@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, Check, CheckCircle2, Container, Copy, Cpu, ExternalLink, Play, RefreshCw, Server, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, CheckCircle2, Container, Copy, Cpu, ExternalLink, Package, Play, RefreshCw, Server, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { installDependency, type Dependency, type SystemReport } from "@/lib/tauri";
@@ -15,9 +15,16 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
   const os = report?.os ?? "";
   const isWin = os === "windows";
   const isMac = os === "macos";
-  const steps: readonly string[] = isWin ? ["virtualization", "docker", "vm", "ready"] : ["docker", "vm", "ready"];
+  const needsPkgMgr = !!report && !report.pkgManager.installed;
+  const steps: readonly string[] = [
+    ...(needsPkgMgr ? ["pkgmgr"] : []),
+    ...(isWin ? ["virtualization"] : []),
+    "docker",
+    "vm",
+    "ready",
+  ];
   const [i, setI] = useState(0);
-  const key = steps[i];
+  const key = steps[Math.min(i, steps.length - 1)];
   const [vmBusy, setVmBusy] = useState<string | null>(null);
 
   const [installing, setInstalling] = useState(false);
@@ -78,6 +85,29 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
       </div>
 
       <div key={key} className="animate-rise-in rounded-xl border border-border bg-card p-5">
+        {!report ? (
+          <div className="flex items-center gap-2 text-[13px] text-muted-foreground"><Spinner className="size-4" /> Checking this machine…</div>
+        ) : (
+        <>
+        {key === "pkgmgr" && (
+          <Step icon={Package} title={`Install ${report.pkgManager.name}`} description={`The one-click installs use ${report.pkgManager.name}. Set it up once and this guide picks it up automatically.`}>
+            {isMac && (
+              <div className="space-y-2">
+                <p className="text-[12.5px] text-muted-foreground">Run this in Terminal, then come back, it’s detected automatically:</p>
+                <CmdRow cmd={'/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'} />
+                <button onClick={() => openUrl("https://brew.sh").catch(() => {})} className="inline-flex items-center gap-1.5 text-[12px] text-learn hover:underline"><ExternalLink className="size-3.5" /> brew.sh</button>
+              </div>
+            )}
+            {isWin && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-[#0f0f0f] p-3.5">
+                <div><p className="text-[13px] font-medium">App Installer (winget)</p><p className="text-[12px] text-muted-foreground">Install it from the Microsoft Store, then come back.</p></div>
+                <Button variant="learn" onClick={() => openUrl("https://apps.microsoft.com/detail/9nblggh4nns1").catch(() => {})}><ExternalLink className="size-3.5" /> Get</Button>
+              </div>
+            )}
+            {!isMac && !isWin && <p className="text-[12.5px] text-muted-foreground">Install your distribution’s package manager (apt) to use the one-click installs.</p>}
+            <Nav right={<Button variant="learn" onClick={next}>Continue</Button>} />
+          </Step>
+        )}
         {key === "virtualization" && (
           <Step icon={Cpu} title="Enable virtualization (WSL 2)" description="Docker Desktop runs Linux containers through WSL 2. Turn it on once, this is the step most people miss on Windows.">
             <ol className="space-y-3">
@@ -100,7 +130,7 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
         )}
 
         {key === "docker" && (
-          <Step icon={Container} title="Install Docker" description={isMac ? "Container labs run on Docker Desktop. Install it in one click." : isWin ? "Now install Docker Desktop, it will use the WSL 2 you just enabled." : "Container labs run on Docker Engine."}>
+          <Step icon={Container} title="Container engine" description={isMac ? "Container labs need a Docker-compatible engine. Docker Desktop is the easy default; OrbStack or Colima also work." : isWin ? "Container labs run on Docker Desktop (it uses the WSL 2 you enabled). Any Docker-compatible engine works." : "Container labs run on Docker Engine, or any Docker-compatible engine."}>
             {dockerReady ? (
               <Ready>Docker is installed and running.</Ready>
             ) : (
@@ -120,6 +150,13 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
                 </div>
                 {installerOpened && <p className="text-[12px] text-muted-foreground">Finish in Docker’s installer, launch Docker Desktop, then press Re-check.</p>}
                 {isMac && <p className="text-[12px] text-muted-foreground">After installing, open Docker Desktop once and wait until it reports “running”.</p>}
+                {isMac && (
+                  <p className="text-[12px] text-muted-foreground">
+                    Prefer a lighter engine? Get{" "}
+                    <button onClick={() => openUrl("https://orbstack.dev/").catch(() => {})} className="text-learn hover:underline">OrbStack</button>{" "}or{" "}
+                    <button onClick={() => openUrl("https://github.com/abiosoft/colima").catch(() => {})} className="text-learn hover:underline">Colima</button>{" "}— both Docker-compatible.
+                  </p>
+                )}
                 {isWin && <p className="text-[12px] text-muted-foreground">A reboot may be needed after enabling WSL. If Docker says virtualization is off, go back a step.</p>}
                 {!isMac && !isWin && (
                   <div className="space-y-2 rounded-lg border border-border bg-[#0f0f0f] p-3 text-[12px] text-muted-foreground">
@@ -198,6 +235,8 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
               right={<Button variant="learn" onClick={onClose}><Play className="size-4" /> Done</Button>}
             />
           </Step>
+        )}
+        </>
         )}
       </div>
     </div>
