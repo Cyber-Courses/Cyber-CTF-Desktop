@@ -216,7 +216,7 @@ export interface AgentInfo {
 /** This machine's launcher-agent identity (for the Settings screen). */
 export const agentInfo = () => invoke<AgentInfo>("agent_info");
 
-export type Dependency = "docker" | "vagrant" | "virtualbox" | "qemu" | "utm" | "libvirt";
+export type Dependency = "docker" | "vagrant" | "virtualbox" | "qemu" | "utm" | "libvirt" | "awscli" | "azurecli" | "gcloud";
 
 /** Assisted one-click install of a lab dependency, streaming the installer output. */
 export function installDependency(dependency: Dependency, onLog: (line: string) => void) {

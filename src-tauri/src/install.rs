@@ -22,6 +22,9 @@ pub enum Dependency {
     Qemu,
     Utm,
     Libvirt,
+    Awscli,
+    Azurecli,
+    Gcloud,
 }
 
 struct Step {
@@ -68,6 +71,10 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Qemu => vec![step(brew.clone(), &["install", "qemu"])],
             Dependency::Utm => vec![fetch_and_open(&brew, "utm", "UTM")],
             Dependency::Libvirt => return Err(Error::Invalid("libvirt isn't used on macOS; use QEMU or UTM instead.".into())),
+            // Cloud CLIs (brew formulae; gcloud is a cask).
+            Dependency::Awscli => vec![step(brew.clone(), &["install", "awscli"])],
+            Dependency::Azurecli => vec![step(brew.clone(), &["install", "azure-cli"])],
+            Dependency::Gcloud => vec![step(brew.clone(), &["install", "--cask", "google-cloud-sdk"])],
         })
     }
     #[cfg(target_os = "windows")]
@@ -79,6 +86,9 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Qemu => "SoftwareFreedomConservancy.QEMU",
             Dependency::Utm => return Err(Error::Invalid("UTM is only available on macOS.".into())),
             Dependency::Libvirt => return Err(Error::Invalid("libvirt is Linux-only; on Windows use Hyper-V or WSL.".into())),
+            Dependency::Awscli => "Amazon.AWSCLI",
+            Dependency::Azurecli => "Microsoft.AzureCLI",
+            Dependency::Gcloud => "Google.CloudSDK",
         };
         Ok(vec![step("winget", &["install", "-e", "--id", id, "--accept-source-agreements", "--accept-package-agreements"])])
     }
@@ -92,6 +102,10 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Qemu => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y qemu-system qemu-utils"])],
             Dependency::Libvirt => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y libvirt-daemon-system virt-manager"])],
             Dependency::Utm => return Err(Error::Invalid("UTM is only available on macOS.".into())),
+            // Cloud CLIs via each vendor's official installer (best effort across distros).
+            Dependency::Awscli => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y awscli"])],
+            Dependency::Azurecli => vec![step("pkexec", &["sh", "-c", "curl -sL https://aka.ms/InstallAzureCLIDeb | bash"])],
+            Dependency::Gcloud => vec![step("pkexec", &["sh", "-c", "curl -sSL https://sdk.cloud.google.com | bash -s -- --disable-prompts"])],
         })
     }
 }
