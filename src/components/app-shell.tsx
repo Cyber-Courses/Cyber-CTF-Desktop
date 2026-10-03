@@ -147,10 +147,10 @@ function Screen({ tab, report, auth, onRefresh, onNavigate }: { tab: Tab; report
     return <ComingSoon icon="cloud" title="Cloud" description="Spin up labs in the cloud with zero local setup, then open them right here." />;
   }
   return (
-    <div className="space-y-4">
+    <div className="space-y-7">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Labs</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Run a lab on this machine, or launch it from the website.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Labs</h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">Run a lab on this machine, or launch it from the website, it runs here.</p>
       </div>
       {report && <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} />}
     </div>
