@@ -46,6 +46,9 @@ pub struct HostProfile {
     /// Proxmox node name.
     #[serde(default)]
     pub node: Option<String>,
+    /// Proxmox: accept the API's self-signed certificate (the Proxmox default).
+    #[serde(default)]
+    pub insecure_tls: bool,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -67,6 +70,7 @@ pub struct HostInput {
     datastore: Option<String>,
     network: Option<String>,
     node: Option<String>,
+    insecure_tls: Option<bool>,
     password: Option<String>,
 }
 
@@ -249,6 +253,7 @@ pub fn connection_env(h: &HostProfile, password: &str) -> Vec<(String, String)> 
             env.push(("CYBERCTF_PROXMOX_ENDPOINT", proxmox_endpoint(h)));
             env.push(("CYBERCTF_PROXMOX_USER_NAME", h.username.clone()));
             env.push(("CYBERCTF_PROXMOX_PASSWORD", password.into()));
+            env.push(("CYBERCTF_PROXMOX_INSECURE", h.insecure_tls.to_string()));
             if let Some(v) = &h.node {
                 env.push(("CYBERCTF_PROXMOX_NODE", v.clone()));
             }
@@ -272,17 +277,46 @@ fn proxmox_endpoint(h: &HostProfile) -> String {
     format!("https://{}:{}/api2/json", host_for_url(&h.host), h.port)
 }
 
-/// A host resolved for a launch: the Vagrant provider to use and the env to pass.
+/// Terraform variables for a Proxmox host (`deploy/terraform/proxmox`).
+pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> {
+    let mut vars = vec![
+        ("proxmox_endpoint", format!("https://{}:{}/", host_for_url(&h.host), h.port)),
+        ("proxmox_username", h.username.clone()),
+        ("proxmox_password", password.to_string()),
+        ("proxmox_insecure", h.insecure_tls.to_string()),
+        // Snippets go over SSH to the address the player entered.
+        ("proxmox_ssh_address", h.host.clone()),
+    ];
+    if let Some(v) = &h.node {
+        vars.push(("proxmox_node", v.clone()));
+    }
+    if let Some(v) = &h.datastore {
+        vars.push(("proxmox_storage", v.clone()));
+    }
+    if let Some(v) = &h.network {
+        vars.push(("proxmox_bridge", v.clone()));
+    }
+    vars.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
+}
+
+/// A host resolved for a launch: its provider, the Vagrant env (Vagrantfile contract) and
+/// the Terraform variables (Terraform modules).
 pub struct Connection {
     pub provider: Provider,
     pub name: String,
     pub env: Vec<(String, String)>,
+    pub tf_vars: Vec<(String, String)>,
 }
 
 pub fn connection(app: &AppHandle, id: &str) -> Result<Connection> {
     let host = find(&load(app)?, id)?;
     let password = get_secret(id)?;
-    Ok(Connection { provider: host.provider, name: host.name.clone(), env: connection_env(&host, &password) })
+    Ok(Connection {
+        provider: host.provider,
+        name: host.name.clone(),
+        env: connection_env(&host, &password),
+        tf_vars: terraform_vars(&host, &password),
+    })
 }
 
 /// The host marked as default, if any (used for VM labs launched from the website).
@@ -345,6 +379,7 @@ async fn test_host(h: &HostProfile, password: &str) -> TestResult {
             let url = format!("{}/access/ticket", proxmox_endpoint(h));
             let res = reqwest::Client::builder()
                 .timeout(TEST_TIMEOUT)
+                .tls_danger_accept_invalid_certs(h.insecure_tls)
                 .build()
                 .map_err(|e| e.to_string())
                 .map(|c| c.post(url).form(&[("username", h.username.as_str()), ("password", password)]).send());
@@ -365,7 +400,7 @@ async fn test_host(h: &HostProfile, password: &str) -> TestResult {
                 Err(e) => {
                     let detail = std::iter::successors(Some(&e as &dyn std::error::Error), |e| e.source()).map(|e| e.to_string()).collect::<Vec<_>>().join(": ");
                     let message = if detail.to_lowercase().contains("certificate") {
-                        "Reachable, but the host's TLS certificate isn't trusted. Vagrant will refuse it too: install a trusted certificate on Proxmox or trust its CA on this machine.".into()
+                        "Reachable, but the host's TLS certificate isn't trusted. Proxmox uses a self-signed certificate by default: turn on \"Self-signed certificate\" for this host, or install a trusted one.".into()
                     } else {
                         format!("Reachable, but the API call failed: {detail}")
                     };
@@ -415,6 +450,7 @@ pub fn homelab_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         datastore: clean_opt(input.datastore, "datastore")?,
         network: clean_opt(input.network, "network")?,
         node: if input.provider == Provider::Proxmox { clean_opt(input.node, "node")? } else { None },
+        insecure_tls: input.provider == Provider::Proxmox && input.insecure_tls.unwrap_or(false),
     };
     match input.password.filter(|p| !p.is_empty()) {
         Some(p) if p.len() <= 1024 && !p.contains('\0') => set_secret(&id, &p)?,
@@ -507,6 +543,7 @@ mod tests {
             datastore: Some("ssd1".into()),
             network: Some("vmbr1".into()),
             node: Some("pve".into()),
+            insecure_tls: false,
         }
     }
 

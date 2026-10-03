@@ -58,19 +58,24 @@ export function LabDetail({
   const RuntimeIcon = rt?.runtime === "VM" ? Server : Container;
   const isDocker = rt?.runtime !== "VM";
 
-  // VM labs can run on this machine or on one of the player's home-lab hosts.
+  // A lab can run on this machine or on one of the player's home-lab hosts (Docker labs
+  // through their deploy/ layer). VM labs default to the default host; Docker labs to here.
   const [hosts, setHosts] = useState<HomelabHost[]>([]);
   const [runOn, setRunOn] = useState<string | null>(null);
+  const hostOk = useCallback(
+    (h: HomelabHost) => !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && h.provider === "proxmox"),
+    [rt],
+  );
   useEffect(() => {
-    if (isDocker) return;
     homelabList()
       .then((l) => {
         setHosts(l.hosts);
         const def = l.hosts.find((h) => h.id === l.default);
-        setRunOn(def && def.provider !== "proxmox" && rt?.providers.includes(def.provider) ? def.id : null);
+        setRunOn(!isDocker && def && hostOk(def) ? def.id : null);
       })
       .catch(() => setHosts([]));
-  }, [isDocker, rt]);
+  }, [isDocker, hostOk]);
+  const remote = !!status?.host;
 
   // The attack box lives on the lab's Docker network, so it's only relevant while a
   // container lab is up. Poll its status so Launch/running/IP stay current.
@@ -202,10 +207,10 @@ export function LabDetail({
                   </>
                 ) : (
                   <>
-                  {!isDocker && hosts.length > 0 && (
-                    <RunOnPicker hosts={hosts} supported={rt?.providers ?? []} value={runOn} onChange={setRunOn} disabled={busy} />
+                  {hosts.length > 0 && (
+                    <RunOnPicker hosts={hosts} hostOk={hostOk} localNote={isDocker ? "Docker" : "Local hypervisor"} value={runOn} onChange={setRunOn} disabled={busy} />
                   )}
-                  <Button variant="learn" className="w-full" onClick={() => onStart(isDocker ? null : runOn)} disabled={!loggedIn || !rt || busy} title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}>
+                  <Button variant="learn" className="w-full" onClick={() => onStart(runOn)} disabled={!loggedIn || !rt || busy} title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}>
                     {busy ? <Spinner className="size-4" /> : <Play className="size-4" />} Start lab
                   </Button>
                   </>
@@ -215,7 +220,7 @@ export function LabDetail({
             </div>
           </Panel>
 
-          {running && isDocker && (
+          {running && isDocker && !remote && (
             <Panel>
               <PanelHeader title="Attack box" action={<span className="inline-block max-w-[150px] truncate align-bottom font-mono text-[11px] text-muted-foreground" title={getAttackImage()}>{getAttackImage()}</span>} />
               <div className="space-y-3 p-4">
@@ -273,23 +278,25 @@ export function LabDetail({
 
 const HYPERVISOR: Record<string, string> = { vmware_esxi: "ESXi", proxmox: "Proxmox" };
 
-/** "Run on: this machine | <home-lab host>" for VM labs. Hosts whose hypervisor the lab doesn't support are disabled. */
+/** "Run on: this machine | <home-lab host>". Hosts the lab can't run on are disabled. */
 function RunOnPicker({
   hosts,
-  supported,
+  hostOk,
+  localNote,
   value,
   onChange,
   disabled,
 }: {
   hosts: HomelabHost[];
-  supported: string[];
+  hostOk: (h: HomelabHost) => boolean;
+  localNote: string;
   value: string | null;
   onChange: (id: string | null) => void;
   disabled: boolean;
 }) {
   const options = [
-    { id: null as string | null, label: "This machine", note: "Local hypervisor", ok: true },
-    ...hosts.map((h) => ({ id: h.id as string | null, label: h.name, note: `${HYPERVISOR[h.provider]} · ${h.host}`, ok: h.provider !== "proxmox" && supported.includes(h.provider) })),
+    { id: null as string | null, label: "This machine", note: localNote, ok: true },
+    ...hosts.map((h) => ({ id: h.id as string | null, label: h.name, note: `${HYPERVISOR[h.provider]} · ${h.host}`, ok: hostOk(h) })),
   ];
   return (
     <div className="space-y-1.5">
@@ -314,7 +321,7 @@ function RunOnPicker({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[12.5px] font-medium">{o.label}</span>
-                <span className="block truncate font-mono text-[10.5px] text-muted-foreground">{o.ok ? o.note : o.note.startsWith("Proxmox") ? "Proxmox labs: coming soon" : "Not supported by this lab"}</span>
+                <span className="block truncate font-mono text-[10.5px] text-muted-foreground">{o.ok ? o.note : "Not supported by this lab"}</span>
               </span>
             </button>
           );

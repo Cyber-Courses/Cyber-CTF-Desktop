@@ -37,6 +37,8 @@ export const EMPTY_HOST: HomelabHostInput = {
   datastore: null,
   network: null,
   node: null,
+  // Proxmox ships with a self-signed certificate.
+  insecureTls: true,
 };
 
 /** Proxmox's own logo (official media kit, unaltered), or a neutral mark for ESXi. */
@@ -214,12 +216,6 @@ function HostForm({
           ))}
         </div>
 
-        {v.provider === "proxmox" && (
-          <p className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-[12px] text-muted-foreground">
-            You can connect and test a Proxmox host now. Running labs on it lands with the native Proxmox driver; the old Vagrant plugin no longer works with current Vagrant.
-          </p>
-        )}
-
         {v.provider === "vmware_esxi" && status && !status.pluginInstalled && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
             <div className="flex flex-wrap items-center gap-2">
@@ -276,6 +272,21 @@ function HostForm({
             <Input {...text("network")} placeholder={v.provider === "proxmox" ? "vmbr0" : "VM Network"} />
           </Field>
         </div>
+
+        {v.provider === "proxmox" && (
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input
+              type="checkbox"
+              checked={v.insecureTls}
+              onChange={(e) => set("insecureTls", e.target.checked)}
+              className="mt-0.5 size-3.5 accent-[var(--learn)]"
+            />
+            <span>
+              <span className="block text-[12.5px]">Self-signed certificate</span>
+              <span className="block text-[11.5px] text-muted-foreground">Proxmox uses one by default. Turn off if your host has a trusted certificate.</span>
+            </span>
+          </label>
+        )}
 
         {error && <p className="text-[12px] text-destructive">{error}</p>}
 

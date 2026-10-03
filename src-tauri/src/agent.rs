@@ -122,9 +122,10 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
     // Run the lab locally and report where its target is reachable, plus a loopback control
     // endpoint + one-time token/nonce so the website can verify co-location before trusting
     // the 127.0.0.1 URL. The relay path for a remote/headless agent is the next step.
-    // VM labs launched from the website go to the player's default home-lab host, if set.
-    let host = crate::runtime::homelab::default_host(app);
-    let url = labs::run(app, data["claimLaunch"].clone(), None, host.as_deref(), |_line: String| {}).await?;
+    // VM labs launched from the website go to the player's default home-lab host, if set;
+    // Docker labs run here.
+    let host = (data["claimLaunch"]["runtime"] == "VM").then(|| crate::runtime::homelab::default_host(app)).flatten();
+    let url = labs::run(app, data["claimLaunch"].clone(), None, host.as_deref(), None, |_line: String| {}).await?;
     let token = random_hex();
     let nonce = random_hex();
     let control_url = colocation::serve(token.clone(), nonce.clone()).await.ok().map(|port| format!("http://127.0.0.1:{port}"));

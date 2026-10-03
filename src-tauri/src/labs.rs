@@ -95,6 +95,12 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
     std::fs::create_dir_all(&staging)?;
     extract(&bytes, &staging)?;
     std::fs::write(staging.join(".cyberctf-commit"), commit)?;
+    // Terraform targets fetch the lab themselves, from this repository at that commit.
+    std::fs::write(staging.join(".cyberctf-repository"), repository)?;
+    // Keep where the lab runs, so a lab still up on a home-lab host can be stopped there.
+    if let Ok(host) = std::fs::read(dir.join(".cyberctf-host")) {
+        std::fs::write(staging.join(".cyberctf-host"), host)?;
+    }
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::rename(&staging, &dir)?;
     log("Lab installed".into());
@@ -105,7 +111,14 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
 /// `{ labId, runtime, repository, commit, env }`). Shared by the manual launch command
 /// and the agent's claim loop (bring your own compute).
 /// VM labs run locally with `provider`, or on the home-lab `host` when one is given.
-pub(crate) async fn run(app: &AppHandle, launch_json: serde_json::Value, provider: Option<Provider>, host: Option<&str>, log: impl Fn(String)) -> Result<Option<String>> {
+pub(crate) async fn run(
+    app: &AppHandle,
+    launch_json: serde_json::Value,
+    provider: Option<Provider>,
+    host: Option<&str>,
+    attackbox_image: Option<&str>,
+    log: impl Fn(String),
+) -> Result<Option<String>> {
     let launch: Launch = serde_json::from_value(launch_json).map_err(|e| Error::Invalid(format!("invalid launch spec: {e}")))?;
     let dir = install(app, &launch.lab_id, &launch.repository, &launch.commit, &log).await?;
     // Fixed names for every lab; the evidence itself is never in the environment.
@@ -114,6 +127,7 @@ pub(crate) async fn run(app: &AppHandle, launch_json: serde_json::Value, provide
         .into_iter()
         .filter(|v| v.name == "CTF_API_URL" || v.name == "CTF_LAUNCH_TOKEN")
         .map(|v| (v.name, v.value))
+        .chain(attackbox_image.map(|i| ("CYBERCTF_ATTACKBOX_IMAGE".to_string(), i.to_string())))
         .collect();
     runtime::start(app, &dir, &launch.lab_id, launch.runtime, provider, host, &env, log).await?;
     // Where the lab's target is reachable on this machine, for the website to open.
@@ -121,7 +135,21 @@ pub(crate) async fn run(app: &AppHandle, launch_json: serde_json::Value, provide
 }
 
 #[tauri::command]
-pub async fn lab_launch(app: AppHandle, lab_id: String, provider: Option<Provider>, host: Option<String>, logs: Channel<String>) -> Result<()> {
+/// `attackbox_image` starts an attack box next to the lab on a home-lab host (where the
+/// lab network isn't reachable from this machine).
+pub async fn lab_launch(
+    app: AppHandle,
+    lab_id: String,
+    provider: Option<Provider>,
+    host: Option<String>,
+    attackbox_image: Option<String>,
+    logs: Channel<String>,
+) -> Result<()> {
+    if let Some(image) = &attackbox_image {
+        if !runtime::valid_image(image) {
+            return Err(Error::Invalid(format!("invalid attack-box image `{image}`")));
+        }
+    }
     let log = move |line: String| {
         let _ = logs.send(line);
     };
@@ -131,7 +159,7 @@ pub async fn lab_launch(app: AppHandle, lab_id: String, provider: Option<Provide
         true,
     )
     .await?;
-    run(&app, data["startLab"].clone(), provider, host.as_deref(), log).await?;
+    run(&app, data["startLab"].clone(), provider, host.as_deref(), attackbox_image.as_deref(), log).await?;
     Ok(())
 }
 

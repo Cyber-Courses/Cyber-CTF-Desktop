@@ -126,10 +126,16 @@ export const apiQuery = <T>(query: string, variables?: Record<string, unknown>) 
  * startLab + download at the pinned commit + run with the launch token. VM labs run on
  * this machine with `provider`, or on the home-lab `host` (a host id) when given.
  */
-export function labLaunch(labId: string, provider: Provider | null, host: string | null, onLog: (line: string) => void) {
+export function labLaunch(
+  labId: string,
+  provider: Provider | null,
+  host: string | null,
+  attackboxImage: string | null,
+  onLog: (line: string) => void,
+) {
   const logs = new Channel<string>();
   logs.onmessage = onLog;
-  return invoke<void>("lab_launch", { labId, provider, host, logs });
+  return invoke<void>("lab_launch", { labId, provider, host, attackboxImage, logs });
 }
 
 // --- Home lab (the player's own ESXi / Proxmox host) ---
@@ -151,6 +157,8 @@ export interface HomelabHost {
   network: string | null;
   /** Proxmox node. */
   node: string | null;
+  /** Proxmox: accept the API's self-signed certificate. */
+  insecureTls: boolean;
 }
 
 /** Form payload; `id` null creates a host, `password` null keeps the stored one. */

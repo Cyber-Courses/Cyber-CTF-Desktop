@@ -6,6 +6,7 @@ mod docker;
 mod exegol;
 pub mod homelab;
 pub mod providers;
+mod terraform;
 mod vm;
 
 use std::path::{Path, PathBuf};
@@ -83,9 +84,13 @@ fn lab_dir(app: &AppHandle, id: &str) -> Result<PathBuf> {
     Ok(dir)
 }
 
-/// Starts an installed lab; `env` is passed to the runtime. VM labs run either on this
-/// machine with `provider` (a local Vagrant provider), or on the home-lab `host` (its
-/// provider and connection env come from the host profile). Docker labs ignore both.
+/// Starts an installed lab; `env` is passed to the runtime (evidence claim, attack box).
+///
+/// - No `host`: Docker labs run on this machine; VM labs run their root Vagrantfile with
+///   the local `provider`.
+/// - With a home-lab `host`: the lab runs there. A Docker lab is deployed through its
+///   `deploy/` layer onto a lab host VM (ESXi: `deploy/vagrant`, Proxmox:
+///   `deploy/terraform/proxmox`); a VM lab runs its root Vagrantfile on ESXi.
 #[allow(clippy::too_many_arguments)]
 pub async fn start(
     app: &AppHandle,
@@ -97,49 +102,109 @@ pub async fn start(
     env: &[(String, String)],
     mut log: impl FnMut(String),
 ) -> Result<()> {
-    match runtime {
-        Runtime::Docker => docker::start(dir, id, env, log).await,
-        Runtime::Vm => match host {
-            Some(host) => {
-                let conn = homelab::connection(app, host)?;
-                // vagrant-proxmox (last release 2016) no longer installs on current Vagrant
-                // (activesupport 4.0 vs Vagrant's i18n), so Proxmox needs its own driver.
-                if conn.provider == providers::Provider::Proxmox {
-                    return Err(Error::Invalid("Running labs on Proxmox isn't available yet: the Vagrant Proxmox plugin no longer works with current Vagrant. Use an ESXi host or this machine for now.".into()));
-                }
-                // Mark first, so a half-created lab can still be destroyed on the same host.
-                homelab::mark_lab(dir, Some(host))?;
-                log(format!("Running on home-lab host {} ({})", conn.name, conn.provider.id()));
-                let env: Vec<(String, String)> = env.iter().cloned().chain(conn.env).collect();
-                vm::start(dir, conn.provider, &env, log).await
-            }
-            None => {
+    let Some(host) = host else {
+        homelab::mark_lab(dir, None)?;
+        return match runtime {
+            Runtime::Docker => docker::start(dir, id, env, log).await,
+            Runtime::Vm => {
                 let provider = provider.ok_or_else(|| Error::Invalid("VM labs need a provider".into()))?;
                 if provider.is_remote() {
                     return Err(Error::Invalid("pick a home-lab host to run on ESXi or Proxmox".into()));
                 }
-                homelab::mark_lab(dir, None)?;
                 vm::start(dir, provider, env, log).await
             }
-        },
+        };
+    };
+
+    let conn = homelab::connection(app, host)?;
+    // Mark first, so a half-created lab can still be destroyed on the same host.
+    homelab::mark_lab(dir, Some(host))?;
+    log(format!("Running on home-lab host {} ({})", conn.name, conn.provider.id()));
+    match (runtime, conn.provider) {
+        (Runtime::Docker, providers::Provider::Proxmox) => {
+            let mut vars = conn.tf_vars.clone();
+            vars.extend(lab_vars(dir, id, env)?);
+            terraform::apply(&dir.join("deploy"), &state_dir(app, id, "proxmox")?, "proxmox", &vars, log).await
+        }
+        (Runtime::Docker, provider) => {
+            let vagrant = dir.join("deploy").join("vagrant");
+            if !vagrant.join("Vagrantfile").is_file() {
+                return Err(Error::Invalid("this lab can't run on a home-lab host yet (no deploy/vagrant)".into()));
+            }
+            let env: Vec<(String, String)> = env.iter().cloned().chain(conn.env).collect();
+            vm::start(&vagrant, provider, &env, log).await
+        }
+        // vagrant-proxmox (last release 2016) no longer installs on current Vagrant, and
+        // multi-VM labs don't have a Terraform module yet.
+        (Runtime::Vm, providers::Provider::Proxmox) => Err(Error::Invalid("This VM lab can't run on Proxmox yet. Use an ESXi host or this machine.".into())),
+        (Runtime::Vm, provider) => {
+            let env: Vec<(String, String)> = env.iter().cloned().chain(conn.env).collect();
+            vm::start(dir, provider, &env, log).await
+        }
     }
 }
 
-/// The env a VM lab's Vagrantfile needs to reach the host it runs on (empty if local),
-/// plus that host's name.
-fn vm_env(app: &AppHandle, dir: &Path) -> Result<(Vec<(String, String)>, Option<String>)> {
-    Ok(match homelab::lab_connection(app, dir)? {
-        Some(conn) => (conn.env, Some(conn.name)),
-        None => (Vec::new(), None),
-    })
+/// Terraform's lab variables: what to fetch (repository @ commit, recorded at install)
+/// and the run env (evidence claim, attack box).
+fn lab_vars(dir: &Path, id: &str, env: &[(String, String)]) -> Result<Vec<(String, String)>> {
+    let read = |name: &str| std::fs::read_to_string(dir.join(name)).map(|s| s.trim().to_string()).ok().filter(|s| !s.is_empty());
+    let (Some(repository), Some(commit)) = (read(".cyberctf-repository"), read(".cyberctf-commit")) else {
+        return Err(Error::Invalid("launch this lab once from the catalogue so the launcher knows its source".into()));
+    };
+    let mut vars = vec![("lab_slug".to_string(), id.to_string()), ("lab_repository".into(), repository), ("lab_commit".into(), commit)];
+    for (name, var) in [("CTF_API_URL", "ctf_api_url"), ("CTF_LAUNCH_TOKEN", "ctf_launch_token"), ("CYBERCTF_ATTACKBOX_IMAGE", "attackbox_image")] {
+        if let Some((_, v)) = env.iter().find(|(k, _)| k == name) {
+            vars.push((var.to_string(), v.clone()));
+        }
+    }
+    Ok(vars)
+}
+
+/// Terraform state for a lab's target, outside the lab folder.
+fn state_dir(app: &AppHandle, id: &str, target: &str) -> Result<PathBuf> {
+    validate_id(id)?;
+    Ok(app.path().app_data_dir().map_err(|e| Error::Invalid(e.to_string()))?.join("deployments").join(id).join(target))
+}
+
+/// Stops a lab wherever it runs, destroying remote VMs so the next start is clean.
+async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
+    let conn = homelab::lab_connection(app, dir)?;
+    let result = match (runtime, conn) {
+        (Runtime::Docker, None) => docker::stop(dir, id, log).await,
+        (Runtime::Vm, None) => vm::stop(dir, &[], log).await,
+        (Runtime::Docker, Some(c)) if c.provider == providers::Provider::Proxmox => {
+            terraform::destroy(&dir.join("deploy"), &state_dir(app, id, "proxmox")?, "proxmox", &c.tf_vars, log).await
+        }
+        (Runtime::Docker, Some(c)) => vm::stop(&dir.join("deploy").join("vagrant"), &c.env, log).await,
+        (Runtime::Vm, Some(c)) => vm::stop(dir, &c.env, log).await,
+    };
+    if result.is_ok() {
+        homelab::mark_lab(dir, None)?;
+    }
+    result
+}
+
+async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Result<LabStatus> {
+    let Some(c) = homelab::lab_connection(app, dir)? else {
+        return match runtime {
+            Runtime::Docker => docker::status(dir, id).await,
+            Runtime::Vm => vm::status(dir, &[]).await,
+        };
+    };
+    let status = match runtime {
+        Runtime::Docker if c.provider == providers::Provider::Proxmox => terraform::status(&state_dir(app, id, "proxmox")?),
+        Runtime::Docker => vm::status(&dir.join("deploy").join("vagrant"), &c.env).await?,
+        Runtime::Vm => vm::status(dir, &c.env).await?,
+    };
+    Ok(LabStatus { host: Some(c.name), ..status })
 }
 
 /// Where a running lab is reachable on this machine (its first published port). None for
 /// VM labs (their address is discovered differently) or when nothing is published.
 pub async fn primary_url(dir: &Path, id: &str, runtime: Runtime) -> Option<String> {
     match runtime {
-        Runtime::Docker => docker::primary_url(dir, id).await,
-        Runtime::Vm => None,
+        Runtime::Docker if !dir.join(".cyberctf-host").exists() => docker::primary_url(dir, id).await,
+        _ => None,
     }
 }
 
@@ -167,22 +232,18 @@ pub async fn lab_stop(app: AppHandle, id: String, runtime: Runtime, logs: Channe
     let log = move |line: String| {
         let _ = logs.send(line);
     };
-    match runtime {
-        Runtime::Docker => docker::stop(&dir, &id, log).await,
-        Runtime::Vm => vm::stop(&dir, &vm_env(&app, &dir)?.0, log).await,
-    }
+    stop(&app, &dir, &id, runtime, log).await
 }
 
 #[tauri::command]
 pub async fn lab_status(app: AppHandle, id: String, runtime: Runtime) -> Result<LabStatus> {
     let dir = lab_dir(&app, &id)?;
-    match runtime {
-        Runtime::Docker => docker::status(&dir, &id).await,
-        Runtime::Vm => {
-            let (env, host) = vm_env(&app, &dir)?;
-            Ok(LabStatus { host, ..vm::status(&dir, &env).await? })
-        }
-    }
+    status(&app, &dir, &id, runtime).await
+}
+
+/// An attack-box image reference the launcher accepts.
+pub fn valid_image(image: &str) -> bool {
+    exegol::valid_image(image)
 }
 
 /// Status of a lab's attack box (Exegol), for the lab detail view.
