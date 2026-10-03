@@ -2,13 +2,12 @@
 
 import Image from "next/image";
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronRight, ChevronsUpDown, Cloud, Cog, FlaskConical, LayoutDashboard, type LucideIcon, MonitorCog, Search, Server, Wrench } from "lucide-react";
+import { ChevronRight, ChevronsUpDown, Cloud, Cog, FlaskConical, LayoutDashboard, type LucideIcon, MonitorCog, Search, Server } from "lucide-react";
 import { Account } from "@/components/Account";
 import { Labs } from "@/components/Labs";
 import { HomeScreen } from "@/components/screens/home-screen";
-import { MachineScreen } from "@/components/screens/machine-screen";
+import { MachineScreen, type MachineView } from "@/components/screens/machine-screen";
 import { HomeLabScreen } from "@/components/screens/homelab-screen";
-import { SetupScreen } from "@/components/screens/setup-screen";
 import { SettingsScreen } from "@/components/screens/settings-screen";
 import { Onboarding } from "@/components/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
@@ -24,7 +23,6 @@ const NAV: { id: Tab; label: string; icon: LucideIcon; soon?: boolean }[] = [
   { id: "home", label: "Overview", icon: LayoutDashboard },
   { id: "labs", label: "Labs", icon: FlaskConical },
   { id: "machine", label: "Machine", icon: MonitorCog },
-  { id: "setup", label: "Setup", icon: Wrench },
   { id: "homelab", label: "Home lab", icon: Server, soon: true },
   { id: "cloud", label: "Cloud", icon: Cloud, soon: true },
   { id: "settings", label: "Settings", icon: Cog },
@@ -43,6 +41,7 @@ const TITLES: Record<Tab, string> = {
 export function AppShell() {
   const [tab, setTab] = useState<Tab>("home");
   const [openLab, setOpenLab] = useState<string | null>(null);
+  const [machineView, setMachineView] = useState<MachineView>("health");
   const [report, setReport] = useState<SystemReport | null>(null);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [onboarded, setOnboarded] = useState(true);
@@ -60,6 +59,13 @@ export function AppShell() {
   }, []);
 
   function navigate(next: Tab, slug?: string) {
+    // Setup now lives inside the Machine page; "setup" deep-links to that view.
+    if (next === "setup") {
+      setTab("machine");
+      setMachineView("setup");
+      setOpenLab(null);
+      return;
+    }
     setTab(next);
     setOpenLab(slug ?? null);
   }
@@ -146,7 +152,7 @@ export function AppShell() {
         <div className="flex-1 overflow-y-auto">
           <UpdateBanner />
           <div className="mx-auto w-full max-w-[1120px] px-5 py-5">
-            <Screen tab={tab} report={report} auth={auth} openLab={openLab} onRefresh={check} onNavigate={navigate} />
+            <Screen tab={tab} report={report} auth={auth} openLab={openLab} machineView={machineView} onMachineView={setMachineView} onRefresh={check} onNavigate={navigate} />
           </div>
         </div>
       </main>
@@ -163,6 +169,8 @@ function Screen({
   report,
   auth,
   openLab,
+  machineView,
+  onMachineView,
   onRefresh,
   onNavigate,
 }: {
@@ -170,13 +178,19 @@ function Screen({
   report: SystemReport | null;
   auth: AuthStatus | null;
   openLab: string | null;
+  machineView: MachineView;
+  onMachineView: (v: MachineView) => void;
   onRefresh: () => void | Promise<void>;
   onNavigate: (t: Tab, slug?: string) => void;
 }): ReactNode {
   if (tab === "home") return <HomeScreen report={report} auth={auth} onNavigate={onNavigate} />;
   if (tab === "settings") return <SettingsScreen auth={auth} />;
-  if (tab === "machine") return report ? <MachineScreen report={report} onNavigate={onNavigate} /> : <p className="text-sm text-muted-foreground">Checking this machine…</p>;
-  if (tab === "setup") return report ? <SetupScreen report={report} onRefresh={onRefresh} onNavigate={onNavigate} /> : <p className="text-sm text-muted-foreground">Checking this machine…</p>;
+  if (tab === "machine")
+    return report ? (
+      <MachineScreen report={report} view={machineView} onViewChange={onMachineView} onRefresh={onRefresh} onNavigate={onNavigate} />
+    ) : (
+      <p className="text-sm text-muted-foreground">Checking this machine…</p>
+    );
   if (tab === "homelab") return <HomeLabScreen report={report} onNavigate={onNavigate} />;
   if (tab === "cloud") return <ComingSoon icon="cloud" title="Cloud" description="Spin up labs in the cloud, provisioned with Terraform and configured with Ansible, no local setup, then open them right here." />;
   return report ? <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} openSlug={openLab} /> : <p className="text-sm text-muted-foreground">Loading…</p>;
