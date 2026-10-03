@@ -32,13 +32,18 @@ const PROVIDER_LABELS: Record<string, string> = {
   proxmox: "Proxmox VE (remote)",
 };
 
-// Where to get each hypervisor we don't auto-install (some are behind a login/paywall).
+// Hypervisors we can install in one click (per-OS plans live in the Rust installer).
+const INSTALLABLE: Record<string, Dependency> = {
+  virtualbox: "virtualbox",
+  qemu: "qemu",
+  utm: "utm",
+  libvirt: "libvirt",
+};
+
+// The rest are behind a login/paywall (or an OS feature), so we just link to them.
 const DOWNLOAD: Record<string, string> = {
   vmware_desktop: "https://www.vmware.com/products/desktop-hypervisor/workstation-and-fusion",
   parallels: "https://www.parallels.com/products/desktop/",
-  qemu: "https://www.qemu.org/download/",
-  utm: "https://mac.getutm.app/",
-  libvirt: "https://libvirt.org/downloads.html",
   hyperv: "https://learn.microsoft.com/virtualization/hyper-v-on-windows/quick-start/enable-hyper-v",
 };
 
@@ -223,8 +228,8 @@ export function MachineScreen({
             action={
               p.hypervisor === true
                 ? undefined
-                : p.provider === "virtualbox"
-                  ? <Install id="virtualbox" onClick={() => installDep("virtualbox", "Installing VirtualBox…")}>Install</Install>
+                : INSTALLABLE[p.provider]
+                  ? <Install id={p.provider} onClick={() => installDep(INSTALLABLE[p.provider]!, `Installing ${providerLabel(p)}…`)}>Install</Install>
                   : DOWNLOAD[p.provider]
                     ? <Button variant="outline" size="sm" onClick={() => openUrl(DOWNLOAD[p.provider]!).catch(() => {})}><ExternalLink className="size-3.5" /> Get</Button>
                     : undefined

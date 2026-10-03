@@ -19,6 +19,9 @@ pub enum Dependency {
     Docker,
     Vagrant,
     Virtualbox,
+    Qemu,
+    Utm,
+    Libvirt,
 }
 
 struct Step {
@@ -61,6 +64,10 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             // Admin-requiring: download with brew, then open the tool's native installer.
             Dependency::Vagrant => vec![fetch_and_open(&brew, "vagrant", "Vagrant")],
             Dependency::Virtualbox => vec![fetch_and_open(&brew, "virtualbox", "VirtualBox")],
+            // QEMU is a brew formula (no admin); UTM is a cask with its own installer.
+            Dependency::Qemu => vec![step(brew.clone(), &["install", "qemu"])],
+            Dependency::Utm => vec![fetch_and_open(&brew, "utm", "UTM")],
+            Dependency::Libvirt => return Err(Error::Invalid("libvirt isn't used on macOS; use QEMU or UTM instead.".into())),
         })
     }
     #[cfg(target_os = "windows")]
@@ -69,6 +76,9 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Docker => "Docker.DockerDesktop",
             Dependency::Vagrant => "Hashicorp.Vagrant",
             Dependency::Virtualbox => "Oracle.VirtualBox",
+            Dependency::Qemu => "SoftwareFreedomConservancy.QEMU",
+            Dependency::Utm => return Err(Error::Invalid("UTM is only available on macOS.".into())),
+            Dependency::Libvirt => return Err(Error::Invalid("libvirt is Linux-only; on Windows use Hyper-V or WSL.".into())),
         };
         Ok(vec![step("winget", &["install", "-e", "--id", id, "--accept-source-agreements", "--accept-package-agreements"])])
     }
@@ -79,6 +89,9 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Docker => vec![step("pkexec", &["sh", "-c", "curl -fsSL https://get.docker.com | sh"])],
             Dependency::Vagrant => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y vagrant"])],
             Dependency::Virtualbox => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y virtualbox"])],
+            Dependency::Qemu => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y qemu-system qemu-utils"])],
+            Dependency::Libvirt => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y libvirt-daemon-system virt-manager"])],
+            Dependency::Utm => return Err(Error::Invalid("UTM is only available on macOS.".into())),
         })
     }
 }
