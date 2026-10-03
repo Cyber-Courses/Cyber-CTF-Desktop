@@ -1,7 +1,7 @@
 //! Terraform targets of a lab's `deploy/terraform/<target>/` module (Proxmox server
-//! today, AWS cloud next). Terraform runs in the official container, so players install
-//! nothing: Docker is already the launcher's floor. Variables reach it as `TF_VAR_*`
-//! through the container's environment (never on the command line).
+//! today, AWS cloud next). A local `terraform` binary is used when installed (simpler
+//! state: plain files, no bind mount) and the official container otherwise. Variables
+//! reach it as `TF_VAR_*` through the environment (never on the command line).
 //!
 //! State lives outside the lab folder (`state_dir`), because reinstalling a lab at a new
 //! commit replaces that folder and must not orphan the VM it created.
@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use super::{LabStatus, Machine};
 use crate::error::{Error, Result};
-use crate::exec::stream;
+use crate::exec::{run, stream};
 
 pub const IMAGE: &str = "hashicorp/terraform:1.16.5";
 
@@ -55,15 +55,34 @@ fn docker_args(deploy: &Path, state: &Path, target: &str, env: &[(String, String
 
 const INIT: &str = "terraform init -input=false -no-color -lockfile=readonly -backend-config=path=/state/terraform.tfstate";
 
+async fn has_local_terraform() -> bool {
+    run("terraform", &["version"], None).await.is_ok()
+}
+
 async fn terraform(deploy: &Path, state: &Path, target: &str, env: &[(String, String)], command: &str, log: impl FnMut(String)) -> Result<()> {
     if !deploy.join("terraform").join(target).is_dir() {
         return Err(Error::Invalid(format!("this lab has no `{target}` deployment yet")));
     }
     std::fs::create_dir_all(state)?;
+    if has_local_terraform().await {
+        return terraform_host(deploy, state, target, env, command, log).await;
+    }
     let script = format!("{INIT} >/dev/null && terraform {command} -auto-approve -input=false -no-color");
     let args = docker_args(deploy, state, target, env, &script);
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     stream("docker", &args, None, env, log).await
+}
+
+/// Runs terraform from the host PATH (init, then the command). State lives in `state` as
+/// plain files, which is simpler than the container's bind-mounted volume.
+async fn terraform_host(deploy: &Path, state: &Path, target: &str, env: &[(String, String)], command: &str, mut log: impl FnMut(String)) -> Result<()> {
+    let dir = deploy.join("terraform").join(target);
+    let backend = format!("-backend-config=path={}", state.join("terraform.tfstate").display());
+    let mut full = env.to_vec();
+    full.push(("TF_DATA_DIR".to_string(), state.join(".terraform").display().to_string()));
+    full.push(("TF_IN_AUTOMATION".to_string(), "1".to_string()));
+    stream("terraform", &["init", "-input=false", "-no-color", "-lockfile=readonly", backend.as_str()], Some(&dir), &full, &mut log).await?;
+    stream("terraform", &[command, "-auto-approve", "-input=false", "-no-color"], Some(&dir), &full, log).await
 }
 
 /// Creates (or updates) the target's resources. `vars` are Terraform variable names;

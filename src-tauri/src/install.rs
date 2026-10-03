@@ -18,6 +18,7 @@ use crate::error::{Error, Result};
 pub enum Dependency {
     Docker,
     Vagrant,
+    Terraform,
     Virtualbox,
     Qemu,
     Utm,
@@ -66,6 +67,8 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Docker => vec![fetch_and_open(&brew, "docker-desktop", "Docker Desktop")],
             // Admin-requiring: download with brew, then open the tool's native installer.
             Dependency::Vagrant => vec![fetch_and_open(&brew, "vagrant", "Vagrant")],
+            // Terraform is a brew formula (no admin); full tap name since core dropped it.
+            Dependency::Terraform => vec![step(brew.clone(), &["install", "hashicorp/tap/terraform"])],
             Dependency::Virtualbox => vec![fetch_and_open(&brew, "virtualbox", "VirtualBox")],
             // QEMU is a brew formula (no admin); UTM is a cask with its own installer.
             Dependency::Qemu => vec![step(brew.clone(), &["install", "qemu"])],
@@ -82,6 +85,7 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
         let id = match dep {
             Dependency::Docker => "Docker.DockerDesktop",
             Dependency::Vagrant => "Hashicorp.Vagrant",
+            Dependency::Terraform => "Hashicorp.Terraform",
             Dependency::Virtualbox => "Oracle.VirtualBox",
             Dependency::Qemu => "SoftwareFreedomConservancy.QEMU",
             Dependency::Utm => return Err(Error::Invalid("UTM is only available on macOS.".into())),
@@ -98,6 +102,8 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
         Ok(match dep {
             Dependency::Docker => vec![step("pkexec", &["sh", "-c", "curl -fsSL https://get.docker.com | sh"])],
             Dependency::Vagrant => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y vagrant"])],
+            // Terraform via HashiCorp's official apt repo (best effort across Debian/Ubuntu).
+            Dependency::Terraform => vec![step("pkexec", &["sh", "-c", "wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg && echo \"deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main\" > /etc/apt/sources.list.d/hashicorp.list && apt-get update && apt-get install -y terraform"])],
             Dependency::Virtualbox => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y virtualbox"])],
             Dependency::Qemu => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y qemu-system qemu-utils"])],
             Dependency::Libvirt => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y libvirt-daemon-system virt-manager"])],

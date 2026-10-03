@@ -7,8 +7,8 @@ use tauri::ipc::Channel;
 use crate::error::{Error, Result};
 use crate::exec::{run, stream};
 
-// Keep in sync with runtime::terraform::IMAGE.
-const TERRAFORM_IMAGE: &str = "hashicorp/terraform:1.16.5";
+// Ansible is kept as a container image (it runs poorly natively on Windows); Terraform,
+// by contrast, is offered as a local install (simpler state), so it isn't listed here.
 // TODO: confirm the Ansible runner image with the provisioning design (placeholder).
 const ANSIBLE_IMAGE: &str = "willhallonline/ansible:latest";
 
@@ -27,11 +27,12 @@ fn valid_image(image: &str) -> bool {
         && image.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':' | '@'))
 }
 
-/// The provisioning images and whether each is pulled locally.
+/// The provisioning images and whether each is pulled locally (Ansible; Terraform runs
+/// from a local binary, so it's handled as a dependency install instead).
 #[tauri::command]
 pub async fn provisioning_images() -> Vec<ImageReq> {
     let mut out = Vec::new();
-    for (name, image) in [("Terraform", TERRAFORM_IMAGE), ("Ansible", ANSIBLE_IMAGE)] {
+    for (name, image) in [("Ansible", ANSIBLE_IMAGE)] {
         let present = run("docker", &["image", "inspect", image], None).await.is_ok();
         out.push(ImageReq { name: name.to_string(), image: image.to_string(), present });
     }

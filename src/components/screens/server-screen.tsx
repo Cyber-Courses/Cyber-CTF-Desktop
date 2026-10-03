@@ -204,12 +204,13 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
 
       {cloud && (
         <Panel>
-          <PanelHeader title="Provisioning images" action={<span className="text-[11.5px] text-muted-foreground">Terraform creates, Ansible configures, both run in Docker</span>} />
+          <PanelHeader title="Provisioning" action={<span className="text-[11.5px] text-muted-foreground">Terraform creates, Ansible configures</span>} />
+          <ToolRow name="Terraform" note="runs locally, simpler state (Docker image is the fallback)" tool={report?.terraform} busy={cliBusy === "terraform"} onInstall={() => installCli("terraform")} />
           {provImages === null ? (
             <div className="flex items-center gap-2 px-3.5 py-4 text-[12.5px] text-muted-foreground"><Spinner className="size-4" /> Checking…</div>
           ) : (
             provImages.map((img) => (
-              <ImageRow key={img.image} image={img} busy={pullBusy === img.image} onPull={() => pull(img.image)} />
+              <ImageRow key={img.image} image={img} note="runs in Docker (best on Windows)" busy={pullBusy === img.image} onPull={() => pull(img.image)} />
             ))
           )}
         </Panel>
@@ -359,10 +360,33 @@ function CliRow({ name, provider, tool, busy, loginBusy, onInstall, onLogin }: {
   );
 }
 
-function ImageRow({ image, busy, onPull }: { image: ProvisioningImage; busy: boolean; onPull: () => void }) {
+// A locally installed provisioning tool (Terraform): shows version / Install.
+function ToolRow({ name, note, tool, busy, onInstall }: { name: string; note: string; tool?: Tool; busy: boolean; onInstall: () => void }) {
+  const installed = !!tool?.installed;
+  return (
+    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
+      <span className="font-medium text-foreground">{name}</span>
+      <span className="truncate text-[11.5px] text-muted-foreground">{note}</span>
+      <span className="ml-auto flex items-center gap-3">
+        <span className={cn("flex items-center gap-1.5", installed ? "text-emerald-500" : "text-muted-foreground")}>
+          {installed && <span className="size-1.5 rounded-full bg-emerald-500" />}
+          {tool ? (installed ? (tool.version ?? "installed") : "not installed") : "…"}
+        </span>
+        {!installed && tool && (
+          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy}>
+            {busy ? "Installing…" : "Install"}
+          </Button>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function ImageRow({ image, note, busy, onPull }: { image: ProvisioningImage; note: string; busy: boolean; onPull: () => void }) {
   return (
     <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
       <span className="font-medium text-foreground">{image.name}</span>
+      <span className="truncate text-[11.5px] text-muted-foreground">{note}</span>
       <code className="truncate rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{image.image}</code>
       <span className="ml-auto flex items-center gap-3">
         <span className={cn("flex items-center gap-1.5", image.present ? "text-emerald-500" : "text-muted-foreground")}>
