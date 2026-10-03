@@ -291,7 +291,7 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
 
 // Brand-colored marks (not the trademarked logos, which need each vendor's approval,
 // matching the HypervisorMark convention).
-const CLOUD_COLOR: Record<CloudProvider, string> = { aws: "#ff9900", azure: "#3b8eea", gcp: "#4285f4" };
+const CLOUD_COLOR: Record<CloudProvider, string> = { aws: "#ff9900", azure: "#3b8eea", gcp: "#34a853" };
 function CloudMark({ provider }: { provider: CloudProvider }) {
   const c = CLOUD_COLOR[provider];
   return (
