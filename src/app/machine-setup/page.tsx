@@ -11,7 +11,13 @@ export default function MachineSetupWindow() {
   const check = () => {
     systemCheck().then(setReport).catch(() => {});
   };
-  useEffect(check, []);
+  // Poll so an install (incl. one the user finishes in a native installer) is detected as
+  // done and the steps update, without a manual re-check.
+  useEffect(() => {
+    check();
+    const id = setInterval(check, 5000);
+    return () => clearInterval(id);
+  }, []);
   const close = () => getCurrentWindow().close().catch(() => {});
 
   return (

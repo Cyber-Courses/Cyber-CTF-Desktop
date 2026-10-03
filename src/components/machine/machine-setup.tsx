@@ -138,8 +138,8 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
               </div>
             )}
             <Nav
-              left={isWin ? <Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button> : undefined}
-              right={<Button variant="learn" onClick={next}>{dockerReady ? "Continue" : "Skip for now"}</Button>}
+              left={isWin ? <Button variant="outline" onClick={back} disabled={installing}><ArrowLeft className="size-4" /> Back</Button> : undefined}
+              right={<Button variant="learn" onClick={next} disabled={installing}>{dockerReady ? "Continue" : "Skip for now"}</Button>}
             />
           </Step>
         )}
@@ -176,8 +176,8 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
               </pre>
             )}
             <Nav
-              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
-              right={<Button variant="learn" onClick={next}>Continue</Button>}
+              left={<Button variant="outline" onClick={back} disabled={vmBusy !== null}><ArrowLeft className="size-4" /> Back</Button>}
+              right={<Button variant="learn" onClick={next} disabled={vmBusy !== null}>Continue</Button>}
             />
           </Step>
         )}
