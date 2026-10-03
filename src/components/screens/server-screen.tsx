@@ -42,7 +42,7 @@ const COPY = {
   cloud: {
     title: "Cloud",
     intro: "Run labs in your own AWS account: one small EC2 instance per lab, destroyed when you stop it. Keys stay in your OS keychain.",
-    add: "Connect AWS",
+    add: "Set up cloud provider",
     list: "Accounts",
     hint: "Pick an account in a lab's Run on choice",
     emptyTitle: "No cloud account connected",
