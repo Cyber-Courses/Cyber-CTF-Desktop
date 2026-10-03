@@ -78,12 +78,11 @@ export function AppShell() {
   if (!onboarded) return <Onboarding onComplete={completeOnboarding} />;
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      {/* macOS titlebar band: reserves space for the traffic lights (draggable) */}
-      <div data-tauri-drag-region className="h-9 shrink-0" />
-      <div className="flex min-h-0 flex-1">
+    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       {/* ---- Sidebar ---- */}
       <aside className="flex w-[232px] shrink-0 flex-col border-r border-border">
+        {/* macOS titlebar band inside the column, so the sidebar divider runs to the top of the window */}
+        <div data-tauri-drag-region className="h-9 shrink-0" />
         <div data-tauri-drag-region className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border px-4">
           <Image src="/logo-mark.svg" alt="" width={20} height={20} className="size-5 pointer-events-none" priority />
           <span className="text-[13px] font-semibold tracking-tight">Cyber CTF</span>
@@ -134,6 +133,7 @@ export function AppShell() {
 
       {/* ---- Main ---- */}
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div data-tauri-drag-region className="h-9 shrink-0" />
         <div data-tauri-drag-region className="flex h-11 shrink-0 items-center gap-3 border-b border-border px-4">
           <span className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] text-foreground">
             <MonitorCog className="size-3.5 text-muted-foreground" /> This machine
@@ -149,7 +149,6 @@ export function AppShell() {
           </div>
         </div>
       </main>
-      </div>
     </div>
   );
 }

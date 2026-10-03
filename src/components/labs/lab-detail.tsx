@@ -123,16 +123,14 @@ export function LabDetail({
             </div>
           )}
 
-          <div>
+          {running && status && status.machines.length > 0 ? (
+            <NetworkDiagram machines={status.machines} attacker={exegol ? { running: exegol.running, ip: exegol.ip } : null} />
+          ) : (
             <Panel>
-              <PanelHeader title="Network" action={running ? <span className="text-[11.5px] text-muted-foreground">{status?.machines.length ?? 0} services</span> : undefined} />
-              {running && status && status.machines.length > 0 ? (
-                <NetworkDiagram machines={status.machines} attacker={exegol ? { running: exegol.running, ip: exegol.ip } : null} />
-              ) : (
-                <p className="px-4 py-8 text-center text-[12.5px] text-muted-foreground">Start the lab to see its containers and network.</p>
-              )}
+              <PanelHeader title="Network" />
+              <p className="px-4 py-10 text-center text-[12.5px] text-muted-foreground">Start the lab to see its containers and network.</p>
             </Panel>
-          </div>
+          )}
 
           {running && isDocker && shellOpen && exegol?.running && (
             <Panel>
