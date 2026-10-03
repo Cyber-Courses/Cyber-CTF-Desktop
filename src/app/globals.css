@@ -125,7 +125,7 @@ body {
  * src/components/labs/network-diagram.tsx. Embedded, so the shell is a
  * fixed height rather than the full viewport.
  * ------------------------------------------------------------------ */
-.topology-shell { width: 100%; height: 460px; overflow: hidden; background: #070707; border: 1px solid var(--border); border-radius: 12px; }
+.topology-shell { width: 100%; height: 460px; overflow: hidden; background: #070707; border-radius: 12px; }
 .react-flow { background: radial-gradient(ellipse at 68% 40%, rgba(167,139,250,.065), transparent 37%), #070707; }
 .react-flow__pane { cursor: grab; }
 .react-flow__pane:active { cursor: grabbing; }

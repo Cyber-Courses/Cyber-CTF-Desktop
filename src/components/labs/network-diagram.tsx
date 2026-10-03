@@ -5,7 +5,6 @@ import {
   Background,
   BackgroundVariant,
   BaseEdge,
-  Controls,
   EdgeLabelRenderer,
   getBezierPath,
   Handle,
@@ -282,7 +281,6 @@ function Flow({ machines, attacker }: { machines: Machine[]; attacker: Attacker 
       proOptions={{ hideAttribution: true }}
     >
       <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#292929" />
-      <Controls showInteractive={false} showZoom={false} />
       <div className="topology-legend">
         <div>
           <span className="legend-line attack-line" /> <span>attack path</span>

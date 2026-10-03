@@ -6,7 +6,7 @@ import { ChevronRight, ChevronsUpDown, Cloud, Cog, FlaskConical, LayoutDashboard
 import { Account } from "@/components/Account";
 import { Labs } from "@/components/Labs";
 import { HomeScreen } from "@/components/screens/home-screen";
-import { MachineScreen, type MachineView } from "@/components/screens/machine-screen";
+import { MachineScreen } from "@/components/screens/machine-screen";
 import { HomeLabScreen } from "@/components/screens/homelab-screen";
 import { SettingsScreen } from "@/components/screens/settings-screen";
 import { Onboarding } from "@/components/onboarding/onboarding";
@@ -41,7 +41,6 @@ const TITLES: Record<Tab, string> = {
 export function AppShell() {
   const [tab, setTab] = useState<Tab>("home");
   const [openLab, setOpenLab] = useState<string | null>(null);
-  const [machineView, setMachineView] = useState<MachineView>("health");
   const [report, setReport] = useState<SystemReport | null>(null);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [onboarded, setOnboarded] = useState(true);
@@ -59,10 +58,9 @@ export function AppShell() {
   }, []);
 
   function navigate(next: Tab, slug?: string) {
-    // Setup now lives inside the Machine page; "setup" deep-links to that view.
+    // Setup now lives inside the Machine dashboard; "setup" just lands on Machine.
     if (next === "setup") {
       setTab("machine");
-      setMachineView("setup");
       setOpenLab(null);
       return;
     }
@@ -152,7 +150,7 @@ export function AppShell() {
         <div className="flex-1 overflow-y-auto">
           <UpdateBanner />
           <div className="mx-auto w-full max-w-[1120px] px-5 py-5">
-            <Screen tab={tab} report={report} auth={auth} openLab={openLab} machineView={machineView} onMachineView={setMachineView} onRefresh={check} onNavigate={navigate} />
+            <Screen tab={tab} report={report} auth={auth} openLab={openLab} onRefresh={check} onNavigate={navigate} />
           </div>
         </div>
       </main>
@@ -169,8 +167,6 @@ function Screen({
   report,
   auth,
   openLab,
-  machineView,
-  onMachineView,
   onRefresh,
   onNavigate,
 }: {
@@ -178,8 +174,6 @@ function Screen({
   report: SystemReport | null;
   auth: AuthStatus | null;
   openLab: string | null;
-  machineView: MachineView;
-  onMachineView: (v: MachineView) => void;
   onRefresh: () => void | Promise<void>;
   onNavigate: (t: Tab, slug?: string) => void;
 }): ReactNode {
@@ -187,7 +181,7 @@ function Screen({
   if (tab === "settings") return <SettingsScreen auth={auth} />;
   if (tab === "machine")
     return report ? (
-      <MachineScreen report={report} view={machineView} onViewChange={onMachineView} onRefresh={onRefresh} onNavigate={onNavigate} />
+      <MachineScreen report={report} onRefresh={onRefresh} onNavigate={onNavigate} />
     ) : (
       <p className="text-sm text-muted-foreground">Checking this machine…</p>
     );
