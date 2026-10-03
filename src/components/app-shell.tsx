@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronRight, ChevronsUpDown, Cloud, Cog, FlaskConical, LayoutDashboard, type LucideIcon, MonitorCog, Search, Server } from "lucide-react";
+import { CalendarDays, ChevronRight, ChevronsUpDown, Cloud, Cog, FlaskConical, LayoutDashboard, type LucideIcon, MonitorCog, Search, Server } from "lucide-react";
 import { Account } from "@/components/Account";
 import { Labs } from "@/components/Labs";
 import { HomeScreen } from "@/components/screens/home-screen";
@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-type Tab = "home" | "labs" | "machine" | "setup" | "homelab" | "cloud" | "settings";
+type Tab = "home" | "labs" | "machine" | "setup" | "homelab" | "cloud" | "events" | "settings";
 
 const ONBOARDED_KEY = "cyberctf.onboarded";
 
@@ -23,8 +23,9 @@ const NAV: { id: Tab; label: string; icon: LucideIcon; soon?: boolean }[] = [
   { id: "home", label: "Overview", icon: LayoutDashboard },
   { id: "labs", label: "Labs", icon: FlaskConical },
   { id: "machine", label: "Machine", icon: MonitorCog },
-  { id: "homelab", label: "Home lab", icon: Server, soon: true },
+  { id: "homelab", label: "Home lab", icon: Server },
   { id: "cloud", label: "Cloud", icon: Cloud, soon: true },
+  { id: "events", label: "Events", icon: CalendarDays, soon: true },
   { id: "settings", label: "Settings", icon: Cog },
 ];
 
@@ -35,6 +36,7 @@ const TITLES: Record<Tab, string> = {
   setup: "Setup",
   homelab: "Home lab",
   cloud: "Cloud",
+  events: "Events",
   settings: "Settings",
 };
 
@@ -158,7 +160,7 @@ export function AppShell() {
   );
 }
 
-function ComingSoon({ icon, title, description }: { icon: "server" | "cloud"; title: string; description: string }) {
+function ComingSoon({ icon, title, description }: { icon: "server" | "cloud" | "sparkles"; title: string; description: string }) {
   return <EmptyState icon={icon} title={`${title} is on the way`} description={description} />;
 }
 
@@ -185,7 +187,9 @@ function Screen({
     ) : (
       <p className="text-sm text-muted-foreground">Checking this machine…</p>
     );
-  if (tab === "homelab") return <HomeLabScreen report={report} onNavigate={onNavigate} />;
+  if (tab === "homelab") return <HomeLabScreen report={report} onRefresh={onRefresh} onNavigate={onNavigate} />;
   if (tab === "cloud") return <ComingSoon icon="cloud" title="Cloud" description="Spin up labs in the cloud, provisioned with Terraform and configured with Ansible, no local setup, then open them right here." />;
+  if (tab === "events")
+    return <ComingSoon icon="sparkles" title="Events" description="Join live CTF events where labs are hosted by CyberCTF: nothing to run on your machine, each participant gets their own lab for the event's duration." />;
   return report ? <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} openSlug={openLab} /> : <p className="text-sm text-muted-foreground">Loading…</p>;
 }

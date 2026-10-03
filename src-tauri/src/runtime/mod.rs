@@ -4,6 +4,7 @@
 
 mod docker;
 mod exegol;
+pub mod homelab;
 pub mod providers;
 mod vm;
 
@@ -57,6 +58,8 @@ pub struct LabStatus {
     /// Loopback URL where the lab is reachable on this machine, once running (Docker labs
     /// with a published port). None for VM labs or when nothing is published yet.
     pub url: Option<String>,
+    /// Name of the home-lab host a VM lab runs on; None when it runs on this machine.
+    pub host: Option<String>,
 }
 
 fn validate_id(id: &str) -> Result<()> {
@@ -80,23 +83,50 @@ fn lab_dir(app: &AppHandle, id: &str) -> Result<PathBuf> {
     Ok(dir)
 }
 
-/// Starts an installed lab. `provider` is required for VM labs (the Vagrant
-/// provider to use) and ignored for Docker labs; `env` is passed to the runtime.
+/// Starts an installed lab; `env` is passed to the runtime. VM labs run either on this
+/// machine with `provider` (a local Vagrant provider), or on the home-lab `host` (its
+/// provider and connection env come from the host profile). Docker labs ignore both.
+#[allow(clippy::too_many_arguments)]
 pub async fn start(
+    app: &AppHandle,
     dir: &Path,
     id: &str,
     runtime: Runtime,
     provider: Option<providers::Provider>,
+    host: Option<&str>,
     env: &[(String, String)],
-    log: impl FnMut(String),
+    mut log: impl FnMut(String),
 ) -> Result<()> {
     match runtime {
         Runtime::Docker => docker::start(dir, id, env, log).await,
-        Runtime::Vm => {
-            let provider = provider.ok_or_else(|| Error::Invalid("VM labs need a provider".into()))?;
-            vm::start(dir, provider, env, log).await
-        }
+        Runtime::Vm => match host {
+            Some(host) => {
+                let conn = homelab::connection(app, host)?;
+                // Mark first, so a half-created lab can still be destroyed on the same host.
+                homelab::mark_lab(dir, Some(host))?;
+                log(format!("Running on home-lab host {} ({})", conn.name, conn.provider.id()));
+                let env: Vec<(String, String)> = env.iter().cloned().chain(conn.env).collect();
+                vm::start(dir, conn.provider, &env, log).await
+            }
+            None => {
+                let provider = provider.ok_or_else(|| Error::Invalid("VM labs need a provider".into()))?;
+                if provider.is_remote() {
+                    return Err(Error::Invalid("pick a home-lab host to run on ESXi or Proxmox".into()));
+                }
+                homelab::mark_lab(dir, None)?;
+                vm::start(dir, provider, env, log).await
+            }
+        },
     }
+}
+
+/// The env a VM lab's Vagrantfile needs to reach the host it runs on (empty if local),
+/// plus that host's name.
+fn vm_env(app: &AppHandle, dir: &Path) -> Result<(Vec<(String, String)>, Option<String>)> {
+    Ok(match homelab::lab_connection(app, dir)? {
+        Some(conn) => (conn.env, Some(conn.name)),
+        None => (Vec::new(), None),
+    })
 }
 
 /// Where a running lab is reachable on this machine (its first published port). None for
@@ -116,13 +146,14 @@ pub async fn lab_start(
     id: String,
     runtime: Runtime,
     provider: Option<providers::Provider>,
+    host: Option<String>,
     logs: Channel<String>,
 ) -> Result<()> {
     let dir = lab_dir(&app, &id)?;
     let log = move |line: String| {
         let _ = logs.send(line);
     };
-    start(&dir, &id, runtime, provider, &[], log).await
+    start(&app, &dir, &id, runtime, provider, host.as_deref(), &[], log).await
 }
 
 #[tauri::command]
@@ -133,7 +164,7 @@ pub async fn lab_stop(app: AppHandle, id: String, runtime: Runtime, logs: Channe
     };
     match runtime {
         Runtime::Docker => docker::stop(&dir, &id, log).await,
-        Runtime::Vm => vm::stop(&dir, log).await,
+        Runtime::Vm => vm::stop(&dir, &vm_env(&app, &dir)?.0, log).await,
     }
 }
 
@@ -142,7 +173,10 @@ pub async fn lab_status(app: AppHandle, id: String, runtime: Runtime) -> Result<
     let dir = lab_dir(&app, &id)?;
     match runtime {
         Runtime::Docker => docker::status(&dir, &id).await,
-        Runtime::Vm => vm::status(&dir).await,
+        Runtime::Vm => {
+            let (env, host) = vm_env(&app, &dir)?;
+            Ok(LabStatus { host, ..vm::status(&dir, &env).await? })
+        }
     }
 }
 

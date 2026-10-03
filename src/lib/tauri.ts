@@ -48,6 +48,8 @@ export interface LabStatus {
   machines: { name: string; state: string; image: string; ip: string; ports: { published: number; target: number }[] }[];
   /** Loopback URL where the lab is reachable, once running (null for VM labs / no port). */
   url: string | null;
+  /** Home-lab host name a VM lab runs on; null when it runs on this machine. */
+  host: string | null;
 }
 
 export const systemCheck = () => invoke<SystemReport>("system_check");
@@ -66,10 +68,10 @@ export interface MachineMetrics {
 /** Live machine health (CPU/memory/disk/uptime + running containers). */
 export const machineMetrics = () => invoke<MachineMetrics>("machine_metrics");
 
-export function labStart(id: string, runtime: Runtime, provider: Provider | null, onLog: (line: string) => void) {
+export function labStart(id: string, runtime: Runtime, provider: Provider | null, host: string | null, onLog: (line: string) => void) {
   const logs = new Channel<string>();
   logs.onmessage = onLog;
-  return invoke<void>("lab_start", { id, runtime, provider, logs });
+  return invoke<void>("lab_start", { id, runtime, provider, host, logs });
 }
 
 export function labStop(id: string, runtime: Runtime, onLog: (line: string) => void) {
@@ -120,12 +122,64 @@ export const authLogout = () => invoke<void>("auth_logout");
 export const apiQuery = <T>(query: string, variables?: Record<string, unknown>) =>
   invoke<T>("api_query", { query, variables });
 
-/** startLab + download at the pinned commit + run with the launch token. */
-export function labLaunch(labId: string, provider: Provider | null, onLog: (line: string) => void) {
+/**
+ * startLab + download at the pinned commit + run with the launch token. VM labs run on
+ * this machine with `provider`, or on the home-lab `host` (a host id) when given.
+ */
+export function labLaunch(labId: string, provider: Provider | null, host: string | null, onLog: (line: string) => void) {
   const logs = new Channel<string>();
   logs.onmessage = onLog;
-  return invoke<void>("lab_launch", { labId, provider, logs });
+  return invoke<void>("lab_launch", { labId, provider, host, logs });
 }
+
+// --- Home lab (the player's own ESXi / Proxmox host) ---
+
+export type RemoteProvider = Extract<Provider, "vmware_esxi" | "proxmox">;
+
+export interface HomelabHost {
+  id: string;
+  name: string;
+  provider: RemoteProvider;
+  host: string;
+  /** ESXi SSH port (22) / Proxmox API port (8006). */
+  port: number;
+  /** ESXi: root. Proxmox: user@realm, e.g. root@pam. */
+  username: string;
+  /** ESXi datastore / Proxmox storage. */
+  datastore: string | null;
+  /** ESXi port group / Proxmox bridge. */
+  network: string | null;
+  /** Proxmox node. */
+  node: string | null;
+}
+
+/** Form payload; `id` null creates a host, `password` null keeps the stored one. */
+export interface HomelabHostInput extends Omit<HomelabHost, "id" | "port"> {
+  id: string | null;
+  port: number | null;
+  password: string | null;
+}
+
+export interface HomelabList {
+  default: string | null;
+  hosts: HomelabHost[];
+}
+
+export interface HomelabTest {
+  /** Everything checked passed. */
+  ok: boolean;
+  reachable: boolean;
+  /** Credentials verified (Proxmox); null when not checked. */
+  authenticated: boolean | null;
+  latencyMs: number | null;
+  message: string;
+}
+
+export const homelabList = () => invoke<HomelabList>("homelab_list");
+export const homelabSave = (input: HomelabHostInput) => invoke<HomelabHost>("homelab_save", { input });
+export const homelabRemove = (id: string) => invoke<void>("homelab_remove", { id });
+export const homelabSetDefault = (id: string | null) => invoke<void>("homelab_set_default", { id });
+export const homelabTest = (id: string) => invoke<HomelabTest>("homelab_test", { id });
 
 export interface AgentInfo {
   installId: string;

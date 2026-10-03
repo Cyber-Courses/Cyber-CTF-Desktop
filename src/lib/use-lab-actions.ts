@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { labLaunch, labStop } from "@/lib/tauri";
+import { homelabList, labLaunch, labStop } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
 import type { Lab } from "@/lib/use-labs";
 
@@ -15,17 +15,25 @@ export function useLabActions(refresh: (lab: Lab) => void) {
   const [activeLab, setActiveLab] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
 
+  /**
+   * `host` = a home-lab host id to run a VM lab on, null for this machine. Omitted, VM labs
+   * go to the default home-lab host when the lab supports its hypervisor.
+   */
   const launch = useCallback(
-    async (lab: Lab) => {
+    async (lab: Lab, host?: string | null) => {
       if (!lab.runtime) return;
       setBusy(lab.id);
       setActiveLab(lab.id);
       setLogs([]);
       try {
-        const provider = lab.runtime.runtime === "VM" ? (lab.runtime.providers[0] ?? null) : null;
-        await labLaunch(lab.id, provider, (line) => setLogs((l) => [...l, line]));
+        const vm = lab.runtime.runtime === "VM";
+        if (vm && host === undefined) host = await defaultHostFor(lab);
+        const remote = vm && host !== null;
+        // Locally, use the first provider the lab supports that isn't a remote hypervisor.
+        const provider = vm && !remote ? (lab.runtime.providers.find((p) => p !== "vmware_esxi" && p !== "proxmox") ?? null) : null;
+        await labLaunch(lab.id, provider, remote ? (host ?? null) : null, (line) => setLogs((l) => [...l, line]));
         setLogs((l) => [...l, "✓ Lab is running"]);
-        notify("Lab ready", `${lab.title} is running on this machine.`);
+        notify("Lab ready", remote ? `${lab.title} is running on your home lab.` : `${lab.title} is running on this machine.`);
       } catch (e) {
         setLogs((l) => [...l, `✗ ${String(e)}`]);
       } finally {
@@ -56,4 +64,15 @@ export function useLabActions(refresh: (lab: Lab) => void) {
   );
 
   return { busy, activeLab, logs, launch, stop };
+}
+
+/** The default home-lab host id, if one is set and the lab supports its hypervisor. */
+async function defaultHostFor(lab: Lab): Promise<string | null> {
+  try {
+    const { default: id, hosts } = await homelabList();
+    const host = hosts.find((h) => h.id === id);
+    return host && lab.runtime?.providers.includes(host.provider) ? host.id : null;
+  } catch {
+    return null;
+  }
 }

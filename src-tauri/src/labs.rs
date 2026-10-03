@@ -104,7 +104,8 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
 /// Installs and starts a lab from a launch spec (the `startLab`/`claimLaunch` shape:
 /// `{ labId, runtime, repository, commit, env }`). Shared by the manual launch command
 /// and the agent's claim loop (bring your own compute).
-pub(crate) async fn run(app: &AppHandle, launch_json: serde_json::Value, provider: Option<Provider>, log: impl Fn(String)) -> Result<Option<String>> {
+/// VM labs run locally with `provider`, or on the home-lab `host` when one is given.
+pub(crate) async fn run(app: &AppHandle, launch_json: serde_json::Value, provider: Option<Provider>, host: Option<&str>, log: impl Fn(String)) -> Result<Option<String>> {
     let launch: Launch = serde_json::from_value(launch_json).map_err(|e| Error::Invalid(format!("invalid launch spec: {e}")))?;
     let dir = install(app, &launch.lab_id, &launch.repository, &launch.commit, &log).await?;
     // Fixed names for every lab; the evidence itself is never in the environment.
@@ -114,13 +115,13 @@ pub(crate) async fn run(app: &AppHandle, launch_json: serde_json::Value, provide
         .filter(|v| v.name == "CTF_API_URL" || v.name == "CTF_LAUNCH_TOKEN")
         .map(|v| (v.name, v.value))
         .collect();
-    runtime::start(&dir, &launch.lab_id, launch.runtime, provider, &env, log).await?;
+    runtime::start(app, &dir, &launch.lab_id, launch.runtime, provider, host, &env, log).await?;
     // Where the lab's target is reachable on this machine, for the website to open.
     Ok(runtime::primary_url(&dir, &launch.lab_id, launch.runtime).await)
 }
 
 #[tauri::command]
-pub async fn lab_launch(app: AppHandle, lab_id: String, provider: Option<Provider>, logs: Channel<String>) -> Result<()> {
+pub async fn lab_launch(app: AppHandle, lab_id: String, provider: Option<Provider>, host: Option<String>, logs: Channel<String>) -> Result<()> {
     let log = move |line: String| {
         let _ = logs.send(line);
     };
@@ -130,7 +131,7 @@ pub async fn lab_launch(app: AppHandle, lab_id: String, provider: Option<Provide
         true,
     )
     .await?;
-    run(&app, data["startLab"].clone(), provider, log).await?;
+    run(&app, data["startLab"].clone(), provider, host.as_deref(), log).await?;
     Ok(())
 }
 

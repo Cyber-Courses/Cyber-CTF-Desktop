@@ -8,8 +8,14 @@ use crate::error::{Error, Result};
 
 /// Runs a program without a shell (arguments are never interpolated) and returns stdout.
 pub async fn run(program: &'static str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
+    run_env(program, args, cwd, &[]).await
+}
+
+/// `run` with extra environment variables.
+pub async fn run_env(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)]) -> Result<String> {
     let mut cmd = Command::new(program);
     cmd.args(args).stdin(Stdio::null());
+    cmd.envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }

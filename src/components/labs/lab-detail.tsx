@@ -10,7 +10,7 @@ import { LogConsole } from "@/components/labs/log-console";
 import { Markdown } from "@/components/labs/markdown";
 import { NetworkDiagram } from "@/components/labs/network-diagram";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/lib/use-labs";
-import { apiQuery, exegolShell, exegolStart, exegolStatus, exegolStop, type ExegolStatus, type LabStatus } from "@/lib/tauri";
+import { apiQuery, exegolShell, exegolStart, exegolStatus, exegolStop, homelabList, type ExegolStatus, type HomelabHost, type LabStatus } from "@/lib/tauri";
 import { getAttackImage } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +32,8 @@ export function LabDetail({
   loggedIn: boolean;
   hostArch: string;
   onBack: () => void;
-  onStart: () => void;
+  /** `host`: home-lab host id for VM labs, null to run on this machine. */
+  onStart: (host: string | null) => void;
   onStop: () => void;
 }) {
   const [content, setContent] = useState<string | null | undefined>(undefined);
@@ -56,6 +57,20 @@ export function LabDetail({
   const url = status?.url;
   const RuntimeIcon = rt?.runtime === "VM" ? Server : Container;
   const isDocker = rt?.runtime !== "VM";
+
+  // VM labs can run on this machine or on one of the player's home-lab hosts.
+  const [hosts, setHosts] = useState<HomelabHost[]>([]);
+  const [runOn, setRunOn] = useState<string | null>(null);
+  useEffect(() => {
+    if (isDocker) return;
+    homelabList()
+      .then((l) => {
+        setHosts(l.hosts);
+        const def = l.hosts.find((h) => h.id === l.default);
+        setRunOn(def && rt?.providers.includes(def.provider) ? def.id : null);
+      })
+      .catch(() => setHosts([]));
+  }, [isDocker, rt]);
 
   // The attack box lives on the lab's Docker network, so it's only relevant while a
   // container lab is up. Poll its status so Launch/running/IP stay current.
@@ -107,7 +122,7 @@ export function LabDetail({
           )}
           <span>· {lab.category}</span>
           {rt && <span className="inline-flex items-center gap-1.5">· <RuntimeIcon className="size-3.5" />{rt.runtime === "VM" ? "VM" : "Container"}</span>}
-          {rt && !native && <span className="text-amber-500">· emulated (slower)</span>}
+          {rt && !native && (isDocker || runOn === null) && <span className="text-amber-500">· emulated (slower)</span>}
         </div>
       </div>
 
@@ -168,7 +183,7 @@ export function LabDetail({
             <div className="space-y-3 p-4">
               <div className="flex items-center gap-2 text-[13px]">
                 <span className={cn("size-2 rounded-full", running ? "bg-emerald-500" : "bg-muted-foreground/40")} />
-                {running ? "Running on this machine" : "Stopped"}
+                {running ? `Running on ${status?.host ?? "this machine"}` : "Stopped"}
               </div>
               {running && status && status.machines.length > 0 && (
                 <p className="font-mono text-[11px] text-muted-foreground">{status.machines.map((m) => m.name).join(" · ")}</p>
@@ -186,9 +201,14 @@ export function LabDetail({
                     </Button>
                   </>
                 ) : (
-                  <Button variant="learn" className="w-full" onClick={onStart} disabled={!loggedIn || !rt || busy} title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}>
+                  <>
+                  {!isDocker && hosts.length > 0 && (
+                    <RunOnPicker hosts={hosts} supported={rt?.providers ?? []} value={runOn} onChange={setRunOn} disabled={busy} />
+                  )}
+                  <Button variant="learn" className="w-full" onClick={() => onStart(isDocker ? null : runOn)} disabled={!loggedIn || !rt || busy} title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}>
                     {busy ? <Spinner className="size-4" /> : <Play className="size-4" />} Start lab
                   </Button>
+                  </>
                 )}
               </div>
               {!loggedIn && <p className="text-[11.5px] text-muted-foreground">Sign in to run labs on this machine.</p>}
@@ -246,6 +266,59 @@ export function LabDetail({
             </Panel>
           )}
         </aside>
+      </div>
+    </div>
+  );
+}
+
+const HYPERVISOR: Record<string, string> = { vmware_esxi: "ESXi", proxmox: "Proxmox" };
+
+/** "Run on: this machine | <home-lab host>" for VM labs. Hosts whose hypervisor the lab doesn't support are disabled. */
+function RunOnPicker({
+  hosts,
+  supported,
+  value,
+  onChange,
+  disabled,
+}: {
+  hosts: HomelabHost[];
+  supported: string[];
+  value: string | null;
+  onChange: (id: string | null) => void;
+  disabled: boolean;
+}) {
+  const options = [
+    { id: null as string | null, label: "This machine", note: "Local hypervisor", ok: true },
+    ...hosts.map((h) => ({ id: h.id as string | null, label: h.name, note: `${HYPERVISOR[h.provider]} · ${h.host}`, ok: supported.includes(h.provider) })),
+  ];
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11.5px] text-muted-foreground">Run on</p>
+      <div className="overflow-hidden rounded-lg border border-border">
+        {options.map((o) => {
+          const selected = value === o.id;
+          return (
+            <button
+              key={o.id ?? "local"}
+              type="button"
+              disabled={disabled || !o.ok}
+              onClick={() => onChange(o.id)}
+              title={o.ok ? undefined : `This lab doesn't support ${o.note.split(" · ")[0]}`}
+              className={cn(
+                "flex w-full items-center gap-2.5 border-b border-border px-3 py-2 text-left last:border-b-0 transition-colors disabled:cursor-not-allowed disabled:opacity-45",
+                selected ? "bg-muted" : "hover:bg-muted/50",
+              )}
+            >
+              <span className={cn("grid size-3.5 shrink-0 place-items-center rounded-full border", selected ? "border-learn" : "border-muted-foreground/40")}>
+                {selected && <span className="size-1.5 rounded-full bg-learn" />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12.5px] font-medium">{o.label}</span>
+                <span className="block truncate font-mono text-[10.5px] text-muted-foreground">{o.ok ? o.note : "Not supported by this lab"}</span>
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

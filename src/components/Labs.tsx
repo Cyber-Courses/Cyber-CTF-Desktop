@@ -44,7 +44,7 @@ export function Labs({ loggedIn, hostArch, openSlug }: { loggedIn: boolean; host
         loggedIn={loggedIn}
         hostArch={hostArch}
         onBack={() => setDetailSlug(null)}
-        onStart={() => launch(detail)}
+        onStart={(host) => launch(detail, host)}
         onStop={() => stop(detail)}
       />
     );
