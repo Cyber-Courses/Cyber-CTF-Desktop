@@ -108,8 +108,12 @@ resolves `web` and `database` on the lab network.
   evidence claimed and placed, the attack box reads the invoice.
 - `vagrant-vmware-esxi` 2.5.5 installs on Vagrant 2.4.9. `vagrant-proxmox` 0.0.10 (2016) does
   not (activesupport 4.0 vs Vagrant's i18n 1.14.7), hence Terraform for Proxmox.
-- Terraform on a test Proxmox VE 8 (`dev/test/server/proxmox`), end to end: image download,
-  snippet upload over SSH, VM, cloud-init, Ansible, compose healthy, the attack box reads the
-  invoice; `destroy` removes VM, snippet and image. The test host has no nested KVM (VirtualBox
-  on this Intel Mac), so the lab VM ran with `kvm: 0` and `cpu_type = x86-64-v2-AES` (plain
-  `qemu64` lacks x86-64-v2, which `mysql:8.0` needs), slowly.
+- Terraform end to end on a test Proxmox VE 9 with nested KVM (`dev/test/server/proxmox-fusion`,
+  on VMware Fusion): image download, snippet upload over SSH, VM, cloud-init, Ansible, compose
+  healthy, the attack box reads `web`/`database`, and the remote "Open shell" key path works;
+  `destroy` removes everything. Also verified on a Proxmox VE 8 VirtualBox host without nested
+  KVM, where the lab VM needs `kvm: 0` + `cpu_type = x86-64-v2-AES` (plain `qemu64` lacks
+  x86-64-v2, which `mysql:8.0` needs) and runs slowly.
+- ESXi (`dev/test/server/esxi`, ESXi 8.0U3e on Fusion): the launcher's `deploy/vagrant`
+  + `vmware_esxi` path creates and powers on the lab VM; finishing it needs Fusion to be
+  allowed promiscuous mode so nested lab VMs get an IP (a macOS admin approval).
