@@ -110,11 +110,24 @@ struct Publisher {
     protocol: String,
 }
 
-/// The loopback URL of the first published TCP port, i.e. where the lab's target is
-/// reachable on this machine. None if nothing is published yet.
+/// True for services that aren't a web UI (databases, caches, brokers): the Open button
+/// must never point a browser at one.
+fn is_datastore(e: &PsEntry) -> bool {
+    let s = format!("{} {}", e.service, e.image).to_ascii_lowercase();
+    ["mysql", "mariadb", "postgres", "redis", "mongo", "memcached", "rabbitmq", "elastic", "mssql", "oracle"]
+        .iter()
+        .any(|k| s.contains(k))
+        || matches!(e.service.as_str(), "db" | "database")
+}
+
+/// The loopback URL of a running web service's first published TCP port, i.e. where the
+/// lab's target is reachable on this machine. Only running, non-datastore services count,
+/// so Open never lands on a database port or a service whose container has exited. None if
+/// no web service is up and publishing yet.
 fn first_published_url(entries: &[PsEntry]) -> Option<String> {
     entries
         .iter()
+        .filter(|e| e.state == "running" && !is_datastore(e))
         .flat_map(|e| &e.publishers)
         .filter(|p| p.published_port > 0 && (p.protocol.is_empty() || p.protocol == "tcp"))
         .map(|p| p.published_port)
@@ -232,5 +245,19 @@ mod tests {
         assert_eq!(first_published_url(&parse_ps(out)).as_deref(), Some("http://127.0.0.1:8080"));
         let none = r#"[{"Service":"web","State":"running","Publishers":[]}]"#;
         assert_eq!(first_published_url(&parse_ps(none)), None);
+    }
+
+    #[test]
+    fn open_url_prefers_web_and_skips_datastores() {
+        // Web port is numerically higher than the DB's: still pick the web service.
+        let out = r#"[
+          {"Service":"database","Image":"mysql:8.0","State":"running","Publishers":[{"PublishedPort":3207,"Protocol":"tcp"}]},
+          {"Service":"web","Image":"invoice_web","State":"running","Publishers":[{"PublishedPort":3206,"Protocol":"tcp"}]}
+        ]"#;
+        assert_eq!(first_published_url(&parse_ps(out)).as_deref(), Some("http://127.0.0.1:3206"));
+        // Web has exited; only the database is up. Don't point Open at the DB.
+        let db_only = r#"[{"Service":"database","Image":"mysql:8.0","State":"running","Publishers":[{"PublishedPort":3207,"Protocol":"tcp"}]},
+          {"Service":"web","State":"exited","Publishers":[]}]"#;
+        assert_eq!(first_published_url(&parse_ps(db_only)), None);
     }
 }
