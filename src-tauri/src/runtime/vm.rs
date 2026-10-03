@@ -32,7 +32,7 @@ pub async fn status(dir: &Path, env: &[(String, String)]) -> Result<LabStatus> {
     let out = run_env("vagrant", &["status", "--machine-readable"], Some(dir), env).await?;
     let machines = parse_status(&out);
     let running = !machines.is_empty() && machines.iter().all(|m| m.state == "running");
-    Ok(LabStatus { running, machines, url: None, host: None })
+    Ok(LabStatus { running, machines, url: None, host: None, expires_at: None })
 }
 
 #[cfg(test)]

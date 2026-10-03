@@ -65,6 +65,12 @@ The launcher runs `deploy/terraform/aws` with `AWS_ACCESS_KEY_ID` / `AWS_SECRET_
 `AWS_REGION` as raw container env (never Terraform variables), plus `region`,
 `instance_type`, `ssh_public_key` and `allowed_cidr` (this machine's public IP/32 from
 checkip.amazonaws.com, the only address allowed to SSH in). Stop runs `terraform destroy`.
+
+**Auto-stop:** each AWS account has `auto_stop_hours` (default 4, 0 to 72, 0 = never). The
+instance schedules its own poweroff at boot (systemd timer from cloud-init) and is set to
+terminate on shutdown, so a forgotten lab stops billing even with this machine off. The
+launcher records the expiry at apply and shows "Auto-stops at ..."; past it the lab shows
+as stopped. The security group (free) stays until the next Start or Stop.
 The test is `sts get-caller-identity` in the `amazon/aws-cli` container.
 
 ## Attack box shell on remote labs

@@ -18,6 +18,11 @@ pub const IMAGE: &str = "hashicorp/terraform:1.16.5";
 
 /// Non-secret run parameters, kept next to the state so `destroy` can be replayed.
 const RUN_FILE: &str = "run.json";
+const EXPIRES_AT: &str = "expires_at";
+
+fn now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
 
 fn docker_args(deploy: &Path, state: &Path, target: &str, env: &[(String, String)], script: &str) -> Vec<String> {
     let mut args = vec![
@@ -66,11 +71,15 @@ async fn terraform(deploy: &Path, state: &Path, target: &str, env: &[(String, St
 pub async fn apply(deploy: &Path, state: &Path, target: &str, vars: &[(String, String)], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
     std::fs::create_dir_all(state)?;
     // Remember the non-secret variables, so a later destroy has them without the launch spec.
-    let run: serde_json::Map<String, Value> = vars
+    let mut run: serde_json::Map<String, Value> = vars
         .iter()
         .filter(|(k, _)| matches!(k.as_str(), "lab_slug" | "lab_repository" | "lab_commit"))
         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
         .collect();
+    // When the lab host stops itself (cloud auto-stop), so status can tell.
+    if let Some(hours) = vars.iter().find(|(k, _)| k == "auto_stop_hours").and_then(|(_, v)| v.parse::<u64>().ok()).filter(|h| *h > 0) {
+        run.insert(EXPIRES_AT.into(), Value::from(now() + hours * 3600));
+    }
     std::fs::write(state.join(RUN_FILE), serde_json::to_string(&run).unwrap_or_default())?;
     terraform(deploy, state, target, &with_env(vars, env), "apply", log).await
 }
@@ -85,6 +94,7 @@ pub async fn destroy(deploy: &Path, state: &Path, target: &str, vars: &[(String,
     if let Ok(raw) = std::fs::read_to_string(state.join(RUN_FILE)) {
         if let Ok(Value::Object(run)) = serde_json::from_str::<Value>(&raw) {
             for (k, v) in run {
+                // Strings only: lab variables (expires_at is a number).
                 if let Some(v) = v.as_str() {
                     all.push((k, v.to_string()));
                 }
@@ -116,14 +126,20 @@ pub fn status(state: &Path) -> LabStatus {
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
         .map(|v| v["outputs"].clone())
         .unwrap_or(Value::Null);
-    let created = !outputs["vm_id"]["value"].is_null() || !outputs["instance_id"]["value"].is_null();
+    let expires_at = std::fs::read_to_string(state.join(RUN_FILE))
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+        .and_then(|v| v[EXPIRES_AT].as_u64());
+    // Past its auto-stop, the cloud instance has terminated itself.
+    let expired = expires_at.is_some_and(|t| now() >= t);
+    let created = (!outputs["vm_id"]["value"].is_null() || !outputs["instance_id"]["value"].is_null()) && !expired;
     let ip = outputs["ip"]["value"].as_str().unwrap_or_default().to_string();
     let machines = if created {
         vec![Machine { name: "labhost".into(), state: "running".into(), image: String::new(), ip, ports: Vec::new() }]
     } else {
         Vec::new()
     };
-    LabStatus { running: created, machines, url: None, host: None }
+    LabStatus { running: created, machines, url: None, host: None, expires_at: expires_at.filter(|_| created) }
 }
 
 #[cfg(test)]
@@ -148,6 +164,11 @@ mod tests {
         let s = status(&dir);
         assert!(s.running);
         assert_eq!(s.machines[0].ip, "10.10.10.150");
+        // Auto-stop: shown while pending, stopped once past.
+        std::fs::write(dir.join(RUN_FILE), format!(r#"{{"expires_at":{}}}"#, now() + 3600)).unwrap();
+        assert!(status(&dir).running && status(&dir).expires_at.is_some());
+        std::fs::write(dir.join(RUN_FILE), r#"{"expires_at":1}"#).unwrap();
+        assert!(!status(&dir).running);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

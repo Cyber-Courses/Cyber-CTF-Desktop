@@ -185,7 +185,7 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
             Machine { name: e.service, state: e.state, image: e.image, ip, ports }
         })
         .collect();
-    Ok(LabStatus { running, machines, url, host: None })
+    Ok(LabStatus { running, machines, url, host: None, expires_at: None })
 }
 
 /// Where the lab is reachable on this machine (its first published port), once running.

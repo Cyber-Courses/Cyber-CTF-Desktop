@@ -49,6 +49,9 @@ pub struct HostProfile {
     /// Proxmox: accept the API's self-signed certificate (the Proxmox default).
     #[serde(default)]
     pub insecure_tls: bool,
+    /// AWS: terminate a lab's instance this many hours after it starts (0 = never).
+    #[serde(default)]
+    pub auto_stop_hours: Option<u32>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -71,6 +74,7 @@ pub struct HostInput {
     network: Option<String>,
     node: Option<String>,
     insecure_tls: Option<bool>,
+    auto_stop_hours: Option<u32>,
     password: Option<String>,
 }
 
@@ -123,6 +127,9 @@ fn valid_host(host: &str) -> bool {
 fn valid_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 32 && id.chars().all(|c| c.is_ascii_hexdigit())
 }
+
+/// Cloud labs stop themselves after this long unless the account says otherwise.
+pub const DEFAULT_AUTO_STOP_HOURS: u32 = 4;
 
 fn default_port(provider: Provider) -> u16 {
     match provider {
@@ -319,7 +326,10 @@ pub fn terraform_env(h: &HostProfile, password: &str) -> Vec<(String, String)> {
 /// Terraform variables for a host (`deploy/terraform/<target>`).
 pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> {
     if h.provider == Provider::Aws {
-        let mut vars = vec![("region".to_string(), h.host.clone())];
+        let mut vars = vec![
+            ("region".to_string(), h.host.clone()),
+            ("auto_stop_hours".to_string(), h.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS).to_string()),
+        ];
         if let Some(t) = &h.datastore {
             vars.push(("instance_type".into(), t.clone()));
         }
@@ -538,6 +548,13 @@ pub fn homelab_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         network: clean_opt(input.network, "network")?,
         node: if input.provider == Provider::Proxmox { clean_opt(input.node, "node")? } else { None },
         insecure_tls: input.provider == Provider::Proxmox && input.insecure_tls.unwrap_or(false),
+        auto_stop_hours: match input.provider {
+            Provider::Aws => match input.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS) {
+                h if h <= 72 => Some(h),
+                _ => return Err(Error::Invalid("auto-stop must be between 0 and 72 hours".into())),
+            },
+            _ => None,
+        },
     };
     match input.password.filter(|p| !p.is_empty()) {
         Some(p) if p.len() <= 1024 && !p.contains('\0') => set_secret(&id, &p)?,
@@ -635,6 +652,7 @@ mod tests {
             network: Some("vmbr1".into()),
             node: Some("pve".into()),
             insecure_tls: false,
+            auto_stop_hours: None,
         }
     }
 

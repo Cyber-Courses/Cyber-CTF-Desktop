@@ -191,6 +191,7 @@ export function LabDetail({
                 <span className={cn("size-2 rounded-full", running ? "bg-emerald-500" : "bg-muted-foreground/40")} />
                 {running ? `Running on ${status?.host ?? "this machine"}` : "Stopped"}
               </div>
+              {running && status?.expiresAt && <AutoStop at={status.expiresAt} />}
               {running && status && status.machines.length > 0 && (
                 <p className="font-mono text-[11px] text-muted-foreground">{status.machines.map((m) => m.name).join(" · ")}</p>
               )}
@@ -346,5 +347,23 @@ function RunOnPicker({
         })}
       </div>
     </div>
+  );
+}
+
+/** "Auto-stops at 19:42 · in 3h 58m" for cloud labs. */
+function AutoStop({ at }: { at: number }) {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const left = Math.max(0, at - now);
+  const time = new Date(at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const h = Math.floor(left / 3600);
+  const m = Math.floor((left % 3600) / 60);
+  return (
+    <p className="text-[11.5px] text-amber-500">
+      Auto-stops at {time} · in {h > 0 ? `${h}h ` : ""}{m}m
+    </p>
   );
 }

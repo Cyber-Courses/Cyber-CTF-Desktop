@@ -62,6 +62,8 @@ pub struct LabStatus {
     pub url: Option<String>,
     /// Name of the home-lab host a VM lab runs on; None when it runs on this machine.
     pub host: Option<String>,
+    /// Unix time a cloud lab stops itself (auto-stop), if it does.
+    pub expires_at: Option<u64>,
 }
 
 fn validate_id(id: &str) -> Result<()> {

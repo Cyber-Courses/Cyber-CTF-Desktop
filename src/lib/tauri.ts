@@ -51,6 +51,8 @@ export interface LabStatus {
   url: string | null;
   /** Home-lab host name a VM lab runs on; null when it runs on this machine. */
   host: string | null;
+  /** Unix seconds a cloud lab stops itself (auto-stop); null if it doesn't. */
+  expiresAt: number | null;
 }
 
 export const systemCheck = () => invoke<SystemReport>("system_check");
@@ -166,6 +168,8 @@ export interface HomelabHost {
   node: string | null;
   /** Proxmox: accept the API's self-signed certificate. */
   insecureTls: boolean;
+  /** AWS: terminate a lab's instance this many hours after start (0 = never). */
+  autoStopHours: number | null;
 }
 
 /** Form payload; `id` null creates a host, `password` null keeps the stored one. */

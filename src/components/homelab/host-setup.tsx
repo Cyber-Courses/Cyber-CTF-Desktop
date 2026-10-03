@@ -44,10 +44,11 @@ export const EMPTY_HOST: HomelabHostInput = {
   node: null,
   // Proxmox ships with a self-signed certificate.
   insecureTls: true,
+  autoStopHours: null,
 };
 
 /** A new AWS account: region + access keys. */
-export const EMPTY_CLOUD: HomelabHostInput = { ...EMPTY_HOST, provider: "aws", insecureTls: false };
+export const EMPTY_CLOUD: HomelabHostInput = { ...EMPTY_HOST, provider: "aws", insecureTls: false, autoStopHours: 4 };
 
 /** Proxmox's own logo (official media kit, unaltered), or a neutral mark for ESXi. */
 export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
@@ -384,7 +385,19 @@ function AwsFields({
           />
         </Field>
       </div>
-      <Field label="Instance type" hint="Optional"><Input {...text("datastore")} placeholder="t3.medium" /></Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Instance type" hint="Optional"><Input {...text("datastore")} placeholder="t3.medium" /></Field>
+        <Field label="Auto-stop after (hours)" hint="0 = never">
+          <Input
+            type="number"
+            min={0}
+            max={72}
+            value={v.autoStopHours ?? 4}
+            onChange={(e) => set("autoStopHours", e.target.value === "" ? null : Number(e.target.value))}
+          />
+        </Field>
+      </div>
+      <p className="-mt-1 text-[11.5px] text-muted-foreground">The instance terminates itself when the time is up, even if this machine is off.</p>
     </>
   );
 }
