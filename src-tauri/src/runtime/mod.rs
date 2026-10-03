@@ -6,6 +6,7 @@ mod docker;
 mod exegol;
 pub mod homelab;
 pub mod providers;
+mod ssh;
 mod terraform;
 mod vm;
 
@@ -124,6 +125,8 @@ pub async fn start(
         (Runtime::Docker, providers::Provider::Proxmox) => {
             let mut vars = conn.tf_vars.clone();
             vars.extend(lab_vars(dir, id, env)?);
+            // The launcher's key, so "Open shell" can reach the attack box on the lab host.
+            vars.push(("ssh_public_key".into(), ssh::ensure_key(app).await?.1));
             terraform::apply(&dir.join("deploy"), &state_dir(app, id, "proxmox")?, "proxmox", &vars, log).await
         }
         (Runtime::Docker, provider) => {
@@ -239,6 +242,28 @@ pub async fn lab_stop(app: AppHandle, id: String, runtime: Runtime, logs: Channe
 pub async fn lab_status(app: AppHandle, id: String, runtime: Runtime) -> Result<LabStatus> {
     let dir = lab_dir(&app, &id)?;
     status(&app, &dir, &id, runtime).await
+}
+
+/// Opens the attack box shell of a running lab, wherever it runs: the local container,
+/// or over SSH on the lab host of a remote lab (home lab / cloud).
+#[tauri::command]
+pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> Result<()> {
+    let dir = lab_dir(&app, &id)?;
+    let Some(conn) = homelab::lab_connection(&app, &dir)? else {
+        return exegol::shell(&id);
+    };
+    if !matches!(runtime, Runtime::Docker) {
+        return Err(Error::Invalid("this lab has no attack box".into()));
+    }
+    let target = if conn.provider == providers::Provider::Proxmox {
+        let (host, user) = terraform::ssh_endpoint(&state_dir(&app, &id, "proxmox")?)
+            .ok_or_else(|| Error::Invalid("the lab host has no address yet; wait for it to finish starting".into()))?;
+        ssh::Target { host, port: 22, user, identity: ssh::ensure_key(&app).await?.0 }
+    } else {
+        let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&dir.join("deploy").join("vagrant")), &conn.env).await?;
+        ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab host's SSH settings".into()))?
+    };
+    exegol::open_terminal(&target.attack_shell_command(&ssh::known_hosts(&app)?)?)
 }
 
 /// An attack-box image reference the launcher accepts.

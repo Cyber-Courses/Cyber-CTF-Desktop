@@ -10,7 +10,7 @@ import { LogConsole } from "@/components/labs/log-console";
 import { Markdown } from "@/components/labs/markdown";
 import { NetworkDiagram } from "@/components/labs/network-diagram";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/lib/use-labs";
-import { apiQuery, exegolShell, exegolStart, exegolStatus, exegolStop, homelabList, type ExegolStatus, type HomelabHost, type LabStatus } from "@/lib/tauri";
+import { apiQuery, labAttackShell, exegolShell, exegolStart, exegolStatus, exegolStop, homelabList, type ExegolStatus, type HomelabHost, type LabStatus } from "@/lib/tauri";
 import { getAttackImage } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -76,6 +76,7 @@ export function LabDetail({
       .catch(() => setHosts([]));
   }, [isDocker, hostOk]);
   const remote = !!status?.host;
+  const [shellError, setShellError] = useState<string | null>(null);
 
   // The attack box lives on the lab's Docker network, so it's only relevant while a
   // container lab is up. Poll its status so Launch/running/IP stay current.
@@ -260,6 +261,23 @@ export function LabDetail({
                     <div ref={exegolLogEnd} />
                   </pre>
                 )}
+              </div>
+            </Panel>
+          )}
+
+          {running && isDocker && remote && (
+            <Panel>
+              <PanelHeader title="Attack box" action={<span className="inline-block max-w-[150px] truncate align-bottom font-mono text-[11px] text-muted-foreground" title={getAttackImage()}>{getAttackImage()}</span>} />
+              <div className="space-y-3 p-4">
+                <div className="flex items-center gap-2 text-[13px]">
+                  <Crosshair className="size-4 text-learn" />
+                  <span>Running on {status?.host}</span>
+                </div>
+                <p className="text-[11.5px] text-muted-foreground">The attack box runs next to the lab on its host. The shell connects to it over SSH.</p>
+                <Button variant="learn" className="w-full" onClick={() => { setShellError(null); labAttackShell(lab.id, "DOCKER").catch((e) => setShellError(String(e))); }}>
+                  <Terminal className="size-4" /> Open shell
+                </Button>
+                {shellError && <p className="text-[11.5px] text-rose-400">{shellError}</p>}
               </div>
             </Panel>
           )}

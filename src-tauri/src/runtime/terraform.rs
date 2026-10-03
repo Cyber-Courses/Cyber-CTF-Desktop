@@ -99,6 +99,15 @@ fn tf_env(vars: &[(String, String)]) -> Vec<(String, String)> {
     vars.iter().map(|(k, v)| (format!("TF_VAR_{k}"), v.clone())).collect()
 }
 
+/// The lab host's address and SSH user, from the local state's outputs.
+pub fn ssh_endpoint(state: &Path) -> Option<(String, String)> {
+    let raw = std::fs::read_to_string(state.join("terraform.tfstate")).ok()?;
+    let v: Value = serde_json::from_str(&raw).ok()?;
+    let ip = v["outputs"]["ip"]["value"].as_str().filter(|s| !s.is_empty())?.to_string();
+    let user = v["outputs"]["ssh_user"]["value"].as_str().unwrap_or("debian").to_string();
+    Some((ip, user))
+}
+
 /// Status from the local state's outputs (no container run, so it's cheap to poll).
 pub fn status(state: &Path) -> LabStatus {
     let outputs = std::fs::read_to_string(state.join("terraform.tfstate"))

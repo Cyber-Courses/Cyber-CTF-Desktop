@@ -110,6 +110,9 @@ export function exegolStop(id: string, onLog: (line: string) => void) {
 /** Opens the OS terminal attached to the running attack box. */
 export const exegolShell = (id: string) => invoke<void>("exegol_shell", { id });
 
+/** Opens the attack box shell wherever the lab runs (local container, or SSH to a remote lab host). */
+export const labAttackShell = (id: string, runtime: Runtime) => invoke<void>("lab_attack_shell", { id, runtime });
+
 export interface AuthStatus {
   loggedIn: boolean;
   name: string | null;

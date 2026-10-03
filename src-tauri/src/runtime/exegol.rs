@@ -97,39 +97,64 @@ pub async fn stop(id: &str, mut log: impl FnMut(String)) -> Result<()> {
 
 /// Opens the player's own terminal attached to the attack box.
 pub fn shell(id: &str) -> Result<()> {
-    let name = container(id);
     // bash is present on Kali/Parrot/Exegol alike (keeps native-terminal quoting simple).
+    open_terminal(&format!("docker exec -it {} bash", container(id)))
+}
+
+/// Escapes text for an AppleScript double-quoted string.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn applescript_string(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Opens the OS terminal on `command` (a POSIX shell command line), titled
+/// "CyberCTF attack box". The command line itself never stays on screen: the window is
+/// cleared first, and the command replaces the shell (exec), so leaving the box ends the
+/// session. DOCKER_CLI_HINTS=false drops Docker's "What's next" ad on exit.
+pub fn open_terminal(command: &str) -> Result<()> {
     #[cfg(target_os = "macos")]
     {
-        // do script types the command into a new window: clear it away so the player only
-        // sees the attack box prompt, and exec so leaving the box ends the session.
-        // DOCKER_CLI_HINTS=false drops Docker's "What's next" ad on exit. The leading space
-        // keeps the line out of shell history where HIST_IGNORE_SPACE is on.
+        // do script types the line into a new window; escape it for the AppleScript string.
+        // The leading space keeps it out of shell history where HIST_IGNORE_SPACE is on.
+        let line = applescript_string(&format!(" clear; DOCKER_CLI_HINTS=false exec {command}"));
         let script = format!(
-            "tell application \"Terminal\"\nactivate\ndo script \" clear; DOCKER_CLI_HINTS=false exec docker exec -it {name} bash\"\nset custom title of front window to \"CyberCTF attack box\"\nend tell"
+            "tell application \"Terminal\"\nactivate\ndo script \"{line}\"\nset custom title of front window to \"CyberCTF attack box\"\nend tell"
         );
         std::process::Command::new("osascript").arg("-e").arg(script).spawn()?;
         Ok(())
     }
     #[cfg(target_os = "windows")]
     {
-        // cls hides the command; /c closes the window when the player leaves the box.
-        // The new window inherits DOCKER_CLI_HINTS (cmd's `set X=y &` would keep a trailing space).
+        use std::os::windows::process::CommandExt;
+        // cls hides the command; /c closes the window when the player leaves the box. The
+        // new window inherits DOCKER_CLI_HINTS. Passed raw: cmd parses its own quoting
+        // (POSIX single quotes become double quotes).
+        let command = command.replace('\'', "\"");
         std::process::Command::new("cmd")
-            .args(["/c", "start", "CyberCTF attack box", "cmd", "/c", &format!("cls & docker exec -it {name} bash")])
+            .raw_arg(format!("/c start \"CyberCTF attack box\" cmd /c \"cls & {command}\""))
             .env("DOCKER_CLI_HINTS", "false")
             .spawn()?;
         Ok(())
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        let attach = format!("docker exec -it {name} bash");
-        let run = format!("clear; DOCKER_CLI_HINTS=false exec {attach}");
+        let run = format!("clear; DOCKER_CLI_HINTS=false exec {command}");
         for term in ["x-terminal-emulator", "gnome-terminal", "konsole", "xterm"] {
             if std::process::Command::new(term).args(["-e", "sh", "-c", &run]).spawn().is_ok() {
                 return Ok(());
             }
         }
-        Err(Error::Invalid(format!("couldn't open a terminal; run this yourself: {attach}")))
+        Err(Error::Invalid(format!("couldn't open a terminal; run this yourself: {command}")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::applescript_string;
+
+    #[test]
+    fn applescript_escaping_keeps_shell_quoting_intact() {
+        let line = r#"ssh -i '/Users/a b/key' x@h echo "hi" 'it'\''s'"#;
+        assert_eq!(applescript_string(line), r#"ssh -i '/Users/a b/key' x@h echo \"hi\" 'it'\\''s'"#);
     }
 }
