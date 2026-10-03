@@ -3,6 +3,7 @@ mod api;
 mod auth;
 mod colocation;
 mod config;
+mod env_path;
 mod error;
 mod exec;
 mod install;
@@ -14,6 +15,8 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Before anything else: GUI launches don't get the shell PATH (docker, vagrant, ovftool).
+    env_path::augment();
     tauri::Builder::default()
         // First: a cyberctf:// link opened while the app runs goes to that window
         // (Windows/Linux would otherwise start a second instance).
