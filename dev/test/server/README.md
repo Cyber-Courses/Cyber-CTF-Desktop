@@ -10,7 +10,8 @@ generated on first use into `.state/secrets.env` and never printed.
 
 | Path | What it gives you |
 | --- | --- |
-| `proxmox/` | Proxmox VE 8 on VirtualBox (Debian 12 + Proxmox repo), `https://192.168.56.10:8006` |
+| `proxmox-fusion/` | **Proxmox VE 9 on VMware Fusion with nested KVM** (recommended: lab VMs run at full speed) |
+| `proxmox/` | Proxmox VE 8 on VirtualBox (Debian 12 + Proxmox repo), `https://192.168.56.10:8006` (no nested KVM on Intel Macs) |
 | `esxi/` | ESXi 8.0U3e (the free edition) on VMware Fusion, unattended install |
 | `test/local-vm.sh` | a lab on a local VM through `deploy/vagrant` |
 | `test/proxmox.sh` | the launcher's Proxmox path: `deploy/terraform/proxmox` in the Terraform container |
@@ -30,7 +31,25 @@ does: SSH to the lab host and `docker exec` into the attack box, which must see 
   also provides `vmrun`, `vmware-vdiskmanager` and `ovftool`.
 - Disk: about 30 GB for Proxmox, 80 GB for ESXi. RAM: 8 GB (Proxmox), 12 GB (ESXi).
 
-## Proxmox
+## Proxmox on Fusion (recommended)
+
+```sh
+curl -fLo .state/iso/proxmox-ve_9.2-1.iso https://enterprise.proxmox.com/iso/proxmox-ve_9.2-1.iso
+proxmox-fusion/build.sh       # unattended install, ~10 min; prints the IP
+test/proxmox.sh               # uses that host automatically (storage local-lvm, bridge vmbr1)
+```
+
+`build.sh` prepares the official ISO with Proxmox's `proxmox-auto-install-assistant` (in a
+Debian 13 container): an answer file (root password from `.state/secrets.env`, DHCP, ext4
+on the NVMe disk) and `first-boot.sh`, which switches apt to the free no-subscription repo,
+adds `snippets`/`iso` content to `local`, and creates `vmbr1`, a NAT bridge with DHCP
+(192.168.200.0/24) for lab VMs. Lab VMs stay inside the Proxmox VM, so Fusion needs no
+promiscuous mode. The VM has 4 vCPU, 16 GB RAM and nested VT-x (`/dev/kvm` works).
+
+In the launcher: Server, Add host, Proxmox, the IP, `root@pam`, node `pve`, storage
+`local-lvm`, bridge `vmbr1`, "Self-signed certificate" on.
+
+## Proxmox on VirtualBox
 
 ```sh
 proxmox/up.sh
