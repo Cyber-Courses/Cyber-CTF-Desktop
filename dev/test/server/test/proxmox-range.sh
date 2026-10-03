@@ -26,7 +26,7 @@ tf() {
     -e TF_DATA_DIR=/state/.terraform \
     -e TF_VAR_proxmox_endpoint="https://$HOST:8006/" -e TF_VAR_proxmox_username=root@pam -e TF_VAR_proxmox_password="$PVE_ROOT_PASSWORD" \
     -e TF_VAR_proxmox_insecure=true -e TF_VAR_proxmox_ssh_address="$HOST" \
-    -e TF_VAR_proxmox_storage=local-lvm -e TF_VAR_proxmox_uplink_bridge=vmbr0 \
+    -e TF_VAR_proxmox_storage=local-lvm -e TF_VAR_proxmox_uplink_bridge="${PVE_UPLINK:-vmbr0}" \
     -e TF_VAR_range_number=$RANGE -e TF_VAR_lab_slug=range-test \
     -e TF_VAR_lab_repository=CyberCTF/invoice-portal-api -e TF_VAR_lab_commit=none \
     -e TF_VAR_ssh_public_key="$(cat "$KEY.pub")" \

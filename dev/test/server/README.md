@@ -15,6 +15,7 @@ generated on first use into `.state/secrets.env` and never printed.
 | `esxi/` | ESXi 8.0U3e (the free edition) on VMware Fusion, unattended install |
 | `test/local-vm.sh` | a lab on a local VM through `deploy/vagrant` |
 | `test/proxmox.sh` | the launcher's Proxmox path: `deploy/terraform/proxmox` in the Terraform container |
+| `test/proxmox-range.sh` | a multi-VM range: SDN network + router + 2 VMs via `deploy/terraform/proxmox-range` |
 | `test/esxi.sh` | the launcher's ESXi path: `deploy/vagrant` with `vmware_esxi` |
 
 Each test deploys the Supplier Portal API lab (`CyberCTF/invoice-portal-api`, set
@@ -124,3 +125,20 @@ cargo test --lib finder_path_finds_tools -- --ignored --test-threads=1
 "/Applications/VMware Fusion.app/Contents/Library/vmrun" stop esxi/.vm/cyberctf-esxi-test.vmwarevm/cyberctf-esxi-test.vmx hard
 rm -rf esxi/.vm .state
 ```
+
+
+## Multi-VM ranges (proxmox-range)
+
+`test/proxmox-range.sh` applies `deploy/terraform/proxmox-range` (SDN zone + a VNet/subnet
+per VLAN, a Debian router doing NAT/DHCP/DNS/firewall, and lab VMs as linked clones) with a
+minimal attacker(vlan99)+target(vlan10) range, then checks the router, NAT and reachability.
+It creates a Debian template (VMID 9000) on the host once. `destroy` or `KEEP=1` as usual.
+
+On the Fusion test host, pass `PVE_UPLINK=vmbr1` so the router's WAN uses the Proxmox host's
+internal NAT bridge (the host masquerades it out). Fusion's own NAT won't give nested guest
+MACs a lease without promiscuous mode (a macOS admin approval); `vmbr1` sidesteps that. On a
+real Proxmox with a real LAN, the default `vmbr0` uplink is correct.
+
+**SDN teardown quirk:** `pvesh delete` of a zone/vnet can fail via Proxmox's staged SDN
+config. Reliable recovery: remove the `ctf<N>` blocks from `/etc/pve/sdn/{zones,vnets,subnets}.cfg`
+then `pvesh set /cluster/sdn`.
