@@ -1,6 +1,6 @@
-//! The attack box. Exegol is an offensive toolbox that we run as its own container
-//! attached to a lab's Docker network, so the player's tools sit right next to the
-//! targets. One attack box per lab (named after the lab's compose project).
+//! The attack box: the learner's offensive container. It runs on its OWN network
+//! (the "attack network") and is then connected into the lab's network, so the
+//! attacker sits on a distinct segment yet can reach the targets. One per lab.
 
 use serde::Serialize;
 
@@ -43,7 +43,10 @@ async fn lab_network(id: &str) -> Option<String> {
 pub async fn status(id: &str, image: &str) -> ExegolStatus {
     let image_present = run("docker", &["image", "inspect", image], None).await.is_ok();
     let name = container(id);
-    let probe = run("docker", &["inspect", "-f", "{{.State.Running}}\t{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", &name], None).await;
+    let attack_net = format!("cyberctf-{id}-attack");
+    // Report the attacker's address on its OWN network (distinct from the lab subnet).
+    let tmpl = format!("{{{{.State.Running}}}}\t{{{{with index .NetworkSettings.Networks \"{attack_net}\"}}}}{{{{.IPAddress}}}}{{{{end}}}}");
+    let probe = run("docker", &["inspect", "-f", &tmpl, &name], None).await;
     let (running, ip) = match probe {
         Ok(out) => {
             let line = out.lines().next().unwrap_or_default();
@@ -61,27 +64,34 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
         log(format!("Pulling {image} — a large image, downloads only once…"));
         stream("docker", &["pull", image], None, &[], &mut log).await?;
     }
-    let net = lab_network(id)
+    let lab_net = lab_network(id)
         .await
         .ok_or_else(|| Error::Invalid("the lab network isn't up — start the lab first".into()))?;
+    let attack_net = format!("cyberctf-{id}-attack");
+    // Own network first, then join the lab network: a distinct attack segment that can
+    // still reach the targets (so the attacker is not on the same subnet as the lab).
+    let _ = run("docker", &["network", "create", &attack_net], None).await;
     // Clear any previous attack box so a re-launch is clean.
     let _ = run("docker", &["rm", "-f", &name], None).await;
-    log(format!("Starting the attack box on {net}…"));
+    log(format!("Starting the attack box on {attack_net}…"));
     stream(
         "docker",
-        &["run", "-d", "--name", &name, "--network", &net, "--hostname", "attacker", "--cap-add", "NET_ADMIN", image, "sleep", "infinity"],
+        &["run", "-d", "--name", &name, "--network", &attack_net, "--hostname", "attacker", "--cap-add", "NET_ADMIN", image, "sleep", "infinity"],
         None,
         &[],
         &mut log,
     )
     .await?;
+    log(format!("Connecting to the lab network {lab_net}…"));
+    run("docker", &["network", "connect", &lab_net, &name], None).await?;
     log("✓ Attack box ready — open a shell to start.".into());
     Ok(())
 }
 
 pub async fn stop(id: &str, mut log: impl FnMut(String)) -> Result<()> {
     log("Removing the attack box…".into());
-    stream("docker", &["rm", "-f", &container(id)], None, &[], &mut log).await?;
+    let _ = stream("docker", &["rm", "-f", &container(id)], None, &[], &mut log).await;
+    let _ = run("docker", &["network", "rm", &format!("cyberctf-{id}-attack")], None).await;
     Ok(())
 }
 
