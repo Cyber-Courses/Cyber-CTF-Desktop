@@ -197,7 +197,7 @@ export function LabDetail({
 
           {running && isDocker && (
             <Panel>
-              <PanelHeader title="Attack box" action={<span className="font-mono text-[11px] text-muted-foreground">{getAttackImage()}</span>} />
+              <PanelHeader title="Attack box" action={<span className="inline-block max-w-[150px] truncate align-bottom font-mono text-[11px] text-muted-foreground" title={getAttackImage()}>{getAttackImage()}</span>} />
               <div className="space-y-3 p-4">
                 <div className="flex items-center gap-2 text-[13px]">
                   <Crosshair className="size-4 text-learn" />
