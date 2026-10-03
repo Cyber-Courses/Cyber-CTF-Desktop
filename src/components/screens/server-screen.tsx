@@ -176,9 +176,9 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
       {cloud && (
         <Panel>
           <PanelHeader title="Command-line tools" action={<span className="text-[11.5px] text-muted-foreground">AWS is used today; Azure / GCP coming</span>} />
-          <CliRow name="AWS CLI" tool={report?.cloudClis.aws} busy={cliBusy === "awscli"} loginBusy={loginBusy === "aws"} onInstall={() => installCli("awscli")} onLogin={() => login("aws")} />
-          <CliRow name="Azure CLI" tool={report?.cloudClis.azure} busy={cliBusy === "azurecli"} loginBusy={loginBusy === "azure"} onInstall={() => installCli("azurecli")} onLogin={() => login("azure")} />
-          <CliRow name="Google Cloud CLI" tool={report?.cloudClis.gcloud} busy={cliBusy === "gcloud"} loginBusy={loginBusy === "gcp"} onInstall={() => installCli("gcloud")} onLogin={() => login("gcp")} />
+          <CliRow name="AWS CLI" provider="aws" tool={report?.cloudClis.aws} busy={cliBusy === "awscli"} loginBusy={loginBusy === "aws"} onInstall={() => installCli("awscli")} onLogin={() => login("aws")} />
+          <CliRow name="Azure CLI" provider="azure" tool={report?.cloudClis.azure} busy={cliBusy === "azurecli"} loginBusy={loginBusy === "azure"} onInstall={() => installCli("azurecli")} onLogin={() => login("azure")} />
+          <CliRow name="Google Cloud CLI" provider="gcp" tool={report?.cloudClis.gcloud} busy={cliBusy === "gcloud"} loginBusy={loginBusy === "gcp"} onInstall={() => installCli("gcloud")} onLogin={() => login("gcp")} />
         </Panel>
       )}
 
@@ -289,10 +289,23 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
   );
 }
 
-function CliRow({ name, tool, busy, loginBusy, onInstall, onLogin }: { name: string; tool?: Tool; busy: boolean; loginBusy: boolean; onInstall: () => void; onLogin: () => void }) {
+// Brand-colored marks (not the trademarked logos, which need each vendor's approval,
+// matching the HypervisorMark convention).
+const CLOUD_COLOR: Record<CloudProvider, string> = { aws: "#ff9900", azure: "#3b8eea", gcp: "#4285f4" };
+function CloudMark({ provider }: { provider: CloudProvider }) {
+  const c = CLOUD_COLOR[provider];
+  return (
+    <span className="grid size-6 shrink-0 place-items-center rounded-md" style={{ background: `${c}22`, color: c }}>
+      <Cloud className="size-3.5" />
+    </span>
+  );
+}
+
+function CliRow({ name, provider, tool, busy, loginBusy, onInstall, onLogin }: { name: string; provider: CloudProvider; tool?: Tool; busy: boolean; loginBusy: boolean; onInstall: () => void; onLogin: () => void }) {
   const installed = !!tool?.installed;
   return (
     <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
+      <CloudMark provider={provider} />
       <span className="text-foreground">{name}</span>
       <span className="ml-auto flex items-center gap-3">
         <span className={cn("flex items-center gap-1.5", installed ? "text-emerald-500" : "text-muted-foreground")}>
