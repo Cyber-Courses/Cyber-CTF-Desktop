@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity, Cloud, Cpu, Gauge, HardDrive, MemoryStick, RefreshCw, Server, type LucideIcon } from "lucide-react";
+import { Activity, Cloud, Cpu, Gauge, HardDrive, MemoryStick, RefreshCw, Server, Wrench, type LucideIcon } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Meter } from "@/components/ui/meter";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import {
   installDependency,
   installVagrantPlugin,
   machineMetrics,
+  machineOpenSetup,
   type Dependency,
   type MachineMetrics,
   type ProviderStatus,
@@ -134,10 +135,15 @@ export function MachineScreen({
 
   return (
     <div className="space-y-5">
-      <p className="text-[12.5px] text-muted-foreground">
-        {report.os} · {report.arch}
-        {m ? ` · up ${fmtUptime(m.uptimeSecs)}` : ""}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[12.5px] text-muted-foreground">
+          {report.os} · {report.arch}
+          {m ? ` · up ${fmtUptime(m.uptimeSecs)}` : ""}
+        </p>
+        <Button variant={dockerReady ? "outline" : "learn"} size="sm" onClick={() => machineOpenSetup().catch(() => {})}>
+          <Wrench className="size-3.5" /> {dockerReady ? "Setup guide" : "Set up this machine"}
+        </Button>
+      </div>
 
       {/* Live health */}
       <div className="grid gap-4 sm:grid-cols-3">

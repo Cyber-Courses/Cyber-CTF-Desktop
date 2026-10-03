@@ -68,6 +68,9 @@ export interface MachineMetrics {
 /** Live machine health (CPU/memory/disk/uptime + running containers). */
 export const machineMetrics = () => invoke<MachineMetrics>("machine_metrics");
 
+/** Opens the guided "set up this machine" window. */
+export const machineOpenSetup = () => invoke<void>("machine_open_setup");
+
 export function labStart(id: string, runtime: Runtime, provider: Provider | null, host: string | null, onLog: (line: string) => void) {
   const logs = new Channel<string>();
   logs.onmessage = onLog;

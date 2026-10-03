@@ -91,6 +91,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             system::system_check,
             system::machine_metrics,
+            system::machine_open_setup,
             auth::auth_login,
             auth::auth_status,
             auth::auth_logout,

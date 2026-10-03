@@ -1,5 +1,7 @@
 use serde::Serialize;
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
+use crate::error::{Error, Result};
 use crate::exec::run;
 use crate::runtime::providers::{self, ProviderStatus};
 
@@ -113,6 +115,31 @@ pub async fn machine_metrics() -> MachineMetrics {
         cores,
         containers,
     }
+}
+
+/// Opens the guided "set up this machine" flow in its own window (label `machine-setup`),
+/// mirroring the home-lab setup window. Focuses it if already open.
+#[tauri::command]
+pub async fn machine_open_setup(app: AppHandle) -> Result<()> {
+    const LABEL: &str = "machine-setup";
+    if let Some(existing) = app.get_webview_window(LABEL) {
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+    let mut builder = WebviewWindowBuilder::new(&app, LABEL, WebviewUrl::App("machine-setup".into()))
+        .title("Set up this machine")
+        .inner_size(720.0, 760.0)
+        .min_inner_size(560.0, 560.0)
+        .resizable(true);
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+    }
+    if let Some(main) = app.get_webview_window("main") {
+        builder = builder.parent(&main).map_err(|e| Error::Invalid(e.to_string()))?;
+    }
+    builder.build().map_err(|e| Error::Invalid(format!("could not open the setup window: {e}")))?;
+    Ok(())
 }
 
 #[cfg(test)]
