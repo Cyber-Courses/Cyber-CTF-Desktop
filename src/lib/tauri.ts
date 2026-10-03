@@ -180,6 +180,10 @@ export const homelabSave = (input: HomelabHostInput) => invoke<HomelabHost>("hom
 export const homelabRemove = (id: string) => invoke<void>("homelab_remove", { id });
 export const homelabSetDefault = (id: string | null) => invoke<void>("homelab_set_default", { id });
 export const homelabTest = (id: string) => invoke<HomelabTest>("homelab_test", { id });
+/** Opens (or focuses) the setup window, for a new host or to edit `id`. */
+export const homelabOpenSetup = (id: string | null) => invoke<void>("homelab_open_setup", { id });
+/** Emitted by the setup window after a save; the main window reloads its host list. */
+export const HOMELAB_CHANGED = "homelab:changed";
 
 export interface AgentInfo {
   installId: string;

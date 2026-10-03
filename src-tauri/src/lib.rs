@@ -111,6 +111,7 @@ pub fn run() {
             runtime::homelab::homelab_remove,
             runtime::homelab::homelab_set_default,
             runtime::homelab::homelab_test,
+            runtime::homelab::homelab_open_setup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running CyberCTF");

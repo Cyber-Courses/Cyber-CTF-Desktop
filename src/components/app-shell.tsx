@@ -187,7 +187,7 @@ function Screen({
     ) : (
       <p className="text-sm text-muted-foreground">Checking this machine…</p>
     );
-  if (tab === "homelab") return <HomeLabScreen report={report} onRefresh={onRefresh} onNavigate={onNavigate} />;
+  if (tab === "homelab") return <HomeLabScreen onNavigate={onNavigate} />;
   if (tab === "cloud") return <ComingSoon icon="cloud" title="Cloud" description="Spin up labs in the cloud, provisioned with Terraform and configured with Ansible, no local setup, then open them right here." />;
   if (tab === "events")
     return <ComingSoon icon="sparkles" title="Events" description="Join live CTF events where labs are hosted by CyberCTF: nothing to run on your machine, each participant gets their own lab for the event's duration." />;

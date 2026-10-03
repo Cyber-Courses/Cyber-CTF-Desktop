@@ -456,6 +456,35 @@ pub fn homelab_set_default(app: AppHandle, id: Option<String>) -> Result<()> {
     save(&app, &store)
 }
 
+/// Opens the host setup in its own window (label `homelab-setup`); the window closes
+/// itself when setup ends. An already open setup window is replaced.
+#[tauri::command]
+pub async fn homelab_open_setup(app: AppHandle, id: Option<String>) -> Result<()> {
+    const LABEL: &str = "homelab-setup";
+    let path = match id {
+        Some(id) if valid_id(&id) => format!("homelab-setup?id={id}"),
+        Some(_) => return Err(Error::Invalid("unknown home-lab host".into())),
+        None => "homelab-setup".into(),
+    };
+    if let Some(existing) = app.get_webview_window(LABEL) {
+        let _ = existing.destroy();
+    }
+    let mut builder = tauri::WebviewWindowBuilder::new(&app, LABEL, tauri::WebviewUrl::App(path.into()))
+        .title("Connect a host")
+        .inner_size(680.0, 760.0)
+        .min_inner_size(560.0, 560.0)
+        .resizable(true);
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+    }
+    if let Some(main) = app.get_webview_window("main") {
+        builder = builder.parent(&main).map_err(|e| Error::Invalid(e.to_string()))?;
+    }
+    builder.build().map_err(|e| Error::Invalid(format!("could not open the setup window: {e}")))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn homelab_test(app: AppHandle, id: String) -> Result<TestResult> {
     let host = find(&load(&app)?, &id)?;
