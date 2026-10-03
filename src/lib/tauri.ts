@@ -42,6 +42,7 @@ export interface SystemReport {
   dockerRunning: boolean;
   dockerCompose: Tool;
   vagrant: Tool;
+  cloudClis: { aws: Tool; azure: Tool; gcloud: Tool };
   vmProviders: ProviderStatus[];
 }
 
