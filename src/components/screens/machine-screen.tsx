@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Card } from "@/components/ui/card";
+import { useRef, useState, type ReactNode } from "react";
+import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { installDependency, installVagrantPlugin, type Dependency, type ProviderStatus, type SystemReport, type Tool } from "@/lib/tauri";
+import { cn } from "@/lib/utils";
 
 const PROVIDER_LABELS: Record<string, string> = {
   virtualbox: "VirtualBox",
@@ -17,15 +18,22 @@ const PROVIDER_LABELS: Record<string, string> = {
   proxmox: "Proxmox VE (remote)",
 };
 
-const tool = (t: Tool) => (t.installed ? t.version : "not installed");
+const tool = (t: Tool) => (t.installed ? (t.version ?? "installed") : "not installed");
 const label = (p: ProviderStatus) => PROVIDER_LABELS[p.provider] ?? p.provider;
 
-function Status({ ok, detail }: { ok: boolean; detail?: string | null }) {
+function StatRow({ name, mono, ok, detail, action }: { name: string; mono?: string | null; ok: boolean; detail: string; action?: ReactNode }) {
   return (
-    <span className={ok ? "inline-flex items-center gap-1.5 text-success" : "inline-flex items-center gap-1.5 text-muted-foreground"}>
-      <span aria-hidden>{ok ? "✓" : "—"}</span>
-      {detail}
-    </span>
+    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
+      <span className="text-foreground">{name}</span>
+      {mono && <span className="font-mono text-[11px] text-muted-foreground">{mono}</span>}
+      <span className="ml-auto flex items-center gap-3">
+        <span className={cn("flex items-center gap-1.5", ok ? "text-emerald-500" : "text-muted-foreground")}>
+          {ok && <span className="size-1.5 rounded-full bg-emerald-500" />}
+          {detail}
+        </span>
+        {action}
+      </span>
+    </div>
   );
 }
 
@@ -53,7 +61,7 @@ export function MachineScreen({ report, onRefresh }: { report: SystemReport; onR
   const installDep = (dep: Dependency, msg: string) => runInstall(dep, msg, (log) => installDependency(dep, log));
   const installPlugin = (plugin: string) => runInstall(plugin, `Installing ${plugin}…`, (log) => installVagrantPlugin(plugin, log));
 
-  function Install({ children, onClick, id }: { children: React.ReactNode; onClick: () => void; id: string }) {
+  function Install({ id, onClick, children }: { id: string; onClick: () => void; children: ReactNode }) {
     return (
       <Button variant="learn" size="sm" onClick={onClick} disabled={busy !== null}>
         {busy === id ? "Installing…" : children}
@@ -61,100 +69,62 @@ export function MachineScreen({ report, onRefresh }: { report: SystemReport; onR
     );
   }
 
-  // Local hypervisors (the VM software) vs the Vagrant layer (tool + per-provider plugins).
   const hypervisors = report.vmProviders.filter((p) => !p.remote);
-  // Only surface a Vagrant plugin for a local hypervisor you actually have (or already
-  // have the plugin for) - no point offering e.g. the VMware plugin with no VMware.
   const localPlugins = report.vmProviders.filter((p) => p.plugin && !p.remote && (p.hypervisor === true || p.pluginInstalled));
 
-  const pluginRow = (p: ProviderStatus) => (
-    <li key={p.provider} className="flex items-center justify-between gap-4 border-b border-border py-2 text-sm last:border-0">
-      <span className="min-w-0">
-        <span className="text-foreground">{label(p)}</span>
-        <span className="ml-2 font-mono text-xs text-muted-foreground">{p.plugin}</span>
-      </span>
-      <span className="flex items-center gap-3">
-        <Status ok={p.pluginInstalled} detail={p.pluginInstalled ? "installed" : "not installed"} />
-        {report.vagrant.installed && !p.pluginInstalled && p.plugin && (
-          <Install id={p.plugin} onClick={() => installPlugin(p.plugin!)}>Install</Install>
-        )}
-      </span>
-    </li>
-  );
-
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Machine</h1>
-        <p className="mt-1 text-sm text-muted-foreground">What this machine can run labs with. {report.os} · {report.arch}</p>
-      </div>
+    <div className="space-y-5">
+      <p className="text-[12.5px] text-muted-foreground">
+        What this machine can run labs with · {report.os} · {report.arch}
+      </p>
 
-      {/* Docker */}
-      <Card className="p-5">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-sm font-medium">Containers</p>
-          {(!report.docker.installed || !report.dockerRunning) && <Install id="docker" onClick={() => installDep("docker", "Installing the container engine…")}>Install</Install>}
-        </div>
-        <ul className="space-y-0.5">
-          {[
-            ["Docker", report.docker.installed, tool(report.docker)] as const,
-            ["Docker engine running", report.dockerRunning, report.dockerRunning ? "running" : "stopped"] as const,
-            ["Docker Compose", report.dockerCompose.installed, tool(report.dockerCompose)] as const,
-          ].map(([l, ok, detail]) => (
-            <li key={l} className="flex items-baseline justify-between gap-4 border-b border-border py-2 text-sm last:border-0">
-              <span className="text-foreground">{l}</span>
-              <Status ok={ok} detail={detail} />
-            </li>
-          ))}
-        </ul>
-      </Card>
+      <Panel>
+        <PanelHeader
+          title="Containers"
+          action={(!report.docker.installed || !report.dockerRunning) && <Install id="docker" onClick={() => installDep("docker", "Installing the container engine…")}>Install Docker</Install>}
+        />
+        <StatRow name="Docker" ok={report.docker.installed} detail={tool(report.docker)} />
+        <StatRow name="Engine running" ok={report.dockerRunning} detail={report.dockerRunning ? "running" : "stopped"} />
+        <StatRow name="Docker Compose" ok={report.dockerCompose.installed} detail={tool(report.dockerCompose)} />
+      </Panel>
 
-      {/* Hypervisors (VM labs) */}
-      <Card className="p-5">
-        <p className="mb-1 text-sm font-medium">Hypervisors</p>
-        <p className="mb-3 text-xs text-muted-foreground">The VM software labs run on. One is enough.</p>
-        <ul className="space-y-0.5">
-          {hypervisors.map((p) => (
-            <li key={p.provider} className="flex items-center justify-between gap-4 border-b border-border py-2 text-sm last:border-0">
-              <span className="text-foreground">{label(p)}</span>
-              <span className="flex items-center gap-3">
-                <Status ok={p.hypervisor === true} detail={p.hypervisor === true ? "installed" : p.hypervisor === false ? "not installed" : "built in"} />
-                {p.hypervisor === false && p.provider === "virtualbox" && <Install id="virtualbox" onClick={() => installDep("virtualbox", "Installing VirtualBox…")}>Install</Install>}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Card>
+      <Panel>
+        <PanelHeader title="Hypervisors" action={<span className="text-[11.5px] text-muted-foreground">One is enough</span>} />
+        {hypervisors.map((p) => (
+          <StatRow
+            key={p.provider}
+            name={label(p)}
+            ok={p.hypervisor === true}
+            detail={p.hypervisor === true ? "installed" : p.hypervisor === false ? "not installed" : "built in"}
+            action={p.hypervisor === false && p.provider === "virtualbox" ? <Install id="virtualbox" onClick={() => installDep("virtualbox", "Installing VirtualBox…")}>Install</Install> : undefined}
+          />
+        ))}
+      </Panel>
 
-      {/* Vagrant + plugins */}
-      <Card className="p-5">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium">Vagrant</p>
-            <p className="text-xs text-muted-foreground">Drives the hypervisors. Each one needs its plugin.</p>
-          </div>
-          {!report.vagrant.installed && <Install id="vagrant" onClick={() => installDep("vagrant", "Installing Vagrant…")}>Install Vagrant</Install>}
-        </div>
-        <ul className="space-y-0.5">
-          <li className="flex items-baseline justify-between gap-4 border-b border-border py-2 text-sm last:border-0">
-            <span className="text-foreground">Vagrant</span>
-            <Status ok={report.vagrant.installed} detail={tool(report.vagrant)} />
-          </li>
-          {localPlugins.map(pluginRow)}
-        </ul>
-        {localPlugins.length === 0 && (
-          <p className="pt-2 text-xs text-muted-foreground">Your installed hypervisors don’t need an extra Vagrant plugin.</p>
-        )}
-      </Card>
+      <Panel>
+        <PanelHeader title="Vagrant" action={!report.vagrant.installed ? <Install id="vagrant" onClick={() => installDep("vagrant", "Installing Vagrant…")}>Install Vagrant</Install> : undefined} />
+        <StatRow name="Vagrant" ok={report.vagrant.installed} detail={tool(report.vagrant)} />
+        {localPlugins.map((p) => (
+          <StatRow
+            key={p.provider}
+            name={label(p)}
+            mono={p.plugin}
+            ok={p.pluginInstalled}
+            detail={p.pluginInstalled ? "installed" : "not installed"}
+            action={report.vagrant.installed && !p.pluginInstalled && p.plugin ? <Install id={p.plugin} onClick={() => installPlugin(p.plugin!)}>Install</Install> : undefined}
+          />
+        ))}
+        {localPlugins.length === 0 && <p className="px-3.5 py-3 text-[12px] text-muted-foreground">Your installed hypervisors don’t need an extra Vagrant plugin.</p>}
+      </Panel>
 
       {(busy || log.length > 0) && (
-        <Card className="p-0">
-          <div className="border-b border-border px-5 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Installer</div>
-          <pre className="max-h-56 overflow-auto px-5 py-3 font-mono text-xs leading-relaxed text-muted-foreground">
+        <Panel>
+          <PanelHeader title="Installer" />
+          <pre className="max-h-56 overflow-auto px-3.5 py-3 font-mono text-[11.5px] leading-relaxed text-muted-foreground">
             {log.join("\n")}
             <div ref={logEnd} />
           </pre>
-        </Card>
+        </Panel>
       )}
     </div>
   );
