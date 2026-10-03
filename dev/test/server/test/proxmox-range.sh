@@ -9,17 +9,20 @@ SERVER_TEST=$(cd "$(dirname "$0")/.." && pwd); . "$SERVER_TEST/lib.sh"
 secret PVE_ROOT_PASSWORD
 HOST=$(cat "$STATE/pve-fusion-ip")
 TEMPLATE_ID=9000
-RANGE=42
+RANGE=${RANGE:-42}
 export PVE_ROOT_PASSWORD
 ASKPASS="$STATE/askpass-pve"; printf '#!/bin/sh\necho "$PVE_ROOT_PASSWORD"\n' > "$ASKPASS"; chmod 700 "$ASKPASS"
 node() { SSH_ASKPASS="$ASKPASS" SSH_ASKPASS_REQUIRE=force DISPLAY=x ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$STATE/known_hosts" -o PreferredAuthentications=password,keyboard-interactive -o LogLevel=ERROR "root@$HOST" "$@"; }
 
 RUN="$STATE/runs/proxmox-range"; mkdir -p "$RUN"
-MOD="$SERVER_TEST/../../deploy/terraform/proxmox-range"   # lab-template module
+# The proxmox-range module lives in the lab-template repo (sibling checkout by default).
+MOD="${LAB_TEMPLATE:-$(cd "$SERVER_TEST/../../../.." && pwd)/lab-template}/deploy/terraform/proxmox-range"
+[ -d "$MOD" ] || { echo "module not found at $MOD; set LAB_TEMPLATE=<lab-template checkout>"; exit 1; }
 KEY=$(test_key)
 
+rm -rf "$RUN/module"; cp -R "$MOD" "$RUN/module"; rm -rf "$RUN/module/.terraform"*
 tf() {
-  docker run --rm --entrypoint sh -v "$MOD:/deploy:ro" -v "$RUN:/state" -w /deploy \
+  docker run --rm --entrypoint sh -v "$RUN/module:/deploy" -v "$RUN:/state" -w /deploy \
     -e TF_DATA_DIR=/state/.terraform \
     -e TF_VAR_proxmox_endpoint="https://$HOST:8006/" -e TF_VAR_proxmox_username=root@pam -e TF_VAR_proxmox_password="$PVE_ROOT_PASSWORD" \
     -e TF_VAR_proxmox_insecure=true -e TF_VAR_proxmox_ssh_address="$HOST" \
