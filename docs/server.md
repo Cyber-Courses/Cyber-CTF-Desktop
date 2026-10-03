@@ -1,21 +1,21 @@
-# Home lab: VM labs on your own ESXi / Proxmox
+# Server: labs on your own ESXi / Proxmox (and cloud)
 
 The launcher can run a lab on the player's own hypervisor instead of this machine.
-Hosts are added in the **Home lab** setup window; a lab's **Run on** choice picks the
+Hosts are added in the **Server** setup window; a lab's **Run on** choice picks the
 host. VM labs launched from the website use the **default** host; Docker labs run here
 unless a host is picked.
 
 ## Where things live
 
-- Host profiles (non-secret): `<app data>/homelab.json`.
-- Passwords: OS keychain, service `org.cyberctf.desktop`, account `homelab:<host id>`.
-  Debug builds use `~/.cyberctf/dev-homelab-secrets.json` (0600) instead, as with the auth session.
+- Host profiles (non-secret): `<app data>/server.json`.
+- Passwords: OS keychain, service `org.cyberctf.desktop`, account `server:<host id>`.
+  Debug builds use `~/.cyberctf/dev-server-secrets.json` (0600) instead, as with the auth session.
 - A lab started on a host gets `<lab dir>/.cyberctf-host` (the host id), so stop and
   status reach the same host. It survives a reinstall of the lab at a new commit.
 - Terraform state: `<app data>/deployments/<lab id>/<target>/` (outside the lab folder).
 
-Backend: `src-tauri/src/runtime/homelab.rs`. Commands: `homelab_list`, `homelab_save`,
-`homelab_remove`, `homelab_set_default`, `homelab_test`, `homelab_open_setup`.
+Backend: `src-tauri/src/runtime/server.rs`. Commands: `server_list`, `server_save`,
+`server_remove`, `server_set_default`, `server_test`, `server_open_setup`.
 
 ## How a lab reaches a host
 
@@ -89,7 +89,7 @@ resolves `web` and `database` on the lab network.
 
 ## Test
 
-`homelab_test` checks the host without running anything on it:
+`server_test` checks the host without running anything on it:
 
 - **ESXi**: TCP connect + SSH banner on the SSH port. The password is checked on first start.
 - **Proxmox**: `POST /api2/json/access/ticket`, which verifies the credentials (accepting a
@@ -108,7 +108,7 @@ resolves `web` and `database` on the lab network.
   evidence claimed and placed, the attack box reads the invoice.
 - `vagrant-vmware-esxi` 2.5.5 installs on Vagrant 2.4.9. `vagrant-proxmox` 0.0.10 (2016) does
   not (activesupport 4.0 vs Vagrant's i18n 1.14.7), hence Terraform for Proxmox.
-- Terraform on a test Proxmox VE 8 (`dev/homelab-test/proxmox`), end to end: image download,
+- Terraform on a test Proxmox VE 8 (`dev/server-test/proxmox`), end to end: image download,
   snippet upload over SSH, VM, cloud-init, Ansible, compose healthy, the attack box reads the
   invoice; `destroy` removes VM, snippet and image. The test host has no nested KVM (VirtualBox
   on this Intel Mac), so the lab VM ran with `kvm: 0` and `cpu_type = x86-64-v2-AES` (plain

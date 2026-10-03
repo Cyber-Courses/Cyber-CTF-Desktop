@@ -2,14 +2,16 @@
 # A throwaway ESXi 8 host in VMware Fusion (nested virtualization on) for testing the
 # launcher's ESXi path. Unattended: the ESXi ISO is repacked with a kickstart file.
 #
-#   ESXI_ROOT_PASSWORD=... ./build.sh /path/to/VMware-VMvisor-Installer-8.0U3*.x86_64.iso
+#   ./build.sh /path/to/VMware-VMvisor-Installer-8.0U3e-24677879.x86_64.iso
 #
 # Needs VMware Fusion (vmrun, vmware-vdiskmanager) and Docker (to repack the ISO).
 # Then add a host in the launcher with the printed IP, user root, SSH port 22.
 set -eu
 
 ISO=${1:?usage: build.sh <esxi-installer.iso>}
-: "${ESXI_ROOT_PASSWORD:?set ESXI_ROOT_PASSWORD (ESXi needs 7+ chars, mixed classes)}"
+SERVER_TEST=$(cd "$(dirname "$0")/.." && pwd); . "$SERVER_TEST/lib.sh"
+# Generated once per machine into .state/secrets.env (or set it yourself).
+[ -n "${ESXI_ROOT_PASSWORD:-}" ] || secret ESXI_ROOT_PASSWORD
 FUSION="/Applications/VMware Fusion.app/Contents/Library"
 VMRUN="$FUSION/vmrun"
 NAME=cyberctf-esxi-test
@@ -19,6 +21,8 @@ VM="$OUT/$NAME.vmwarevm"
 mkdir -p "$OUT" "$VM"
 
 # 1. Kickstart: install to the first disk, DHCP, SSH on (vagrant-vmware-esxi needs it).
+#    systemMediaSize=min (boot option below) caps ESXi's OSData partition, otherwise it
+#    takes up to 128 GB and leaves no room for datastore1 on the 80 GB disk.
 cat > "$OUT/KS.CFG" <<KS
 vmaccepteula
 install --firstdisk --overwritevmfs
@@ -34,13 +38,13 @@ esxcli system settings advanced set -o /UserVars/SuppressShellWarning -i 1
 KS
 
 # 2. Repack the ISO with the kickstart, booting it automatically (BIOS + UEFI).
-docker run --rm -v "$(cd "$(dirname "$ISO")" && pwd)/$(basename "$ISO"):/in.iso:ro" -v "$OUT:/out" debian:12 sh -euc '
+[ -f "$OUT/esxi-ks.iso" ] || docker run --rm -v "$(cd "$(dirname "$ISO")" && pwd)/$(basename "$ISO"):/in.iso:ro" -v "$OUT:/out" debian:12 sh -euc '
   apt-get -qq update >/dev/null && apt-get -qq install -y xorriso >/dev/null
   mkdir /iso && xorriso -osirrox on -indev /in.iso -extract / /iso >/dev/null 2>&1
   chmod -R u+w /iso
   cp /out/KS.CFG /iso/KS.CFG
   for cfg in /iso/BOOT.CFG /iso/EFI/BOOT/BOOT.CFG; do
-    sed -i "s#^kernelopt=.*#kernelopt=runweasel ks=cdrom:/KS.CFG#" "$cfg"
+    sed -i "s#^kernelopt=.*#kernelopt=runweasel ks=cdrom:/KS.CFG systemMediaSize=min#" "$cfg"
   done
   xorriso -as mkisofs -relaxed-filenames -J -R -o /out/esxi-ks.iso \
     -b ISOLINUX.BIN -c BOOT.CAT -no-emul-boot -boot-load-size 4 -boot-info-table \
@@ -59,6 +63,20 @@ firmware = "efi"
 numvcpus = "4"
 memsize = "12288"
 vhv.enable = "TRUE"
+floppy0.present = "FALSE"
+pciBridge0.present = "TRUE"
+pciBridge4.present = "TRUE"
+pciBridge4.virtualDev = "pcieRootPort"
+pciBridge4.functions = "8"
+pciBridge5.present = "TRUE"
+pciBridge5.virtualDev = "pcieRootPort"
+pciBridge5.functions = "8"
+pciBridge6.present = "TRUE"
+pciBridge6.virtualDev = "pcieRootPort"
+pciBridge6.functions = "8"
+pciBridge7.present = "TRUE"
+pciBridge7.virtualDev = "pcieRootPort"
+pciBridge7.functions = "8"
 scsi0.present = "TRUE"
 scsi0.virtualDev = "pvscsi"
 scsi0:0.present = "TRUE"
@@ -73,9 +91,16 @@ ethernet0.connectionType = "nat"
 ethernet0.addressType = "generated"
 VMX
 
-"$VMRUN" -T fusion start "$VM/$NAME.vmx" nogui
+"$VMRUN" -T fusion start "$VM/$NAME.vmx" nogui || { echo "VM failed to start, see $VM/vmware.log"; exit 1; }
 echo "Installing ESXi (unattended, ~10 min)..."
-until IP=$("$VMRUN" -T fusion getGuestIPAddress "$VM/$NAME.vmx" 2>/dev/null) && nc -z -G 3 "$IP" 22 2>/dev/null; do sleep 20; done
+guest_ip() { "$VMRUN" -T fusion getGuestIPAddress "$VM/$NAME.vmx" 2>/dev/null || true; }
+while :; do
+  IP=$(guest_ip)
+  case "$IP" in [0-9]*) nc -z -G 3 "$IP" 22 2>/dev/null && break ;; esac
+  sleep 20
+done
 # The installer's own IP answers before the reboot into the installed system; wait for HTTPS too.
 until curl -sk -o /dev/null --max-time 5 "https://$IP/"; do sleep 15; done
-echo "ESXi is up: https://$IP  (root / \$ESXI_ROOT_PASSWORD), SSH on 22"
+echo "ESXi is up: https://$IP  user root, SSH on 22"
+echo "Password: ESXI_ROOT_PASSWORD in $STATE/secrets.env"
+echo "$IP" > "$STATE/esxi-ip"

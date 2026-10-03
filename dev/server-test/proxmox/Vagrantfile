@@ -1,4 +1,4 @@
-# A throwaway Proxmox VE 8 host for testing the launcher's home-lab flow.
+# A throwaway Proxmox VE 8 host for testing the launcher's Server flow.
 # Proxmox installed on Debian 12 (the official "Install Proxmox VE on Debian 12" path),
 # nested virtualization on, reachable from this machine at https://192.168.56.10:8006.
 #
@@ -56,7 +56,7 @@ Vagrant.configure("2") do |config|
   SH
 
   # Lab VMs: vmbr0 = an internal bridge (10.10.10.0/24) NATed out through eth0, with DHCP,
-  # like a home-lab LAN. Storage for disks is the "local" directory storage.
+  # like a server LAN. Storage for disks is the "local" directory storage.
   config.vm.provision "net", type: "shell", run: "never", inline: <<~SH
     set -eux
     export DEBIAN_FRONTEND=noninteractive
