@@ -7,12 +7,18 @@ use serde::Serialize;
 use crate::error::{Error, Result};
 use crate::exec::{run, stream};
 
-/// The attack-box image. Exegol publishes several; `free` is the smallest full one.
-/// Kept here so it's a one-line change (later: make it a setting).
-const IMAGE: &str = "nwodtuhs/exegol:free";
-
 fn container(id: &str) -> String {
     format!("cyberctf-{id}-exegol")
+}
+
+/// Guards an image reference so it can't be read as a flag or smuggle extra args.
+/// (It's passed to docker without a shell, so this only blocks a leading `-` and
+/// anything outside a normal `registry/name:tag@digest`.)
+pub fn valid_image(image: &str) -> bool {
+    !image.is_empty()
+        && image.len() <= 200
+        && !image.starts_with('-')
+        && image.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':' | '@'))
 }
 
 #[derive(Serialize)]
@@ -34,8 +40,8 @@ async fn lab_network(id: &str) -> Option<String> {
     out.lines().map(str::trim).find(|l| !l.is_empty()).map(str::to_string)
 }
 
-pub async fn status(id: &str) -> ExegolStatus {
-    let image_present = run("docker", &["image", "inspect", IMAGE], None).await.is_ok();
+pub async fn status(id: &str, image: &str) -> ExegolStatus {
+    let image_present = run("docker", &["image", "inspect", image], None).await.is_ok();
     let name = container(id);
     let probe = run("docker", &["inspect", "-f", "{{.State.Running}}\t{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", &name], None).await;
     let (running, ip) = match probe {
@@ -49,11 +55,11 @@ pub async fn status(id: &str) -> ExegolStatus {
     ExegolStatus { image_present, running, ip, shell_cmd: format!("docker exec -it {name} zsh") }
 }
 
-pub async fn start(id: &str, mut log: impl FnMut(String)) -> Result<()> {
+pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result<()> {
     let name = container(id);
-    if run("docker", &["image", "inspect", IMAGE], None).await.is_err() {
-        log(format!("Pulling {IMAGE} — a large image, downloads only once…"));
-        stream("docker", &["pull", IMAGE], None, &[], &mut log).await?;
+    if run("docker", &["image", "inspect", image], None).await.is_err() {
+        log(format!("Pulling {image} — a large image, downloads only once…"));
+        stream("docker", &["pull", image], None, &[], &mut log).await?;
     }
     let net = lab_network(id)
         .await
@@ -63,7 +69,7 @@ pub async fn start(id: &str, mut log: impl FnMut(String)) -> Result<()> {
     log(format!("Starting the attack box on {net}…"));
     stream(
         "docker",
-        &["run", "-d", "--name", &name, "--network", &net, "--hostname", "exegol", "--cap-add", "NET_ADMIN", IMAGE, "sleep", "infinity"],
+        &["run", "-d", "--name", &name, "--network", &net, "--hostname", "exegol", "--cap-add", "NET_ADMIN", image, "sleep", "infinity"],
         None,
         &[],
         &mut log,

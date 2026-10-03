@@ -12,6 +12,7 @@ import { NetworkDiagram } from "@/components/labs/network-diagram";
 import { AttackTerminal } from "@/components/labs/attack-terminal";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/lib/use-labs";
 import { apiQuery, exegolShell, exegolStart, exegolStatus, exegolStop, type ExegolStatus, type LabStatus } from "@/lib/tauri";
+import { getExegolImage } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 export function LabDetail({
@@ -61,7 +62,7 @@ export function LabDetail({
   // The attack box lives on the lab's Docker network, so it's only relevant while a
   // container lab is up. Poll its status so Launch/running/IP stay current.
   const refreshExegol = useCallback(() => {
-    exegolStatus(lab.id).then(setExegol).catch(() => setExegol(null));
+    exegolStatus(lab.id, getExegolImage()).then(setExegol).catch(() => setExegol(null));
   }, [lab.id]);
   useEffect(() => {
     if (!running || !isDocker) {
@@ -208,7 +209,7 @@ export function LabDetail({
                 </div>
                 <p className="text-[11.5px] text-muted-foreground">Attack the targets from Exegol, a toolbox container on this lab’s network.</p>
                 {exegol && !exegol.imagePresent && !exegol.running && (
-                  <p className="text-[11.5px] text-amber-500">First launch downloads the Exegol image (several GB).</p>
+                  <p className="text-[11.5px] text-amber-500">First launch downloads <span className="font-mono">{getExegolImage()}</span> (several GB).</p>
                 )}
                 <div className="space-y-2">
                   {exegol?.running ? (
@@ -224,7 +225,7 @@ export function LabDetail({
                       </Button>
                     </>
                   ) : (
-                    <Button variant="learn" className="w-full" onClick={() => runExegol((l) => exegolStart(lab.id, l), "Starting the attack box…")} disabled={exegolBusy}>
+                    <Button variant="learn" className="w-full" onClick={() => runExegol((l) => exegolStart(lab.id, getExegolImage(), l), "Starting the attack box…")} disabled={exegolBusy}>
                       {exegolBusy ? <Spinner className="size-4" /> : <Play className="size-4" />} Launch attack box
                     </Button>
                   )}

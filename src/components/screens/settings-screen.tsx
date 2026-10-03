@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { agentInfo, type AgentInfo, type AuthStatus } from "@/lib/tauri";
+import { DEFAULT_EXEGOL_IMAGE, EXEGOL_PRESETS, getExegolImage, setExegolImage } from "@/lib/settings";
+import { cn } from "@/lib/utils";
 
 const ONBOARDED_KEY = "cyberctf.onboarded";
 
@@ -23,11 +25,18 @@ export function SettingsScreen({ auth }: { auth: AuthStatus | null }) {
   const [agent, setAgent] = useState<AgentInfo | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [upd, setUpd] = useState<"idle" | "checking" | "none" | { version: string }>("idle");
+  const [exegolImage, setExegolImageState] = useState(DEFAULT_EXEGOL_IMAGE);
 
   useEffect(() => {
     agentInfo().then(setAgent).catch(() => setAgent(null));
     getVersion().then(setVersion).catch(() => setVersion(null));
+    setExegolImageState(getExegolImage());
   }, []);
+
+  function saveExegolImage(image: string) {
+    setExegolImage(image);
+    setExegolImageState(image);
+  }
 
   async function checkUpdates() {
     setUpd("checking");
@@ -74,6 +83,39 @@ export function SettingsScreen({ auth }: { auth: AuthStatus | null }) {
         ) : (
           <p className="text-sm text-muted-foreground">Sign in to register this machine.</p>
         )}
+      </Card>
+
+      <Card className="p-5">
+        <p className="mb-1 text-sm font-medium">Attack box</p>
+        <p className="mb-3 text-xs text-muted-foreground">The Exegol image run as your attack box on each lab’s network. First launch of an image downloads it (can be several GB).</p>
+        <div className="flex flex-wrap gap-1.5">
+          {EXEGOL_PRESETS.map((p) => (
+            <button
+              key={p.image}
+              onClick={() => saveExegolImage(p.image)}
+              title={`${p.image} — ${p.note}`}
+              className={cn(
+                "rounded-md border px-2.5 py-1 text-xs transition-colors",
+                exegolImage === p.image ? "border-learn bg-learn/10 text-learn" : "border-border bg-card text-muted-foreground hover:border-ring/60 hover:text-foreground",
+              )}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            value={exegolImage}
+            onChange={(e) => setExegolImageState(e.target.value)}
+            onBlur={(e) => saveExegolImage(e.target.value)}
+            spellCheck={false}
+            className="min-w-0 flex-1 rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-foreground outline-none focus:border-ring"
+            placeholder={DEFAULT_EXEGOL_IMAGE}
+          />
+          {exegolImage !== DEFAULT_EXEGOL_IMAGE && (
+            <Button variant="outline" size="sm" onClick={() => saveExegolImage(DEFAULT_EXEGOL_IMAGE)}>Reset</Button>
+          )}
+        </div>
       </Card>
 
       <Card className="p-5">

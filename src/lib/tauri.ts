@@ -87,13 +87,13 @@ export interface ExegolStatus {
   shellCmd: string;
 }
 
-/** Status of a lab's attack box (Exegol). */
-export const exegolStatus = (id: string) => invoke<ExegolStatus>("exegol_status", { id });
+/** Status of a lab's attack box (Exegol) for the configured image. */
+export const exegolStatus = (id: string, image: string) => invoke<ExegolStatus>("exegol_status", { id, image });
 
-export function exegolStart(id: string, onLog: (line: string) => void) {
+export function exegolStart(id: string, image: string, onLog: (line: string) => void) {
   const logs = new Channel<string>();
   logs.onmessage = onLog;
-  return invoke<void>("exegol_start", { id, logs });
+  return invoke<void>("exegol_start", { id, image, logs });
 }
 
 export function exegolStop(id: string, onLog: (line: string) => void) {

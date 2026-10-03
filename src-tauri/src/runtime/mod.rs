@@ -148,19 +148,25 @@ pub async fn lab_status(app: AppHandle, id: String, runtime: Runtime) -> Result<
 
 /// Status of a lab's attack box (Exegol), for the lab detail view.
 #[tauri::command]
-pub async fn exegol_status(id: String) -> Result<exegol::ExegolStatus> {
+pub async fn exegol_status(id: String, image: String) -> Result<exegol::ExegolStatus> {
     validate_id(&id)?;
-    Ok(exegol::status(&id).await)
+    if !exegol::valid_image(&image) {
+        return Err(Error::Invalid(format!("invalid attack-box image `{image}`")));
+    }
+    Ok(exegol::status(&id, &image).await)
 }
 
 /// Launches the attack box on the lab's network (pulls the image first if needed).
 #[tauri::command]
-pub async fn exegol_start(id: String, logs: Channel<String>) -> Result<()> {
+pub async fn exegol_start(id: String, image: String, logs: Channel<String>) -> Result<()> {
     validate_id(&id)?;
+    if !exegol::valid_image(&image) {
+        return Err(Error::Invalid(format!("invalid attack-box image `{image}`")));
+    }
     let log = move |line: String| {
         let _ = logs.send(line);
     };
-    exegol::start(&id, log).await
+    exegol::start(&id, &image, log).await
 }
 
 #[tauri::command]
