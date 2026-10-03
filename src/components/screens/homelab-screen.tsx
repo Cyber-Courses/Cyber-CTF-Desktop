@@ -23,7 +23,7 @@ type Tab = "setup";
 
 const COPY = {
   homelab: {
-    title: "Home lab",
+    title: "Server",
     intro: "Run heavy, multi-VM labs on your own ESXi or Proxmox server instead of this machine. Credentials stay in your OS keychain.",
     add: "Add host",
     list: "Hosts",

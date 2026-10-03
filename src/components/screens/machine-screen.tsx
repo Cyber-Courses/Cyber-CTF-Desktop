@@ -172,7 +172,7 @@ export function MachineScreen({
               {c.level !== "ok" && (
                 <div className="mt-3 flex flex-wrap gap-2 pl-7">
                   <Button variant="outline" size="sm" onClick={() => onNavigate("cloud")}><Cloud className="size-3.5" /> Run in the cloud</Button>
-                  <Button variant="outline" size="sm" onClick={() => onNavigate("homelab")}><Server className="size-3.5" /> Use a home lab</Button>
+                  <Button variant="outline" size="sm" onClick={() => onNavigate("homelab")}><Server className="size-3.5" /> Use a server</Button>
                 </div>
               )}
             </div>

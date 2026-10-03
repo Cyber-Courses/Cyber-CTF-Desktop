@@ -117,7 +117,7 @@ export function HomeScreen({
           </div>
           <div className="flex shrink-0 gap-2">
             <button onClick={() => onNavigate("cloud")} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-ring/60"><Cloud className="size-3.5" /> Cloud</button>
-            <button onClick={() => onNavigate("homelab")} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-ring/60"><Server className="size-3.5" /> Home lab</button>
+            <button onClick={() => onNavigate("homelab")} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-ring/60"><Server className="size-3.5" /> Server</button>
           </div>
         </div>
       )}
