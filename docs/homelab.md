@@ -75,6 +75,8 @@ at that commit, so lab repositories must be public.
   evidence claimed and placed, the attack box reads the invoice.
 - `vagrant-vmware-esxi` 2.5.5 installs on Vagrant 2.4.9. `vagrant-proxmox` 0.0.10 (2016) does
   not (activesupport 4.0 vs Vagrant's i18n 1.14.7), hence Terraform for Proxmox.
-- Terraform on a test Proxmox VE 8 (`dev/homelab-test/proxmox`): image download, snippet
-  upload over SSH, VM creation; the test host has no nested KVM (VirtualBox on this Intel
-  Mac), so the VM was started with `kvm: 0` to check cloud-init.
+- Terraform on a test Proxmox VE 8 (`dev/homelab-test/proxmox`), end to end: image download,
+  snippet upload over SSH, VM, cloud-init, Ansible, compose healthy, the attack box reads the
+  invoice; `destroy` removes VM, snippet and image. The test host has no nested KVM (VirtualBox
+  on this Intel Mac), so the lab VM ran with `kvm: 0` and `cpu_type = x86-64-v2-AES` (plain
+  `qemu64` lacks x86-64-v2, which `mysql:8.0` needs), slowly.
