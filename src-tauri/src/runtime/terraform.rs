@@ -140,4 +140,59 @@ mod tests {
         assert_eq!(s.machines[0].ip, "10.10.10.150");
         std::fs::remove_dir_all(dir).unwrap();
     }
+
+    /// The launcher's Proxmox path against a real host (opt-in, slow):
+    ///   CYBERCTF_TEST_DEPLOY=<lab>/deploy CYBERCTF_TEST_PVE_HOST=... CYBERCTF_TEST_PVE_PASSWORD=... \
+    ///   CYBERCTF_TEST_LAB_COMMIT=<sha> cargo test proxmox_apply_status_destroy -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore]
+    async fn proxmox_apply_status_destroy() {
+        let var = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("{k} is required"));
+        let host = var("CYBERCTF_TEST_PVE_HOST");
+        let state = std::env::temp_dir().join(format!("cyberctf-tf-it-{}", rand::random::<u32>()));
+        // A copy of deploy/, so a host without KVM can create the VM without starting it
+        // (CYBERCTF_TEST_PVE_NO_START) through a Terraform override file.
+        let deploy = std::env::temp_dir().join(format!("cyberctf-deploy-it-{}", rand::random::<u32>()));
+        let copied = std::process::Command::new("cp").arg("-R").arg(var("CYBERCTF_TEST_DEPLOY")).arg(&deploy).status().unwrap();
+        assert!(copied.success());
+        let _ = std::fs::remove_dir_all(deploy.join("terraform/proxmox/.terraform"));
+        if std::env::var("CYBERCTF_TEST_PVE_NO_START").is_ok() {
+            std::fs::write(
+                deploy.join("terraform/proxmox/test_override.tf"),
+                "resource \"proxmox_virtual_environment_vm\" \"labhost\" {\n  started = false\n}\n",
+            )
+            .unwrap();
+        }
+        let mut vars: Vec<(String, String)> = [
+            ("proxmox_endpoint", format!("https://{host}:8006/")),
+            ("proxmox_username", "root@pam".into()),
+            ("proxmox_password", var("CYBERCTF_TEST_PVE_PASSWORD")),
+            ("proxmox_insecure", "true".into()),
+            ("proxmox_ssh_address", host.clone()),
+            ("proxmox_storage", std::env::var("CYBERCTF_TEST_PVE_STORAGE").unwrap_or_else(|_| "local".into())),
+            ("cpu_type", std::env::var("CYBERCTF_TEST_PVE_CPU").unwrap_or_else(|_| "host".into())),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let connection = vars.clone();
+        vars.extend([
+            ("lab_slug".to_string(), "invoice-portal-api".to_string()),
+            ("lab_repository".into(), "CyberCTF/invoice-portal-api".into()),
+            ("lab_commit".into(), var("CYBERCTF_TEST_LAB_COMMIT")),
+        ]);
+        let print = |l: String| println!("{l}");
+
+        let applied = apply(&deploy, &state, "proxmox", &vars, print).await;
+        let s = status(&state);
+        println!("status after apply: running={} machines={}", s.running, s.machines.len());
+        let destroyed = destroy(&deploy, &state, "proxmox", &connection, print).await;
+        let after = status(&state);
+        let _ = std::fs::remove_dir_all(&state);
+        let _ = std::fs::remove_dir_all(&deploy);
+        applied.expect("apply");
+        assert!(s.running, "state outputs should show the VM");
+        destroyed.expect("destroy");
+        assert!(!after.running, "state should be gone after destroy");
+    }
 }
