@@ -176,7 +176,7 @@ function Screen({
   if (tab === "home") return <HomeScreen report={report} auth={auth} onNavigate={onNavigate} />;
   if (tab === "settings") return <SettingsScreen auth={auth} />;
   if (tab === "machine") return report ? <MachineScreen report={report} onNavigate={onNavigate} /> : <p className="text-sm text-muted-foreground">Checking this machine…</p>;
-  if (tab === "setup") return report ? <SetupScreen report={report} onRefresh={onRefresh} /> : <p className="text-sm text-muted-foreground">Checking this machine…</p>;
+  if (tab === "setup") return report ? <SetupScreen report={report} onRefresh={onRefresh} onNavigate={onNavigate} /> : <p className="text-sm text-muted-foreground">Checking this machine…</p>;
   if (tab === "homelab") return <ComingSoon icon="server" title="Home lab" description="Connect your own servers (VMware ESXi, Proxmox) and run heavier VM labs on dedicated hardware." />;
   if (tab === "cloud") return <ComingSoon icon="cloud" title="Cloud" description="Spin up labs in the cloud, provisioned with Terraform and configured with Ansible, no local setup, then open them right here." />;
   return report ? <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} openSlug={openLab} /> : <p className="text-sm text-muted-foreground">Loading…</p>;
