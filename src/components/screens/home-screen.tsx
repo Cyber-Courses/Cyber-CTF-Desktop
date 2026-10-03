@@ -10,7 +10,7 @@ import { useLabs, type Lab } from "@/lib/use-labs";
 import { useLabActions } from "@/lib/use-lab-actions";
 import { getLastRun, formatAgo } from "@/lib/last-run";
 import { assessRam } from "@/lib/capacity";
-import { machineMetrics, type AuthStatus, type MachineMetrics, type SystemReport } from "@/lib/tauri";
+import { machineMetrics, machineOpenSetup, type AuthStatus, type MachineMetrics, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 type Tab = "labs" | "machine" | "setup" | "homelab" | "cloud" | "settings";
@@ -97,7 +97,7 @@ export function HomeScreen({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {!dockerReady ? (
-            <button onClick={() => onNavigate("setup")} className="inline-flex items-center gap-1.5 rounded-lg border border-learn bg-learn px-3.5 py-2 text-[13px] font-medium text-[#140b2e] transition-colors hover:bg-learn/90">
+            <button onClick={() => machineOpenSetup().catch(() => {})} className="inline-flex items-center gap-1.5 rounded-lg border border-learn bg-learn px-3.5 py-2 text-[13px] font-medium text-[#140b2e] transition-colors hover:bg-learn/90">
               <Play className="size-4" /> Set up this machine
             </button>
           ) : (

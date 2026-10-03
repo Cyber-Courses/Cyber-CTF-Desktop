@@ -9,6 +9,7 @@ import {
   authLogin,
   authStatus,
   installDependency,
+  machineOpenSetup,
   systemCheck,
   type AuthStatus,
   type SystemReport,
@@ -216,6 +217,9 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                         <div ref={logEnd} />
                       </pre>
                     )}
+                    <button onClick={() => machineOpenSetup().catch(() => {})} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
+                      Open the step-by-step guide (recommended on Windows)
+                    </button>
                   </div>
                 )}
               </div>
