@@ -226,6 +226,15 @@ export function installDependency(dependency: Dependency, onLog: (line: string) 
   return invoke<void>("install_dependency", { dependency, logs });
 }
 
+export type CloudProvider = "aws" | "azure" | "gcp";
+
+/** Signs in to a cloud provider using its CLI's own auth (browser flow). */
+export function cloudLogin(provider: CloudProvider, onLog: (line: string) => void) {
+  const logs = new Channel<string>();
+  logs.onmessage = onLog;
+  return invoke<void>("cloud_login", { provider, logs });
+}
+
 /** Installs a Vagrant plugin (userland), streaming the output. */
 export function installVagrantPlugin(plugin: string, onLog: (line: string) => void) {
   const logs = new Channel<string>();

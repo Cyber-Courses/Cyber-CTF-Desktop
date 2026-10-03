@@ -1,6 +1,7 @@
 mod agent;
 mod api;
 mod auth;
+mod cloud;
 mod colocation;
 mod config;
 mod env_path;
@@ -101,6 +102,7 @@ pub fn run() {
             api::api_query,
             agent::agent_info,
             install::install_dependency,
+            cloud::cloud_login,
             install::install_vagrant_plugin,
             labs::lab_launch,
             runtime::lab_start,

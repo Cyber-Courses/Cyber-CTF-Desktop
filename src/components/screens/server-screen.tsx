@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { KIND } from "@/components/server/host-setup";
 import {
+  cloudLogin,
   installDependency,
   SERVER_CHANGED,
   serverList,
@@ -16,6 +17,7 @@ import {
   serverSetDefault,
   serverTest,
   systemCheck,
+  type CloudProvider,
   type Dependency,
   type ServerHost,
   type ServerTest,
@@ -65,6 +67,8 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
     if (cloud) systemCheck().then(setReport).catch(() => {});
   }, [cloud]);
 
+  const [loginBusy, setLoginBusy] = useState<string | null>(null);
+
   async function installCli(dep: Dependency) {
     setCliBusy(dep);
     try {
@@ -74,6 +78,18 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
       setError(String(e));
     } finally {
       setCliBusy(null);
+    }
+  }
+
+  async function login(p: CloudProvider) {
+    setLoginBusy(p);
+    setError(null);
+    try {
+      await cloudLogin(p, () => {});
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoginBusy(null);
     }
   }
 
@@ -160,9 +176,9 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
       {cloud && (
         <Panel>
           <PanelHeader title="Command-line tools" action={<span className="text-[11.5px] text-muted-foreground">AWS is used today; Azure / GCP coming</span>} />
-          <CliRow name="AWS CLI" tool={report?.cloudClis.aws} busy={cliBusy === "awscli"} onInstall={() => installCli("awscli")} />
-          <CliRow name="Azure CLI" tool={report?.cloudClis.azure} busy={cliBusy === "azurecli"} onInstall={() => installCli("azurecli")} />
-          <CliRow name="Google Cloud CLI" tool={report?.cloudClis.gcloud} busy={cliBusy === "gcloud"} onInstall={() => installCli("gcloud")} />
+          <CliRow name="AWS CLI" tool={report?.cloudClis.aws} busy={cliBusy === "awscli"} loginBusy={loginBusy === "aws"} onInstall={() => installCli("awscli")} onLogin={() => login("aws")} />
+          <CliRow name="Azure CLI" tool={report?.cloudClis.azure} busy={cliBusy === "azurecli"} loginBusy={loginBusy === "azure"} onInstall={() => installCli("azurecli")} onLogin={() => login("azure")} />
+          <CliRow name="Google Cloud CLI" tool={report?.cloudClis.gcloud} busy={cliBusy === "gcloud"} loginBusy={loginBusy === "gcp"} onInstall={() => installCli("gcloud")} onLogin={() => login("gcp")} />
         </Panel>
       )}
 
@@ -273,7 +289,7 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
   );
 }
 
-function CliRow({ name, tool, busy, onInstall }: { name: string; tool?: Tool; busy: boolean; onInstall: () => void }) {
+function CliRow({ name, tool, busy, loginBusy, onInstall, onLogin }: { name: string; tool?: Tool; busy: boolean; loginBusy: boolean; onInstall: () => void; onLogin: () => void }) {
   const installed = !!tool?.installed;
   return (
     <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
@@ -283,11 +299,15 @@ function CliRow({ name, tool, busy, onInstall }: { name: string; tool?: Tool; bu
           {installed && <span className="size-1.5 rounded-full bg-emerald-500" />}
           {tool ? (installed ? (tool.version ?? "installed") : "not installed") : "…"}
         </span>
-        {!installed && tool && (
+        {installed ? (
+          <Button variant="outline" size="sm" onClick={onLogin} disabled={loginBusy}>
+            {loginBusy ? "Signing in…" : "Sign in"}
+          </Button>
+        ) : tool ? (
           <Button variant="learn" size="sm" onClick={onInstall} disabled={busy}>
             {busy ? "Installing…" : "Install"}
           </Button>
-        )}
+        ) : null}
       </span>
     </div>
   );
