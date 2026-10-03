@@ -7,6 +7,7 @@ import { Account } from "@/components/Account";
 import { Labs } from "@/components/Labs";
 import { HomeScreen } from "@/components/screens/home-screen";
 import { MachineScreen } from "@/components/screens/machine-screen";
+import { HomeLabScreen } from "@/components/screens/homelab-screen";
 import { SetupScreen } from "@/components/screens/setup-screen";
 import { SettingsScreen } from "@/components/screens/settings-screen";
 import { Onboarding } from "@/components/onboarding/onboarding";
@@ -176,7 +177,7 @@ function Screen({
   if (tab === "settings") return <SettingsScreen auth={auth} />;
   if (tab === "machine") return report ? <MachineScreen report={report} onNavigate={onNavigate} /> : <p className="text-sm text-muted-foreground">Checking this machine…</p>;
   if (tab === "setup") return report ? <SetupScreen report={report} onRefresh={onRefresh} onNavigate={onNavigate} /> : <p className="text-sm text-muted-foreground">Checking this machine…</p>;
-  if (tab === "homelab") return <ComingSoon icon="server" title="Home lab" description="Connect your own servers (VMware ESXi, Proxmox) and run heavier VM labs on dedicated hardware." />;
+  if (tab === "homelab") return <HomeLabScreen report={report} onNavigate={onNavigate} />;
   if (tab === "cloud") return <ComingSoon icon="cloud" title="Cloud" description="Spin up labs in the cloud, provisioned with Terraform and configured with Ansible, no local setup, then open them right here." />;
   return report ? <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} openSlug={openLab} /> : <p className="text-sm text-muted-foreground">Loading…</p>;
 }

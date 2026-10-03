@@ -275,11 +275,14 @@ function Flow({ machines, attacker }: { machines: Machine[]; attacker: Attacker 
       fitViewOptions={{ padding: 0.18, minZoom: 0.5, maxZoom: 1.1 }}
       minZoom={0.35}
       maxZoom={1.5}
+      zoomOnScroll={false}
+      zoomOnPinch={false}
+      zoomOnDoubleClick={false}
       nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
     >
       <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#292929" />
-      <Controls showInteractive={false} />
+      <Controls showInteractive={false} showZoom={false} />
       <div className="topology-legend">
         <div>
           <span className="legend-line attack-line" /> <span>attack path</span>
