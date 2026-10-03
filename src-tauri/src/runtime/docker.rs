@@ -31,6 +31,21 @@ fn host_ports_from_config(json: &str) -> Vec<u16> {
     ports
 }
 
+/// Service names a compose file publishes a host port for, from `docker compose config`.
+/// These are the lab's serving containers (web/app), as opposed to one-shot init jobs.
+fn serving_services_from_config(json: &str) -> Vec<String> {
+    let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
+    let mut names = Vec::new();
+    if let Some(services) = v.get("services").and_then(|s| s.as_object()) {
+        for (name, svc) in services {
+            if svc.get("ports").and_then(|p| p.as_array()).is_some_and(|a| !a.is_empty()) {
+                names.push(name.clone());
+            }
+        }
+    }
+    names
+}
+
 async fn published_host_ports(dir: &Path, project: &str, env: &[(String, String)]) -> Vec<u16> {
     match run_env("docker", &["compose", "-p", project, "-f", "docker-compose.yml", "config", "--format", "json"], Some(dir), env).await {
         Ok(out) => host_ports_from_config(&out),
@@ -184,7 +199,24 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     let url = if running { first_published_url(&entries) } else { None };
     let run_names: Vec<String> = entries.iter().filter(|e| e.state == "running").map(|e| e.name.clone()).collect();
     let ips = container_ips(dir, &run_names).await;
-    let machines = entries
+    // Serving containers (those that publish a port) that should be up but aren't: a lab
+    // whose web died is reported degraded, not fine. One-shot init jobs publish nothing, so
+    // their normal exit is ignored. Config is only consulted while the lab is up.
+    let serving = if running {
+        run("docker", &["compose", "-p", &project, "-f", "docker-compose.yml", "config", "--format", "json"], Some(dir))
+            .await
+            .ok()
+            .map(|c| serving_services_from_config(&c))
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let down: Vec<(String, String)> = entries
+        .iter()
+        .filter(|e| e.state != "running" && serving.iter().any(|s| s == &e.service))
+        .map(|e| (e.service.clone(), e.state.clone()))
+        .collect();
+    let mut machines: Vec<Machine> = entries
         .into_iter()
         .filter(|e| e.state == "running")
         .map(|e| {
@@ -198,6 +230,11 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
             Machine { name: e.service, state: e.state, image: e.image, ip, ports }
         })
         .collect();
+    for (service, state) in down {
+        if !machines.iter().any(|m| m.name == service) {
+            machines.push(Machine { name: service, state, image: String::new(), ip: String::new(), ports: Vec::new() });
+        }
+    }
     Ok(LabStatus { running, machines, url, host: None, expires_at: None })
 }
 

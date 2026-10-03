@@ -55,6 +55,7 @@ export function LabDetail({
   const native = rt?.architectures.includes(hostArch) ?? true;
   const running = status?.running ?? false;
   const url = status?.url;
+  const down = (status?.machines ?? []).filter((m) => m.state !== "running");
   const RuntimeIcon = rt?.runtime === "VM" ? Server : Container;
   const isDocker = rt?.runtime !== "VM";
 
@@ -194,6 +195,11 @@ export function LabDetail({
               {running && status?.expiresAt && <AutoStop at={status.expiresAt} />}
               {running && status && status.machines.length > 0 && (
                 <p className="font-mono text-[11px] text-muted-foreground">{status.machines.map((m) => m.name).join(" · ")}</p>
+              )}
+              {running && down.length > 0 && (
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5 text-[11.5px] text-amber-500">
+                  {down.map((m) => m.name).join(", ")} {down.length > 1 ? "are" : "is"} down. The lab may not work; stop and start it again.
+                </p>
               )}
               <div className="space-y-2 pt-1">
                 {running ? (
