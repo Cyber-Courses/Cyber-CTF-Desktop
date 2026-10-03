@@ -2,17 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowRight, Container, Cpu, ExternalLink, MemoryStick, Play, RotateCcw } from "lucide-react";
+import { ArrowRight, Cloud, Container, Cpu, ExternalLink, MemoryStick, Play, RotateCcw, Server, TriangleAlert } from "lucide-react";
 import { Panel, RailLabel } from "@/components/ui/panel";
 import { Meter } from "@/components/ui/meter";
 import { LabRow } from "@/components/labs/lab-row";
 import { useLabs, type Lab } from "@/lib/use-labs";
 import { useLabActions } from "@/lib/use-lab-actions";
 import { getLastRun, formatAgo } from "@/lib/last-run";
+import { assessRam } from "@/lib/capacity";
 import { machineMetrics, type AuthStatus, type MachineMetrics, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-type Tab = "labs" | "machine" | "setup" | "settings";
+type Tab = "labs" | "machine" | "setup" | "homelab" | "cloud" | "settings";
 
 const gb = (bytes: number) => (bytes / 1e9).toFixed(1);
 
@@ -78,6 +79,7 @@ export function HomeScreen({
 
   const name = auth?.name?.split(" ")[0];
   const memPct = metrics ? (metrics.memUsed / metrics.memTotal) * 100 : null;
+  const capacity = metrics ? assessRam(metrics.memTotal) : null;
 
   const heroStatus = !dockerReady
     ? "Set up Docker to start running labs."
@@ -105,6 +107,20 @@ export function HomeScreen({
           )}
         </div>
       </div>
+
+      {capacity && capacity.level === "low" && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
+          <TriangleAlert className="size-4 shrink-0 text-rose-400" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-medium">{capacity.title} <span className="ml-1 font-mono text-[11px] text-muted-foreground">{capacity.totalGB.toFixed(1)} GB</span></p>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">{capacity.detail}</p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button onClick={() => onNavigate("cloud")} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-ring/60"><Cloud className="size-3.5" /> Cloud</button>
+            <button onClick={() => onNavigate("homelab")} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-ring/60"><Server className="size-3.5" /> Home lab</button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
         {/* LEFT RAIL */}
