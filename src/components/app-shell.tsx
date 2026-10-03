@@ -105,12 +105,15 @@ export function AppShell() {
       </aside>
 
       {/* Content */}
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <main className="relative flex flex-1 flex-col overflow-hidden bg-background">
+        {/* Decorative canvas: faint guide grid + soft top glow (matches the website). */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-grid opacity-70" />
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-glow" />
         {/* Full-width draggable title-bar strip (no native bar with Overlay style). */}
-        <div data-tauri-drag-region className="h-8 shrink-0" />
-        <div className="flex-1 overflow-y-auto">
+        <div data-tauri-drag-region className="relative z-10 h-8 shrink-0" />
+        <div className="relative z-10 flex-1 overflow-y-auto">
           <UpdateBanner />
-          <div className="w-full px-8 pb-10 pt-2">
+          <div className="mx-auto w-full max-w-6xl px-8 pb-12 pt-3">
             <Screen tab={tab} report={report} auth={auth} onRefresh={check} onNavigate={setTab} />
           </div>
         </div>

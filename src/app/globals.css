@@ -9,13 +9,13 @@
 :root {
   --radius: 0.5rem;
 
-  --background: #0a0a0a;
+  --background: #000000;
   --foreground: #ededed;
-  --surface: #111111;
+  --surface: #0a0a0a;
 
-  --card: #111111;
+  --card: #0a0a0a;
   --card-foreground: #ededed;
-  --popover: #111111;
+  --popover: #0a0a0a;
   --popover-foreground: #ededed;
 
   /* Monochrome with one accent (--learn, violet), matching cyber-courses-web. */
@@ -37,6 +37,10 @@
   --destructive: #ff6166;
   --success: #62c073;
   --warning: #f1a10d;
+
+  /* Faint grid / top glow, matching cyber-courses-web. */
+  --grid-rgb: 255, 255, 255;
+  --spotlight: rgba(255, 255, 255, 0.06);
 }
 
 @theme inline {
@@ -92,4 +96,17 @@ body {
 }
 .animate-rise-in {
   animation: rise-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Decorative backgrounds (same as cyber-courses-web): a faint guide grid that fades
+   out toward the bottom, and a soft glow from the top. Built from tokens. */
+@utility bg-grid {
+  background-image:
+    linear-gradient(to right, var(--border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 35%, transparent 100%);
+}
+@utility bg-glow {
+  background-image: radial-gradient(ellipse 60% 50% at 50% -10%, color-mix(in oklab, var(--learn) 14%, transparent), transparent);
 }
