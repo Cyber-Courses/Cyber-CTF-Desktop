@@ -77,6 +77,10 @@ The attack box runs next to the lab on the lab host. "Open shell" opens the OS t
   (`ssh_user`, `ip`). Own `known_hosts` next to the key.
 - Vagrant targets (ESXi): `vagrant ssh-config` (Vagrant's key).
 
+Verified 2026-10-03 on the test Proxmox: cloud-init installed the launcher key, and
+`ssh debian@<lab host> sudo docker exec attacker ...` reached the attack box, which
+resolves `web` and `database` on the lab network.
+
 ## Test
 
 `homelab_test` checks the host without running anything on it:
