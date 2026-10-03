@@ -104,3 +104,18 @@ body {
   stroke-dasharray: 4 5;
   animation: dash-flow 0.8s linear infinite;
 }
+
+/* Flowing dot down the diagram connector. */
+@keyframes drip {
+  0% {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(28px);
+    opacity: 0;
+  }
+}

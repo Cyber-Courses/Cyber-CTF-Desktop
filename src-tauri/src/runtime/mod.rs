@@ -22,14 +22,27 @@ pub enum Runtime {
     Vm,
 }
 
+/// A port the software inside a container binds: `target` is the port inside the
+/// container, `published` is where it is reachable on 127.0.0.1 (0 = not published).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Port {
+    pub published: u16,
+    pub target: u16,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Machine {
+    /// The container (a small computer on the lab network).
     pub name: String,
     pub state: String,
-    /// Host ports this service publishes on 127.0.0.1 (for the network diagram).
+    /// The image = the software running inside the container, e.g. "mysql:8.0".
     #[serde(default)]
-    pub ports: Vec<u16>,
+    pub image: String,
+    /// Ports the software inside it binds (for the network diagram).
+    #[serde(default)]
+    pub ports: Vec<Port>,
 }
 
 #[derive(Serialize)]

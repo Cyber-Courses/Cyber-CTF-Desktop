@@ -1,129 +1,106 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { Activity, Cpu, HardDrive, MemoryStick, type LucideIcon } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
+import { Meter } from "@/components/ui/meter";
 import { Button } from "@/components/ui/button";
-import { installDependency, installVagrantPlugin, type Dependency, type ProviderStatus, type SystemReport, type Tool } from "@/lib/tauri";
+import { machineMetrics, type MachineMetrics, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-const PROVIDER_LABELS: Record<string, string> = {
-  virtualbox: "VirtualBox",
-  vmware_desktop: "VMware Workstation / Fusion",
-  hyperv: "Hyper-V",
-  parallels: "Parallels",
-  libvirt: "libvirt (KVM)",
-  qemu: "QEMU",
-  utm: "UTM",
-  vmware_esxi: "VMware ESXi (remote)",
-  proxmox: "Proxmox VE (remote)",
-};
+type Tab = "setup";
 
-const tool = (t: Tool) => (t.installed ? (t.version ?? "installed") : "not installed");
-const label = (p: ProviderStatus) => PROVIDER_LABELS[p.provider] ?? p.provider;
+const gb = (b: number) => b / 1e9;
+const fmtGB = (b: number) => `${gb(b).toFixed(gb(b) < 10 ? 1 : 0)} GB`;
+function fmtUptime(s: number) {
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  return `${m}m`;
+}
 
-function StatRow({ name, mono, ok, detail, action }: { name: string; mono?: string | null; ok: boolean; detail: string; action?: ReactNode }) {
+function Metric({ icon: Icon, label, value, sub, pct }: { icon: LucideIcon; label: string; value: string; sub: string; pct: number }) {
   return (
-    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
-      <span className="text-foreground">{name}</span>
-      {mono && <span className="font-mono text-[11px] text-muted-foreground">{mono}</span>}
-      <span className="ml-auto flex items-center gap-3">
-        <span className={cn("flex items-center gap-1.5", ok ? "text-emerald-500" : "text-muted-foreground")}>
-          {ok && <span className="size-1.5 rounded-full bg-emerald-500" />}
-          {detail}
-        </span>
-        {action}
+    <Panel className="p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+        <Icon className="size-4 text-muted-foreground" />
+      </div>
+      <div className="mt-2.5 text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
+      <Meter value={pct} className="mt-3" />
+      <p className="mt-2 text-[11.5px] text-muted-foreground">{sub}</p>
+    </Panel>
+  );
+}
+
+function InfoRow({ name, value, tone }: { name: string; value: string; tone?: "ok" | "warn" }) {
+  return (
+    <div className="flex items-center border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
+      <span className="text-muted-foreground">{name}</span>
+      <span className={cn("ml-auto flex items-center gap-1.5", tone === "ok" ? "text-emerald-500" : tone === "warn" ? "text-amber-500" : "text-foreground")}>
+        {tone && <span className={cn("size-1.5 rounded-full", tone === "ok" ? "bg-emerald-500" : "bg-amber-500")} />}
+        {value}
       </span>
     </div>
   );
 }
 
-export function MachineScreen({ report, onRefresh }: { report: SystemReport; onRefresh: () => void | Promise<void> }) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [log, setLog] = useState<string[]>([]);
-  const logEnd = useRef<HTMLDivElement>(null);
+export function MachineScreen({ report, onNavigate }: { report: SystemReport; onNavigate: (tab: Tab) => void }) {
+  const [m, setM] = useState<MachineMetrics | null>(null);
 
-  async function runInstall(id: string, start: string, fn: (onLog: (line: string) => void) => Promise<void>) {
-    setBusy(id);
-    setLog([start]);
-    try {
-      await fn((line) => {
-        setLog((l) => [...l, line]);
-        requestAnimationFrame(() => logEnd.current?.scrollIntoView({ block: "end" }));
-      });
-    } catch (e) {
-      setLog((l) => [...l, `✗ ${String(e)}`]);
-    } finally {
-      setBusy(null);
-      await onRefresh();
-    }
-  }
+  useEffect(() => {
+    let alive = true;
+    const tick = () => machineMetrics().then((x) => alive && setM(x)).catch(() => {});
+    tick();
+    const id = setInterval(tick, 2500);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
 
-  const installDep = (dep: Dependency, msg: string) => runInstall(dep, msg, (log) => installDependency(dep, log));
-  const installPlugin = (plugin: string) => runInstall(plugin, `Installing ${plugin}…`, (log) => installVagrantPlugin(plugin, log));
-
-  function Install({ id, onClick, children }: { id: string; onClick: () => void; children: ReactNode }) {
-    return (
-      <Button variant="learn" size="sm" onClick={onClick} disabled={busy !== null}>
-        {busy === id ? "Installing…" : children}
-      </Button>
-    );
-  }
-
-  const hypervisors = report.vmProviders.filter((p) => !p.remote);
-  const localPlugins = report.vmProviders.filter((p) => p.plugin && !p.remote && (p.hypervisor === true || p.pluginInstalled));
+  const dockerReady = report.docker.installed && report.dockerRunning;
+  const hypervisors = report.vmProviders.filter((p) => !p.remote && p.hypervisor === true).length;
+  const memPct = m && m.memTotal ? (m.memUsed / m.memTotal) * 100 : 0;
+  const diskPct = m && m.diskTotal ? (m.diskUsed / m.diskTotal) * 100 : 0;
 
   return (
     <div className="space-y-5">
-      <p className="text-[12.5px] text-muted-foreground">
-        What this machine can run labs with · {report.os} · {report.arch}
-      </p>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-[12.5px] text-muted-foreground">
+          {report.os} · {report.arch}
+          {m ? ` · up ${fmtUptime(m.uptimeSecs)}` : ""}
+        </p>
+        {!dockerReady && (
+          <Button variant="outline" size="sm" onClick={() => onNavigate("setup")}>Set up</Button>
+        )}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Metric icon={Cpu} label="CPU" value={m ? `${Math.round(m.cpu)}%` : "…"} sub={m ? `${m.cores} cores` : ""} pct={m ? m.cpu : 0} />
+        <Metric icon={MemoryStick} label="Memory" value={m ? `${Math.round(memPct)}%` : "…"} sub={m ? `${fmtGB(m.memUsed)} of ${fmtGB(m.memTotal)}` : ""} pct={memPct} />
+        <Metric icon={HardDrive} label="Disk" value={m ? `${Math.round(diskPct)}%` : "…"} sub={m ? `${fmtGB(m.diskUsed)} of ${fmtGB(m.diskTotal)}` : ""} pct={diskPct} />
+      </div>
 
       <Panel>
-        <PanelHeader
-          title="Containers"
-          action={(!report.docker.installed || !report.dockerRunning) && <Install id="docker" onClick={() => installDep("docker", "Installing the container engine…")}>Install Docker</Install>}
-        />
-        <StatRow name="Docker" ok={report.docker.installed} detail={tool(report.docker)} />
-        <StatRow name="Engine running" ok={report.dockerRunning} detail={report.dockerRunning ? "running" : "stopped"} />
-        <StatRow name="Docker Compose" ok={report.dockerCompose.installed} detail={tool(report.dockerCompose)} />
+        <PanelHeader title="Status" action={<span className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground"><Activity className="size-3.5" /> live</span>} />
+        <InfoRow name="Docker engine" value={report.dockerRunning ? "Running" : "Stopped"} tone={report.dockerRunning ? "ok" : "warn"} />
+        <InfoRow name="Running containers" value={m ? String(m.containers) : "…"} />
+        <InfoRow name="Hypervisors ready" value={String(hypervisors)} />
+        <InfoRow name="Uptime" value={m ? fmtUptime(m.uptimeSecs) : "…"} />
       </Panel>
 
-      <Panel>
-        <PanelHeader title="Hypervisors" action={<span className="text-[11.5px] text-muted-foreground">One is enough</span>} />
-        {hypervisors.map((p) => (
-          <StatRow
-            key={p.provider}
-            name={label(p)}
-            ok={p.hypervisor === true}
-            detail={p.hypervisor === true ? "installed" : p.hypervisor === false ? "not installed" : "built in"}
-            action={p.hypervisor === false && p.provider === "virtualbox" ? <Install id="virtualbox" onClick={() => installDep("virtualbox", "Installing VirtualBox…")}>Install</Install> : undefined}
-          />
-        ))}
-      </Panel>
-
-      <Panel>
-        <PanelHeader title="Vagrant" action={!report.vagrant.installed ? <Install id="vagrant" onClick={() => installDep("vagrant", "Installing Vagrant…")}>Install Vagrant</Install> : undefined} />
-        <StatRow name="Vagrant" ok={report.vagrant.installed} detail={tool(report.vagrant)} />
-        {localPlugins.map((p) => (
-          <StatRow
-            key={p.provider}
-            name={label(p)}
-            mono={p.plugin}
-            ok={p.pluginInstalled}
-            detail={p.pluginInstalled ? "installed" : "not installed"}
-            action={report.vagrant.installed && !p.pluginInstalled && p.plugin ? <Install id={p.plugin} onClick={() => installPlugin(p.plugin!)}>Install</Install> : undefined}
-          />
-        ))}
-        {localPlugins.length === 0 && <p className="px-3.5 py-3 text-[12px] text-muted-foreground">Your installed hypervisors don’t need an extra Vagrant plugin.</p>}
-      </Panel>
-
-      {(busy || log.length > 0) && (
+      {!dockerReady && (
         <Panel>
-          <PanelHeader title="Installer" />
-          <pre className="max-h-56 overflow-auto px-3.5 py-3 font-mono text-[11.5px] leading-relaxed text-muted-foreground">
-            {log.join("\n")}
-            <div ref={logEnd} />
-          </pre>
+          <div className="flex items-center gap-3 p-4">
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium">This machine isn’t ready for container labs</p>
+              <p className="mt-0.5 text-[12px] text-muted-foreground">Install Docker (and optionally a hypervisor) on the Setup page.</p>
+            </div>
+            <Button variant="learn" size="sm" className="ml-auto" onClick={() => onNavigate("setup")}>Go to Setup</Button>
+          </div>
         </Panel>
       )}
     </div>

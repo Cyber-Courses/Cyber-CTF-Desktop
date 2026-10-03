@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use super::{LabStatus, Machine};
+use super::{LabStatus, Machine, Port};
 use crate::error::Result;
 use crate::exec::{run, stream};
 
@@ -42,6 +42,8 @@ struct PsEntry {
     service: String,
     #[serde(rename = "State")]
     state: String,
+    #[serde(rename = "Image", default)]
+    image: String,
     #[serde(rename = "Publishers", default)]
     publishers: Vec<Publisher>,
 }
@@ -50,6 +52,8 @@ struct PsEntry {
 struct Publisher {
     #[serde(rename = "PublishedPort", default)]
     published_port: u16,
+    #[serde(rename = "TargetPort", default)]
+    target_port: u16,
     #[serde(rename = "Protocol", default)]
     protocol: String,
 }
@@ -97,10 +101,10 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
             let ports = e
                 .publishers
                 .iter()
-                .filter(|p| p.published_port > 0 && (p.protocol.is_empty() || p.protocol == "tcp"))
-                .map(|p| p.published_port)
+                .filter(|p| (p.target_port > 0 || p.published_port > 0) && (p.protocol.is_empty() || p.protocol == "tcp"))
+                .map(|p| Port { published: p.published_port, target: p.target_port })
                 .collect();
-            Machine { name: e.service, state: e.state, ports }
+            Machine { name: e.service, state: e.state, image: e.image, ports }
         })
         .collect();
     Ok(LabStatus { running, machines, url })

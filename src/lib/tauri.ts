@@ -45,12 +45,26 @@ export interface SystemReport {
 
 export interface LabStatus {
   running: boolean;
-  machines: { name: string; state: string; ports: number[] }[];
+  machines: { name: string; state: string; image: string; ports: { published: number; target: number }[] }[];
   /** Loopback URL where the lab is reachable, once running (null for VM labs / no port). */
   url: string | null;
 }
 
 export const systemCheck = () => invoke<SystemReport>("system_check");
+
+export interface MachineMetrics {
+  cpu: number;
+  memUsed: number;
+  memTotal: number;
+  diskUsed: number;
+  diskTotal: number;
+  uptimeSecs: number;
+  cores: number;
+  containers: number;
+}
+
+/** Live machine health (CPU/memory/disk/uptime + running containers). */
+export const machineMetrics = () => invoke<MachineMetrics>("machine_metrics");
 
 export function labStart(id: string, runtime: Runtime, provider: Provider | null, onLog: (line: string) => void) {
   const logs = new Channel<string>();
