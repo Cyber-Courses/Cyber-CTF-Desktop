@@ -184,6 +184,12 @@ function HostForm({
   const editing = initial.id !== null;
   const cloud = v.provider === "aws";
   const kind = KIND[v.provider];
+  // Server setup is a short wizard; editing skips the hypervisor choice. Cloud stays one step.
+  const steps: Step[] = cloud ? ["connection"] : editing ? ["connection", "placement"] : ["hypervisor", "connection", "placement"];
+  const [step, setStep] = useState(0);
+  const current = steps[step];
+  const last = step === steps.length - 1;
+  const canNext = current !== "connection" || (v.host.trim() !== "" && v.username.trim() !== "" && (editing || cloud || (v.password ?? "") !== ""));
   const status = report?.vmProviders.find((p) => p.provider === v.provider);
   const set = <K extends keyof ServerHostInput>(k: K, value: ServerHostInput[K]) => setV((s) => ({ ...s, [k]: value }));
   const text = (k: "name" | "host" | "username" | "datastore" | "network" | "node") => ({
@@ -203,6 +209,21 @@ function HostForm({
     }
   }
 
+  const esxiPluginNotice =
+    v.provider === "vmware_esxi" && status && !status.pluginInstalled ? (
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="min-w-0 flex-1 text-[12px] text-amber-500">{status.reason ?? `Needs the Vagrant plugin ${kind.plugin}.`}</p>
+          {report?.vagrant.installed && (
+            <Button type="button" variant="outline" size="sm" onClick={installPlugin} disabled={pluginLog !== null && !pluginLog.at(-1)?.match(/^[✓✗]/)}>
+              Install {kind.plugin}
+            </Button>
+          )}
+        </div>
+        {pluginLog && <div className="mt-2"><LogConsole lines={pluginLog} /></div>}
+      </div>
+    ) : null;
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -218,115 +239,127 @@ function HostForm({
 
   return (
     <Panel>
-      <PanelHeader title={editing ? "Connection" : cloud ? "AWS account" : "Hypervisor and connection"} />
+      <PanelHeader title={cloud ? "AWS account" : STEP_TITLE[current]} action={steps.length > 1 ? <Stepper steps={steps} at={step} /> : undefined} />
       <form onSubmit={submit} className="space-y-4 p-4">
         {cloud ? (
           <AwsFields v={v} set={set} text={text} editing={editing} />
-        ) : (
-        <>
-        <div className="grid grid-cols-2 gap-2">
-          {SERVER_KINDS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              disabled={editing}
-              onClick={() => setV((s) => ({ ...s, provider: p, port: null }))}
-              className={cn(
-                "rounded-lg border px-3.5 py-3 text-left transition-colors disabled:cursor-default",
-                v.provider === p ? "border-learn/60 bg-learn/5" : "border-border hover:border-ring/60",
-                editing && v.provider !== p && "opacity-40",
-              )}
-            >
-              <HypervisorMark provider={p} />
-              <p className="mt-2 text-[11.5px] text-muted-foreground">{KIND[p].note}</p>
-            </button>
-          ))}
-        </div>
-
-        {v.provider === "vmware_esxi" && status && !status.pluginInstalled && (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="min-w-0 flex-1 text-[12px] text-amber-500">
-                {status.reason ?? `Needs the Vagrant plugin ${kind.plugin}.`}
-              </p>
-              {report?.vagrant.installed && (
-                <Button type="button" variant="outline" size="sm" onClick={installPlugin} disabled={pluginLog !== null && !pluginLog.at(-1)?.match(/^[✓✗]/)}>
-                  Install {kind.plugin}
-                </Button>
-              )}
+        ) : current === "hypervisor" ? (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              {SERVER_KINDS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setV((s) => ({ ...s, provider: p, port: null }))}
+                  className={cn(
+                    "rounded-lg border px-3.5 py-3 text-left transition-colors",
+                    v.provider === p ? "border-learn/60 bg-learn/5" : "border-border hover:border-ring/60",
+                  )}
+                >
+                  <HypervisorMark provider={p} />
+                  <p className="mt-2 text-[11.5px] text-muted-foreground">{KIND[p].note}</p>
+                </button>
+              ))}
             </div>
-            {pluginLog && <div className="mt-2"><LogConsole lines={pluginLog} /></div>}
-          </div>
-        )}
-
-        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_110px]">
-          <Field label="Name"><Input {...text("name")} placeholder={v.provider === "proxmox" ? "Garage Proxmox" : "ESXi box"} /></Field>
-          <Field label="Host"><Input {...text("host")} placeholder="192.168.1.20 or pve.lan" required /></Field>
-          <Field label={v.provider === "proxmox" ? "API port" : "SSH port"}>
-            <Input
-              type="number"
-              min={1}
-              max={65535}
-              value={v.port ?? ""}
-              onChange={(e) => set("port", e.target.value ? Number(e.target.value) : null)}
-              placeholder={String(kind.port)}
-            />
-          </Field>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Username" hint={v.provider === "proxmox" ? "Include the realm, e.g. root@pam" : undefined}>
-            <Input {...text("username")} placeholder={kind.user} required />
-          </Field>
-          <Field label="Password" hint="Stored in your OS keychain">
-            <Input
-              type="password"
-              value={v.password ?? ""}
-              onChange={(e) => set("password", e.target.value || null)}
-              placeholder={editing ? "Unchanged" : ""}
-              required={!editing}
-              autoComplete="off"
-            />
-          </Field>
-        </div>
-
-        <div className={cn("grid gap-3", v.provider === "proxmox" ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
-          {v.provider === "proxmox" && <Field label="Node" hint="Optional"><Input {...text("node")} placeholder="pve" /></Field>}
-          <Field label={v.provider === "proxmox" ? "Storage" : "Datastore"} hint="Optional">
-            <Input {...text("datastore")} placeholder={v.provider === "proxmox" ? "local-lvm" : "datastore1"} />
-          </Field>
-          <Field label={v.provider === "proxmox" ? "Bridge" : "Port group"} hint="Optional">
-            <Input {...text("network")} placeholder={v.provider === "proxmox" ? "vmbr0" : "VM Network"} />
-          </Field>
-        </div>
-
-        {v.provider === "proxmox" && (
-          <label className="flex cursor-pointer items-start gap-2.5">
-            <input
-              type="checkbox"
-              checked={v.insecureTls}
-              onChange={(e) => set("insecureTls", e.target.checked)}
-              className="mt-0.5 size-3.5 accent-[var(--learn)]"
-            />
-            <span>
-              <span className="block text-[12.5px]">Self-signed certificate</span>
-              <span className="block text-[11.5px] text-muted-foreground">Proxmox uses one by default. Turn off if your host has a trusted certificate.</span>
-            </span>
-          </label>
-        )}
-        </>
+            {esxiPluginNotice}
+          </>
+        ) : current === "connection" ? (
+          <>
+            {esxiPluginNotice}
+            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_110px]">
+              <Field label="Name"><Input {...text("name")} placeholder={v.provider === "proxmox" ? "Garage Proxmox" : "ESXi box"} /></Field>
+              <Field label="Host"><Input {...text("host")} placeholder="192.168.1.20 or pve.lan" required /></Field>
+              <Field label={v.provider === "proxmox" ? "API port" : "SSH port"}>
+                <Input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={v.port ?? ""}
+                  onChange={(e) => set("port", e.target.value ? Number(e.target.value) : null)}
+                  placeholder={String(kind.port)}
+                />
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Username" hint={v.provider === "proxmox" ? "Include the realm, e.g. root@pam" : undefined}>
+                <Input {...text("username")} placeholder={kind.user} required />
+              </Field>
+              <Field label="Password" hint="Stored in your OS keychain">
+                <Input
+                  type="password"
+                  value={v.password ?? ""}
+                  onChange={(e) => set("password", e.target.value || null)}
+                  placeholder={editing ? "Unchanged" : ""}
+                  required={!editing}
+                  autoComplete="off"
+                />
+              </Field>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-[12px] text-muted-foreground">Where labs are placed on the host. Leave blank for the host&apos;s defaults.</p>
+            <div className={cn("grid gap-3", v.provider === "proxmox" ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
+              {v.provider === "proxmox" && <Field label="Node" hint="Optional"><Input {...text("node")} placeholder="pve" /></Field>}
+              <Field label={v.provider === "proxmox" ? "Storage" : "Datastore"} hint="Optional">
+                <Input {...text("datastore")} placeholder={v.provider === "proxmox" ? "local-lvm" : "datastore1"} />
+              </Field>
+              <Field label={v.provider === "proxmox" ? "Bridge" : "Port group"} hint="Optional">
+                <Input {...text("network")} placeholder={v.provider === "proxmox" ? "vmbr0" : "VM Network"} />
+              </Field>
+            </div>
+            {v.provider === "proxmox" && (
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={v.insecureTls}
+                  onChange={(e) => set("insecureTls", e.target.checked)}
+                  className="mt-0.5 size-3.5 accent-[var(--learn)]"
+                />
+                <span>
+                  <span className="block text-[12.5px]">Self-signed certificate</span>
+                  <span className="block text-[11.5px] text-muted-foreground">Proxmox uses one by default. Turn off if your host has a trusted certificate.</span>
+                </span>
+              </label>
+            )}
+          </>
         )}
 
         {error && <p className="text-[12px] text-destructive">{error}</p>}
 
         <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
-          <Button type="submit" variant="learn" size="sm" disabled={saving}>
-            {saving && <Spinner className="size-3.5" />} {editing ? "Save" : "Add and test"}
+          <Button type="button" variant="ghost" size="sm" onClick={step === 0 ? onCancel : () => setStep((s) => s - 1)}>
+            {step === 0 ? "Cancel" : "Back"}
           </Button>
+          {last ? (
+            <Button type="submit" variant="learn" size="sm" disabled={saving || !canNext}>
+              {saving && <Spinner className="size-3.5" />} {editing ? "Save" : "Add and test"}
+            </Button>
+          ) : (
+            <Button type="button" variant="learn" size="sm" disabled={!canNext} onClick={() => setStep((s) => s + 1)}>
+              Next
+            </Button>
+          )}
         </div>
       </form>
     </Panel>
+  );
+}
+
+type Step = "hypervisor" | "connection" | "placement";
+const STEP_TITLE: Record<Step, string> = { hypervisor: "Hypervisor", connection: "Connection", placement: "Placement" };
+
+function Stepper({ steps, at }: { steps: Step[]; at: number }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {steps.map((s, i) => (
+        <span key={s} className="flex items-center gap-1.5">
+          <span className={cn("size-1.5 rounded-full", i === at ? "bg-learn" : i < at ? "bg-learn/50" : "bg-muted-foreground/30")} />
+          <span className={cn("text-[11px]", i === at ? "text-foreground" : "text-muted-foreground")}>{STEP_TITLE[s]}</span>
+          {i < steps.length - 1 && <span className="text-muted-foreground/40">·</span>}
+        </span>
+      ))}
+    </div>
   );
 }
 
