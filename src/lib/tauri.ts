@@ -80,6 +80,31 @@ export function labStop(id: string, runtime: Runtime, onLog: (line: string) => v
 
 export const labStatus = (id: string, runtime: Runtime) => invoke<LabStatus>("lab_status", { id, runtime });
 
+export interface ExegolStatus {
+  imagePresent: boolean;
+  running: boolean;
+  ip: string;
+  shellCmd: string;
+}
+
+/** Status of a lab's attack box (Exegol). */
+export const exegolStatus = (id: string) => invoke<ExegolStatus>("exegol_status", { id });
+
+export function exegolStart(id: string, onLog: (line: string) => void) {
+  const logs = new Channel<string>();
+  logs.onmessage = onLog;
+  return invoke<void>("exegol_start", { id, logs });
+}
+
+export function exegolStop(id: string, onLog: (line: string) => void) {
+  const logs = new Channel<string>();
+  logs.onmessage = onLog;
+  return invoke<void>("exegol_stop", { id, logs });
+}
+
+/** Opens the OS terminal attached to the running attack box. */
+export const exegolShell = (id: string) => invoke<void>("exegol_shell", { id });
+
 export interface AuthStatus {
   loggedIn: boolean;
   name: string | null;

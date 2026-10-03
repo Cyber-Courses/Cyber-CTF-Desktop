@@ -3,6 +3,7 @@
 //! The UI only ever passes a lab id and a runtime; paths and commands are built here.
 
 mod docker;
+mod exegol;
 pub mod providers;
 mod vm;
 
@@ -143,6 +144,39 @@ pub async fn lab_status(app: AppHandle, id: String, runtime: Runtime) -> Result<
         Runtime::Docker => docker::status(&dir, &id).await,
         Runtime::Vm => vm::status(&dir).await,
     }
+}
+
+/// Status of a lab's attack box (Exegol), for the lab detail view.
+#[tauri::command]
+pub async fn exegol_status(id: String) -> Result<exegol::ExegolStatus> {
+    validate_id(&id)?;
+    Ok(exegol::status(&id).await)
+}
+
+/// Launches the attack box on the lab's network (pulls the image first if needed).
+#[tauri::command]
+pub async fn exegol_start(id: String, logs: Channel<String>) -> Result<()> {
+    validate_id(&id)?;
+    let log = move |line: String| {
+        let _ = logs.send(line);
+    };
+    exegol::start(&id, log).await
+}
+
+#[tauri::command]
+pub async fn exegol_stop(id: String, logs: Channel<String>) -> Result<()> {
+    validate_id(&id)?;
+    let log = move |line: String| {
+        let _ = logs.send(line);
+    };
+    exegol::stop(&id, log).await
+}
+
+/// Opens the player's terminal attached to the running attack box.
+#[tauri::command]
+pub fn exegol_shell(id: String) -> Result<()> {
+    validate_id(&id)?;
+    exegol::shell(&id)
 }
 
 #[cfg(test)]

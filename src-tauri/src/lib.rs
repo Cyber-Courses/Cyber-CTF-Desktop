@@ -102,6 +102,10 @@ pub fn run() {
             runtime::lab_start,
             runtime::lab_stop,
             runtime::lab_status,
+            runtime::exegol_status,
+            runtime::exegol_start,
+            runtime::exegol_stop,
+            runtime::exegol_shell,
         ])
         .run(tauri::generate_context!())
         .expect("error while running CyberCTF");

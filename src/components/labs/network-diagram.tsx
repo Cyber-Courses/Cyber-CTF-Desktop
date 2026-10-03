@@ -70,7 +70,7 @@ function LabGroup({ data }: NodeProps<Node<{ label: string; count: string }>>) {
   );
 }
 
-function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string }>>) {
+function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string; running: boolean }>>) {
   return (
     <div className="topology-node attacker-node">
       <PortHandles accent={violet} />
@@ -83,7 +83,10 @@ function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string
           <span className="you-chip">YOU</span> ATTACKER
         </div>
         <div className="node-title">{data.label}</div>
-        <div className="node-subtitle">{data.subtitle}</div>
+        <div className="node-subtitle" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: data.running ? "#54c171" : "#6b6b6b" }} />
+          {data.subtitle}
+        </div>
       </div>
       <ShieldCheck className="attacker-shield" size={17} />
     </div>
@@ -175,12 +178,16 @@ function LabeledEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
 const nodeTypes = { host: HostGroup, lab: LabGroup, attacker: AttackerNode, computer: ComputerNode };
 const edgeTypes = { attack: LabeledEdge };
 
+type Attacker = { running: boolean; ip: string } | null;
+
 /** Build the nested node/edge graph from the lab's live containers. */
-function build(machines: Machine[]): { nodes: Node[]; edges: Edge[] } {
+function build(machines: Machine[], attacker: Attacker): { nodes: Node[]; edges: Edge[] } {
   const GAP = 196;
   const labH = Math.max(360, machines.length * GAP + 72);
   const hostH = labH + 116;
   const exposed = machines.filter((m) => m.ports.some((p) => p.published > 0)).length;
+  const atkOn = !!attacker?.running;
+  const atkColor = atkOn ? violet : "#5a5a5a";
 
   const nodes: Node[] = [
     {
@@ -212,7 +219,7 @@ function build(machines: Machine[]): { nodes: Node[]; edges: Edge[] } {
       parentId: "lab",
       extent: "parent",
       position: { x: 46, y: labH / 2 - 52 },
-      data: { label: "Exegol", subtitle: "your attack box" },
+      data: { label: "Exegol", subtitle: atkOn ? attacker!.ip : "not started", running: atkOn },
     },
   ];
 
@@ -243,17 +250,17 @@ function build(machines: Machine[]): { nodes: Node[]; edges: Edge[] } {
       source: "__exegol",
       target: id,
       type: "attack",
-      animated: true,
-      style: { stroke: violet, strokeWidth: 1.8, strokeDasharray: "5 5" },
-      markerEnd: { type: MarkerType.ArrowClosed, color: violet, width: 16, height: 16 },
+      animated: atkOn,
+      style: { stroke: atkColor, strokeWidth: 1.8, strokeDasharray: "5 5", opacity: atkOn ? 1 : 0.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: atkColor, width: 16, height: 16 },
     });
   });
 
   return { nodes, edges };
 }
 
-function Flow({ machines }: { machines: Machine[] }) {
-  const { nodes: seedNodes, edges: seedEdges } = useMemo(() => build(machines), [machines]);
+function Flow({ machines, attacker }: { machines: Machine[]; attacker: Attacker }) {
+  const { nodes: seedNodes, edges: seedEdges } = useMemo(() => build(machines, attacker), [machines, attacker]);
   const [nodes, , onNodesChange] = useNodesState(seedNodes);
   const [edges, , onEdgesChange] = useEdgesState(seedEdges);
   return (
@@ -285,14 +292,16 @@ function Flow({ machines }: { machines: Machine[] }) {
   );
 }
 
-export function NetworkDiagram({ machines }: { machines: Machine[] }) {
+export function NetworkDiagram({ machines, attacker = null }: { machines: Machine[]; attacker?: Attacker }) {
   // Remount (reseeding node state, preserving drags otherwise) only when the topology
   // itself changes, not on every status poll.
-  const sig = machines.map((m) => `${m.name}:${m.state}:${m.ip}:${m.ports.map((p) => `${p.published}-${p.target}`).join(",")}`).join("|");
+  const sig =
+    machines.map((m) => `${m.name}:${m.state}:${m.ip}:${m.ports.map((p) => `${p.published}-${p.target}`).join(",")}`).join("|") +
+    `#${attacker?.running ? attacker.ip : "off"}`;
   return (
     <ReactFlowProvider>
       <div className="topology-shell">
-        <Flow key={sig} machines={machines} />
+        <Flow key={sig} machines={machines} attacker={attacker} />
       </div>
     </ReactFlowProvider>
   );
