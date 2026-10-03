@@ -122,12 +122,18 @@ pub async fn start(
     homelab::mark_lab(dir, Some(host))?;
     log(format!("Running on home-lab host {} ({})", conn.name, conn.provider.id()));
     match (runtime, conn.provider) {
-        (Runtime::Docker, providers::Provider::Proxmox) => {
+        (Runtime::Docker, provider) if homelab::terraform_target(provider).is_some() => {
+            let target = homelab::terraform_target(provider).unwrap_or_default();
             let mut vars = conn.tf_vars.clone();
             vars.extend(lab_vars(dir, id, env)?);
             // The launcher's key, so "Open shell" can reach the attack box on the lab host.
             vars.push(("ssh_public_key".into(), ssh::ensure_key(app).await?.1));
-            terraform::apply(&dir.join("deploy"), &state_dir(app, id, "proxmox")?, "proxmox", &vars, log).await
+            if provider == providers::Provider::Aws {
+                // SSH open to this machine's public IP only.
+                vars.push(("allowed_cidr".into(), format!("{}/32", public_ip().await?)));
+                log("This lab runs in your AWS account and is billed there until you stop it.".into());
+            }
+            terraform::apply(&dir.join("deploy"), &state_dir(app, id, target)?, target, &vars, &conn.tf_env, log).await
         }
         (Runtime::Docker, provider) => {
             let vagrant = dir.join("deploy").join("vagrant");
@@ -139,7 +145,9 @@ pub async fn start(
         }
         // vagrant-proxmox (last release 2016) no longer installs on current Vagrant, and
         // multi-VM labs don't have a Terraform module yet.
-        (Runtime::Vm, providers::Provider::Proxmox) => Err(Error::Invalid("This VM lab can't run on Proxmox yet. Use an ESXi host or this machine.".into())),
+        (Runtime::Vm, providers::Provider::Proxmox | providers::Provider::Aws) => {
+            Err(Error::Invalid("This VM lab can only run on this machine or an ESXi host for now.".into()))
+        }
         (Runtime::Vm, provider) => {
             let env: Vec<(String, String)> = env.iter().cloned().chain(conn.env).collect();
             vm::start(dir, provider, &env, log).await
@@ -163,6 +171,19 @@ fn lab_vars(dir: &Path, id: &str, env: &[(String, String)]) -> Result<Vec<(Strin
     Ok(vars)
 }
 
+/// This machine's public IPv4, for cloud firewall rules.
+async fn public_ip() -> Result<String> {
+    let ip = reqwest::get("https://checkip.amazonaws.com")
+        .await
+        .map_err(|e| Error::Invalid(format!("couldn't find this machine's public IP: {e}")))?
+        .text()
+        .await
+        .map_err(|e| Error::Invalid(format!("couldn't find this machine's public IP: {e}")))?;
+    let ip = ip.trim();
+    ip.parse::<std::net::Ipv4Addr>().map_err(|_| Error::Invalid("unexpected public IP answer".into()))?;
+    Ok(ip.to_string())
+}
+
 /// Terraform state for a lab's target, outside the lab folder.
 fn state_dir(app: &AppHandle, id: &str, target: &str) -> Result<PathBuf> {
     validate_id(id)?;
@@ -175,8 +196,9 @@ async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl
     let result = match (runtime, conn) {
         (Runtime::Docker, None) => docker::stop(dir, id, log).await,
         (Runtime::Vm, None) => vm::stop(dir, &[], log).await,
-        (Runtime::Docker, Some(c)) if c.provider == providers::Provider::Proxmox => {
-            terraform::destroy(&dir.join("deploy"), &state_dir(app, id, "proxmox")?, "proxmox", &c.tf_vars, log).await
+        (Runtime::Docker, Some(c)) if homelab::terraform_target(c.provider).is_some() => {
+            let target = homelab::terraform_target(c.provider).unwrap_or_default();
+            terraform::destroy(&dir.join("deploy"), &state_dir(app, id, target)?, target, &c.tf_vars, &c.tf_env, log).await
         }
         (Runtime::Docker, Some(c)) => vm::stop(&dir.join("deploy").join("vagrant"), &c.env, log).await,
         (Runtime::Vm, Some(c)) => vm::stop(dir, &c.env, log).await,
@@ -195,7 +217,9 @@ async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Resu
         };
     };
     let status = match runtime {
-        Runtime::Docker if c.provider == providers::Provider::Proxmox => terraform::status(&state_dir(app, id, "proxmox")?),
+        Runtime::Docker if homelab::terraform_target(c.provider).is_some() => {
+            terraform::status(&state_dir(app, id, homelab::terraform_target(c.provider).unwrap_or_default())?)
+        }
         Runtime::Docker => vm::status(&dir.join("deploy").join("vagrant"), &c.env).await?,
         Runtime::Vm => vm::status(dir, &c.env).await?,
     };
@@ -255,8 +279,8 @@ pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> R
     if !matches!(runtime, Runtime::Docker) {
         return Err(Error::Invalid("this lab has no attack box".into()));
     }
-    let target = if conn.provider == providers::Provider::Proxmox {
-        let (host, user) = terraform::ssh_endpoint(&state_dir(&app, &id, "proxmox")?)
+    let target = if let Some(tf) = homelab::terraform_target(conn.provider) {
+        let (host, user) = terraform::ssh_endpoint(&state_dir(&app, &id, tf)?)
             .ok_or_else(|| Error::Invalid("the lab host has no address yet; wait for it to finish starting".into()))?;
         ssh::Target { host, port: 22, user, identity: ssh::ensure_key(&app).await?.0 }
     } else {

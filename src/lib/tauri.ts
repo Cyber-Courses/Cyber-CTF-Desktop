@@ -14,7 +14,8 @@ export type Provider =
   | "qemu"
   | "utm"
   | "vmware_esxi"
-  | "proxmox";
+  | "proxmox"
+  | "aws";
 
 export interface Tool {
   installed: boolean;
@@ -146,7 +147,7 @@ export function labLaunch(
 
 // --- Home lab (the player's own ESXi / Proxmox host) ---
 
-export type RemoteProvider = Extract<Provider, "vmware_esxi" | "proxmox">;
+export type RemoteProvider = Extract<Provider, "vmware_esxi" | "proxmox" | "aws">;
 
 export interface HomelabHost {
   id: string;
@@ -195,7 +196,8 @@ export const homelabRemove = (id: string) => invoke<void>("homelab_remove", { id
 export const homelabSetDefault = (id: string | null) => invoke<void>("homelab_set_default", { id });
 export const homelabTest = (id: string) => invoke<HomelabTest>("homelab_test", { id });
 /** Opens (or focuses) the setup window, for a new host or to edit `id`. */
-export const homelabOpenSetup = (id: string | null) => invoke<void>("homelab_open_setup", { id });
+export const homelabOpenSetup = (id: string | null, kind: "homelab" | "cloud" = "homelab") =>
+  invoke<void>("homelab_open_setup", { id, kind });
 /** Emitted by the setup window after a save; the main window reloads its host list. */
 export const HOMELAB_CHANGED = "homelab:changed";
 

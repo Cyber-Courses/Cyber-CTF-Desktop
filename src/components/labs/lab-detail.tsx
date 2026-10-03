@@ -63,7 +63,7 @@ export function LabDetail({
   const [hosts, setHosts] = useState<HomelabHost[]>([]);
   const [runOn, setRunOn] = useState<string | null>(null);
   const hostOk = useCallback(
-    (h: HomelabHost) => !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && h.provider === "proxmox"),
+    (h: HomelabHost) => !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && (h.provider === "proxmox" || h.provider === "aws")),
     [rt],
   );
   useEffect(() => {
@@ -294,7 +294,7 @@ export function LabDetail({
   );
 }
 
-const HYPERVISOR: Record<string, string> = { vmware_esxi: "ESXi", proxmox: "Proxmox" };
+const HYPERVISOR: Record<string, string> = { vmware_esxi: "ESXi", proxmox: "Proxmox", aws: "AWS, billed to you" };
 
 /** "Run on: this machine | <home-lab host>". Hosts the lab can't run on are disabled. */
 function RunOnPicker({

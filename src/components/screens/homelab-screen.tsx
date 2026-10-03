@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { ArrowRight, CheckCircle2, Pencil, Plus, Server, Star, Trash2, XCircle, Zap } from "lucide-react";
+import { ArrowRight, CheckCircle2, Cloud, Pencil, Plus, Server, Star, Trash2, XCircle, Zap } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -21,8 +21,34 @@ import { cn } from "@/lib/utils";
 
 type Tab = "setup";
 
-export function HomeLabScreen({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
-  const [hosts, setHosts] = useState<HomelabHost[] | null>(null);
+const COPY = {
+  homelab: {
+    title: "Home lab",
+    intro: "Run heavy, multi-VM labs on your own ESXi or Proxmox server instead of this machine. Credentials stay in your OS keychain.",
+    add: "Add host",
+    list: "Hosts",
+    hint: "VM labs run on the default host unless you pick another",
+    emptyTitle: "No host connected",
+    emptyBody: "Add your Proxmox or ESXi server to run labs on it.",
+    removed: "password",
+  },
+  cloud: {
+    title: "Cloud",
+    intro: "Run labs in your own AWS account: one small EC2 instance per lab, destroyed when you stop it. Keys stay in your OS keychain.",
+    add: "Connect AWS",
+    list: "Accounts",
+    hint: "Pick an account in a lab's Run on choice",
+    emptyTitle: "No cloud account connected",
+    emptyBody: "Connect an AWS account to run labs in the cloud.",
+    removed: "secret key",
+  },
+};
+
+export function HomeLabScreen({ onNavigate, kind = "homelab" }: { onNavigate: (tab: Tab) => void; kind?: "homelab" | "cloud" }) {
+  const copy = COPY[kind];
+  const cloud = kind === "cloud";
+  const [allHosts, setHosts] = useState<HomelabHost[] | null>(null);
+  const hosts = allHosts?.filter((h) => (h.provider === "aws") === cloud) ?? null;
   const [defaultId, setDefaultId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
     const [tests, setTests] = useState<Record<string, HomelabTest | "testing">>({});
@@ -68,27 +94,25 @@ export function HomeLabScreen({ onNavigate }: { onNavigate: (tab: Tab) => void }
     <div className="space-y-5">
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold tracking-tight">Home lab</h1>
-          <p className="mt-1 max-w-xl text-[13px] text-muted-foreground">
-            Run heavy, multi-VM labs on your own ESXi or Proxmox server instead of this machine. Credentials stay in your OS keychain.
-          </p>
+          <h1 className="text-xl font-semibold tracking-tight">{copy.title}</h1>
+          <p className="mt-1 max-w-xl text-[13px] text-muted-foreground">{copy.intro}</p>
         </div>
-        <Button variant="learn" size="sm" onClick={() => homelabOpenSetup(null).catch((e) => setError(String(e)))}>
-          <Plus className="size-3.5" /> Add host
+        <Button variant="learn" size="sm" onClick={() => homelabOpenSetup(null, kind).catch((e) => setError(String(e)))}>
+          <Plus className="size-3.5" /> {copy.add}
         </Button>
       </div>
 
       {error && <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">{error}</p>}
 
       <Panel>
-        <PanelHeader title="Hosts" action={hosts && hosts.length > 0 ? <span className="text-[11.5px] text-muted-foreground">VM labs run on the default host unless you pick another</span> : undefined} />
+        <PanelHeader title={copy.list} action={hosts && hosts.length > 0 ? <span className="text-[11.5px] text-muted-foreground">{copy.hint}</span> : undefined} />
         {hosts === null ? (
           <div className="flex items-center gap-2 px-3.5 py-4 text-[12.5px] text-muted-foreground"><Spinner className="size-4" /> Loading…</div>
         ) : hosts.length === 0 ? (
           <div className="px-3.5 py-8 text-center">
-            <Server className="mx-auto size-6 text-muted-foreground/50" />
-            <p className="mt-2 text-[13px] font-medium">No host connected</p>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">Add your Proxmox or ESXi server to run VM labs on it.</p>
+            {cloud ? <Cloud className="mx-auto size-6 text-muted-foreground/50" /> : <Server className="mx-auto size-6 text-muted-foreground/50" />}
+            <p className="mt-2 text-[13px] font-medium">{copy.emptyTitle}</p>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">{copy.emptyBody}</p>
           </div>
         ) : (
           hosts.map((h) => (
@@ -96,12 +120,13 @@ export function HomeLabScreen({ onNavigate }: { onNavigate: (tab: Tab) => void }
               key={h.id}
               host={h}
               isDefault={h.id === defaultId}
+              canDefault={!cloud}
               test={tests[h.id]}
               onTest={() => test(h.id)}
               onEdit={() => homelabOpenSetup(h.id).catch((e) => setError(String(e)))}
               onDefault={() => act(() => homelabSetDefault(h.id === defaultId ? null : h.id))}
               onRemove={() => {
-                if (confirm(`Remove ${h.name}? Its password is deleted from the keychain.`)) act(() => homelabRemove(h.id));
+                if (confirm(`Remove ${h.name}? Its ${copy.removed} is deleted from the keychain.`)) act(() => homelabRemove(h.id));
               }}
             />
           ))
@@ -110,11 +135,22 @@ export function HomeLabScreen({ onNavigate }: { onNavigate: (tab: Tab) => void }
 
       <Panel>
         <PanelHeader title="How it works" />
-        <Step n={1} title="Connect your host" body="Add the endpoint and an account. The launcher checks it's reachable (and signs in, for Proxmox)." />
-        <Step n={2} title="Pick where a VM lab runs" body="On a VM lab, choose This machine or one of your hosts. Labs launched from the website use the default host." />
-        <Step n={3} title="Vagrant builds it there" body="The launcher runs Vagrant with your host's connection; the VMs are created, and destroyed on Stop, on your server." />
+        {cloud ? (
+          <>
+            <Step n={1} title="Connect your AWS account" body="An IAM user's access keys and a region. The launcher checks them with AWS before saving." />
+            <Step n={2} title="Pick AWS on a lab" body="In a lab's Run on choice. Terraform creates one Debian instance in your default VPC, only reachable over SSH from your IP." />
+            <Step n={3} title="Attack, then Stop" body="Open shell connects to the attack box next to the lab. Stop destroys the instance, so billing stops with it." />
+          </>
+        ) : (
+          <>
+            <Step n={1} title="Connect your host" body="Add the endpoint and an account. The launcher checks it's reachable (and signs in, for Proxmox)." />
+            <Step n={2} title="Pick where a lab runs" body="In a lab's Run on choice: this machine or one of your hosts. VM labs launched from the website use the default host." />
+            <Step n={3} title="It's built on your server" body="Terraform (Proxmox) or Vagrant (ESXi) creates the lab host there; Stop destroys it." />
+          </>
+        )}
       </Panel>
 
+      {!cloud && (
       <Panel>
         <div className="flex flex-wrap items-center gap-3 p-4">
           <div className="min-w-0 flex-1">
@@ -126,6 +162,7 @@ export function HomeLabScreen({ onNavigate }: { onNavigate: (tab: Tab) => void }
           </Button>
         </div>
       </Panel>
+      )}
     </div>
   );
 }
@@ -133,6 +170,7 @@ export function HomeLabScreen({ onNavigate }: { onNavigate: (tab: Tab) => void }
 function HostRow({
   host,
   isDefault,
+  canDefault,
   test,
   onTest,
   onEdit,
@@ -141,6 +179,7 @@ function HostRow({
 }: {
   host: HomelabHost;
   isDefault: boolean;
+  canDefault: boolean;
   test: HomelabTest | "testing" | undefined;
   onTest: () => void;
   onEdit: () => void;
@@ -159,7 +198,7 @@ function HostRow({
             {isDefault && <span className="rounded border border-border px-1.5 text-[9.5px] font-medium uppercase tracking-wide text-muted-foreground">Default</span>}
           </p>
           <p className="truncate font-mono text-[11px] text-muted-foreground">
-            {KIND[host.provider].label} · {host.username}@{host.host}:{host.port}
+            {host.provider === "aws" ? `AWS · ${host.host} · ${host.username.slice(0, 8)}…` : `${KIND[host.provider].label} · ${host.username}@${host.host}:${host.port}`}
             {host.node ? ` · node ${host.node}` : ""}
             {result?.latencyMs != null ? ` · ${result.latencyMs} ms` : ""}
           </p>
@@ -168,9 +207,11 @@ function HostRow({
           <Button variant="outline" size="sm" onClick={onTest} disabled={test === "testing"}>
             {test === "testing" ? <Spinner className="size-3.5" /> : <Zap className="size-3.5" />} Test
           </Button>
-          <IconButton label={isDefault ? "Unset default" : "Make default"} onClick={onDefault}>
-            <Star className={cn("size-3.5", isDefault && "fill-current text-learn")} />
-          </IconButton>
+          {canDefault && (
+            <IconButton label={isDefault ? "Unset default" : "Make default"} onClick={onDefault}>
+              <Star className={cn("size-3.5", isDefault && "fill-current text-learn")} />
+            </IconButton>
+          )}
           <IconButton label="Edit" onClick={onEdit}><Pencil className="size-3.5" /></IconButton>
           <IconButton label="Remove" onClick={onRemove}><Trash2 className="size-3.5" /></IconButton>
         </div>

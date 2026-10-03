@@ -61,8 +61,9 @@ async fn terraform(deploy: &Path, state: &Path, target: &str, env: &[(String, St
     stream("docker", &args, None, env, log).await
 }
 
-/// Creates (or updates) the target's resources. `vars` are Terraform variable names.
-pub async fn apply(deploy: &Path, state: &Path, target: &str, vars: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
+/// Creates (or updates) the target's resources. `vars` are Terraform variable names;
+/// `env` is raw environment the provider reads itself (cloud credentials).
+pub async fn apply(deploy: &Path, state: &Path, target: &str, vars: &[(String, String)], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
     std::fs::create_dir_all(state)?;
     // Remember the non-secret variables, so a later destroy has them without the launch spec.
     let run: serde_json::Map<String, Value> = vars
@@ -71,12 +72,12 @@ pub async fn apply(deploy: &Path, state: &Path, target: &str, vars: &[(String, S
         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
         .collect();
     std::fs::write(state.join(RUN_FILE), serde_json::to_string(&run).unwrap_or_default())?;
-    terraform(deploy, state, target, &tf_env(vars), "apply", log).await
+    terraform(deploy, state, target, &with_env(vars, env), "apply", log).await
 }
 
 /// Destroys everything the target created. `vars` carry the connection again (the
 /// provider needs it); the lab variables are restored from the last apply.
-pub async fn destroy(deploy: &Path, state: &Path, target: &str, vars: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
+pub async fn destroy(deploy: &Path, state: &Path, target: &str, vars: &[(String, String)], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
     if !state.join("terraform.tfstate").is_file() {
         return Ok(());
     }
@@ -90,13 +91,13 @@ pub async fn destroy(deploy: &Path, state: &Path, target: &str, vars: &[(String,
             }
         }
     }
-    terraform(deploy, state, target, &tf_env(&all), "destroy", log).await?;
+    terraform(deploy, state, target, &with_env(&all, env), "destroy", log).await?;
     let _ = std::fs::remove_file(state.join("terraform.tfstate"));
     Ok(())
 }
 
-fn tf_env(vars: &[(String, String)]) -> Vec<(String, String)> {
-    vars.iter().map(|(k, v)| (format!("TF_VAR_{k}"), v.clone())).collect()
+fn with_env(vars: &[(String, String)], env: &[(String, String)]) -> Vec<(String, String)> {
+    vars.iter().map(|(k, v)| (format!("TF_VAR_{k}"), v.clone())).chain(env.iter().cloned()).collect()
 }
 
 /// The lab host's address and SSH user, from the local state's outputs.
@@ -192,10 +193,10 @@ mod tests {
         ]);
         let print = |l: String| println!("{l}");
 
-        let applied = apply(&deploy, &state, "proxmox", &vars, print).await;
+        let applied = apply(&deploy, &state, "proxmox", &vars, &[], print).await;
         let s = status(&state);
         println!("status after apply: running={} machines={}", s.running, s.machines.len());
-        let destroyed = destroy(&deploy, &state, "proxmox", &connection, print).await;
+        let destroyed = destroy(&deploy, &state, "proxmox", &connection, &[], print).await;
         let after = status(&state);
         let _ = std::fs::remove_dir_all(&state);
         let _ = std::fs::remove_dir_all(&deploy);

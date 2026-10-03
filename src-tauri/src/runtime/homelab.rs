@@ -125,7 +125,34 @@ fn valid_id(id: &str) -> bool {
 }
 
 fn default_port(provider: Provider) -> u16 {
-    if provider == Provider::Proxmox { 8006 } else { 22 }
+    match provider {
+        Provider::Proxmox => 8006,
+        Provider::Aws => 443,
+        _ => 22,
+    }
+}
+
+/// An AWS region id, e.g. eu-west-3, us-gov-west-1.
+fn valid_region(region: &str) -> bool {
+    let parts: Vec<&str> = region.split('-').collect();
+    parts.len() >= 3
+        && parts[0].len() == 2
+        && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()))
+        && parts.last().is_some_and(|p| p.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// An AWS access key id (AKIA... long-term, ASIA... temporary).
+fn valid_access_key_id(id: &str) -> bool {
+    (16..=128).contains(&id.len()) && id.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+}
+
+/// The Terraform target (deploy/terraform/<target>) for a provider, if it uses Terraform.
+pub fn terraform_target(provider: Provider) -> Option<&'static str> {
+    match provider {
+        Provider::Proxmox => Some("proxmox"),
+        Provider::Aws => Some("aws"),
+        _ => None,
+    }
 }
 
 fn new_id() -> String {
@@ -277,8 +304,27 @@ fn proxmox_endpoint(h: &HostProfile) -> String {
     format!("https://{}:{}/api2/json", host_for_url(&h.host), h.port)
 }
 
-/// Terraform variables for a Proxmox host (`deploy/terraform/proxmox`).
+/// Raw environment for Terraform (credentials the provider reads itself, never variables).
+pub fn terraform_env(h: &HostProfile, password: &str) -> Vec<(String, String)> {
+    match h.provider {
+        Provider::Aws => vec![
+            ("AWS_ACCESS_KEY_ID".into(), h.username.clone()),
+            ("AWS_SECRET_ACCESS_KEY".into(), password.to_string()),
+            ("AWS_REGION".into(), h.host.clone()),
+        ],
+        _ => Vec::new(),
+    }
+}
+
+/// Terraform variables for a host (`deploy/terraform/<target>`).
 pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> {
+    if h.provider == Provider::Aws {
+        let mut vars = vec![("region".to_string(), h.host.clone())];
+        if let Some(t) = &h.datastore {
+            vars.push(("instance_type".into(), t.clone()));
+        }
+        return vars;
+    }
     let mut vars = vec![
         ("proxmox_endpoint", format!("https://{}:{}/", host_for_url(&h.host), h.port)),
         ("proxmox_username", h.username.clone()),
@@ -306,6 +352,8 @@ pub struct Connection {
     pub name: String,
     pub env: Vec<(String, String)>,
     pub tf_vars: Vec<(String, String)>,
+    /// Raw env for the Terraform container (cloud credentials).
+    pub tf_env: Vec<(String, String)>,
 }
 
 pub fn connection(app: &AppHandle, id: &str) -> Result<Connection> {
@@ -316,13 +364,15 @@ pub fn connection(app: &AppHandle, id: &str) -> Result<Connection> {
         name: host.name.clone(),
         env: connection_env(&host, &password),
         tf_vars: terraform_vars(&host, &password),
+        tf_env: terraform_env(&host, &password),
     })
 }
 
 /// The host marked as default, if any (used for VM labs launched from the website).
 pub fn default_host(app: &AppHandle) -> Option<String> {
     let store = load(app).ok()?;
-    store.default.filter(|id| store.hosts.iter().any(|h| &h.id == id))
+    // Only home-lab hosts: a cloud account is never used implicitly (it costs money).
+    store.default.filter(|id| store.hosts.iter().any(|h| &h.id == id && h.provider != Provider::Aws))
 }
 
 /// Records (or clears) which host a VM lab directory runs on.
@@ -347,7 +397,37 @@ pub fn lab_connection(app: &AppHandle, dir: &Path) -> Result<Option<Connection>>
 
 // --- reachability ---------------------------------------------------------
 
+/// AWS: `sts get-caller-identity` in the official CLI container (Docker is the floor).
+async fn test_aws(h: &HostProfile, password: &str) -> TestResult {
+    let started = Instant::now();
+    let env = terraform_env(h, password);
+    let args = ["run", "--rm", "-e", "AWS_ACCESS_KEY_ID", "-e", "AWS_SECRET_ACCESS_KEY", "-e", "AWS_REGION", "amazon/aws-cli:2.37.9", "sts", "get-caller-identity", "--query", "Arn", "--output", "text"];
+    match crate::exec::run_env("docker", &args, None, &env).await {
+        Ok(arn) => TestResult {
+            ok: true,
+            reachable: true,
+            authenticated: Some(true),
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            message: format!("Signed in to AWS as {}. Labs you start here are billed to this account.", arn.trim()),
+        },
+        Err(Error::CommandFailed { stderr, .. }) => {
+            let denied = stderr.contains("InvalidClientTokenId") || stderr.contains("SignatureDoesNotMatch") || stderr.contains("AccessDenied");
+            TestResult {
+                ok: false,
+                reachable: true,
+                authenticated: denied.then_some(false),
+                latency_ms: None,
+                message: if denied { "AWS rejected these keys.".into() } else { format!("AWS check failed: {}", stderr.lines().last().unwrap_or_default()) },
+            }
+        }
+        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("AWS check failed: {e}") },
+    }
+}
+
 async fn test_host(h: &HostProfile, password: &str) -> TestResult {
+    if h.provider == Provider::Aws {
+        return test_aws(h, password).await;
+    }
     let started = Instant::now();
     let connect = tokio::time::timeout(TEST_TIMEOUT, TcpStream::connect((h.host.as_str(), h.port))).await;
     let mut stream = match connect {
@@ -424,13 +504,20 @@ pub fn homelab_list(app: AppHandle) -> Result<HostList> {
 #[tauri::command]
 pub fn homelab_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
     if !input.provider.is_remote() {
-        return Err(Error::Invalid("a home-lab host must be ESXi or Proxmox".into()));
+        return Err(Error::Invalid("a host must be ESXi, Proxmox or AWS".into()));
     }
     let host = clean(&input.host, "host", 253)?;
-    if !valid_host(&host) {
+    let username = clean(&input.username, "username", 128)?;
+    if input.provider == Provider::Aws {
+        if !valid_region(&host) {
+            return Err(Error::Invalid("region must be an AWS region id, e.g. eu-west-3".into()));
+        }
+        if !valid_access_key_id(&username) {
+            return Err(Error::Invalid("access key id looks wrong (AKIA... or ASIA...)".into()));
+        }
+    } else if !valid_host(&host) {
         return Err(Error::Invalid("host must be a hostname or IP address, without https:// or a path".into()));
     }
-    let username = clean(&input.username, "username", 128)?;
     if input.provider == Provider::Proxmox && !username.contains('@') {
         return Err(Error::Invalid("Proxmox users include a realm, e.g. root@pam".into()));
     }
@@ -462,7 +549,7 @@ pub fn homelab_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         Some(existing) => *existing = profile.clone(),
         None => store.hosts.push(profile.clone()),
     }
-    if store.default.is_none() {
+    if store.default.is_none() && profile.provider != Provider::Aws {
         store.default = Some(id);
     }
     save(&app, &store)?;
@@ -486,7 +573,9 @@ pub fn homelab_remove(app: AppHandle, id: String) -> Result<()> {
 pub fn homelab_set_default(app: AppHandle, id: Option<String>) -> Result<()> {
     let mut store = load(&app)?;
     if let Some(id) = &id {
-        find(&store, id)?;
+        if find(&store, id)?.provider == Provider::Aws {
+            return Err(Error::Invalid("a cloud account can't be the default host".into()));
+        }
     }
     store.default = id;
     save(&app, &store)
@@ -495,18 +584,20 @@ pub fn homelab_set_default(app: AppHandle, id: Option<String>) -> Result<()> {
 /// Opens the host setup in its own window (label `homelab-setup`); the window closes
 /// itself when setup ends. An already open setup window is replaced.
 #[tauri::command]
-pub async fn homelab_open_setup(app: AppHandle, id: Option<String>) -> Result<()> {
+pub async fn homelab_open_setup(app: AppHandle, id: Option<String>, kind: Option<String>) -> Result<()> {
     const LABEL: &str = "homelab-setup";
+    let cloud = kind.as_deref() == Some("cloud");
     let path = match id {
         Some(id) if valid_id(&id) => format!("homelab-setup?id={id}"),
         Some(_) => return Err(Error::Invalid("unknown home-lab host".into())),
+        None if cloud => "homelab-setup?kind=cloud".into(),
         None => "homelab-setup".into(),
     };
     if let Some(existing) = app.get_webview_window(LABEL) {
         let _ = existing.destroy();
     }
     let mut builder = tauri::WebviewWindowBuilder::new(&app, LABEL, tauri::WebviewUrl::App(path.into()))
-        .title("Connect a host")
+        .title(if cloud { "Connect AWS" } else { "Connect a host" })
         .inner_size(680.0, 760.0)
         .min_inner_size(560.0, 560.0)
         .resizable(true);
@@ -572,6 +663,23 @@ mod tests {
         assert_eq!(get(&env, "CYBERCTF_PROXMOX_USER_NAME"), Some("root@pam"));
         assert_eq!(get(&env, "CYBERCTF_PROXMOX_NODE"), Some("pve"));
         assert_eq!(get(&env, "CYBERCTF_PROXMOX_BRIDGE"), Some("vmbr1"));
+    }
+
+    #[test]
+    fn aws_regions_and_keys() {
+        for good in ["eu-west-3", "us-east-1", "us-gov-west-1", "ap-southeast-2"] {
+            assert!(valid_region(good), "{good}");
+        }
+        for bad in ["eu-west", "EU-west-3", "eu_west_3", "https://eu-west-3", "eu-west-3a"] {
+            assert!(!valid_region(bad), "{bad}");
+        }
+        assert!(valid_access_key_id("AKIAIOSFODNN7EXAMPLE"));
+        assert!(!valid_access_key_id("akiaiosfodnn7example"));
+        let h = HostProfile { provider: Provider::Aws, host: "eu-west-3".into(), username: "AKIAIOSFODNN7EXAMPLE".into(), datastore: Some("t3.small".into()), ..profile(Provider::Proxmox) };
+        assert_eq!(get(&terraform_env(&h, "sec"), "AWS_SECRET_ACCESS_KEY"), Some("sec"));
+        let vars = terraform_vars(&h, "sec");
+        assert_eq!(get(&vars, "region"), Some("eu-west-3"));
+        assert!(get(&vars, "proxmox_password").is_none());
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { CheckCircle2, ExternalLink, Server, XCircle } from "lucide-react";
+import { CheckCircle2, Cloud, ExternalLink, Server, XCircle } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -24,7 +24,12 @@ import { cn } from "@/lib/utils";
 export const KIND: Record<RemoteProvider, { label: string; note: string; port: number; user: string; plugin: string }> = {
   proxmox: { label: "Proxmox VE", note: "Signs in to the Proxmox API", port: 8006, user: "root@pam", plugin: "vagrant-proxmox" },
   vmware_esxi: { label: "VMware ESXi", note: "Drives the host over SSH", port: 22, user: "root", plugin: "vagrant-vmware-esxi" },
+  aws: { label: "AWS", note: "EC2 in your own account", port: 443, user: "AKIA…", plugin: "" },
 };
+
+/** Home-lab hypervisors, as opposed to cloud accounts. */
+export const HOMELAB_KINDS: RemoteProvider[] = ["proxmox", "vmware_esxi"];
+
 
 export const EMPTY_HOST: HomelabHostInput = {
   id: null,
@@ -41,8 +46,18 @@ export const EMPTY_HOST: HomelabHostInput = {
   insecureTls: true,
 };
 
+/** A new AWS account: region + access keys. */
+export const EMPTY_CLOUD: HomelabHostInput = { ...EMPTY_HOST, provider: "aws", insecureTls: false };
+
 /** Proxmox's own logo (official media kit, unaltered), or a neutral mark for ESXi. */
 export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
+  // AWS logos need Amazon's approval too: a neutral mark.
+  if (provider === "aws")
+    return (
+      <span className="flex h-5 items-center gap-1.5 text-[13px] font-semibold tracking-tight">
+        <Cloud className="size-4 text-muted-foreground" /> Amazon Web Services
+      </span>
+    );
   if (provider === "proxmox")
     // eslint-disable-next-line @next/next/no-img-element -- static export, plain asset
     return <img src="/brands/proxmox-full-lockup-inverted-color.svg" alt="Proxmox" className="h-5 w-auto" draggable={false} />;
@@ -85,9 +100,15 @@ export function HostSetupPage({
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">{draft.id !== null && !saved ? `Edit ${draft.name}` : saved ? `${saved.name} connected` : "Connect a host"}</h1>
+        <h1 className="text-xl font-semibold tracking-tight">
+          {draft.id !== null && !saved ? `Edit ${draft.name}` : saved ? `${saved.name} connected` : draft.provider === "aws" ? "Connect AWS" : "Connect a host"}
+        </h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          {saved ? "Saved. Here's what the launcher could check from this machine." : "Point the launcher at your hypervisor. The password goes to your OS keychain, never to CyberCTF."}
+          {saved
+            ? "Saved. Here's what the launcher could check from this machine."
+            : draft.provider === "aws"
+              ? "Run labs in your own AWS account. The secret key goes to your OS keychain, never to CyberCTF."
+              : "Point the launcher at your hypervisor. The password goes to your OS keychain, never to CyberCTF."}
         </p>
       </div>
 
@@ -136,7 +157,7 @@ export function HostSetupPage({
         <button onClick={() => openUrl("https://www.proxmox.com").catch(() => {})} className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline">
           proxmox.com <ExternalLink className="size-3" />
         </button>{" "}
-        VMware and ESXi are trademarks of Broadcom. CyberCTF isn&apos;t affiliated with either.
+        VMware and ESXi are trademarks of Broadcom. Amazon Web Services and AWS are trademarks of Amazon.com, Inc. CyberCTF isn&apos;t affiliated with any of them.
       </p>
     </div>
   );
@@ -160,6 +181,7 @@ function HostForm({
   const [error, setError] = useState<string | null>(null);
   const [pluginLog, setPluginLog] = useState<string[] | null>(null);
   const editing = initial.id !== null;
+  const cloud = v.provider === "aws";
   const kind = KIND[v.provider];
   const status = report?.vmProviders.find((p) => p.provider === v.provider);
   const set = <K extends keyof HomelabHostInput>(k: K, value: HomelabHostInput[K]) => setV((s) => ({ ...s, [k]: value }));
@@ -195,10 +217,14 @@ function HostForm({
 
   return (
     <Panel>
-      <PanelHeader title={editing ? "Connection" : "Hypervisor and connection"} />
+      <PanelHeader title={editing ? "Connection" : cloud ? "AWS account" : "Hypervisor and connection"} />
       <form onSubmit={submit} className="space-y-4 p-4">
+        {cloud ? (
+          <AwsFields v={v} set={set} text={text} editing={editing} />
+        ) : (
+        <>
         <div className="grid grid-cols-2 gap-2">
-          {(Object.keys(KIND) as RemoteProvider[]).map((p) => (
+          {HOMELAB_KINDS.map((p) => (
             <button
               key={p}
               type="button"
@@ -287,6 +313,8 @@ function HostForm({
             </span>
           </label>
         )}
+        </>
+        )}
 
         {error && <p className="text-[12px] text-destructive">{error}</p>}
 
@@ -320,5 +348,43 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
       {...props}
       className="w-full rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring"
     />
+  );
+}
+
+function AwsFields({
+  v,
+  set,
+  text,
+  editing,
+}: {
+  v: HomelabHostInput;
+  set: <K extends keyof HomelabHostInput>(k: K, value: HomelabHostInput[K]) => void;
+  text: (k: "name" | "host" | "username" | "datastore") => { value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void };
+  editing: boolean;
+}) {
+  return (
+    <>
+      <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[12px] text-amber-500">
+        Labs you start on AWS run in your account and are billed there (about $0.05/hour for the default t3.medium) until you stop them. Stop destroys everything the lab created.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Name"><Input {...text("name")} placeholder="My AWS" /></Field>
+        <Field label="Region"><Input {...text("host")} placeholder="eu-west-3" required /></Field>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Access key ID" hint="An IAM user with EC2 access"><Input {...text("username")} placeholder="AKIA…" required /></Field>
+        <Field label="Secret access key" hint="Stored in your OS keychain">
+          <Input
+            type="password"
+            value={v.password ?? ""}
+            onChange={(e) => set("password", e.target.value || null)}
+            placeholder={editing ? "Unchanged" : ""}
+            required={!editing}
+            autoComplete="off"
+          />
+        </Field>
+      </div>
+      <Field label="Instance type" hint="Optional"><Input {...text("datastore")} placeholder="t3.medium" /></Field>
+    </>
   );
 }

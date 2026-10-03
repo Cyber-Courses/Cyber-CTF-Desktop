@@ -54,6 +54,29 @@ The Vagrantfile uses `esxi.esxi_password = "env:CYBERCTF_ESXI_PASSWORD"`.
 `ctf_api_url`, `ctf_launch_token`, `attackbox_image`. The VM fetches the lab from GitHub
 at that commit, so lab repositories must be public.
 
+## Cloud (AWS)
+
+An AWS account is stored like a host (provider `aws`): region in `host`, access key id
+in `username`, secret access key in the keychain, optional instance type in `datastore`.
+It lists on the **Cloud** page and appears in a Docker lab's Run on choice ("AWS, billed
+to you"); it is never a default host, so a lab never lands on AWS implicitly.
+
+The launcher runs `deploy/terraform/aws` with `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` /
+`AWS_REGION` as raw container env (never Terraform variables), plus `region`,
+`instance_type`, `ssh_public_key` and `allowed_cidr` (this machine's public IP/32 from
+checkip.amazonaws.com, the only address allowed to SSH in). Stop runs `terraform destroy`.
+The test is `sts get-caller-identity` in the `amazon/aws-cli` container.
+
+## Attack box shell on remote labs
+
+The attack box runs next to the lab on the lab host. "Open shell" opens the OS terminal on
+`ssh -t <user>@<lab host> sudo docker exec -it attacker bash`:
+
+- Terraform targets: the launcher's own key (`<app data>/ssh/id_ed25519`, made once with
+  `ssh-keygen`), installed by cloud-init; user and address from the state outputs
+  (`ssh_user`, `ip`). Own `known_hosts` next to the key.
+- Vagrant targets (ESXi): `vagrant ssh-config` (Vagrant's key).
+
 ## Test
 
 `homelab_test` checks the host without running anything on it:

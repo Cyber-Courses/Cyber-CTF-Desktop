@@ -24,7 +24,7 @@ const NAV: { id: Tab; label: string; icon: LucideIcon; soon?: boolean }[] = [
   { id: "labs", label: "Labs", icon: FlaskConical },
   { id: "machine", label: "Machine", icon: MonitorCog },
   { id: "homelab", label: "Home lab", icon: Server },
-  { id: "cloud", label: "Cloud", icon: Cloud, soon: true },
+  { id: "cloud", label: "Cloud", icon: Cloud },
   { id: "events", label: "Events", icon: CalendarDays, soon: true },
   { id: "settings", label: "Settings", icon: Cog },
 ];
@@ -186,7 +186,7 @@ function Screen({
       <p className="text-sm text-muted-foreground">Checking this machine…</p>
     );
   if (tab === "homelab") return <HomeLabScreen onNavigate={onNavigate} />;
-  if (tab === "cloud") return <ComingSoon icon="cloud" title="Cloud" description="Spin up labs in the cloud, provisioned with Terraform and configured with Ansible, no local setup, then open them right here." />;
+  if (tab === "cloud") return <HomeLabScreen kind="cloud" onNavigate={onNavigate} />;
   if (tab === "events")
     return <ComingSoon icon="sparkles" title="Events" description="Join live CTF events where labs are hosted by CyberCTF: nothing to run on your machine, each participant gets their own lab for the event's duration." />;
   return report ? <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} openSlug={openLab} /> : <p className="text-sm text-muted-foreground">Loading…</p>;
