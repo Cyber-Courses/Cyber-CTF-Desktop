@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, Container, Crosshair, ExternalLink, Play, Server, Square, Terminal } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Container, Crosshair, ExternalLink, Play, Server, Square, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
@@ -129,6 +129,24 @@ export function LabDetail({
             </Panel>
           )}
 
+          {(logs.length > 0 || busy) && (
+            <Panel>
+              <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
+                <h3 className="text-[13px] font-medium">Deployment</h3>
+                <span className="ml-auto flex items-center gap-1.5 text-[12px]">
+                  {busy ? (
+                    <><Spinner className="size-3.5" /> <span className="text-muted-foreground">Building…</span></>
+                  ) : running ? (
+                    <><CheckCircle2 className="size-4 text-emerald-500" /> <span className="text-emerald-500">Ready</span></>
+                  ) : (
+                    <span className="text-muted-foreground">Stopped</span>
+                  )}
+                </span>
+              </div>
+              {logs.length > 0 && <LogConsole lines={logs} />}
+            </Panel>
+          )}
+
           <Panel>
             <PanelHeader title="Brief" />
             <div className="p-4">
@@ -142,7 +160,6 @@ export function LabDetail({
             </div>
           </Panel>
 
-          {logs.length > 0 && <LogConsole lines={logs} />}
         </div>
 
         <aside className="h-fit space-y-4 lg:sticky lg:top-2">
