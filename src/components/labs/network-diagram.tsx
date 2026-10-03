@@ -20,17 +20,18 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ArrowUpRight, Box, Database, Globe2, Monitor, Radio, Server, ShieldCheck, Terminal, Workflow, Zap, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Box, Database, Globe2, Laptop, Monitor, Radio, ShieldCheck, Terminal, Workflow, Zap, type LucideIcon } from "lucide-react";
 
-// A lab is a set of Docker containers (computers) on one private network. Each computer
-// runs one piece of software bound to a port; the learner attacks the targets from Exegol.
-// This renders that topology with React Flow: Your machine frames the lab network, which
-// frames the containers. Ported from the v0-designed canvas, wired to live lab_status.
+// A lab is a set of Docker containers (computers) on one private network. "Your machine"
+// (the host) is the wrapping card; inside it the diagram shows the attacker (Exegol/Kali)
+// and the target computers, each running software bound to a port.
 
 type Port = { published: number; target: number };
 type Machine = { name: string; state: string; image: string; ip: string; ports: Port[] };
+type Attacker = { running: boolean; ip: string } | null;
 
-const violet = "#a78bfa";
+const violet = "#a78bfa"; // web/api service accent
+const attack = "#f0616d"; // red: the attacker and its attack paths
 
 function PortHandles({ accent = "#6b7280" }: { accent?: string }) {
   return (
@@ -41,38 +42,10 @@ function PortHandles({ accent = "#6b7280" }: { accent?: string }) {
   );
 }
 
-function HostGroup({ data }: NodeProps<Node<{ label: string; subtitle: string }>>) {
-  return (
-    <div className="group-frame host-group">
-      <div className="group-header">
-        <Server size={16} />
-        <div>
-          <div className="group-title">{data.label}</div>
-          <div className="group-subtitle mono">{data.subtitle}</div>
-        </div>
-        <div className="group-online">
-          <i /> online
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LabGroup({ data }: NodeProps<Node<{ label: string; count: string }>>) {
-  return (
-    <div className="group-frame lab-group">
-      <div className="lab-header">
-        <div className="group-kicker">{data.label}</div>
-        <div className="lab-count">{data.count}</div>
-      </div>
-    </div>
-  );
-}
-
 function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string; running: boolean }>>) {
   return (
     <div className="topology-node attacker-node">
-      <PortHandles accent={violet} />
+      <PortHandles accent={attack} />
       <div className="attacker-glow" />
       <div className="attacker-icon">
         <Terminal size={18} />
@@ -103,7 +76,6 @@ const serviceMeta: Record<ServiceType, { icon: LucideIcon; label: string; color:
   service: { icon: Box, label: "service", color: "#a3a3a3" },
 };
 
-/** Infer the kind of software from the image (falls back to the service name). */
 function serviceType(image: string, name: string): ServiceType {
   const s = `${image} ${name}`.toLowerCase();
   if (/(maria|mysql|postgres|psql|mongo|sqlite|mssql|cassandra|database|[-_]db\b|^db)/.test(s)) return "database";
@@ -174,50 +146,21 @@ function LabeledEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
   );
 }
 
-const nodeTypes = { host: HostGroup, lab: LabGroup, attacker: AttackerNode, computer: ComputerNode };
+const nodeTypes = { attacker: AttackerNode, computer: ComputerNode };
 const edgeTypes = { attack: LabeledEdge };
 
-type Attacker = { running: boolean; ip: string } | null;
-
-/** Build the nested node/edge graph from the lab's live containers. */
+/** Build the attacker + target nodes (laid out inside the host card). */
 function build(machines: Machine[], attacker: Attacker): { nodes: Node[]; edges: Edge[] } {
-  const GAP = 196;
-  const labH = Math.max(360, machines.length * GAP + 72);
-  const hostH = labH + 116;
-  const exposed = machines.filter((m) => m.ports.some((p) => p.published > 0)).length;
+  const GAP = 176;
   const atkOn = !!attacker?.running;
-  const atkColor = atkOn ? violet : "#5a5a5a";
+  const atkColor = atkOn ? attack : "#5a5a5a";
+  const colHeight = Math.max(GAP, machines.length * GAP);
 
   const nodes: Node[] = [
     {
-      id: "host",
-      type: "host",
-      position: { x: 40, y: 24 },
-      style: { width: 1080, height: hostH },
-      data: { label: "Your machine", subtitle: "127.0.0.1 · host" },
-      draggable: false,
-      selectable: false,
-    },
-    {
-      id: "lab",
-      type: "lab",
-      parentId: "host",
-      extent: "parent",
-      position: { x: 28, y: 84 },
-      style: { width: 1024, height: labH },
-      data: {
-        label: "LAB NETWORK · 172.20.0.0/16",
-        count: `${machines.length} ${machines.length === 1 ? "computer" : "computers"} · ${exposed} exposed`,
-      },
-      draggable: false,
-      selectable: false,
-    },
-    {
-      id: "__exegol",
+      id: "__attacker",
       type: "attacker",
-      parentId: "lab",
-      extent: "parent",
-      position: { x: 46, y: labH / 2 - 52 },
+      position: { x: 20, y: Math.max(16, colHeight / 2 - 60) },
       data: { label: "Attack box", subtitle: atkOn ? attacker!.ip : "not started", running: atkOn },
     },
   ];
@@ -231,9 +174,7 @@ function build(machines: Machine[], attacker: Attacker): { nodes: Node[]; edges:
     nodes.push({
       id,
       type: "computer",
-      parentId: "lab",
-      extent: "parent",
-      position: { x: 700, y: 40 + i * GAP },
+      position: { x: 340, y: 16 + i * GAP },
       data: {
         hostname: m.name,
         image: m.image || serviceMeta[type].label,
@@ -246,7 +187,7 @@ function build(machines: Machine[], attacker: Attacker): { nodes: Node[]; edges:
     });
     edges.push({
       id: `atk-${m.name}`,
-      source: "__exegol",
+      source: "__attacker",
       target: id,
       type: "attack",
       animated: atkOn,
@@ -271,7 +212,7 @@ function Flow({ machines, attacker }: { machines: Machine[]; attacker: Attacker 
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       fitView
-      fitViewOptions={{ padding: 0.18, minZoom: 0.5, maxZoom: 1.1 }}
+      fitViewOptions={{ padding: 0.16, minZoom: 0.5, maxZoom: 1.1 }}
       minZoom={0.35}
       maxZoom={1.5}
       zoomOnScroll={false}
@@ -280,30 +221,50 @@ function Flow({ machines, attacker }: { machines: Machine[]; attacker: Attacker 
       nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
     >
-      <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#292929" />
-      <div className="topology-legend">
-        <div>
-          <span className="legend-line attack-line" /> <span>attack path</span>
-        </div>
-        <div>
-          <ArrowUpRight size={12} className="legend-exposed" /> <span>exposed at <b className="mono">127.0.0.1</b></span>
-        </div>
-      </div>
+      <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#242424" />
     </ReactFlow>
   );
 }
 
 export function NetworkDiagram({ machines, attacker = null }: { machines: Machine[]; attacker?: Attacker }) {
-  // Remount (reseeding node state, preserving drags otherwise) only when the topology
-  // itself changes, not on every status poll.
   const sig =
     machines.map((m) => `${m.name}:${m.state}:${m.ip}:${m.ports.map((p) => `${p.published}-${p.target}`).join(",")}`).join("|") +
     `#${attacker?.running ? attacker.ip : "off"}`;
+  const exposed = machines.filter((m) => m.ports.some((p) => p.published > 0)).length;
+
   return (
-    <ReactFlowProvider>
-      <div className="topology-shell">
-        <Flow key={sig} machines={machines} attacker={attacker} />
+    <div className="hostcard">
+      {/* "Your machine" IS the wrapping card */}
+      <div className="hostcard-header">
+        <span className="hostcard-icon">
+          <Laptop size={16} />
+        </span>
+        <div>
+          <div className="hostcard-title">Your machine</div>
+          <div className="hostcard-sub mono">127.0.0.1 · host</div>
+        </div>
+        <span className="hostcard-online">
+          <i /> online
+        </span>
       </div>
-    </ReactFlowProvider>
+
+      {/* the diagram lives inside the card */}
+      <div className="topology-shell">
+        <span className="netpill">
+          lab network <span className="mono">172.20.0.0/16</span> · {machines.length} {machines.length === 1 ? "computer" : "computers"} · {exposed} exposed
+        </span>
+        <ReactFlowProvider>
+          <Flow key={sig} machines={machines} attacker={attacker} />
+        </ReactFlowProvider>
+        <div className="topology-legend">
+          <div>
+            <span className="legend-line attack-line" /> <span>attack path</span>
+          </div>
+          <div>
+            <ArrowUpRight size={12} className="legend-exposed" /> <span>exposed at <b className="mono">127.0.0.1</b></span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

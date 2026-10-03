@@ -59,11 +59,6 @@ export function SettingsScreen({ auth }: { auth: AuthStatus | null }) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Your account and this launcher.</p>
-      </div>
-
       <Card className="p-5">
         <p className="mb-3 text-sm font-medium">Account</p>
         <Field label="Signed in" value={auth?.loggedIn ? "yes" : "no"} mono={false} />
