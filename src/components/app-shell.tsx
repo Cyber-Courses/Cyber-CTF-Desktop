@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState, type ReactNode } from "react";
-import { CalendarDays, ChevronRight, ChevronsUpDown, Cloud, Cog, FlaskConical, LayoutDashboard, type LucideIcon, MonitorCog, Search, Server } from "lucide-react";
+import { CalendarDays, Cloud, Cog, FlaskConical, LayoutDashboard, type LucideIcon, MonitorCog, Search, Server } from "lucide-react";
 import { Account } from "@/components/Account";
 import { Labs } from "@/components/Labs";
 import { HomeScreen } from "@/components/screens/home-screen";
@@ -84,6 +84,8 @@ export function AppShell() {
   if (!ready) return <div className="h-dvh bg-background" />;
   if (!onboarded) return <Onboarding onComplete={completeOnboarding} />;
 
+  const CurrentIcon = NAV.find((n) => n.id === tab)?.icon ?? MonitorCog;
+
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       {/* ---- Sidebar ---- */}
@@ -93,12 +95,11 @@ export function AppShell() {
         <div data-tauri-drag-region className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border px-4">
           <Image src="/logo-mark.svg" alt="" width={20} height={20} className="size-5 pointer-events-none" priority />
           <span className="text-[13px] font-semibold tracking-tight">Cyber CTF</span>
-          <ChevronsUpDown className="ml-auto size-3.5 text-muted-foreground/60" />
         </div>
 
         <button
           onClick={() => navigate("labs")}
-          className="mx-3 mb-2 flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-[12.5px] text-muted-foreground transition-colors hover:border-ring/60 hover:text-foreground"
+          className="mx-3 mb-2 mt-3 flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-[12.5px] text-muted-foreground transition-colors hover:border-ring/60 hover:text-foreground"
         >
           <Search className="size-3.5" />
           <span>Find a lab…</span>
@@ -141,12 +142,9 @@ export function AppShell() {
       {/* ---- Main ---- */}
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div data-tauri-drag-region className="h-9 shrink-0" />
-        <div data-tauri-drag-region className="flex h-11 shrink-0 items-center gap-3 border-b border-border px-4">
-          <span className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] text-foreground">
-            <MonitorCog className="size-3.5 text-muted-foreground" /> This machine
-          </span>
-          <ChevronRight className="size-3.5 text-muted-foreground/50" />
-          <span className="text-[13px] text-muted-foreground">{TITLES[tab]}</span>
+        <div data-tauri-drag-region className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
+          <CurrentIcon className="size-4 text-muted-foreground" />
+          <span className="text-[13px] font-medium text-foreground">{TITLES[tab]}</span>
         </div>
 
         <div className="flex-1 overflow-y-auto">
