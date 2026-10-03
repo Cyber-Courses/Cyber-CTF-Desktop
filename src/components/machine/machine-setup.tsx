@@ -21,7 +21,6 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
   const [installing, setInstalling] = useState(false);
   const [installerOpened, setInstallerOpened] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
-  const [copied, setCopied] = useState(false);
   const logEnd = useRef<HTMLDivElement>(null);
 
   const dockerReady = !!report && report.docker.installed && report.dockerRunning;
@@ -43,16 +42,6 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
       setInstalling(false);
       onRefresh();
     }
-  }
-
-  function copy(text: string) {
-    navigator.clipboard
-      ?.writeText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
-      })
-      .catch(() => {});
   }
 
   const osName = isWin ? "Windows" : isMac ? "macOS" : "Linux";
@@ -77,11 +66,8 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
               <Num n={1}>Open <b>PowerShell</b> as Administrator (right-click → “Run as administrator”).</Num>
               <Num n={2}>
                 Run this, then reboot when it finishes:
-                <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-border bg-[#070707] px-3 py-2">
-                  <code className="flex-1 font-mono text-[12px] text-foreground">wsl --install</code>
-                  <button onClick={() => copy("wsl --install")} className="inline-flex items-center gap-1 text-[11.5px] text-muted-foreground hover:text-foreground">
-                    {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy"}
-                  </button>
+                <div className="mt-1.5">
+                  <CmdRow cmd="wsl --install" />
                 </div>
               </Num>
               <Num n={3}>
@@ -115,6 +101,16 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
                   )}
                 </div>
                 {installerOpened && <p className="text-[12px] text-muted-foreground">Finish in Docker’s installer, launch Docker Desktop, then press Re-check.</p>}
+                {isMac && <p className="text-[12px] text-muted-foreground">After installing, open Docker Desktop once and wait until it reports “running”.</p>}
+                {isWin && <p className="text-[12px] text-muted-foreground">A reboot may be needed after enabling WSL. If Docker says virtualization is off, go back a step.</p>}
+                {!isMac && !isWin && (
+                  <div className="space-y-2 rounded-lg border border-border bg-[#0f0f0f] p-3 text-[12px] text-muted-foreground">
+                    <p>After Docker Engine installs, let your user run it and start the service:</p>
+                    <CmdRow cmd="sudo usermod -aG docker $USER" />
+                    <CmdRow cmd="sudo systemctl enable --now docker" />
+                    <p>Then log out and back in.</p>
+                  </div>
+                )}
                 {logs.length > 0 && (
                   <pre className="max-h-40 overflow-auto rounded-lg border border-border bg-[#070707] p-3 font-mono text-[11.5px] leading-relaxed text-muted-foreground">
                     {logs.join("\n")}
@@ -165,6 +161,29 @@ function Step({ icon: Icon, title, description, children }: { icon: typeof Cpu; 
         </div>
       </div>
       <div className="mt-5">{children}</div>
+    </div>
+  );
+}
+
+function CmdRow({ cmd }: { cmd: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border bg-[#070707] px-3 py-2">
+      <code className="flex-1 overflow-x-auto font-mono text-[12px] text-foreground">{cmd}</code>
+      <button
+        onClick={() =>
+          navigator.clipboard
+            ?.writeText(cmd)
+            .then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+            })
+            .catch(() => {})
+        }
+        className="inline-flex shrink-0 items-center gap-1 text-[11.5px] text-muted-foreground hover:text-foreground"
+      >
+        {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy"}
+      </button>
     </div>
   );
 }
