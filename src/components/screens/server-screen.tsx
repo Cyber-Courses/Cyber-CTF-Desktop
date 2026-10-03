@@ -8,14 +8,19 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { KIND } from "@/components/server/host-setup";
 import {
+  installDependency,
   SERVER_CHANGED,
   serverList,
   serverOpenSetup,
   serverRemove,
   serverSetDefault,
   serverTest,
+  systemCheck,
+  type Dependency,
   type ServerHost,
   type ServerTest,
+  type SystemReport,
+  type Tool,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +57,25 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
   const [defaultId, setDefaultId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
     const [tests, setTests] = useState<Record<string, ServerTest | "testing">>({});
+  const [report, setReport] = useState<SystemReport | null>(null);
+  const [cliBusy, setCliBusy] = useState<string | null>(null);
+
+  // The Cloud view provisions via a cloud CLI; show which are installed and offer installs.
+  useEffect(() => {
+    if (cloud) systemCheck().then(setReport).catch(() => {});
+  }, [cloud]);
+
+  async function installCli(dep: Dependency) {
+    setCliBusy(dep);
+    try {
+      await installDependency(dep, () => {});
+      setReport(await systemCheck());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setCliBusy(null);
+    }
+  }
 
   const reload = useCallback(() => {
     serverList()
@@ -132,6 +156,15 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
           ))
         )}
       </Panel>
+
+      {cloud && (
+        <Panel>
+          <PanelHeader title="Command-line tools" action={<span className="text-[11.5px] text-muted-foreground">AWS is used today; Azure / GCP coming</span>} />
+          <CliRow name="AWS CLI" tool={report?.cloudClis.aws} busy={cliBusy === "awscli"} onInstall={() => installCli("awscli")} />
+          <CliRow name="Azure CLI" tool={report?.cloudClis.azure} busy={cliBusy === "azurecli"} onInstall={() => installCli("azurecli")} />
+          <CliRow name="Google Cloud CLI" tool={report?.cloudClis.gcloud} busy={cliBusy === "gcloud"} onInstall={() => installCli("gcloud")} />
+        </Panel>
+      )}
 
       <Panel>
         <PanelHeader title="How it works" />
@@ -237,6 +270,26 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
     >
       {children}
     </button>
+  );
+}
+
+function CliRow({ name, tool, busy, onInstall }: { name: string; tool?: Tool; busy: boolean; onInstall: () => void }) {
+  const installed = !!tool?.installed;
+  return (
+    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
+      <span className="text-foreground">{name}</span>
+      <span className="ml-auto flex items-center gap-3">
+        <span className={cn("flex items-center gap-1.5", installed ? "text-emerald-500" : "text-muted-foreground")}>
+          {installed && <span className="size-1.5 rounded-full bg-emerald-500" />}
+          {tool ? (installed ? (tool.version ?? "installed") : "not installed") : "…"}
+        </span>
+        {!installed && tool && (
+          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy}>
+            {busy ? "Installing…" : "Install"}
+          </Button>
+        )}
+      </span>
+    </div>
   );
 }
 
