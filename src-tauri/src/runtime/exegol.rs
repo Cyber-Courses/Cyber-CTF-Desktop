@@ -101,23 +101,32 @@ pub fn shell(id: &str) -> Result<()> {
     // bash is present on Kali/Parrot/Exegol alike (keeps native-terminal quoting simple).
     #[cfg(target_os = "macos")]
     {
-        // do script opens a new window; then give it a clean title instead of the raw command.
+        // do script types the command into a new window: clear it away so the player only
+        // sees the attack box prompt, and exec so leaving the box ends the session.
+        // DOCKER_CLI_HINTS=false drops Docker's "What's next" ad on exit. The leading space
+        // keeps the line out of shell history where HIST_IGNORE_SPACE is on.
         let script = format!(
-            "tell application \"Terminal\"\nactivate\ndo script \"docker exec -it {name} bash\"\nset custom title of front window to \"CyberCTF attack box\"\nend tell"
+            "tell application \"Terminal\"\nactivate\ndo script \" clear; DOCKER_CLI_HINTS=false exec docker exec -it {name} bash\"\nset custom title of front window to \"CyberCTF attack box\"\nend tell"
         );
         std::process::Command::new("osascript").arg("-e").arg(script).spawn()?;
         Ok(())
     }
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd").args(["/c", "start", "CyberCTF attack box", "cmd", "/k", &format!("docker exec -it {name} bash")]).spawn()?;
+        // cls hides the command; /c closes the window when the player leaves the box.
+        // The new window inherits DOCKER_CLI_HINTS (cmd's `set X=y &` would keep a trailing space).
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "CyberCTF attack box", "cmd", "/c", &format!("cls & docker exec -it {name} bash")])
+            .env("DOCKER_CLI_HINTS", "false")
+            .spawn()?;
         Ok(())
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         let attach = format!("docker exec -it {name} bash");
+        let run = format!("clear; DOCKER_CLI_HINTS=false exec {attach}");
         for term in ["x-terminal-emulator", "gnome-terminal", "konsole", "xterm"] {
-            if std::process::Command::new(term).args(["-e", "sh", "-c", &attach]).spawn().is_ok() {
+            if std::process::Command::new(term).args(["-e", "sh", "-c", &run]).spawn().is_ok() {
                 return Ok(());
             }
         }
