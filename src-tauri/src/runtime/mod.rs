@@ -102,6 +102,11 @@ pub async fn start(
         Runtime::Vm => match host {
             Some(host) => {
                 let conn = homelab::connection(app, host)?;
+                // vagrant-proxmox (last release 2016) no longer installs on current Vagrant
+                // (activesupport 4.0 vs Vagrant's i18n), so Proxmox needs its own driver.
+                if conn.provider == providers::Provider::Proxmox {
+                    return Err(Error::Invalid("Running labs on Proxmox isn't available yet: the Vagrant Proxmox plugin no longer works with current Vagrant. Use an ESXi host or this machine for now.".into()));
+                }
                 // Mark first, so a half-created lab can still be destroyed on the same host.
                 homelab::mark_lab(dir, Some(host))?;
                 log(format!("Running on home-lab host {} ({})", conn.name, conn.provider.id()));

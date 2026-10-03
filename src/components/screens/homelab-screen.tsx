@@ -297,7 +297,13 @@ function HostForm({
           ))}
         </div>
 
-        {status && !status.pluginInstalled && (
+        {v.provider === "proxmox" && (
+          <p className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-[12px] text-muted-foreground">
+            You can connect and test a Proxmox host now. Running labs on it lands with the native Proxmox driver; the old Vagrant plugin no longer works with current Vagrant.
+          </p>
+        )}
+
+        {v.provider === "vmware_esxi" && status && !status.pluginInstalled && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
             <div className="flex flex-wrap items-center gap-2">
               <p className="min-w-0 flex-1 text-[12px] text-amber-500">

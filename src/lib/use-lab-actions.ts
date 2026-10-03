@@ -71,7 +71,8 @@ async function defaultHostFor(lab: Lab): Promise<string | null> {
   try {
     const { default: id, hosts } = await homelabList();
     const host = hosts.find((h) => h.id === id);
-    return host && lab.runtime?.providers.includes(host.provider) ? host.id : null;
+    // Proxmox can't run labs yet (no working Vagrant provider), so it's never an implicit target.
+    return host && host.provider !== "proxmox" && lab.runtime?.providers.includes(host.provider) ? host.id : null;
   } catch {
     return null;
   }

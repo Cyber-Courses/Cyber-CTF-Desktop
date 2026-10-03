@@ -72,10 +72,13 @@ end
 - **Proxmox**: `POST /api2/json/access/ticket`, which verifies the credentials. An untrusted
   (self-signed) certificate is reported, since Vagrant will reject it too.
 
-## Known limits (verify on a real host)
+## Status by hypervisor
 
-- `vagrant-proxmox` (telcat) was last released in 2016 (0.0.10). It may not install on current
-  Vagrant/Ruby or talk to Proxmox VE 8. If it doesn't, Proxmox should move to the native API
-  (as the runtime direction already suggests), keeping this host store and env.
-- `vagrant-vmware-esxi` 2.5.5 (2022) needs SSH enabled on ESXi and `ovftool` on this machine.
-- `esxi_virtual_network` accepts an array for multi-NIC labs; the env carries one network.
+- **ESXi: works through Vagrant.** `vagrant-vmware-esxi` 2.5.5 installs on Vagrant 2.4.9 (verified
+  2026-10-03). It needs SSH enabled on ESXi and VMware `ovftool` on the launcher machine.
+  `esxi_virtual_network` accepts an array for multi-NIC labs; the env carries one network.
+- **Proxmox: hosts can be saved and tested, labs can't run yet.** `vagrant-proxmox` (0.0.10, 2016) is
+  the only Vagrant provider and it **does not install** on Vagrant 2.4.9 / Ruby 3.3 (verified
+  2026-10-03: `activesupport ~> 4.0.0` needs `i18n ~> 0.6`, Vagrant pins `i18n 1.14.7`). The launcher
+  refuses Proxmox launches with a clear message. Proxmox needs its own driver (native API or
+  Terraform `bpg/proxmox`); the host store, keychain secret and Run on picker stay as they are.

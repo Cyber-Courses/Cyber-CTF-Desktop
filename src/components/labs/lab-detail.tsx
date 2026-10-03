@@ -67,7 +67,7 @@ export function LabDetail({
       .then((l) => {
         setHosts(l.hosts);
         const def = l.hosts.find((h) => h.id === l.default);
-        setRunOn(def && rt?.providers.includes(def.provider) ? def.id : null);
+        setRunOn(def && def.provider !== "proxmox" && rt?.providers.includes(def.provider) ? def.id : null);
       })
       .catch(() => setHosts([]));
   }, [isDocker, rt]);
@@ -289,7 +289,7 @@ function RunOnPicker({
 }) {
   const options = [
     { id: null as string | null, label: "This machine", note: "Local hypervisor", ok: true },
-    ...hosts.map((h) => ({ id: h.id as string | null, label: h.name, note: `${HYPERVISOR[h.provider]} · ${h.host}`, ok: supported.includes(h.provider) })),
+    ...hosts.map((h) => ({ id: h.id as string | null, label: h.name, note: `${HYPERVISOR[h.provider]} · ${h.host}`, ok: h.provider !== "proxmox" && supported.includes(h.provider) })),
   ];
   return (
     <div className="space-y-1.5">
@@ -314,7 +314,7 @@ function RunOnPicker({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[12.5px] font-medium">{o.label}</span>
-                <span className="block truncate font-mono text-[10.5px] text-muted-foreground">{o.ok ? o.note : "Not supported by this lab"}</span>
+                <span className="block truncate font-mono text-[10.5px] text-muted-foreground">{o.ok ? o.note : o.note.startsWith("Proxmox") ? "Proxmox labs: coming soon" : "Not supported by this lab"}</span>
               </span>
             </button>
           );
