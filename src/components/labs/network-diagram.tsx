@@ -21,7 +21,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "@dagrejs/dagre";
-import { Box, Check, Copy, Database, DoorOpen, Globe2, Laptop, Monitor, Network, ShieldCheck, Terminal, Workflow, Zap, type LucideIcon } from "lucide-react";
+import { Box, Check, Copy, Database, DoorOpen, Globe2, Laptop, Monitor, Network, Plug, ShieldCheck, Terminal, Workflow, Zap, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // A network diagram for the lab: each Docker network is drawn as a zone (area) with its
@@ -68,9 +68,20 @@ function CopyText({ text, children }: { text: string; children: React.ReactNode 
 function PortHandles({ accent = "#6b7280" }: { accent?: string }) {
   return (
     <>
-      <Handle type="target" position={Position.Left} className="topology-handle" style={{ "--handle-accent": accent } as React.CSSProperties} />
-      <Handle type="source" position={Position.Right} className="topology-handle" style={{ "--handle-accent": accent } as React.CSSProperties} />
+      <Handle type="target" position={Position.Top} className="topology-handle" style={{ "--handle-accent": accent } as React.CSSProperties} />
+      <Handle type="source" position={Position.Bottom} className="topology-handle" style={{ "--handle-accent": accent } as React.CSSProperties} />
     </>
+  );
+}
+
+/** A localhost port-binding: a small node on the host-card edge, linked to its container. */
+function HostPortNode({ data }: NodeProps<Node<{ addr: string }>>) {
+  return (
+    <div className="hostport">
+      <Handle type="target" position={Position.Top} className="topology-handle" style={{ "--handle-accent": "#54c171" } as React.CSSProperties} />
+      <Plug size={11} />
+      <span className="mono">{data.addr}</span>
+    </div>
   );
 }
 
@@ -171,11 +182,10 @@ function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
           data.ports.map((p, i) => {
             const bind = p.target || p.published;
             return (
-              <CopyText key={i} text={p.published ? `127.0.0.1:${p.published}` : `${data.ip}:${bind}`}>
+              <CopyText key={i} text={`${data.ip}:${bind}`}>
                 <span className={cn("door", p.published && "door-pub")}>
                   <DoorOpen size={12} />
                   <span className="mono">:{bind}</span>
-                  {p.published ? <span className="door-host mono">↗{p.published}</span> : null}
                 </span>
               </CopyText>
             );
@@ -202,7 +212,7 @@ function LabeledEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
   );
 }
 
-const nodeTypes = { zone: ZoneNode, bridge: BridgeNode, attacker: AttackerNode, computer: ComputerNode };
+const nodeTypes = { zone: ZoneNode, bridge: BridgeNode, attacker: AttackerNode, computer: ComputerNode, hostport: HostPortNode };
 const edgeTypes = { link: LabeledEdge };
 
 const GREY = "#4f4f4f";
@@ -255,9 +265,9 @@ function build(machines: Machine[], attacker: Attacker, subnet: string | null): 
     edges.push(link(`e-lab-${m.name}`, "bridge-lab", id, GREY));
   });
 
-  // Dagre layout (left-to-right tree): attack bridge → attack box → lab bridge → hosts.
+  // Dagre layout (top-to-bottom tree): attack bridge → attack box → lab bridge → hosts.
   const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "LR", ranksep: 80, nodesep: 26, marginx: 24, marginy: 24 });
+  g.setGraph({ rankdir: "TB", ranksep: 66, nodesep: 36, marginx: 24, marginy: 24 });
   g.setDefaultEdgeLabel(() => ({}));
   core.forEach((n) => g.setNode(n.id, { width: SIZE[n.type].w, height: SIZE[n.type].h }));
   edges.forEach((e) => g.setEdge(e.source, e.target));
@@ -293,6 +303,37 @@ function build(machines: Machine[], attacker: Attacker, subnet: string | null): 
   };
   const attackR = rect(["bridge-attack", "__attacker"]);
   const labR = rect(["bridge-lab", ...machines.map((m) => `svc-${m.name}`)]);
+
+  // Localhost port bindings: a little node on the host-card edge (below the lab network),
+  // linked up to the container it forwards to.
+  const HP_W = 128;
+  const hpY = labR.y + labR.height + 44;
+  machines.forEach((m) => {
+    const c = pos(`svc-${m.name}`);
+    m.ports
+      .filter((p) => p.published > 0)
+      .forEach((p, k) => {
+        const id = `hp-${m.name}-${p.published}`;
+        nodes.push({
+          id,
+          type: "hostport",
+          position: { x: c.x + c.w / 2 - HP_W / 2 + k * (HP_W + 16), y: hpY },
+          style: { width: HP_W },
+          data: { addr: `127.0.0.1:${p.published}` },
+          draggable: false,
+          selectable: false,
+        });
+        edges.push({
+          id: `e-hp-${m.name}-${p.published}`,
+          source: `svc-${m.name}`,
+          target: id,
+          type: "link",
+          data: { label: "published" },
+          style: { stroke: "#54c171", strokeWidth: 1.6, strokeDasharray: "4 4", opacity: 0.9 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#54c171", width: 14, height: 14 },
+        });
+      });
+  });
 
   const zones: Node[] = [
     { id: "zone-attack", type: "zone", position: { x: attackR.x, y: attackR.y }, style: { width: attackR.width, height: attackR.height }, data: { label: "ATTACK NETWORK", tone: "attack" }, draggable: false, selectable: false },
@@ -365,10 +406,13 @@ export function NetworkDiagram({ machines, attacker = null }: { machines: Machin
         </ReactFlowProvider>
         <div className="topology-legend">
           <div>
-            <DoorOpen size={12} className="legend-exposed" /> <span>open port</span>
+            <DoorOpen size={12} /> <span>open port</span>
           </div>
           <div>
-            <Copy size={11} className="legend-exposed" /> <span>click an address to copy</span>
+            <Plug size={12} className="legend-exposed" /> <span>published to 127.0.0.1</span>
+          </div>
+          <div>
+            <Copy size={11} /> <span>click to copy</span>
           </div>
         </div>
       </div>

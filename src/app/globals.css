@@ -162,6 +162,9 @@ body {
 .door-pub > svg { color: #54c171; }
 .door-host { color: #54c171; }
 .door-none { font-size: 10.5px; color: #707070; }
+/* Localhost port-binding node on the host-card edge. */
+.hostport { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; padding: 5px 9px; border: 1px solid rgba(84,193,113,.35); border-radius: 8px; background: rgba(84,193,113,.08); color: #8fd3a0; font-size: 10.5px; }
+.hostport > svg { color: #54c171; }
 .react-flow__pane { cursor: grab; }
 .react-flow__pane:active { cursor: grabbing; }
 .react-flow__background pattern circle { fill: #292929; }
