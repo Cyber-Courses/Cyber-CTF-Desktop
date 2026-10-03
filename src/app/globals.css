@@ -137,6 +137,16 @@ body {
 .react-flow { background: radial-gradient(ellipse at 70% 40%, rgba(240,97,109,.05), transparent 42%); }
 .netpill { position: absolute; top: 12px; left: 14px; z-index: 5; display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8f8f8f; background: rgba(10,10,10,.82); border: 1px solid var(--border); border-radius: 20px; padding: 4px 11px; }
 .netpill .mono { font-weight: 500; letter-spacing: 0; text-transform: none; color: #6a6a6a; }
+/* Network zones (areas) + click-to-copy for the lab diagram. */
+.react-flow__node-zone { z-index: -1 !important; }
+.zone { position: relative; width: 100%; height: 100%; border: 1px dashed #2e2e2e; border-radius: 12px; background: rgba(255,255,255,.012); pointer-events: none; }
+.zone-attack { border-color: rgba(240,97,109,.35); background: rgba(240,97,109,.035); }
+.zone-label { position: absolute; top: -8px; left: 14px; padding: 1px 9px; background: #0a0a0a; border: 1px solid var(--border); border-radius: 20px; font-size: 9px; font-weight: 650; letter-spacing: .09em; color: #8f8f8f; white-space: nowrap; }
+.zone-attack .zone-label { color: #d9a1a5; border-color: rgba(240,97,109,.32); }
+.copy-chip { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.copy-ico { opacity: 0; transition: opacity .12s; color: #8f8f8f; }
+.copy-chip:hover .copy-ico { opacity: .7; }
+.copy-ok { color: #54c171; }
 .react-flow__pane { cursor: grab; }
 .react-flow__pane:active { cursor: grabbing; }
 .react-flow__background pattern circle { fill: #292929; }

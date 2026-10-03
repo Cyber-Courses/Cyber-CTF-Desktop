@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -20,11 +20,12 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ArrowUpRight, Box, Database, Globe2, Laptop, Monitor, Radio, ShieldCheck, Terminal, Workflow, Zap, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Box, Check, Copy, Database, Globe2, Laptop, Monitor, Radio, ShieldCheck, Terminal, Workflow, Zap, type LucideIcon } from "lucide-react";
 
-// A lab is a set of Docker containers (computers) on one private network. "Your machine"
-// (the host) is the wrapping card; inside it the diagram shows the attacker (Exegol/Kali)
-// and the target computers, each running software bound to a port.
+// A lab is a set of Docker containers (computers). "Your machine" (host) is the wrapping
+// card; inside it the diagram shows two network zones — the attack network (where the
+// attack box lives) and the lab network (the targets) — with the attack box reaching into
+// the lab network. Targets are addressed by their container IP (click to copy).
 
 type Port = { published: number; target: number };
 type Machine = { name: string; state: string; image: string; ip: string; ports: Port[] };
@@ -33,12 +34,50 @@ type Attacker = { running: boolean; ip: string } | null;
 const violet = "#a78bfa"; // web/api service accent
 const attack = "#f0616d"; // red: the attacker and its attack paths
 
+function isIp(s: string) {
+  return /^\d{1,3}\.\d{1,3}\./.test(s);
+}
+
+/** A click-to-copy wrapper (for IPs / addresses). Stops React Flow from dragging the node. */
+function CopyText({ text, children }: { text: string; children: React.ReactNode }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <span
+      className="copy-chip"
+      title={`Copy ${text}`}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        navigator.clipboard
+          ?.writeText(text)
+          .then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1000);
+          })
+          .catch(() => {});
+      }}
+    >
+      {children}
+      {copied ? <Check size={11} className="copy-ok" /> : <Copy size={11} className="copy-ico" />}
+    </span>
+  );
+}
+
 function PortHandles({ accent = "#6b7280" }: { accent?: string }) {
   return (
     <>
       <Handle type="target" position={Position.Left} className="topology-handle" style={{ "--handle-accent": accent } as React.CSSProperties} />
       <Handle type="source" position={Position.Right} className="topology-handle" style={{ "--handle-accent": accent } as React.CSSProperties} />
     </>
+  );
+}
+
+/** A dashed network segment (area) that frames the nodes inside it. */
+function ZoneNode({ data }: NodeProps<Node<{ label: string; tone?: "attack" }>>) {
+  return (
+    <div className={`zone ${data.tone === "attack" ? "zone-attack" : ""}`}>
+      <span className="zone-label">{data.label}</span>
+    </div>
   );
 }
 
@@ -57,7 +96,7 @@ function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string
         <div className="node-title">{data.label}</div>
         <div className="node-subtitle" style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: data.running ? "#54c171" : "#6b6b6b" }} />
-          {data.subtitle}
+          {data.running && isIp(data.subtitle) ? <CopyText text={data.subtitle}>{data.subtitle}</CopyText> : data.subtitle}
         </div>
       </div>
       <ShieldCheck className="attacker-shield" size={17} />
@@ -88,6 +127,7 @@ function serviceType(image: string, name: string): ServiceType {
 function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
   const meta = serviceMeta[data.type];
   const ServiceIcon = meta.icon;
+  const hasIp = isIp(data.ip);
   return (
     <div className="topology-node computer-node">
       <PortHandles accent={meta.color} />
@@ -100,7 +140,8 @@ function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
           <i /> {data.running ? "running" : "stopped"}
         </span>
       </div>
-      <div className="computer-ip mono">{data.ip}</div>
+      {/* the address the learner attacks, from the attack box */}
+      <div className="computer-ip mono">{hasIp ? <CopyText text={`${data.ip}${data.port ? `:${data.port}` : ""}`}>{data.ip}{data.port ? `:${data.port}` : ""}</CopyText> : data.ip}</div>
       <div className="service-chip" style={{ "--service-color": meta.color } as React.CSSProperties}>
         <div className="service-icon">
           <ServiceIcon size={15} />
@@ -114,18 +155,10 @@ function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
       {data.exposed ? (
         <div className="exposed-line">
           <ArrowUpRight size={13} />
-          <span className="mono">127.0.0.1:{data.exposed}</span>
-          <em>exposed</em>
+          <CopyText text={`127.0.0.1:${data.exposed}`}>127.0.0.1:{data.exposed}</CopyText>
+          <em>from host</em>
         </div>
-      ) : (
-        <div className="internal-line">
-          <Radio size={12} />
-          <span>internal · </span>
-          <span className="mono">
-            {data.ip}:{data.port}
-          </span>
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -146,21 +179,49 @@ function LabeledEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
   );
 }
 
-const nodeTypes = { attacker: AttackerNode, computer: ComputerNode };
+const nodeTypes = { zone: ZoneNode, attacker: AttackerNode, computer: ComputerNode };
 const edgeTypes = { attack: LabeledEdge };
 
-/** Build the attacker + target nodes (laid out inside the host card). */
-function build(machines: Machine[], attacker: Attacker): { nodes: Node[]; edges: Edge[] } {
-  const GAP = 176;
+/** Build the two network zones (attack / lab) and the nodes inside them. */
+function build(machines: Machine[], attacker: Attacker, subnet: string | null): { nodes: Node[]; edges: Edge[] } {
+  const GAP = 182;
   const atkOn = !!attacker?.running;
   const atkColor = atkOn ? attack : "#5a5a5a";
-  const colHeight = Math.max(GAP, machines.length * GAP);
+  const exposed = machines.filter((m) => m.ports.some((p) => p.published > 0)).length;
+
+  const labW = 468;
+  const labH = Math.max(210, machines.length * GAP + 52);
+  const atkW = 262;
+  const atkH = 196;
+  const labX = 330;
+  // vertically center the attack zone against the lab zone
+  const atkY = Math.max(0, labH / 2 - atkH / 2);
 
   const nodes: Node[] = [
     {
+      id: "zone-attack",
+      type: "zone",
+      position: { x: 0, y: atkY },
+      style: { width: atkW, height: atkH },
+      data: { label: "ATTACK NETWORK", tone: "attack" },
+      draggable: false,
+      selectable: false,
+    },
+    {
+      id: "zone-lab",
+      type: "zone",
+      position: { x: labX, y: 0 },
+      style: { width: labW, height: labH },
+      data: { label: subnet ? `LAB NETWORK · ${subnet} · ${machines.length} ${machines.length === 1 ? "host" : "hosts"} · ${exposed} exposed` : `LAB NETWORK · ${machines.length} ${machines.length === 1 ? "host" : "hosts"}` },
+      draggable: false,
+      selectable: false,
+    },
+    {
       id: "__attacker",
       type: "attacker",
-      position: { x: 20, y: Math.max(16, colHeight / 2 - 60) },
+      parentId: "zone-attack",
+      extent: "parent",
+      position: { x: 26, y: 56 },
       data: { label: "Attack box", subtitle: atkOn ? attacker!.ip : "not started", running: atkOn },
     },
   ];
@@ -174,7 +235,9 @@ function build(machines: Machine[], attacker: Attacker): { nodes: Node[]; edges:
     nodes.push({
       id,
       type: "computer",
-      position: { x: 340, y: 16 + i * GAP },
+      parentId: "zone-lab",
+      extent: "parent",
+      position: { x: 196, y: 44 + i * GAP },
       data: {
         hostname: m.name,
         image: m.image || serviceMeta[type].label,
@@ -191,7 +254,7 @@ function build(machines: Machine[], attacker: Attacker): { nodes: Node[]; edges:
       target: id,
       type: "attack",
       animated: atkOn,
-      style: { stroke: atkColor, strokeWidth: 1.8, strokeDasharray: "5 5", opacity: atkOn ? 1 : 0.5 },
+      style: { stroke: atkColor, strokeWidth: 1.8, strokeDasharray: "5 5", opacity: atkOn ? 1 : 0.55 },
       markerEnd: { type: MarkerType.ArrowClosed, color: atkColor, width: 16, height: 16 },
     });
   });
@@ -199,8 +262,8 @@ function build(machines: Machine[], attacker: Attacker): { nodes: Node[]; edges:
   return { nodes, edges };
 }
 
-function Flow({ machines, attacker }: { machines: Machine[]; attacker: Attacker }) {
-  const { nodes: seedNodes, edges: seedEdges } = useMemo(() => build(machines, attacker), [machines, attacker]);
+function Flow({ machines, attacker, subnet }: { machines: Machine[]; attacker: Attacker; subnet: string | null }) {
+  const { nodes: seedNodes, edges: seedEdges } = useMemo(() => build(machines, attacker, subnet), [machines, attacker, subnet]);
   const [nodes, , onNodesChange] = useNodesState(seedNodes);
   const [edges, , onEdgesChange] = useEdgesState(seedEdges);
   return (
@@ -212,8 +275,8 @@ function Flow({ machines, attacker }: { machines: Machine[]; attacker: Attacker 
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       fitView
-      fitViewOptions={{ padding: 0.16, minZoom: 0.5, maxZoom: 1.1 }}
-      minZoom={0.35}
+      fitViewOptions={{ padding: 0.14, minZoom: 0.4, maxZoom: 1.1 }}
+      minZoom={0.3}
       maxZoom={1.5}
       zoomOnScroll={false}
       zoomOnPinch={false}
@@ -227,10 +290,11 @@ function Flow({ machines, attacker }: { machines: Machine[]; attacker: Attacker 
 }
 
 export function NetworkDiagram({ machines, attacker = null }: { machines: Machine[]; attacker?: Attacker }) {
+  const firstIp = machines.map((m) => m.ip).find((ip) => isIp(ip || ""));
+  const subnet = firstIp ? `${firstIp.split(".").slice(0, 2).join(".")}.0.0/16` : null;
   const sig =
     machines.map((m) => `${m.name}:${m.state}:${m.ip}:${m.ports.map((p) => `${p.published}-${p.target}`).join(",")}`).join("|") +
     `#${attacker?.running ? attacker.ip : "off"}`;
-  const exposed = machines.filter((m) => m.ports.some((p) => p.published > 0)).length;
 
   return (
     <div className="hostcard">
@@ -248,20 +312,16 @@ export function NetworkDiagram({ machines, attacker = null }: { machines: Machin
         </span>
       </div>
 
-      {/* the diagram lives inside the card */}
       <div className="topology-shell">
-        <span className="netpill">
-          lab network <span className="mono">172.20.0.0/16</span> · {machines.length} {machines.length === 1 ? "computer" : "computers"} · {exposed} exposed
-        </span>
         <ReactFlowProvider>
-          <Flow key={sig} machines={machines} attacker={attacker} />
+          <Flow key={sig} machines={machines} attacker={attacker} subnet={subnet} />
         </ReactFlowProvider>
         <div className="topology-legend">
           <div>
             <span className="legend-line attack-line" /> <span>attack path</span>
           </div>
           <div>
-            <ArrowUpRight size={12} className="legend-exposed" /> <span>exposed at <b className="mono">127.0.0.1</b></span>
+            <Copy size={11} className="legend-exposed" /> <span>click an IP to copy</span>
           </div>
         </div>
       </div>
