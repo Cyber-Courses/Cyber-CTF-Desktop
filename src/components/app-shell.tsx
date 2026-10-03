@@ -7,7 +7,7 @@ import { Account } from "@/components/Account";
 import { Labs } from "@/components/Labs";
 import { HomeScreen } from "@/components/screens/home-screen";
 import { MachineScreen } from "@/components/screens/machine-screen";
-import { HomeLabScreen } from "@/components/screens/homelab-screen";
+import { ServerScreen } from "@/components/screens/server-screen";
 import { SettingsScreen } from "@/components/screens/settings-screen";
 import { Onboarding } from "@/components/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-type Tab = "home" | "labs" | "machine" | "setup" | "homelab" | "cloud" | "events" | "settings";
+type Tab = "home" | "labs" | "machine" | "setup" | "server" | "cloud" | "events" | "settings";
 
 const ONBOARDED_KEY = "cyberctf.onboarded";
 
@@ -23,7 +23,7 @@ const NAV: { id: Tab; label: string; icon: LucideIcon; soon?: boolean }[] = [
   { id: "home", label: "Overview", icon: LayoutDashboard },
   { id: "labs", label: "Labs", icon: FlaskConical },
   { id: "machine", label: "Machine", icon: MonitorCog },
-  { id: "homelab", label: "Server", icon: Server },
+  { id: "server", label: "Server", icon: Server },
   { id: "cloud", label: "Cloud", icon: Cloud },
   { id: "events", label: "Events", icon: CalendarDays, soon: true },
   { id: "settings", label: "Settings", icon: Cog },
@@ -34,7 +34,7 @@ const TITLES: Record<Tab, string> = {
   labs: "Labs",
   machine: "Machine",
   setup: "Setup",
-  homelab: "Server",
+  server: "Server",
   cloud: "Cloud",
   events: "Events",
   settings: "Settings",
@@ -185,8 +185,8 @@ function Screen({
     ) : (
       <p className="text-sm text-muted-foreground">Checking this machine…</p>
     );
-  if (tab === "homelab") return <HomeLabScreen onNavigate={onNavigate} />;
-  if (tab === "cloud") return <HomeLabScreen kind="cloud" onNavigate={onNavigate} />;
+  if (tab === "server") return <ServerScreen onNavigate={onNavigate} />;
+  if (tab === "cloud") return <ServerScreen kind="cloud" onNavigate={onNavigate} />;
   if (tab === "events")
     return <ComingSoon icon="sparkles" title="Events" description="Join live CTF events where labs are hosted by CyberCTF: nothing to run on your machine, each participant gets their own lab for the event's duration." />;
   return report ? <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} openSlug={openLab} /> : <p className="text-sm text-muted-foreground">Loading…</p>;

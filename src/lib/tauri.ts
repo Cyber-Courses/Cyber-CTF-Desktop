@@ -49,7 +49,7 @@ export interface LabStatus {
   machines: { name: string; state: string; image: string; ip: string; ports: { published: number; target: number }[] }[];
   /** Loopback URL where the lab is reachable, once running (null for VM labs / no port). */
   url: string | null;
-  /** Home-lab host name a VM lab runs on; null when it runs on this machine. */
+  /** Server host name a VM lab runs on; null when it runs on this machine. */
   host: string | null;
   /** Unix seconds a cloud lab stops itself (auto-stop); null if it doesn't. */
   expiresAt: number | null;
@@ -133,7 +133,7 @@ export const apiQuery = <T>(query: string, variables?: Record<string, unknown>) 
 
 /**
  * startLab + download at the pinned commit + run with the launch token. VM labs run on
- * this machine with `provider`, or on the home-lab `host` (a host id) when given.
+ * this machine with `provider`, or on the server `host` (a host id) when given.
  */
 export function labLaunch(
   labId: string,
@@ -147,11 +147,11 @@ export function labLaunch(
   return invoke<void>("lab_launch", { labId, provider, host, attackboxImage, logs });
 }
 
-// --- Home lab (the player's own ESXi / Proxmox host) ---
+// --- Server (the player's own ESXi / Proxmox host) ---
 
 export type RemoteProvider = Extract<Provider, "vmware_esxi" | "proxmox" | "aws">;
 
-export interface HomelabHost {
+export interface ServerHost {
   id: string;
   name: string;
   provider: RemoteProvider;
@@ -173,18 +173,18 @@ export interface HomelabHost {
 }
 
 /** Form payload; `id` null creates a host, `password` null keeps the stored one. */
-export interface HomelabHostInput extends Omit<HomelabHost, "id" | "port"> {
+export interface ServerHostInput extends Omit<ServerHost, "id" | "port"> {
   id: string | null;
   port: number | null;
   password: string | null;
 }
 
-export interface HomelabList {
+export interface ServerList {
   default: string | null;
-  hosts: HomelabHost[];
+  hosts: ServerHost[];
 }
 
-export interface HomelabTest {
+export interface ServerTest {
   /** Everything checked passed. */
   ok: boolean;
   reachable: boolean;
@@ -194,16 +194,16 @@ export interface HomelabTest {
   message: string;
 }
 
-export const homelabList = () => invoke<HomelabList>("homelab_list");
-export const homelabSave = (input: HomelabHostInput) => invoke<HomelabHost>("homelab_save", { input });
-export const homelabRemove = (id: string) => invoke<void>("homelab_remove", { id });
-export const homelabSetDefault = (id: string | null) => invoke<void>("homelab_set_default", { id });
-export const homelabTest = (id: string) => invoke<HomelabTest>("homelab_test", { id });
+export const serverList = () => invoke<ServerList>("server_list");
+export const serverSave = (input: ServerHostInput) => invoke<ServerHost>("server_save", { input });
+export const serverRemove = (id: string) => invoke<void>("server_remove", { id });
+export const serverSetDefault = (id: string | null) => invoke<void>("server_set_default", { id });
+export const serverTest = (id: string) => invoke<ServerTest>("server_test", { id });
 /** Opens (or focuses) the setup window, for a new host or to edit `id`. */
-export const homelabOpenSetup = (id: string | null, kind: "homelab" | "cloud" = "homelab") =>
-  invoke<void>("homelab_open_setup", { id, kind });
+export const serverOpenSetup = (id: string | null, kind: "server" | "cloud" = "server") =>
+  invoke<void>("server_open_setup", { id, kind });
 /** Emitted by the setup window after a save; the main window reloads its host list. */
-export const HOMELAB_CHANGED = "homelab:changed";
+export const SERVER_CHANGED = "server:changed";
 
 export interface AgentInfo {
   installId: string;

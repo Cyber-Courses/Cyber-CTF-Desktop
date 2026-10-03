@@ -10,7 +10,7 @@ import { LogConsole } from "@/components/labs/log-console";
 import { Markdown } from "@/components/labs/markdown";
 import { NetworkDiagram } from "@/components/labs/network-diagram";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/lib/use-labs";
-import { apiQuery, labAttackShell, exegolShell, exegolStart, exegolStatus, exegolStop, homelabList, type ExegolStatus, type HomelabHost, type LabStatus } from "@/lib/tauri";
+import { apiQuery, labAttackShell, exegolShell, exegolStart, exegolStatus, exegolStop, serverList, type ExegolStatus, type ServerHost, type LabStatus } from "@/lib/tauri";
 import { getAttackImage } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +32,7 @@ export function LabDetail({
   loggedIn: boolean;
   hostArch: string;
   onBack: () => void;
-  /** `host`: home-lab host id for VM labs, null to run on this machine. */
+  /** `host`: server host id for VM labs, null to run on this machine. */
   onStart: (host: string | null) => void;
   onStop: () => void;
 }) {
@@ -58,16 +58,16 @@ export function LabDetail({
   const RuntimeIcon = rt?.runtime === "VM" ? Server : Container;
   const isDocker = rt?.runtime !== "VM";
 
-  // A lab can run on this machine or on one of the player's home-lab hosts (Docker labs
+  // A lab can run on this machine or on one of the player's server hosts (Docker labs
   // through their deploy/ layer). VM labs default to the default host; Docker labs to here.
-  const [hosts, setHosts] = useState<HomelabHost[]>([]);
+  const [hosts, setHosts] = useState<ServerHost[]>([]);
   const [runOn, setRunOn] = useState<string | null>(null);
   const hostOk = useCallback(
-    (h: HomelabHost) => !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && (h.provider === "proxmox" || h.provider === "aws")),
+    (h: ServerHost) => !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && (h.provider === "proxmox" || h.provider === "aws")),
     [rt],
   );
   useEffect(() => {
-    homelabList()
+    serverList()
       .then((l) => {
         setHosts(l.hosts);
         const def = l.hosts.find((h) => h.id === l.default);
@@ -297,7 +297,7 @@ export function LabDetail({
 
 const HYPERVISOR: Record<string, string> = { vmware_esxi: "ESXi", proxmox: "Proxmox", aws: "AWS, billed to you" };
 
-/** "Run on: this machine | <home-lab host>". Hosts the lab can't run on are disabled. */
+/** "Run on: this machine | <server host>". Hosts the lab can't run on are disabled. */
 function RunOnPicker({
   hosts,
   hostOk,
@@ -306,8 +306,8 @@ function RunOnPicker({
   onChange,
   disabled,
 }: {
-  hosts: HomelabHost[];
-  hostOk: (h: HomelabHost) => boolean;
+  hosts: ServerHost[];
+  hostOk: (h: ServerHost) => boolean;
   localNote: string;
   value: string | null;
   onChange: (id: string | null) => void;

@@ -18,7 +18,7 @@ use crate::auth;
 use crate::colocation;
 use crate::error::{Error, Result};
 use crate::labs;
-use crate::runtime::homelab;
+use crate::runtime::server;
 
 /// A stable identifier for this installation, generated once and kept in the app data
 /// dir. It is the merge key for the agent, so reinstalling re-registers the same machine
@@ -72,7 +72,7 @@ fn capabilities() -> Vec<String> {
 async fn register(app: &AppHandle) -> Result<String> {
     let data = api::graphql(
         "mutation ($i: ID!, $n: String!, $c: [String!]!, $a: String, $t: [LaunchTargetInput!]) { registerLauncher(installId: $i, name: $n, capabilities: $c, arch: $a, targets: $t) { id } }",
-        json!({ "i": install_id(app)?, "n": machine_name(), "c": capabilities(), "a": arch(), "t": homelab::launch_targets(app) }),
+        json!({ "i": install_id(app)?, "n": machine_name(), "c": capabilities(), "a": arch(), "t": server::launch_targets(app) }),
         true,
     )
     .await?;
@@ -86,7 +86,7 @@ async fn register(app: &AppHandle) -> Result<String> {
 async fn heartbeat(app: &AppHandle, agent_id: &str) -> Result<()> {
     api::graphql(
         "mutation ($id: ID!, $t: [LaunchTargetInput!]) { launcherHeartbeat(agentId: $id, targets: $t) { id } }",
-        json!({ "id": agent_id, "t": homelab::launch_targets(app) }),
+        json!({ "id": agent_id, "t": server::launch_targets(app) }),
         true,
     )
     .await
@@ -133,14 +133,14 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
     // endpoint + one-time token/nonce so the website can verify co-location before trusting
     // the 127.0.0.1 URL. The relay path for a remote/headless agent is the next step.
     // Where to run it: the target picked on the website (one of this launcher's hosts or
-    // cloud accounts); else VM labs go to the default home-lab host and Docker labs run here.
+    // cloud accounts); else VM labs go to the default server host and Docker labs run here.
     let host = match data["claimLaunch"]["target"].as_str() {
-        Some(target) => Some(homelab::host_name(app, target).map(|_| target.to_string()).ok_or_else(|| Error::Invalid("that host is no longer set up in the launcher".into()))?),
-        None => (data["claimLaunch"]["runtime"] == "VM").then(|| homelab::default_host(app)).flatten(),
+        Some(target) => Some(server::host_name(app, target).map(|_| target.to_string()).ok_or_else(|| Error::Invalid("that host is no longer set up in the launcher".into()))?),
+        None => (data["claimLaunch"]["runtime"] == "VM").then(|| server::default_host(app)).flatten(),
     };
     let image = host.as_ref().map(|_| DEFAULT_ATTACK_IMAGE);
     let url = labs::run(app, data["claimLaunch"].clone(), None, host.as_deref(), image, |_line: String| {}).await?;
-    let running_on = host.as_deref().and_then(|h| homelab::host_name(app, h)).map(|n| format!("Running on {n}"));
+    let running_on = host.as_deref().and_then(|h| server::host_name(app, h)).map(|n| format!("Running on {n}"));
     let token = random_hex();
     let nonce = random_hex();
     let control_url = colocation::serve(token.clone(), nonce.clone()).await.ok().map(|port| format!("http://127.0.0.1:{port}"));

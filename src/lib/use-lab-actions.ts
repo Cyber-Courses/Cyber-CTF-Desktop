@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { homelabList, labLaunch, labStop } from "@/lib/tauri";
+import { serverList, labLaunch, labStop } from "@/lib/tauri";
 import { getAttackImage } from "@/lib/settings";
 import { notify } from "@/lib/notify";
 import type { Lab } from "@/lib/use-labs";
@@ -17,8 +17,8 @@ export function useLabActions(refresh: (lab: Lab) => void) {
   const [logs, setLogs] = useState<string[]>([]);
 
   /**
-   * `host` = a home-lab host id to run a VM lab on, null for this machine. Omitted, VM labs
-   * go to the default home-lab host when the lab supports its hypervisor.
+   * `host` = a server host id to run a VM lab on, null for this machine. Omitted, VM labs
+   * go to the default server host when the lab supports its hypervisor.
    */
   const launch = useCallback(
     async (lab: Lab, host?: string | null) => {
@@ -29,14 +29,14 @@ export function useLabActions(refresh: (lab: Lab) => void) {
       try {
         const vm = lab.runtime.runtime === "VM";
         if (vm && host === undefined) host = await defaultHostFor(lab);
-        // Docker labs go to a home-lab host only when one is picked explicitly.
+        // Docker labs go to a server host only when one is picked explicitly.
         const remote = host != null;
         // Locally, use the first provider the lab supports that isn't a remote hypervisor.
         const provider = vm && !remote ? (lab.runtime.providers.find((p) => p !== "vmware_esxi" && p !== "proxmox") ?? null) : null;
         // Remotely the lab network isn't reachable from here: start the attack box next to it.
         await labLaunch(lab.id, provider, remote ? host! : null, remote ? getAttackImage() : null, (line) => setLogs((l) => [...l, line]));
         setLogs((l) => [...l, "✓ Lab is running"]);
-        notify("Lab ready", remote ? `${lab.title} is running on your home lab.` : `${lab.title} is running on this machine.`);
+        notify("Lab ready", remote ? `${lab.title} is running on your server.` : `${lab.title} is running on this machine.`);
       } catch (e) {
         setLogs((l) => [...l, `✗ ${String(e)}`]);
       } finally {
@@ -69,10 +69,10 @@ export function useLabActions(refresh: (lab: Lab) => void) {
   return { busy, activeLab, logs, launch, stop };
 }
 
-/** The default home-lab host id, if one is set and the lab supports its hypervisor. */
+/** The default server host id, if one is set and the lab supports its hypervisor. */
 async function defaultHostFor(lab: Lab): Promise<string | null> {
   try {
-    const { default: id, hosts } = await homelabList();
+    const { default: id, hosts } = await serverList();
     const host = hosts.find((h) => h.id === id);
     // Proxmox can't run labs yet (no working Vagrant provider), so it's never an implicit target.
     return host && host.provider !== "proxmox" && lab.runtime?.providers.includes(host.provider) ? host.id : null;

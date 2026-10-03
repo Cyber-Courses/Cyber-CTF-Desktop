@@ -118,7 +118,7 @@ pub async fn machine_metrics() -> MachineMetrics {
 }
 
 /// Opens the guided "set up this machine" flow in its own window (label `machine-setup`),
-/// mirroring the home-lab setup window. Focuses it if already open.
+/// mirroring the server setup window. Focuses it if already open.
 #[tauri::command]
 pub async fn machine_open_setup(app: AppHandle) -> Result<()> {
     const LABEL: &str = "machine-setup";

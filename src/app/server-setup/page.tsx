@@ -4,16 +4,16 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { HostSetupPage, EMPTY_CLOUD, EMPTY_HOST } from "@/components/homelab/host-setup";
+import { HostSetupPage, EMPTY_CLOUD, EMPTY_HOST } from "@/components/server/host-setup";
 import { Spinner } from "@/components/ui/spinner";
-import { HOMELAB_CHANGED, homelabList, systemCheck, type HomelabHostInput, type SystemReport } from "@/lib/tauri";
+import { SERVER_CHANGED, serverList, systemCheck, type ServerHostInput, type SystemReport } from "@/lib/tauri";
 
-/** The home-lab setup window (opened by `homelab_open_setup`), closed when setup ends. */
+/** The server setup window (opened by `server_open_setup`), closed when setup ends. */
 function Setup() {
   const params = useSearchParams();
   const id = params.get("id");
   const empty = params.get("kind") === "cloud" ? EMPTY_CLOUD : EMPTY_HOST;
-  const [initial, setInitial] = useState<HomelabHostInput | null>(id ? null : { ...empty });
+  const [initial, setInitial] = useState<ServerHostInput | null>(id ? null : { ...empty });
   const [report, setReport] = useState<SystemReport | null>(null);
 
   const check = () => {
@@ -22,7 +22,7 @@ function Setup() {
   useEffect(check, []);
   useEffect(() => {
     if (!id) return;
-    homelabList()
+    serverList()
       .then((l) => {
         const h = l.hosts.find((x) => x.id === id);
         setInitial(h ? { ...h, password: null } : { ...empty });
@@ -42,7 +42,7 @@ function Setup() {
             initial={initial}
             report={report}
             onRefresh={check}
-            onSaved={() => emit(HOMELAB_CHANGED).catch(() => {})}
+            onSaved={() => emit(SERVER_CHANGED).catch(() => {})}
             onDone={close}
           />
         ) : (
@@ -53,7 +53,7 @@ function Setup() {
   );
 }
 
-export default function HomelabSetupWindow() {
+export default function ServerSetupWindow() {
   return (
     <Suspense>
       <Setup />

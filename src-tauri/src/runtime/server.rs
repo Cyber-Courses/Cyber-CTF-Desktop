@@ -1,10 +1,10 @@
-//! Home-lab hosts: the player's own ESXi / Proxmox server, used to run VM labs remotely
-//! through Vagrant. Profiles (non-secret) live in `<app data>/homelab.json`; each host's
+//! Server hosts: the player's own ESXi / Proxmox server, used to run VM labs remotely
+//! through Vagrant. Profiles (non-secret) live in `<app data>/server.json`; each host's
 //! password lives in the OS keychain (a file in debug builds, like the auth session).
 //!
 //! Neither `vagrant-vmware-esxi` nor `vagrant-proxmox` reads environment variables on its
 //! own: a lab's Vagrantfile reads `ENV` and sets `esxi.*` / `proxmox.*` from it. This
-//! module defines that contract (`connection_env`), documented in `docs/homelab.md`.
+//! module defines that contract (`connection_env`), documented in `docs/server.md`.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -17,8 +17,8 @@ use tokio::net::TcpStream;
 use super::providers::Provider;
 use crate::error::{Error, Result};
 
-const STORE_FILE: &str = "homelab.json";
-/// Written into a VM lab's directory when it runs on a home-lab host, so stop/status
+const STORE_FILE: &str = "server.json";
+/// Written into a VM lab's directory when it runs on a server host, so stop/status
 /// (which re-evaluate the Vagrantfile) get the same connection.
 const HOST_MARKER: &str = ".cyberctf-host";
 const TEST_TIMEOUT: Duration = Duration::from_secs(6);
@@ -176,7 +176,7 @@ fn store_path(app: &AppHandle) -> Result<PathBuf> {
 
 fn load(app: &AppHandle) -> Result<Store> {
     match std::fs::read_to_string(store_path(app)?) {
-        Ok(raw) => serde_json::from_str(&raw).map_err(|e| Error::Invalid(format!("homelab.json: {e}"))),
+        Ok(raw) => serde_json::from_str(&raw).map_err(|e| Error::Invalid(format!("server.json: {e}"))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Store::default()),
         Err(e) => Err(e.into()),
     }
@@ -189,7 +189,7 @@ fn save(app: &AppHandle, store: &Store) -> Result<()> {
 }
 
 fn find(store: &Store, id: &str) -> Result<HostProfile> {
-    store.hosts.iter().find(|h| h.id == id).cloned().ok_or_else(|| Error::Invalid(format!("home-lab host `{id}` not found")))
+    store.hosts.iter().find(|h| h.id == id).cloned().ok_or_else(|| Error::Invalid(format!("server host `{id}` not found")))
 }
 
 // Secrets: keychain in release; a 0600 file in debug, since every `tauri dev` rebuild is
@@ -197,13 +197,13 @@ fn find(store: &Store, id: &str) -> Result<HostProfile> {
 
 #[cfg(not(debug_assertions))]
 fn secret_entry(id: &str) -> Result<keyring::Entry> {
-    keyring::Entry::new(crate::config::KEYCHAIN_SERVICE, &format!("homelab:{id}")).map_err(|e| Error::Invalid(format!("keychain: {e}")))
+    keyring::Entry::new(crate::config::KEYCHAIN_SERVICE, &format!("server:{id}")).map_err(|e| Error::Invalid(format!("keychain: {e}")))
 }
 
 #[cfg(debug_assertions)]
 fn dev_secrets_path() -> Result<PathBuf> {
     let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).ok_or_else(|| Error::Invalid("no home directory".into()))?;
-    Ok(PathBuf::from(home).join(".cyberctf").join("dev-homelab-secrets.json"))
+    Ok(PathBuf::from(home).join(".cyberctf").join("dev-server-secrets.json"))
 }
 
 #[cfg(debug_assertions)]
@@ -265,7 +265,7 @@ fn delete_secret(id: &str) {
 
 // --- the Vagrantfile contract ---------------------------------------------
 
-/// Environment a lab's Vagrantfile reads to target this host. See `docs/homelab.md`.
+/// Environment a lab's Vagrantfile reads to target this host. See `docs/server.md`.
 /// ESXi Vagrantfiles should use `esxi.esxi_password = "env:CYBERCTF_ESXI_PASSWORD"` so the
 /// plugin reads the secret itself.
 pub fn connection_env(h: &HostProfile, password: &str) -> Vec<(String, String)> {
@@ -394,7 +394,7 @@ pub fn host_name(app: &AppHandle, id: &str) -> Option<String> {
 /// The host marked as default, if any (used for VM labs launched from the website).
 pub fn default_host(app: &AppHandle) -> Option<String> {
     let store = load(app).ok()?;
-    // Only home-lab hosts: a cloud account is never used implicitly (it costs money).
+    // Only server hosts: a cloud account is never used implicitly (it costs money).
     store.default.filter(|id| store.hosts.iter().any(|h| &h.id == id && h.provider != Provider::Aws))
 }
 
@@ -410,7 +410,7 @@ pub fn mark_lab(dir: &Path, host: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// The connection a VM lab directory was started with, if it runs on a home-lab host.
+/// The connection a VM lab directory was started with, if it runs on a server host.
 pub fn lab_connection(app: &AppHandle, dir: &Path) -> Result<Option<Connection>> {
     match std::fs::read_to_string(dir.join(HOST_MARKER)) {
         Ok(id) => connection(app, id.trim()).map(Some),
@@ -518,14 +518,14 @@ async fn test_host(h: &HostProfile, password: &str) -> TestResult {
 // --- commands -------------------------------------------------------------
 
 #[tauri::command]
-pub fn homelab_list(app: AppHandle) -> Result<HostList> {
+pub fn server_list(app: AppHandle) -> Result<HostList> {
     let store = load(&app)?;
     Ok(HostList { default: store.default, hosts: store.hosts })
 }
 
 /// Creates or updates a host. The first host saved becomes the default.
 #[tauri::command]
-pub fn homelab_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
+pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
     if !input.provider.is_remote() {
         return Err(Error::Invalid("a host must be ESXi, Proxmox or AWS".into()));
     }
@@ -547,7 +547,7 @@ pub fn homelab_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
     let mut store = load(&app)?;
     let id = match input.id {
         Some(id) if valid_id(&id) && store.hosts.iter().any(|h| h.id == id) => id,
-        Some(_) => return Err(Error::Invalid("unknown home-lab host".into())),
+        Some(_) => return Err(Error::Invalid("unknown server host".into())),
         None => new_id(),
     };
     let profile = HostProfile {
@@ -587,7 +587,7 @@ pub fn homelab_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
 }
 
 #[tauri::command]
-pub fn homelab_remove(app: AppHandle, id: String) -> Result<()> {
+pub fn server_remove(app: AppHandle, id: String) -> Result<()> {
     let mut store = load(&app)?;
     store.hosts.retain(|h| h.id != id);
     if store.default.as_deref() == Some(id.as_str()) {
@@ -600,7 +600,7 @@ pub fn homelab_remove(app: AppHandle, id: String) -> Result<()> {
 
 /// Sets (or clears, with None) the host VM labs run on by default.
 #[tauri::command]
-pub fn homelab_set_default(app: AppHandle, id: Option<String>) -> Result<()> {
+pub fn server_set_default(app: AppHandle, id: Option<String>) -> Result<()> {
     let mut store = load(&app)?;
     if let Some(id) = &id {
         if find(&store, id)?.provider == Provider::Aws {
@@ -611,17 +611,17 @@ pub fn homelab_set_default(app: AppHandle, id: Option<String>) -> Result<()> {
     save(&app, &store)
 }
 
-/// Opens the host setup in its own window (label `homelab-setup`); the window closes
+/// Opens the host setup in its own window (label `server-setup`); the window closes
 /// itself when setup ends. An already open setup window is replaced.
 #[tauri::command]
-pub async fn homelab_open_setup(app: AppHandle, id: Option<String>, kind: Option<String>) -> Result<()> {
-    const LABEL: &str = "homelab-setup";
+pub async fn server_open_setup(app: AppHandle, id: Option<String>, kind: Option<String>) -> Result<()> {
+    const LABEL: &str = "server-setup";
     let cloud = kind.as_deref() == Some("cloud");
     let path = match id {
-        Some(id) if valid_id(&id) => format!("homelab-setup?id={id}"),
-        Some(_) => return Err(Error::Invalid("unknown home-lab host".into())),
-        None if cloud => "homelab-setup?kind=cloud".into(),
-        None => "homelab-setup".into(),
+        Some(id) if valid_id(&id) => format!("server-setup?id={id}"),
+        Some(_) => return Err(Error::Invalid("unknown server host".into())),
+        None if cloud => "server-setup?kind=cloud".into(),
+        None => "server-setup".into(),
     };
     if let Some(existing) = app.get_webview_window(LABEL) {
         let _ = existing.destroy();
@@ -643,7 +643,7 @@ pub async fn homelab_open_setup(app: AppHandle, id: Option<String>, kind: Option
 }
 
 #[tauri::command]
-pub async fn homelab_test(app: AppHandle, id: String) -> Result<TestResult> {
+pub async fn server_test(app: AppHandle, id: String) -> Result<TestResult> {
     let host = find(&load(&app)?, &id)?;
     let password = get_secret(&id)?;
     Ok(test_host(&host, &password).await)

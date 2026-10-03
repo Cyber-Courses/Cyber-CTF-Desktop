@@ -4,7 +4,7 @@
 
 mod docker;
 mod exegol;
-pub mod homelab;
+pub mod server;
 pub mod providers;
 mod ssh;
 mod terraform;
@@ -60,7 +60,7 @@ pub struct LabStatus {
     /// Loopback URL where the lab is reachable on this machine, once running (Docker labs
     /// with a published port). None for VM labs or when nothing is published yet.
     pub url: Option<String>,
-    /// Name of the home-lab host a VM lab runs on; None when it runs on this machine.
+    /// Name of the server host a VM lab runs on; None when it runs on this machine.
     pub host: Option<String>,
     /// Unix time a cloud lab stops itself (auto-stop), if it does.
     pub expires_at: Option<u64>,
@@ -91,7 +91,7 @@ fn lab_dir(app: &AppHandle, id: &str) -> Result<PathBuf> {
 ///
 /// - No `host`: Docker labs run on this machine; VM labs run their root Vagrantfile with
 ///   the local `provider`.
-/// - With a home-lab `host`: the lab runs there. A Docker lab is deployed through its
+/// - With a server `host`: the lab runs there. A Docker lab is deployed through its
 ///   `deploy/` layer onto a lab host VM (ESXi: `deploy/vagrant`, Proxmox:
 ///   `deploy/terraform/proxmox`); a VM lab runs its root Vagrantfile on ESXi.
 #[allow(clippy::too_many_arguments)]
@@ -106,26 +106,26 @@ pub async fn start(
     mut log: impl FnMut(String),
 ) -> Result<()> {
     let Some(host) = host else {
-        homelab::mark_lab(dir, None)?;
+        server::mark_lab(dir, None)?;
         return match runtime {
             Runtime::Docker => docker::start(dir, id, env, log).await,
             Runtime::Vm => {
                 let provider = provider.ok_or_else(|| Error::Invalid("VM labs need a provider".into()))?;
                 if provider.is_remote() {
-                    return Err(Error::Invalid("pick a home-lab host to run on ESXi or Proxmox".into()));
+                    return Err(Error::Invalid("pick a server host to run on ESXi or Proxmox".into()));
                 }
                 vm::start(dir, provider, env, log).await
             }
         };
     };
 
-    let conn = homelab::connection(app, host)?;
+    let conn = server::connection(app, host)?;
     // Mark first, so a half-created lab can still be destroyed on the same host.
-    homelab::mark_lab(dir, Some(host))?;
-    log(format!("Running on home-lab host {} ({})", conn.name, conn.provider.id()));
+    server::mark_lab(dir, Some(host))?;
+    log(format!("Running on server host {} ({})", conn.name, conn.provider.id()));
     match (runtime, conn.provider) {
-        (Runtime::Docker, provider) if homelab::terraform_target(provider).is_some() => {
-            let target = homelab::terraform_target(provider).unwrap_or_default();
+        (Runtime::Docker, provider) if server::terraform_target(provider).is_some() => {
+            let target = server::terraform_target(provider).unwrap_or_default();
             let mut vars = conn.tf_vars.clone();
             vars.extend(lab_vars(dir, id, env)?);
             // The launcher's key, so "Open shell" can reach the attack box on the lab host.
@@ -140,7 +140,7 @@ pub async fn start(
         (Runtime::Docker, provider) => {
             let vagrant = dir.join("deploy").join("vagrant");
             if !vagrant.join("Vagrantfile").is_file() {
-                return Err(Error::Invalid("this lab can't run on a home-lab host yet (no deploy/vagrant)".into()));
+                return Err(Error::Invalid("this lab can't run on a server host yet (no deploy/vagrant)".into()));
             }
             let env: Vec<(String, String)> = env.iter().cloned().chain(conn.env).collect();
             vm::start(&vagrant, provider, &env, log).await
@@ -194,33 +194,33 @@ fn state_dir(app: &AppHandle, id: &str, target: &str) -> Result<PathBuf> {
 
 /// Stops a lab wherever it runs, destroying remote VMs so the next start is clean.
 async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
-    let conn = homelab::lab_connection(app, dir)?;
+    let conn = server::lab_connection(app, dir)?;
     let result = match (runtime, conn) {
         (Runtime::Docker, None) => docker::stop(dir, id, log).await,
         (Runtime::Vm, None) => vm::stop(dir, &[], log).await,
-        (Runtime::Docker, Some(c)) if homelab::terraform_target(c.provider).is_some() => {
-            let target = homelab::terraform_target(c.provider).unwrap_or_default();
+        (Runtime::Docker, Some(c)) if server::terraform_target(c.provider).is_some() => {
+            let target = server::terraform_target(c.provider).unwrap_or_default();
             terraform::destroy(&dir.join("deploy"), &state_dir(app, id, target)?, target, &c.tf_vars, &c.tf_env, log).await
         }
         (Runtime::Docker, Some(c)) => vm::stop(&dir.join("deploy").join("vagrant"), &c.env, log).await,
         (Runtime::Vm, Some(c)) => vm::stop(dir, &c.env, log).await,
     };
     if result.is_ok() {
-        homelab::mark_lab(dir, None)?;
+        server::mark_lab(dir, None)?;
     }
     result
 }
 
 async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Result<LabStatus> {
-    let Some(c) = homelab::lab_connection(app, dir)? else {
+    let Some(c) = server::lab_connection(app, dir)? else {
         return match runtime {
             Runtime::Docker => docker::status(dir, id).await,
             Runtime::Vm => vm::status(dir, &[]).await,
         };
     };
     let status = match runtime {
-        Runtime::Docker if homelab::terraform_target(c.provider).is_some() => {
-            terraform::status(&state_dir(app, id, homelab::terraform_target(c.provider).unwrap_or_default())?)
+        Runtime::Docker if server::terraform_target(c.provider).is_some() => {
+            terraform::status(&state_dir(app, id, server::terraform_target(c.provider).unwrap_or_default())?)
         }
         Runtime::Docker => vm::status(&dir.join("deploy").join("vagrant"), &c.env).await?,
         Runtime::Vm => vm::status(dir, &c.env).await?,
@@ -271,17 +271,17 @@ pub async fn lab_status(app: AppHandle, id: String, runtime: Runtime) -> Result<
 }
 
 /// Opens the attack box shell of a running lab, wherever it runs: the local container,
-/// or over SSH on the lab host of a remote lab (home lab / cloud).
+/// or over SSH on the lab host of a remote lab (server / cloud).
 #[tauri::command]
 pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> Result<()> {
     let dir = lab_dir(&app, &id)?;
-    let Some(conn) = homelab::lab_connection(&app, &dir)? else {
+    let Some(conn) = server::lab_connection(&app, &dir)? else {
         return exegol::shell(&id);
     };
     if !matches!(runtime, Runtime::Docker) {
         return Err(Error::Invalid("this lab has no attack box".into()));
     }
-    let target = if let Some(tf) = homelab::terraform_target(conn.provider) {
+    let target = if let Some(tf) = server::terraform_target(conn.provider) {
         let (host, user) = terraform::ssh_endpoint(&state_dir(&app, &id, tf)?)
             .ok_or_else(|| Error::Invalid("the lab host has no address yet; wait for it to finish starting".into()))?;
         ssh::Target { host, port: 22, user, identity: ssh::ensure_key(&app).await?.0 }

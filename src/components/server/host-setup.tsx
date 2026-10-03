@@ -8,18 +8,18 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/labs/log-console";
 import {
-  homelabSave,
-  homelabTest,
+  serverSave,
+  serverTest,
   installVagrantPlugin,
-  type HomelabHost,
-  type HomelabHostInput,
-  type HomelabTest,
+  type ServerHost,
+  type ServerHostInput,
+  type ServerTest,
   type RemoteProvider,
   type SystemReport,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-// The home-lab setup flow, shown in its own window (src/app/homelab-setup).
+// The server setup flow, shown in its own window (src/app/server-setup).
 
 export const KIND: Record<RemoteProvider, { label: string; note: string; port: number; user: string; plugin: string }> = {
   proxmox: { label: "Proxmox VE", note: "Signs in to the Proxmox API", port: 8006, user: "root@pam", plugin: "vagrant-proxmox" },
@@ -27,11 +27,11 @@ export const KIND: Record<RemoteProvider, { label: string; note: string; port: n
   aws: { label: "AWS", note: "EC2 in your own account", port: 443, user: "AKIA…", plugin: "" },
 };
 
-/** Home-lab hypervisors, as opposed to cloud accounts. */
-export const HOMELAB_KINDS: RemoteProvider[] = ["proxmox", "vmware_esxi"];
+/** Server hypervisors, as opposed to cloud accounts. */
+export const SERVER_KINDS: RemoteProvider[] = ["proxmox", "vmware_esxi"];
 
 
-export const EMPTY_HOST: HomelabHostInput = {
+export const EMPTY_HOST: ServerHostInput = {
   id: null,
   name: "",
   provider: "proxmox",
@@ -48,7 +48,7 @@ export const EMPTY_HOST: HomelabHostInput = {
 };
 
 /** A new AWS account: region + access keys. */
-export const EMPTY_CLOUD: HomelabHostInput = { ...EMPTY_HOST, provider: "aws", insecureTls: false, autoStopHours: 4 };
+export const EMPTY_CLOUD: ServerHostInput = { ...EMPTY_HOST, provider: "aws", insecureTls: false, autoStopHours: 4 };
 
 /** Proxmox's own logo (official media kit, unaltered), or a neutral mark for ESXi. */
 export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
@@ -77,22 +77,22 @@ export function HostSetupPage({
   onSaved,
   onDone,
 }: {
-  initial: HomelabHostInput;
+  initial: ServerHostInput;
   report: SystemReport | null;
   onRefresh: () => void;
   /** After every save, so the main window's host list can refresh. */
-  onSaved: (h: HomelabHost) => void;
+  onSaved: (h: ServerHost) => void;
   /** Setup finished or cancelled: the window closes. */
   onDone: () => void;
 }) {
-  const [saved, setSaved] = useState<HomelabHost | null>(null);
-  const [draft, setDraft] = useState<HomelabHostInput>(initial);
-  const [test, setTest] = useState<HomelabTest | "testing" | null>(null);
+  const [saved, setSaved] = useState<ServerHost | null>(null);
+  const [draft, setDraft] = useState<ServerHostInput>(initial);
+  const [test, setTest] = useState<ServerTest | "testing" | null>(null);
 
   async function runTest(id: string) {
     setTest("testing");
     try {
-      setTest(await homelabTest(id));
+      setTest(await serverTest(id));
     } catch (e) {
       setTest({ ok: false, reachable: false, authenticated: null, latencyMs: null, message: String(e) });
     }
@@ -171,13 +171,13 @@ function HostForm({
   onCancel,
   onSaved,
 }: {
-  initial: HomelabHostInput;
+  initial: ServerHostInput;
   report: SystemReport | null;
   onRefresh: () => void;
   onCancel: () => void;
-  onSaved: (h: HomelabHost) => void;
+  onSaved: (h: ServerHost) => void;
 }) {
-  const [v, setV] = useState<HomelabHostInput>(initial);
+  const [v, setV] = useState<ServerHostInput>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pluginLog, setPluginLog] = useState<string[] | null>(null);
@@ -185,7 +185,7 @@ function HostForm({
   const cloud = v.provider === "aws";
   const kind = KIND[v.provider];
   const status = report?.vmProviders.find((p) => p.provider === v.provider);
-  const set = <K extends keyof HomelabHostInput>(k: K, value: HomelabHostInput[K]) => setV((s) => ({ ...s, [k]: value }));
+  const set = <K extends keyof ServerHostInput>(k: K, value: ServerHostInput[K]) => setV((s) => ({ ...s, [k]: value }));
   const text = (k: "name" | "host" | "username" | "datastore" | "network" | "node") => ({
     value: (v[k] as string | null) ?? "",
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, e.target.value),
@@ -208,7 +208,7 @@ function HostForm({
     setSaving(true);
     setError(null);
     try {
-      onSaved(await homelabSave({ ...v, name: v.name.trim() || v.host.trim() }));
+      onSaved(await serverSave({ ...v, name: v.name.trim() || v.host.trim() }));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -225,7 +225,7 @@ function HostForm({
         ) : (
         <>
         <div className="grid grid-cols-2 gap-2">
-          {HOMELAB_KINDS.map((p) => (
+          {SERVER_KINDS.map((p) => (
             <button
               key={p}
               type="button"
@@ -358,8 +358,8 @@ function AwsFields({
   text,
   editing,
 }: {
-  v: HomelabHostInput;
-  set: <K extends keyof HomelabHostInput>(k: K, value: HomelabHostInput[K]) => void;
+  v: ServerHostInput;
+  set: <K extends keyof ServerHostInput>(k: K, value: ServerHostInput[K]) => void;
   text: (k: "name" | "host" | "username" | "datastore") => { value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void };
   editing: boolean;
 }) {

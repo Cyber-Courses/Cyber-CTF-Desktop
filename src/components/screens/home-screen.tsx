@@ -13,7 +13,7 @@ import { assessRam } from "@/lib/capacity";
 import { machineMetrics, machineOpenSetup, type AuthStatus, type MachineMetrics, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-type Tab = "labs" | "machine" | "setup" | "homelab" | "cloud" | "settings";
+type Tab = "labs" | "machine" | "setup" | "server" | "cloud" | "settings";
 
 const gb = (bytes: number) => (bytes / 1e9).toFixed(1);
 
@@ -117,7 +117,7 @@ export function HomeScreen({
           </div>
           <div className="flex shrink-0 gap-2">
             <button onClick={() => onNavigate("cloud")} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-ring/60"><Cloud className="size-3.5" /> Cloud</button>
-            <button onClick={() => onNavigate("homelab")} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-ring/60"><Server className="size-3.5" /> Server</button>
+            <button onClick={() => onNavigate("server")} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-ring/60"><Server className="size-3.5" /> Server</button>
           </div>
         </div>
       )}

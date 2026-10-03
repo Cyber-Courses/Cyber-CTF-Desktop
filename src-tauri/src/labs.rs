@@ -97,7 +97,7 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
     std::fs::write(staging.join(".cyberctf-commit"), commit)?;
     // Terraform targets fetch the lab themselves, from this repository at that commit.
     std::fs::write(staging.join(".cyberctf-repository"), repository)?;
-    // Keep where the lab runs, so a lab still up on a home-lab host can be stopped there.
+    // Keep where the lab runs, so a lab still up on a server host can be stopped there.
     if let Ok(host) = std::fs::read(dir.join(".cyberctf-host")) {
         std::fs::write(staging.join(".cyberctf-host"), host)?;
     }
@@ -110,7 +110,7 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
 /// Installs and starts a lab from a launch spec (the `startLab`/`claimLaunch` shape:
 /// `{ labId, runtime, repository, commit, env }`). Shared by the manual launch command
 /// and the agent's claim loop (bring your own compute).
-/// VM labs run locally with `provider`, or on the home-lab `host` when one is given.
+/// VM labs run locally with `provider`, or on the server `host` when one is given.
 pub(crate) async fn run(
     app: &AppHandle,
     launch_json: serde_json::Value,
@@ -135,7 +135,7 @@ pub(crate) async fn run(
 }
 
 #[tauri::command]
-/// `attackbox_image` starts an attack box next to the lab on a home-lab host (where the
+/// `attackbox_image` starts an attack box next to the lab on a server host (where the
 /// lab network isn't reachable from this machine).
 pub async fn lab_launch(
     app: AppHandle,

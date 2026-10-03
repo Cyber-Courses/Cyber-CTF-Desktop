@@ -6,23 +6,23 @@ import { ArrowRight, CheckCircle2, Cloud, Pencil, Plus, Server, Star, Trash2, XC
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { KIND } from "@/components/homelab/host-setup";
+import { KIND } from "@/components/server/host-setup";
 import {
-  HOMELAB_CHANGED,
-  homelabList,
-  homelabOpenSetup,
-  homelabRemove,
-  homelabSetDefault,
-  homelabTest,
-  type HomelabHost,
-  type HomelabTest,
+  SERVER_CHANGED,
+  serverList,
+  serverOpenSetup,
+  serverRemove,
+  serverSetDefault,
+  serverTest,
+  type ServerHost,
+  type ServerTest,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 type Tab = "setup";
 
 const COPY = {
-  homelab: {
+  server: {
     title: "Server",
     intro: "Run heavy, multi-VM labs on your own ESXi or Proxmox server instead of this machine. Credentials stay in your OS keychain.",
     add: "Add host",
@@ -44,17 +44,17 @@ const COPY = {
   },
 };
 
-export function HomeLabScreen({ onNavigate, kind = "homelab" }: { onNavigate: (tab: Tab) => void; kind?: "homelab" | "cloud" }) {
+export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab: Tab) => void; kind?: "server" | "cloud" }) {
   const copy = COPY[kind];
   const cloud = kind === "cloud";
-  const [allHosts, setHosts] = useState<HomelabHost[] | null>(null);
+  const [allHosts, setHosts] = useState<ServerHost[] | null>(null);
   const hosts = allHosts?.filter((h) => (h.provider === "aws") === cloud) ?? null;
   const [defaultId, setDefaultId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-    const [tests, setTests] = useState<Record<string, HomelabTest | "testing">>({});
+    const [tests, setTests] = useState<Record<string, ServerTest | "testing">>({});
 
   const reload = useCallback(() => {
-    homelabList()
+    serverList()
       .then((l) => {
         setHosts(l.hosts);
         setDefaultId(l.default);
@@ -65,7 +65,7 @@ export function HomeLabScreen({ onNavigate, kind = "homelab" }: { onNavigate: (t
   useEffect(reload, [reload]);
   // The setup window saves hosts; refresh when it says so.
   useEffect(() => {
-    const off = listen(HOMELAB_CHANGED, reload);
+    const off = listen(SERVER_CHANGED, reload);
     return () => {
       off.then((f) => f()).catch(() => {});
     };
@@ -74,7 +74,7 @@ export function HomeLabScreen({ onNavigate, kind = "homelab" }: { onNavigate: (t
   const test = useCallback(async (id: string) => {
     setTests((t) => ({ ...t, [id]: "testing" }));
     try {
-      const r = await homelabTest(id);
+      const r = await serverTest(id);
       setTests((t) => ({ ...t, [id]: r }));
     } catch (e) {
       setTests((t) => ({ ...t, [id]: { ok: false, reachable: false, authenticated: null, latencyMs: null, message: String(e) } }));
@@ -97,7 +97,7 @@ export function HomeLabScreen({ onNavigate, kind = "homelab" }: { onNavigate: (t
           <h1 className="text-xl font-semibold tracking-tight">{copy.title}</h1>
           <p className="mt-1 max-w-xl text-[13px] text-muted-foreground">{copy.intro}</p>
         </div>
-        <Button variant="learn" size="sm" onClick={() => homelabOpenSetup(null, kind).catch((e) => setError(String(e)))}>
+        <Button variant="learn" size="sm" onClick={() => serverOpenSetup(null, kind).catch((e) => setError(String(e)))}>
           <Plus className="size-3.5" /> {copy.add}
         </Button>
       </div>
@@ -123,10 +123,10 @@ export function HomeLabScreen({ onNavigate, kind = "homelab" }: { onNavigate: (t
               canDefault={!cloud}
               test={tests[h.id]}
               onTest={() => test(h.id)}
-              onEdit={() => homelabOpenSetup(h.id).catch((e) => setError(String(e)))}
-              onDefault={() => act(() => homelabSetDefault(h.id === defaultId ? null : h.id))}
+              onEdit={() => serverOpenSetup(h.id).catch((e) => setError(String(e)))}
+              onDefault={() => act(() => serverSetDefault(h.id === defaultId ? null : h.id))}
               onRemove={() => {
-                if (confirm(`Remove ${h.name}? Its ${copy.removed} is deleted from the keychain.`)) act(() => homelabRemove(h.id));
+                if (confirm(`Remove ${h.name}? Its ${copy.removed} is deleted from the keychain.`)) act(() => serverRemove(h.id));
               }}
             />
           ))
@@ -177,10 +177,10 @@ function HostRow({
   onDefault,
   onRemove,
 }: {
-  host: HomelabHost;
+  host: ServerHost;
   isDefault: boolean;
   canDefault: boolean;
-  test: HomelabTest | "testing" | undefined;
+  test: ServerTest | "testing" | undefined;
   onTest: () => void;
   onEdit: () => void;
   onDefault: () => void;

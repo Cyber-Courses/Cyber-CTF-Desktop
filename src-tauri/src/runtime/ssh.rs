@@ -1,4 +1,4 @@
-//! Reaching a remote lab host over SSH, for "Open shell" on labs that run on a home-lab
+//! Reaching a remote lab host over SSH, for "Open shell" on labs that run on a server
 //! host or in the cloud: the attack box runs next to the lab there, so the shell is
 //! `ssh <lab host> sudo docker exec -it attacker bash`.
 //!

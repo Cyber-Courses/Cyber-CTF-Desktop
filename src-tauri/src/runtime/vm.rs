@@ -11,7 +11,7 @@ pub async fn start(dir: &Path, provider: Provider, env: &[(String, String)], log
 }
 
 /// Destroys the VMs so the next start restores the lab's initial state. `env` must carry
-/// the same home-lab connection as `start`: Vagrant re-evaluates the Vagrantfile.
+/// the same server connection as `start`: Vagrant re-evaluates the Vagrantfile.
 pub async fn stop(dir: &Path, env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
     stream("vagrant", &["destroy", "--force"], Some(dir), env, log).await
 }

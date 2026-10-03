@@ -1,4 +1,4 @@
-//! Terraform targets of a lab's `deploy/terraform/<target>/` module (Proxmox home lab
+//! Terraform targets of a lab's `deploy/terraform/<target>/` module (Proxmox server
 //! today, AWS cloud next). Terraform runs in the official container, so players install
 //! nothing: Docker is already the launcher's floor. Variables reach it as `TF_VAR_*`
 //! through the container's environment (never on the command line).

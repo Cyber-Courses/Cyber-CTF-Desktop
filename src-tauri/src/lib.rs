@@ -111,12 +111,12 @@ pub fn run() {
             runtime::exegol_stop,
             runtime::exegol_shell,
             runtime::lab_attack_shell,
-            runtime::homelab::homelab_list,
-            runtime::homelab::homelab_save,
-            runtime::homelab::homelab_remove,
-            runtime::homelab::homelab_set_default,
-            runtime::homelab::homelab_test,
-            runtime::homelab::homelab_open_setup,
+            runtime::server::server_list,
+            runtime::server::server_save,
+            runtime::server::server_remove,
+            runtime::server::server_set_default,
+            runtime::server::server_test,
+            runtime::server::server_open_setup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running CyberCTF");
