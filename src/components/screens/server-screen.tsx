@@ -323,16 +323,11 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
   );
 }
 
-// Brand-colored marks (not the trademarked logos, which need each vendor's approval,
-// matching the HypervisorMark convention).
-const CLOUD_COLOR: Record<CloudProvider, string> = { aws: "#ff9900", azure: "#3b8eea", gcp: "#34a853" };
+// Official provider logos (SVGs in public/brands), consistent with the Docker/OrbStack
+// logos the rest of the app already uses.
 function CloudMark({ provider }: { provider: CloudProvider }) {
-  const c = CLOUD_COLOR[provider];
-  return (
-    <span className="grid size-6 shrink-0 place-items-center rounded-md" style={{ background: `${c}22`, color: c }}>
-      <Cloud className="size-3.5" />
-    </span>
-  );
+  // eslint-disable-next-line @next/next/no-img-element -- static export, plain asset
+  return <img src={`/brands/${provider}.svg`} alt="" className="size-6 shrink-0" draggable={false} />;
 }
 
 function CliRow({ name, provider, tool, busy, loginBusy, onInstall, onLogin }: { name: string; provider: CloudProvider; tool?: Tool; busy: boolean; loginBusy: boolean; onInstall: () => void; onLogin: () => void }) {
