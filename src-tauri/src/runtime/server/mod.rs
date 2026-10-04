@@ -292,7 +292,9 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
     match input.password.filter(|p| !p.is_empty()) {
         Some(p) if p.len() <= 1024 && !p.contains('\0') => set_secret(&id, &p)?,
         Some(_) => return Err(Error::Invalid("invalid password".into())),
-        None if !use_cli && !matches!(input.provider, Provider::Azure | Provider::Gcp) && get_secret(&id).is_err() => return Err(Error::Invalid("enter the host's password".into())),
+        None if !use_cli && !matches!(input.provider, Provider::Azure | Provider::Gcp) && get_secret(&id).is_err() => {
+            return Err(Error::Invalid("enter the host's password".into()));
+        }
         None => {}
     }
     match store.hosts.iter_mut().find(|h| h.id == id) {

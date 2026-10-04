@@ -156,7 +156,11 @@ pub(super) async fn test_gcp(h: &HostProfile) -> TestResult {
             message: format!("Signed in to Google Cloud, project \"{}\". Labs run here are billed to it.", id.trim()),
         },
         Err(Error::CommandFailed { stderr, .. }) => {
-            let not_in = stderr.contains("gcloud auth") || stderr.contains("credentials") || stderr.contains("does not have permission") || stderr.contains("was not found") || stderr.contains("Permission denied");
+            let not_in = stderr.contains("gcloud auth")
+                || stderr.contains("credentials")
+                || stderr.contains("does not have permission")
+                || stderr.contains("was not found")
+                || stderr.contains("Permission denied");
             TestResult {
                 ok: false,
                 reachable: true,
