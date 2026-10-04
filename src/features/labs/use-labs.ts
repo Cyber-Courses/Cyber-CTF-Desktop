@@ -7,6 +7,8 @@ export interface LabRuntimeInfo {
   runtime: Runtime;
   architectures: string[];
   providers: Provider[];
+  /** Cyber CTF can run it for the player (hosted provider + a prepared snapshot). */
+  hosted?: boolean;
 }
 
 export interface Lab {
@@ -24,7 +26,7 @@ export interface Lab {
 
 const LABS_QUERY = `{ labs(sort: [{ title: ASC }]) {
   id slug title description question difficulty category
-  runtime { runtime architectures providers }
+  runtime { runtime architectures providers hosted }
   skills { id name }
 } }`;
 

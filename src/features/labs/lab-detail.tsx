@@ -13,6 +13,8 @@ import { HealthBanner, useLabCheck } from "@/features/labs/lab-health";
 import { AutoStop, StartTimer } from "@/features/labs/lab-timers";
 import { NetworkDiagram } from "@/features/labs/network-diagram";
 import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on";
+import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
+import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import { labAttackShell, exegolShell, serverList, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
@@ -65,6 +67,19 @@ export function LabDetail({
   // lists it first), else the first ready one its deploy/ supports. One option, not a catalogue.
   const localVms = isDocker ? readyVms.filter((p) => rt?.providers.includes(p)).slice(0, 1) : [];
   const [choosing, setChoosing] = useState(false);
+  // Cyber CTF can also run it for the player: a hosted session with a public URL.
+  const hostedOk = !!rt?.hosted;
+  const hosted = useHostedLabs();
+  const hostedSession = hosted.session;
+  const hasChoice = hosts.length > 0 || localVms.length > 0 || hostedOk;
+  // Errors from the hook only matter after a hosted start from this page (it also loads a list).
+  const [hostedTried, setHostedTried] = useState(false);
+  const hostedLive = hostedTried && !!hostedSession && !["FAILED", "STOPPED", "EXPIRED"].includes(hostedSession.state);
+  const startOn = (t: RunTarget) => {
+    if (t.kind !== "hosted") return void onStart(t);
+    setHostedTried(true);
+    void hosted.launch(lab.id);
+  };
   const hostOk = useCallback(
     (h: ServerHost) => !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && (h.provider === "proxmox" || h.provider === "aws")),
     [rt],
@@ -183,10 +198,18 @@ export function LabDetail({
               <Button
                 variant="learn"
                 // With servers saved, ask where to run first; otherwise start here right away.
-                onClick={() => (hosts.length > 0 || localVms.length > 0 ? setChoosing(true) : onStart({ kind: "local" }))}
-                disabled={!loggedIn || !rt}
-                title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}
-                aria-haspopup={hosts.length > 0 || localVms.length > 0 ? "dialog" : undefined}
+                onClick={() => (hasChoice ? setChoosing(true) : onStart({ kind: "local" }))}
+                disabled={!loggedIn || !rt || hostedLive}
+                title={
+                  !rt
+                    ? "No runtime for this lab yet"
+                    : !loggedIn
+                      ? "Log in to start labs"
+                      : hostedLive
+                        ? "It's running hosted by Cyber CTF; stop it first"
+                        : undefined
+                }
+                aria-haspopup={hasChoice ? "dialog" : undefined}
               >
                 <Play className="size-4" /> Start lab
               </Button>
@@ -203,7 +226,7 @@ export function LabDetail({
                         size="sm"
                         onClick={() => {
                           setChoosing(false);
-                          void onStart(runOn);
+                          startOn(runOn);
                         }}
                       >
                         <Play className="size-3.5" /> Start
@@ -217,6 +240,7 @@ export function LabDetail({
                     hostOk={hostOk}
                     localNote={isDocker ? "Docker, on your system" : "Local hypervisor"}
                     localVm={localVms[0] ?? null}
+                    hosted={hostedOk}
                     dockerRunning={isDocker ? dockerRunning : null}
                     value={runOn}
                     onChange={setRunOn}
@@ -229,6 +253,17 @@ export function LabDetail({
         </div>
       </div>
       {shellError && <p className="-mt-3 text-[0.71875rem] text-rose-400">{shellError}</p>}
+      {hostedTried && (hostedSession || hosted.busyLab === lab.id || hosted.error) && (
+        <HostedSessionPanel
+          session={hostedSession}
+          starting={hosted.busyLab === lab.id}
+          error={hosted.error}
+          onStop={() => {
+            setHostedTried(false);
+            void hosted.stop();
+          }}
+        />
+      )}
 
       {/* Health: a container went down. Say so, check it, offer a clean restart. */}
       {running && down.length > 0 && <HealthBanner down={down.map((m) => m.name)} check={check} busy={busy} resetting={resetting} onReset={reset} />}

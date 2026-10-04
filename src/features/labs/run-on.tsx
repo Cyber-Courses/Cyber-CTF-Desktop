@@ -13,9 +13,9 @@ import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 const CLOUDS = new Set(["aws", "azure", "gcp", "digitalocean", "linode", "oci"]);
 
 /** Where a lab starts: this machine (Docker, or a VM on a local hypervisor) or a saved host. */
-export type RunTarget = { kind: "local" } | { kind: "local-vm"; provider: Provider } | { kind: "host"; id: string };
+export type RunTarget = { kind: "local" } | { kind: "local-vm"; provider: Provider } | { kind: "host"; id: string } | { kind: "hosted" };
 
-export const targetKey = (t: RunTarget) => (t.kind === "local" ? "local" : t.kind === "local-vm" ? `vm:${t.provider}` : `host:${t.id}`);
+export const targetKey = (t: RunTarget) => (t.kind === "local" || t.kind === "hosted" ? t.kind : t.kind === "local-vm" ? `vm:${t.provider}` : `host:${t.id}`);
 
 /**
  * A centered dialog over the page (Escape or a click on the backdrop closes it). The body
@@ -80,6 +80,13 @@ function hostStatus(check: ServerTest | "testing" | undefined): Status {
   return { tone: check.reachable ? "warn" : "fail", label: check.reachable ? "Needs attention" : "Unreachable", title: check.message };
 }
 
+const CyberCtfLogo = () => (
+  <TypeIcon>
+    {/* eslint-disable-next-line @next/next/no-img-element -- static export, plain asset */}
+    <img src="/logo-mark.svg" alt="Cyber CTF" className="size-4 object-contain" draggable={false} />
+  </TypeIcon>
+);
+
 const DockerLogo = () => (
   <TypeIcon>
     {/* eslint-disable-next-line @next/next/no-img-element -- static export, plain asset */}
@@ -99,6 +106,7 @@ export function RunOnPicker({
   localNote,
   dockerRunning,
   localVm,
+  hosted,
   value,
   onChange,
   disabled,
@@ -111,6 +119,8 @@ export function RunOnPicker({
   dockerRunning: boolean | null;
   /** The local hypervisor this (container) lab can run a VM on: Settings' choice, else the first ready. */
   localVm: Provider | null;
+  /** Cyber CTF can run this lab for the player (no install, a public URL). */
+  hosted: boolean;
   value: RunTarget;
   onChange: (t: RunTarget) => void;
   disabled: boolean;
@@ -157,6 +167,21 @@ export function RunOnPicker({
   }
   const groups: { label: string; options: Option[] }[] = [
     { label: "This machine", options: local },
+    {
+      label: "Cyber CTF",
+      options: hosted
+        ? [
+            {
+              target: { kind: "hosted" },
+              title: "Hosted by Cyber CTF",
+              subtitle: "Nothing to install · opens in your browser",
+              ok: true,
+              logo: <CyberCtfLogo />,
+              status: { tone: "ok", label: "Available" },
+            } satisfies Option,
+          ]
+        : [],
+    },
     { label: "Servers", options: hosts.filter((h) => !CLOUDS.has(h.provider)).map(hostOption) },
     { label: "Cloud", options: hosts.filter((h) => CLOUDS.has(h.provider)).map(hostOption) },
   ].filter((g) => g.options.length > 0);
