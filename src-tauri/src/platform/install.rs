@@ -76,7 +76,19 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Libvirt => return Err(Error::Invalid("libvirt isn't used on macOS; use QEMU or UTM instead.".into())),
             // Cloud CLIs (brew formulae; gcloud is a cask).
             Dependency::Awscli => vec![step(brew.clone(), &["install", "awscli"])],
-            Dependency::Azurecli => vec![step(brew.clone(), &["install", "azure-cli"])],
+            // Microsoft's prebuilt cask instead of the `azure-cli` formula: on recent macOS the
+            // formula has no bottle and builds its whole tree (llvm, rust) from source, which takes
+            // ~an hour. The cask is a signed download. `trust` is needed because the tap is third-party.
+            // https://learn.microsoft.com/cli/azure/install-azure-cli-macos
+            Dependency::Azurecli => vec![
+                step(brew.clone(), &["tap", "azure/azure-cli"]),
+                step(brew.clone(), &["trust", "azure/azure-cli"]),
+                Step {
+                    program: brew.clone(),
+                    args: vec!["install".into(), "--cask".into(), "azure-cli-preview".into()],
+                    note: Some("Installing the prebuilt Azure CLI cask (avoids a long source build on this macOS).".into()),
+                },
+            ],
             Dependency::Gcloud => vec![step(brew.clone(), &["install", "--cask", "google-cloud-sdk"])],
         })
     }
