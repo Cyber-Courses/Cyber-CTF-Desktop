@@ -80,6 +80,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             machine::system::system_check,
+            machine::images::image_download_size,
             machine::system::docker_use_engine,
             machine::system::machine_metrics,
             machine::system::machine_open_setup,

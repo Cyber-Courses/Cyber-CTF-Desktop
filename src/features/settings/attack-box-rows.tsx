@@ -7,12 +7,15 @@ import { Switch } from "@/components/ui/switch";
 import { ATTACK_PRESETS, DEFAULT_ATTACK_IMAGE, getAttackImage, getAutoAttackBox, setAttackImage, setAutoAttackBox } from "@/lib/settings";
 import { Row } from "@/features/settings/settings-layout";
 import { RadioList, RadioRow } from "@/components/ui/radio-row";
+import { formatBytes } from "@/lib/format";
+import { useImageSizes } from "@/lib/use-image-sizes";
 
 /* ------------------------------------------------------------------ labs */
 
 export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
   const [image, setImage] = useState(() => getAttackImage());
   const isPreset = ATTACK_PRESETS.some((p) => p.image === image);
+  const sizes = useImageSizes(ATTACK_PRESETS.map((p) => p.image));
   const [customOpen, setCustomOpen] = useState(!isPreset);
   const [draft, setDraft] = useState(isPreset ? "" : image);
   const [autoStart, setAutoStart] = useState(() => getAutoAttackBox());
@@ -46,7 +49,11 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
                 <>
                   {p.label}
                   {p.image === DEFAULT_ATTACK_IMAGE && <Badge>Default</Badge>}
-                  {p.large && <Badge variant="outline">Large download</Badge>}
+                  {sizes[p.image] ? (
+                    <Badge variant="outline">{formatBytes(sizes[p.image]!)}</Badge>
+                  ) : (
+                    sizes[p.image] === null && p.large && <Badge variant="outline">Large download</Badge>
+                  )}
                   {p.terms && <Badge variant="warning">{p.terms}</Badge>}
                 </>
               }

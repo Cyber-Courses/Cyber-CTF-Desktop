@@ -12,7 +12,8 @@ const ATTACK_IMAGE_KEY = "cyberctf.attackbox.image";
 export const DEFAULT_ATTACK_IMAGE = "cyberctf/attack-box";
 
 /** Common attack-box images; the field is free text so any tag/registry still works. */
-/** `terms`: a short usage condition shown as a badge (e.g. Exegol's plan requirements). */
+/** `terms`: a short usage condition shown as a badge (e.g. Exegol's plan requirements).
+ *  `large`: shown as "Large download" only when Docker Hub gives no size for the image. */
 export const ATTACK_PRESETS: { image: string; label: string; note: string; large?: boolean; terms?: string }[] = [
   { image: "cyberctf/attack-box", label: "Cyber CTF", note: "Kali with its standard toolset, ready to use", large: true },
   { image: "kalilinux/kali-rolling", label: "Kali", note: "Official Kali base, add tools as needed" },

@@ -6,6 +6,8 @@ import { ATTACK_PRESETS, DEFAULT_ATTACK_IMAGE, getAttackImage, getAutoAttackBox,
 import { type SystemReport } from "@/lib/tauri";
 import { Choice, ChoiceGrid } from "@/components/ui/choice-card";
 import { isDockerReady } from "@/features/machine/setup-steps/steps";
+import { formatBytes } from "@/lib/format";
+import { useImageSizes } from "@/lib/use-image-sizes";
 
 // ---------- Virtual machines ----------
 
@@ -16,6 +18,7 @@ export function AttackStep({ report }: { report: SystemReport }) {
   const [image, setImage] = useState(() => getAttackImage());
   const [auto, setAuto] = useState(() => getAutoAttackBox());
   const presets = ATTACK_PRESETS;
+  const sizes = useImageSizes(presets.map((p) => p.image));
   const custom = !presets.some((p) => p.image === image);
   const pick = (img: string) => {
     setAttackImage(img);
@@ -35,7 +38,9 @@ export function AttackStep({ report }: { report: SystemReport }) {
               </span>
             }
             title={p.label}
-            note={[p.note, p.large ? "large download" : null, p.terms].filter(Boolean).join(" · ")}
+            note={[p.note, sizes[p.image] ? `${formatBytes(sizes[p.image]!)} download` : sizes[p.image] === null && p.large ? "large download" : null, p.terms]
+              .filter(Boolean)
+              .join(" · ")}
             badge={p.image === DEFAULT_ATTACK_IMAGE ? "recommended" : undefined}
           />
         ))}

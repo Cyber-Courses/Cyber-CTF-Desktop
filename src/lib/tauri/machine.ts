@@ -121,3 +121,6 @@ export interface Storage {
 export const machineStorage = (extraImages: string[]) => invoke<Storage>("machine_storage", { extraImages });
 /** Removes them (not ones still in use). Resolves to the bytes freed. */
 export const machineStorageClean = (extraImages: string[]) => invoke<number>("machine_storage_clean", { extraImages });
+
+/** Compressed download size (bytes) of an image for this machine, from Docker Hub; null if unknown. */
+export const imageDownloadSize = (image: string) => invoke<number | null>("image_download_size", { image });
