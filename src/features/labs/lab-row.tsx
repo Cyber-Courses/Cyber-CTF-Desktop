@@ -119,7 +119,7 @@ export function LabRow({
                 const hint = available ? `Runs on: ${label}` : `Not available: ${label}`;
                 return (
                   <span key={label} title={hint} aria-label={hint} className="inline-flex">
-                    <Icon className={cn("size-3", available ? "text-foreground/80" : "text-muted-foreground/25")} />
+                    <Icon className={cn("size-3", available ? "text-emerald-500" : "text-muted-foreground/25")} />
                   </span>
                 );
               })}
