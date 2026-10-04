@@ -21,15 +21,17 @@ type Tab = "home" | "labs" | "machine" | "setup" | "server" | "cloud" | "hosted"
 
 const ONBOARDED_KEY = "cyberctf.onboarded";
 
-const NAV: { id: Tab; label: string; icon: LucideIcon; soon?: boolean }[] = [
+// Grouped: the lab area (what you run), then the setup area (the compute it runs on), then
+// Settings. `sep` draws a divider before the item, at each group boundary.
+const NAV: { id: Tab; label: string; icon: LucideIcon; soon?: boolean; sep?: boolean }[] = [
   { id: "home", label: "Overview", icon: LayoutDashboard },
   { id: "labs", label: "Labs", icon: FlaskConical },
-  { id: "machine", label: "Machine", icon: MonitorCog },
+  { id: "hosted", label: "Hosted", icon: Globe },
+  { id: "events", label: "Events", icon: CalendarDays, soon: true },
+  { id: "machine", label: "Machine", icon: MonitorCog, sep: true },
   { id: "server", label: "Servers", icon: Server },
   { id: "cloud", label: "Cloud", icon: Cloud },
-  { id: "hosted", label: "Hosted", icon: Globe, soon: true },
-  { id: "events", label: "Events", icon: CalendarDays, soon: true },
-  { id: "settings", label: "Settings", icon: Cog },
+  { id: "settings", label: "Settings", icon: Cog, sep: true },
 ];
 
 const TITLES: Record<Tab, string> = {
@@ -119,12 +121,10 @@ export function AppShell() {
         </button>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
-          {NAV.map((n, i) => {
-            const prevSoon = NAV[i - 1]?.soon;
-            const needSep = (n.soon && !prevSoon) || (!n.soon && prevSoon);
+          {NAV.map((n) => {
             return (
               <div key={n.id}>
-                {needSep && <div className="my-2 h-px bg-border" />}
+                {n.sep && <div className="my-2 h-px bg-border" />}
                 <button
                   onClick={() => navigate(n.id)}
                   className={cn(
@@ -208,7 +208,7 @@ function Screen({
     );
   if (tab === "server") return <ServerScreen onNavigate={onNavigate} />;
   if (tab === "cloud") return <CloudScreen />;
-  if (tab === "hosted") return <HostedScreen onNavigate={onNavigate} />;
+  if (tab === "hosted") return <HostedScreen onNavigate={onNavigate} loggedIn={auth?.loggedIn ?? false} />;
   if (tab === "events")
     return (
       <ComingSoon
