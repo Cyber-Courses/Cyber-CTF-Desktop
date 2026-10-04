@@ -231,9 +231,37 @@ pub(super) async fn test_digitalocean(token: &str) -> TestResult {
     }
 }
 
+/// Linode: the API token is valid when `GET /v4/account` returns 2xx.
+pub(super) async fn test_linode(token: &str) -> TestResult {
+    let started = Instant::now();
+    match reqwest::Client::new().get("https://api.linode.com/v4/account").bearer_auth(token).send().await {
+        Ok(resp) if resp.status().is_success() => TestResult {
+            ok: true,
+            reachable: true,
+            authenticated: Some(true),
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            message: "Linode token is valid. Labs run as Linodes in this account.".into(),
+        },
+        Ok(resp) if resp.status() == reqwest::StatusCode::UNAUTHORIZED => TestResult {
+            ok: false,
+            reachable: true,
+            authenticated: Some(false),
+            latency_ms: None,
+            message: "Linode rejected this token. Create a new one with read/write scope.".into(),
+        },
+        Ok(resp) => {
+            TestResult { ok: false, reachable: true, authenticated: Some(false), latency_ms: None, message: format!("Linode API returned {}.", resp.status()) }
+        }
+        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("Can't reach Linode: {e}") },
+    }
+}
+
 pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
     if h.provider == Provider::Aws {
         return test_aws(h, password).await;
+    }
+    if h.provider == Provider::Linode {
+        return test_linode(password).await;
     }
     if h.provider == Provider::Azure {
         return test_azure(h).await;

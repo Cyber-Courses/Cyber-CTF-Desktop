@@ -75,13 +75,15 @@ pub fn terraform_env(h: &HostProfile, password: &str) -> Vec<(String, String)> {
         Provider::Gcp => Vec::new(),
         // The digitalocean provider reads DIGITALOCEAN_TOKEN (the stored API token).
         Provider::DigitalOcean => vec![("DIGITALOCEAN_TOKEN".to_string(), password.to_string())],
+        // The linode provider reads LINODE_TOKEN (the stored API token).
+        Provider::Linode => vec![("LINODE_TOKEN".to_string(), password.to_string())],
         _ => Vec::new(),
     }
 }
 
 /// Terraform variables for a host (`deploy/terraform/<target>`).
 pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> {
-    if matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean) {
+    if matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode) {
         let mut vars =
             vec![("region".to_string(), h.host.clone()), ("auto_stop_hours".to_string(), h.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS).to_string())];
         if let Some(t) = &h.datastore {
@@ -162,9 +164,12 @@ pub fn host_name(app: &AppHandle, id: &str) -> Option<String> {
 pub fn default_host(app: &AppHandle) -> Option<String> {
     let store = load(app).ok()?;
     // Only server hosts: a cloud account is never used implicitly (it costs money).
-    store
-        .default
-        .filter(|id| store.hosts.iter().any(|h| &h.id == id && !matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean)))
+    store.default.filter(|id| {
+        store
+            .hosts
+            .iter()
+            .any(|h| &h.id == id && !matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode))
+    })
 }
 
 /// Records (or clears) which host a VM lab directory runs on.

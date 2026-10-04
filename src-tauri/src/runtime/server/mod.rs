@@ -157,7 +157,7 @@ pub const DEFAULT_AUTO_STOP_HOURS: u32 = 4;
 fn default_port(provider: Provider) -> u16 {
     match provider {
         Provider::Proxmox => 8006,
-        Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean => 443,
+        Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode => 443,
         _ => 22,
     }
 }
@@ -203,9 +203,16 @@ fn valid_do_region(s: &str) -> bool {
     (3..=8).contains(&s.len()) && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
 }
 
-/// A DigitalOcean API token: the "dop_v1_..." form or a 64-char hex PAT. Loose length/charset check.
+/// A DigitalOcean / Linode API token: the "dop_v1_..." form or a hex PAT. Loose length/charset check.
 fn valid_do_token(s: &str) -> bool {
     (40..=200).contains(&s.len()) && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// A Linode region slug, e.g. "eu-central", "us-east", "ap-south" (lowercase letters/digits/hyphens).
+fn valid_linode_region(s: &str) -> bool {
+    (3..=20).contains(&s.len())
+        && s.starts_with(|c: char| c.is_ascii_lowercase())
+        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 /// A long-term AWS access key id (AKIA...). Temporary ASIA... keys are handled separately at
@@ -222,6 +229,7 @@ pub fn terraform_target(provider: Provider) -> Option<&'static str> {
         Provider::Azure => Some("azure"),
         Provider::Gcp => Some("gcp"),
         Provider::DigitalOcean => Some("digitalocean"),
+        Provider::Linode => Some("linode"),
         _ => None,
     }
 }
@@ -242,13 +250,13 @@ pub fn server_list(app: AppHandle) -> Result<HostList> {
 #[tauri::command]
 pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
     if !input.provider.is_remote() {
-        return Err(Error::Invalid("a host must be ESXi, Proxmox, AWS, Azure, GCP or DigitalOcean".into()));
+        return Err(Error::Invalid("a host must be ESXi, Proxmox, AWS, Azure, GCP, DigitalOcean or Linode".into()));
     }
     let host = clean(&input.host, "host", 253)?;
     // AWS can connect with the AWS CLI's own credentials instead of stored keys.
     let use_cli = input.provider == Provider::Aws && input.use_cli_creds.unwrap_or(false);
     // DigitalOcean authenticates with just an API token (stored as the secret); no username.
-    let token_only = input.provider == Provider::DigitalOcean;
+    let token_only = matches!(input.provider, Provider::DigitalOcean | Provider::Linode);
     let username = if use_cli || token_only { String::new() } else { clean(&input.username, "username", 128)? };
     if input.provider == Provider::Aws {
         if !valid_region(&host) {
@@ -288,6 +296,13 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         if input.password.as_deref().filter(|p| !p.is_empty()).is_some_and(|t| !valid_do_token(t)) {
             return Err(Error::Invalid("that doesn't look like a DigitalOcean API token".into()));
         }
+    } else if input.provider == Provider::Linode {
+        if !valid_linode_region(&host) {
+            return Err(Error::Invalid("region must be a Linode region slug, e.g. eu-central or us-east".into()));
+        }
+        if input.password.as_deref().filter(|p| !p.is_empty()).is_some_and(|t| !valid_do_token(t)) {
+            return Err(Error::Invalid("that doesn't look like a Linode API token".into()));
+        }
     } else if !valid_host(&host) {
         return Err(Error::Invalid("host must be a hostname or IP address, without https:// or a path".into()));
     }
@@ -313,10 +328,12 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         node: if matches!(input.provider, Provider::Proxmox | Provider::Gcp) { clean_opt(input.node, "node")? } else { None },
         insecure_tls: input.provider == Provider::Proxmox && input.insecure_tls.unwrap_or(false),
         auto_stop_hours: match input.provider {
-            Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean => match input.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS) {
-                h if h <= 72 => Some(h),
-                _ => return Err(Error::Invalid("auto-stop must be between 0 and 72 hours".into())),
-            },
+            Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode => {
+                match input.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS) {
+                    h if h <= 72 => Some(h),
+                    _ => return Err(Error::Invalid("auto-stop must be between 0 and 72 hours".into())),
+                }
+            }
             _ => None,
         },
         use_cli_creds: use_cli,
@@ -337,7 +354,7 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         Some(existing) => *existing = profile.clone(),
         None => store.hosts.push(profile.clone()),
     }
-    if store.default.is_none() && !matches!(profile.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean) {
+    if store.default.is_none() && !matches!(profile.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode) {
         store.default = Some(id);
     }
     save(&app, &store)?;
@@ -350,8 +367,11 @@ pub fn server_remove(app: AppHandle, id: String) -> Result<()> {
     store.hosts.retain(|h| h.id != id);
     if store.default.as_deref() == Some(id.as_str()) {
         // The default is a *server* to run VM labs on; a cloud account must never become it.
-        store.default =
-            store.hosts.iter().find(|h| !matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean)).map(|h| h.id.clone());
+        store.default = store
+            .hosts
+            .iter()
+            .find(|h| !matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode))
+            .map(|h| h.id.clone());
     }
     save(&app, &store)?;
     delete_secret(&id);
@@ -363,7 +383,7 @@ pub fn server_remove(app: AppHandle, id: String) -> Result<()> {
 pub fn server_set_default(app: AppHandle, id: Option<String>) -> Result<()> {
     let mut store = load(&app)?;
     if let Some(id) = &id
-        && matches!(find(&store, id)?.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean)
+        && matches!(find(&store, id)?.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode)
     {
         return Err(Error::Invalid("a cloud account can't be the default host".into()));
     }

@@ -36,6 +36,9 @@ pub enum Provider {
     /// Authenticated with an API token; not a Vagrant provider, never detected, not in `ALL`.
     #[serde(rename = "digitalocean")]
     DigitalOcean,
+    /// The player's Linode account (Terraform, a lab's deploy/terraform/linode). Like
+    /// DigitalOcean: API-token auth, not a Vagrant provider, never detected, not in `ALL`.
+    Linode,
 }
 
 impl Provider {
@@ -66,12 +69,13 @@ impl Provider {
             Provider::Azure => "azure",
             Provider::Gcp => "gcp",
             Provider::DigitalOcean => "digitalocean",
+            Provider::Linode => "linode",
         }
     }
 
     /// Remote providers run VMs on another host and need connection settings.
     pub fn is_remote(self) -> bool {
-        matches!(self, Provider::VmwareEsxi | Provider::Proxmox | Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean)
+        matches!(self, Provider::VmwareEsxi | Provider::Proxmox | Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode)
     }
 
     /// Whether this provider can run on the current OS at all. Local hypervisors are
@@ -98,7 +102,7 @@ impl Provider {
             Provider::Utm => Some("vagrant_utm"),
             Provider::VmwareEsxi => Some("vagrant-vmware-esxi"),
             Provider::Proxmox => Some("vagrant-proxmox"),
-            Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean => None,
+            Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode => None,
         }
     }
 
@@ -119,7 +123,8 @@ impl Provider {
             | Provider::Aws
             | Provider::Azure
             | Provider::Gcp
-            | Provider::DigitalOcean => None,
+            | Provider::DigitalOcean
+            | Provider::Linode => None,
         }
     }
 }
