@@ -6,10 +6,12 @@ import { ArrowLeft, CheckCircle2, Cloud, ExternalLink, HardDrive, Network, Play,
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/labs/log-console";
+import { Requirement } from "@/components/machine/setup-steps";
 import {
   cloudLogin,
   serverSave,
   serverTest,
+  installDependency,
   installVagrantPlugin,
   type CloudProvider,
   type ServerHost,
@@ -91,17 +93,7 @@ export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
   );
 }
 
-type StepKey = "provider" | "hypervisor" | "connection" | "placement" | "account" | "connect" | "test";
-const STEP_LABEL: Record<StepKey, string> = {
-  provider: "Provider",
-  hypervisor: "Hypervisor",
-  connection: "Connection",
-  placement: "Placement",
-  account: "Account",
-  connect: "Connect",
-  test: "Test",
-};
-
+type StepKey = "provider" | "hypervisor" | "tools" | "connection" | "placement" | "account" | "connect" | "test";
 /** Cloud providers offered in the cloud setup. AWS is the supported target; Azure and GCP
  *  connect via their CLI's own sign-in (no lab provisioning yet). */
 const CLOUD_META: Record<CloudProvider, { label: string; cli: string; color: string; ready: boolean }> = {
@@ -148,11 +140,11 @@ export function HostSetupPage({
     ? editing
       ? ["account", "test"]
       : cloudProvider === "aws"
-        ? ["provider", "account", "test"]
-        : ["provider", "connect"]
+        ? ["provider", "tools", "account", "test"]
+        : ["provider", "tools", "connect"]
     : editing
       ? ["connection", "placement", "test"]
-      : ["hypervisor", "connection", "placement", "test"];
+      : ["hypervisor", "tools", "connection", "placement", "test"];
   const key = steps[Math.min(i, steps.length - 1)];
 
   const set = <K extends keyof ServerHostInput>(k: K, value: ServerHostInput[K]) => setV((s) => ({ ...s, [k]: value }));
@@ -165,10 +157,12 @@ export function HostSetupPage({
   const next = () => setI((n) => Math.min(n + 1, steps.length - 1));
   const back = () => setI((n) => Math.max(n - 1, 0));
 
-  async function installPlugin() {
-    setPluginLog([`Installing ${kind.plugin}…`]);
+  // Installs one of the tools this server type needs on this machine, logging below.
+  const toolBusy = pluginLog !== null && !pluginLog.at(-1)?.match(/^[✓✗]/);
+  async function installTool(label: string, run: (onLog: (l: string) => void) => Promise<void>) {
+    setPluginLog([`Installing ${label}…`]);
     try {
-      await installVagrantPlugin(kind.plugin, (l) => setPluginLog((x) => [...(x ?? []), l]));
+      await run((l) => setPluginLog((x) => [...(x ?? []), l]));
       setPluginLog((x) => [...(x ?? []), "✓ Installed"]);
     } catch (e) {
       setPluginLog((x) => [...(x ?? []), `✗ ${String(e)}`]);
@@ -176,6 +170,17 @@ export function HostSetupPage({
       onRefresh();
     }
   }
+
+  // What this machine needs to drive the chosen server: ESXi goes through Vagrant, its ESXi
+  // plugin and VMware's OVF Tool; Proxmox through Terraform (installed locally).
+  const vagrantOk = !!report?.vagrant.installed;
+  const esxiPluginOk = !!status?.pluginInstalled;
+  const ovftoolOk = !!report?.ovftool?.installed;
+  const terraformOk = !!report?.terraform.installed;
+  const cloudDep = cloudProvider === "aws" ? "awscli" : cloudProvider === "azure" ? "azurecli" : "gcloud";
+  const cloudCliTool = report?.cloudClis[cloudProvider === "gcp" ? "gcloud" : cloudProvider];
+  const cloudCliOk = !!cloudCliTool?.installed;
+  const toolsOk = cloud ? cloudCliOk : v.provider === "vmware_esxi" ? vagrantOk && esxiPluginOk && ovftoolOk : terraformOk;
 
   async function runTest(id: string) {
     setTest("testing");
@@ -218,43 +223,26 @@ export function HostSetupPage({
 
   const title = saved ? `${saved.name} connected` : editing ? `Edit ${initial.name}` : cloud ? "Set up cloud provider" : "Connect a host";
 
-  const esxiPluginNotice =
-    v.provider === "vmware_esxi" && status && !status.pluginInstalled ? (
-      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="min-w-0 flex-1 text-[12px] text-amber-500">{status.reason ?? `Needs the Vagrant plugin ${kind.plugin}.`}</p>
-          {report?.vagrant.installed && (
-            <Button variant="outline" size="sm" onClick={installPlugin} disabled={pluginLog !== null && !pluginLog.at(-1)?.match(/^[✓✗]/)}>
-              Install {kind.plugin}
-            </Button>
-          )}
-        </div>
-        {pluginLog && <div className="mt-2"><LogConsole lines={pluginLog} /></div>}
-      </div>
-    ) : null;
-
   return (
-    <div className="space-y-6">
+    <>
       <div>
         <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
           {cloud
-            ? "Run labs as throwaway instances in your own cloud account. Credentials stay on this machine, never with CyberCTF."
-            : "Point the launcher at your server. The password goes to your OS keychain, never to CyberCTF."}
+            ? "Run labs as throwaway instances in your own cloud account. Credentials stay on this machine, never with Cyber CTF."
+            : "Point the launcher at your server. The password goes to your OS keychain, never to Cyber CTF."}
         </p>
       </div>
 
       {/* Segmented progress, one bar per step. */}
-      <div className="flex gap-1.5">
+      <div className="mt-5 flex gap-1.5">
         {steps.map((s, n) => (
           <div key={s} className={cn("h-1 flex-1 rounded-full transition-colors", n <= i ? "bg-learn" : "bg-muted")} />
         ))}
       </div>
-      <p className="-mt-3 text-[11px] text-muted-foreground">
-        Step {i + 1} of {steps.length} · {STEP_LABEL[key]}
-      </p>
 
-      <div key={key} className="animate-rise-in rounded-xl border border-border bg-card p-5">
+      <div key={key} className="mt-7 animate-rise-in">
+        <p className="text-[11.5px] font-medium tabular-nums text-muted-foreground">Step {i + 1} of {steps.length}</p>
         {key === "hypervisor" && (
           <Step icon={Server} title="Choose your hypervisor" description="Where the launcher will create and run VM labs.">
             <div className="grid grid-cols-2 gap-2.5">
@@ -279,8 +267,68 @@ export function HostSetupPage({
                 );
               })}
             </div>
-            {esxiPluginNotice && <div className="mt-4">{esxiPluginNotice}</div>}
             <Nav right={<Button variant="learn" onClick={next}>Continue</Button>} />
+          </Step>
+        )}
+
+        {key === "tools" && (
+          <Step
+            icon={HardDrive}
+            title={cloud ? "Command-line tool" : "Tools on this machine"}
+            description={cloud ? `The ${CLOUD_META[cloudProvider].label} CLI, used to connect and provision.` : `What the launcher needs here to run labs on ${KIND[v.provider].label}.`}
+          >
+            <div className="overflow-hidden rounded-lg border border-border">
+              {cloud ? (
+                <Requirement
+                  ok={cloudCliOk}
+                  title={`${CLOUD_META[cloudProvider].label} CLI`}
+                  detail={cloudCliOk ? (cloudCliTool?.version ?? "Installed") : `The ${CLOUD_META[cloudProvider].cli} CLI, needed to connect and provision.`}
+                  action={<Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool(`${CLOUD_META[cloudProvider].cli} CLI`, (log) => installDependency(cloudDep, log))}>Install {CLOUD_META[cloudProvider].cli}</Button>}
+                />
+              ) : v.provider === "vmware_esxi" ? (
+                <>
+                  <Requirement
+                    ok={vagrantOk}
+                    title="Vagrant"
+                    detail={vagrantOk ? (report?.vagrant.version ?? "Installed") : "Builds and runs the lab VMs on the host."}
+                    action={<Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool("Vagrant", (log) => installDependency("vagrant", log))}>Install Vagrant</Button>}
+                  />
+                  <Requirement
+                    ok={esxiPluginOk}
+                    title="Vagrant plugin for ESXi"
+                    detail={vagrantOk || esxiPluginOk ? kind.plugin : `${kind.plugin}, once Vagrant is installed.`}
+                    action={<Button variant="learn" size="sm" disabled={toolBusy || !vagrantOk} onClick={() => installTool(kind.plugin, (log) => installVagrantPlugin(kind.plugin, log))}>Install plugin</Button>}
+                  />
+                  <Requirement
+                    ok={ovftoolOk}
+                    title="VMware OVF Tool"
+                    detail={ovftoolOk ? (report?.ovftool.version ?? "Installed") : "Uploads the lab VMs to ESXi. Comes with VMware Fusion / Workstation, or standalone from Broadcom (free account)."}
+                    action={
+                      <Button variant="outline" size="sm" onClick={() => openUrl("https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest").catch(() => {})}>
+                        <ExternalLink className="size-3.5" /> Get
+                      </Button>
+                    }
+                  />
+                </>
+              ) : (
+                <Requirement
+                  ok={terraformOk}
+                  title="Terraform"
+                  detail={report?.terraform.installed ? (report.terraform.version ?? "Installed") : "Drives the Proxmox API. Install it to run Proxmox labs."}
+                  action={<Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool("Terraform", (log) => installDependency("terraform", log))}>Install Terraform</Button>}
+                />
+              )}
+            </div>
+            {pluginLog && <div className="mt-3"><LogConsole lines={pluginLog} /></div>}
+            <Nav
+              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
+              right={
+                <span className="flex gap-2">
+                  {!toolsOk && <Button variant="outline" onClick={() => onRefresh()}>Re-check</Button>}
+                  <Button variant="learn" onClick={next} disabled={!toolsOk}>Continue</Button>
+                </span>
+              }
+            />
           </Step>
         )}
 
@@ -290,7 +338,6 @@ export function HostSetupPage({
             title={`Connect to ${KIND[v.provider].label}`}
             description={v.provider === "proxmox" ? "The launcher signs in to the Proxmox API." : "The launcher drives the host over SSH."}
           >
-            {esxiPluginNotice && <div className="mb-4">{esxiPluginNotice}</div>}
             <div className="grid gap-3 sm:grid-cols-[1fr_1fr_110px]">
               <Field label="Name"><Input {...text("name")} placeholder={v.provider === "proxmox" ? "Garage Proxmox" : "ESXi box"} /></Field>
               <Field label="Host"><Input {...text("host")} placeholder="192.168.1.20 or pve.lan" /></Field>
@@ -340,7 +387,7 @@ export function HostSetupPage({
         {key === "account" && (
           <Step icon={Cloud} title="AWS account" description="An IAM user's access keys and a region. Labs run as EC2 instances in your account.">
             <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[12px] text-amber-500">
-              Labs run in your account and are billed there{awsPrice != null ? ` (about $${awsPrice.toFixed(3)}/hour for ${awsType})` : ""} until they stop. Stop, and the lab's auto-stop, destroy everything the lab created.
+              Labs run in your account and are billed there{awsPrice != null ? ` (about $${awsPrice.toFixed(3)}/hour for ${awsType})` : ""} until they stop. Stop, and the lab&apos;s auto-stop, destroy everything the lab created.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Name"><Input {...text("name")} placeholder="My AWS" /></Field>
@@ -400,9 +447,8 @@ export function HostSetupPage({
                     <span className={cn("absolute right-3 top-3 grid size-4 place-items-center rounded-full border transition-colors", selected ? "border-learn bg-learn text-white" : "border-muted-foreground/30")}>
                       {selected && <CheckCircle2 className="size-3" />}
                     </span>
-                    <span className="grid size-6 place-items-center rounded-md" style={{ background: `${m.color}22`, color: m.color }}>
-                      <Cloud className="size-3.5" />
-                    </span>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- static export, plain asset */}
+                    <img src={`/brands/${p}.svg`} alt="" className="size-6" draggable={false} />
                     <p className="mt-2 text-[12.5px] font-medium">{m.label}</p>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">{m.ready ? "Available" : "Sign-in only"}</p>
                   </button>
@@ -414,7 +460,7 @@ export function HostSetupPage({
         )}
 
         {key === "connect" && (
-          <Step icon={Cloud} title={`Connect ${CLOUD_META[cloudProvider].label}`} description="Sign in with the provider's CLI. Nothing is stored by CyberCTF; Terraform uses the CLI's credentials.">
+          <Step icon={Cloud} title={`Connect ${CLOUD_META[cloudProvider].label}`} description="Sign in with the provider's CLI. Nothing is stored by Cyber CTF; Terraform uses the CLI's credentials.">
             <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[12px] text-amber-500">
               Lab provisioning for {CLOUD_META[cloudProvider].label} is coming. Sign in now so the CLI is ready; AWS is the supported target today.
             </p>
@@ -455,19 +501,26 @@ export function HostSetupPage({
           </Step>
         )}
       </div>
-    </div>
+    </>
   );
 }
 
 /** Trademark line, shown pinned at the bottom of the setup window. */
-export function SetupTrademarks() {
+export function SetupTrademarks({ cloud = false }: { cloud?: boolean }) {
+  if (cloud) {
+    return (
+      <p className="text-[11px] leading-relaxed text-muted-foreground/70">
+        Amazon Web Services and AWS are trademarks of Amazon.com, Inc. Microsoft Azure and Google Cloud are trademarks of their respective owners. Cyber CTF isn&apos;t affiliated with any of them.
+      </p>
+    );
+  }
   return (
     <p className="text-[11px] leading-relaxed text-muted-foreground/70">
       Proxmox® is a registered trademark of Proxmox Server Solutions GmbH.{" "}
       <button onClick={() => openUrl("https://www.proxmox.com").catch(() => {})} className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline">
         proxmox.com <ExternalLink className="size-3" />
       </button>{" "}
-      VMware and ESXi are trademarks of Broadcom. Amazon Web Services and AWS are trademarks of Amazon.com, Inc. CyberCTF isn&apos;t affiliated with any of them.
+      VMware and ESXi are trademarks of Broadcom. Cyber CTF isn&apos;t affiliated with any of them.
     </p>
   );
 }
@@ -480,7 +533,7 @@ function Step({ icon: Icon, title, description, children }: { icon: typeof Serve
           <Icon className="size-5 text-foreground" />
         </span>
         <div className="min-w-0 pt-0.5">
-          <h2 className="text-[15px] font-semibold tracking-tight">{title}</h2>
+          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
           <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">{description}</p>
         </div>
       </div>

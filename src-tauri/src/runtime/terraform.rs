@@ -14,7 +14,6 @@ use super::{LabStatus, Machine};
 use crate::error::{Error, Result};
 use crate::exec::{run, stream};
 
-pub const IMAGE: &str = "hashicorp/terraform:1.16.5";
 
 /// Non-secret run parameters, kept next to the state so `destroy` can be replayed.
 const RUN_FILE: &str = "run.json";
@@ -24,53 +23,17 @@ fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-fn docker_args(deploy: &Path, state: &Path, target: &str, env: &[(String, String)], script: &str) -> Vec<String> {
-    let mut args = vec![
-        "run".into(),
-        "--rm".into(),
-        "--entrypoint".into(),
-        "sh".into(),
-        "-v".into(),
-        format!("{}:/deploy:ro", deploy.display()),
-        "-v".into(),
-        format!("{}:/state", state.display()),
-        "-w".into(),
-        format!("/deploy/terraform/{target}"),
-        "-e".into(),
-        "TF_DATA_DIR=/state/.terraform".into(),
-        "-e".into(),
-        "TF_IN_AUTOMATION=1".into(),
-    ];
-    // `-e NAME` without a value: docker copies it from its own environment, so secrets
-    // never appear in the process list.
-    for (name, _) in env {
-        args.push("-e".into());
-        args.push(name.clone());
-    }
-    args.push(IMAGE.into());
-    args.push("-c".into());
-    args.push(script.into());
-    args
-}
 
-const INIT: &str = "terraform init -input=false -no-color -lockfile=readonly -backend-config=path=/state/terraform.tfstate";
-
-async fn has_local_terraform() -> bool {
-    run("terraform", &["version"], None).await.is_ok()
-}
 
 async fn terraform(deploy: &Path, state: &Path, target: &str, env: &[(String, String)], command: &str, log: impl FnMut(String)) -> Result<()> {
     if !deploy.join("terraform").join(target).is_dir() {
         return Err(Error::Invalid(format!("this lab has no `{target}` deployment yet")));
     }
-    std::fs::create_dir_all(state)?;
-    if has_local_terraform().await {
-        return terraform_host(deploy, state, target, env, command, log).await;
+    if run("terraform", &["version"], None).await.is_err() {
+        return Err(Error::Invalid("Terraform isn't installed. Install it from the server setup (Tools on this machine).".into()));
     }
-    let script = format!("{INIT} >/dev/null && terraform {command} -auto-approve -input=false -no-color");
-    let args = docker_args(deploy, state, target, env, &script);
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    stream("docker", &args, None, env, log).await
+    std::fs::create_dir_all(state)?;
+    terraform_host(deploy, state, target, env, command, log).await
 }
 
 /// Runs terraform from the host PATH (init, then the command). State lives in `state` as
@@ -154,7 +117,7 @@ pub fn status(state: &Path) -> LabStatus {
     let created = (!outputs["vm_id"]["value"].is_null() || !outputs["instance_id"]["value"].is_null()) && !expired;
     let ip = outputs["ip"]["value"].as_str().unwrap_or_default().to_string();
     let machines = if created {
-        vec![Machine { name: "labhost".into(), state: "running".into(), image: String::new(), ip, ports: Vec::new(), interfaces: Vec::new() }]
+        vec![Machine { name: "labhost".into(), state: "running".into(), image: String::new(), ip, ports: Vec::new(), interfaces: Vec::new(), services: Vec::new() }]
     } else {
         Vec::new()
     };
@@ -166,12 +129,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn secrets_go_through_the_environment_not_argv() {
-        let env = vec![("TF_VAR_proxmox_password".to_string(), "s3cret".to_string())];
-        let args = docker_args(Path::new("/lab/deploy"), Path::new("/st"), "proxmox", &env, "terraform apply");
-        assert!(args.iter().any(|a| a == "TF_VAR_proxmox_password"));
-        assert!(!args.iter().any(|a| a.contains("s3cret")));
-        assert!(args.contains(&"/lab/deploy:/deploy:ro".to_string()));
+    fn with_env_prefixes_vars_and_appends_raw_env() {
+        let vars = vec![("region".to_string(), "eu-west-3".to_string())];
+        let env = vec![("AWS_ACCESS_KEY_ID".to_string(), "AKIA".to_string())];
+        let out = with_env(&vars, &env);
+        assert!(out.contains(&("TF_VAR_region".to_string(), "eu-west-3".to_string())));
+        assert!(out.contains(&("AWS_ACCESS_KEY_ID".to_string(), "AKIA".to_string())));
     }
 
     #[test]

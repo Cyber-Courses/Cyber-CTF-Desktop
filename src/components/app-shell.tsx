@@ -24,7 +24,7 @@ const NAV: { id: Tab; label: string; icon: LucideIcon; soon?: boolean }[] = [
   { id: "home", label: "Overview", icon: LayoutDashboard },
   { id: "labs", label: "Labs", icon: FlaskConical },
   { id: "machine", label: "Machine", icon: MonitorCog },
-  { id: "server", label: "Server", icon: Server },
+  { id: "server", label: "Servers", icon: Server },
   { id: "cloud", label: "Cloud", icon: Cloud },
   { id: "hosted", label: "Hosted", icon: Globe, soon: true },
   { id: "events", label: "Events", icon: CalendarDays, soon: true },
@@ -36,7 +36,7 @@ const TITLES: Record<Tab, string> = {
   labs: "Labs",
   machine: "Machine",
   setup: "Setup",
-  server: "Server",
+  server: "Servers",
   cloud: "Cloud",
   hosted: "Hosted",
   events: "Events",
@@ -192,6 +192,6 @@ function Screen({
   if (tab === "cloud") return <ServerScreen kind="cloud" onNavigate={onNavigate} />;
   if (tab === "hosted") return <HostedScreen onNavigate={onNavigate} />;
   if (tab === "events")
-    return <ComingSoon icon="sparkles" title="Events" description="Join live CTF events where labs are hosted by CyberCTF: nothing to run on your machine, each participant gets their own lab for the event's duration." />;
+    return <ComingSoon icon="sparkles" title="Events" description="Join live CTF events where labs are hosted by Cyber CTF: nothing to run on your machine, each participant gets their own lab for the event's duration." />;
   return report ? <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} openSlug={openLab} /> : <p className="text-sm text-muted-foreground">Loading…</p>;
 }
