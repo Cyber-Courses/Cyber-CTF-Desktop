@@ -3,15 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiQuery } from "@/lib/tauri";
 
-export interface HostedLab {
-  id: string;
-  slug: string;
-  title: string;
-  description: string | null;
-  difficulty: number;
-  category: string;
-}
-
 export interface HostedEndpoint {
   port: number;
   url: string;
@@ -22,61 +13,45 @@ export type HostedState = "REQUESTED" | "CLAIMED" | "PULLING" | "RUNNING" | "FAI
 
 export interface HostedSession {
   id: string;
+  /** The lab this session runs, so a view can tell whether it's "its" session. */
+  labId: string;
+  /** "hosted" for a hosted lab; an agent target id, or null, otherwise. */
+  target: string | null;
   state: HostedState;
   endpoints: HostedEndpoint[];
   message: string | null;
   expiresAt: string;
 }
 
-// Labs that can run hosted (list the hosted provider + have a prepared snapshot).
-const LABS = `{ labs(sort: [{ title: ASC }]) {
-  id slug title description difficulty category
-  runtime { hosted }
-} }`;
-const LAUNCH = `mutation ($labId: ID!) {
-  requestLabLaunch(labId: $labId, target: "hosted") { id state endpoints { port url } message expiresAt }
-}`;
-const SESSION = `query ($id: ID!) { labSession(id: $id) { id state endpoints { port url } message expiresAt } }`;
+const FIELDS = "id labId target state endpoints { port url } message expiresAt";
+// The player's one active session (any target), so running state shows on Home, the Labs list
+// and the lab page across tabs and restarts, not just where it was launched.
+const ACTIVE = `query { myActiveLabSession { ${FIELDS} } }`;
+const LAUNCH = `mutation ($labId: ID!) { requestLabLaunch(labId: $labId, target: "hosted") { ${FIELDS} } }`;
+const SESSION = `query ($id: ID!) { labSession(id: $id) { ${FIELDS} } }`;
 const STOP = `mutation ($id: ID!) { stopLabSession(sessionId: $id) { id state } }`;
 
 const SETTLED: HostedState[] = ["RUNNING", "FAILED", "STOPPED", "EXPIRED"];
 
-type LabRow = HostedLab & { runtime: { hosted: boolean } | null };
-
 /**
- * Hosted labs from CyberBackend: the catalogue that can run on Cyber CTF's own infrastructure
- * (Vercel Sandbox), plus launching one and polling its session to its public endpoints.
- * `available` is false when the deployed backend doesn't expose the hosted API yet, so the
- * screen can fall back to the "coming soon" placeholder.
+ * The player's active hosted session: hydrated on mount from `myActiveLabSession` (so it
+ * persists across views and restarts), launched with `launch`, polled until it settles, and
+ * cleared with `stop`. Only hosted sessions are tracked here; other targets run through the
+ * local runtime. Shared by the lab page and Home.
  */
 export function useHostedLabs() {
-  const [labs, setLabs] = useState<HostedLab[] | null>(null);
-  const [available, setAvailable] = useState<boolean | null>(null);
   const [session, setSession] = useState<HostedSession | null>(null);
   const [busyLab, setBusyLab] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Hydrate from the backend once (requires login; a logged-out / errored call just leaves it null).
   useEffect(() => {
-    apiQuery<{ labs: LabRow[] }>(LABS)
+    apiQuery<{ myActiveLabSession: HostedSession | null }>(ACTIVE)
       .then((d) => {
-        setAvailable(true);
-        setLabs(
-          d.labs
-            .filter((l) => l.runtime?.hosted)
-            .map((l) => ({ id: l.id, slug: l.slug, title: l.title, description: l.description, difficulty: l.difficulty, category: l.category })),
-        );
+        const s = d.myActiveLabSession;
+        if (s && s.target === "hosted" && !SETTLED.slice(1).includes(s.state)) setSession(s);
       })
-      .catch((e: unknown) => {
-        const msg = String(e);
-        // An older deployed schema has no `hosted` field: treat as "not available yet".
-        if (/hosted/i.test(msg) && /cannot query|unknown field|field/i.test(msg)) {
-          setAvailable(false);
-        } else {
-          setAvailable(true);
-          setError(msg);
-        }
-        setLabs([]);
-      });
+      .catch(() => {});
   }, []);
 
   const launch = useCallback(async (labId: string) => {
@@ -88,7 +63,7 @@ export function useHostedLabs() {
     } catch (e) {
       setError(String(e));
     } finally {
-      // The request returns the REQUESTED session fast; the session card drives the rest.
+      // The request returns the REQUESTED session fast; the session state drives the rest.
       setBusyLab(null);
     }
   }, []);
@@ -113,5 +88,5 @@ export function useHostedLabs() {
     if (current) await apiQuery(STOP, { id: current.id }).catch(() => {});
   }, [session]);
 
-  return { labs, available, session, busyLab, error, launch, stop };
+  return { session, busyLab, error, launch, stop };
 }

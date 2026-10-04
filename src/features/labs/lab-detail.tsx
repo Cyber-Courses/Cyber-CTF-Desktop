@@ -71,10 +71,13 @@ export function LabDetail({
   const hostedOk = !!rt?.hosted;
   const hosted = useHostedLabs();
   const hostedSession = hosted.session;
+  // The active session belongs to this page only when it's for this lab (the hook may have
+  // hydrated a session the player launched on another lab).
+  const mySession = hostedSession && hostedSession.labId === lab.id ? hostedSession : null;
   const hasChoice = hosts.length > 0 || localVms.length > 0 || hostedOk;
-  // Errors from the hook only matter after a hosted start from this page (it also loads a list).
+  // Show the panel after a start from this page, or whenever there's a live session for this lab.
   const [hostedTried, setHostedTried] = useState(false);
-  const hostedLive = hostedTried && !!hostedSession && !["FAILED", "STOPPED", "EXPIRED"].includes(hostedSession.state);
+  const hostedLive = !!mySession && !["FAILED", "STOPPED", "EXPIRED"].includes(mySession.state);
   const startOn = (t: RunTarget) => {
     if (t.kind !== "hosted") return void onStart(t);
     setHostedTried(true);
@@ -253,9 +256,9 @@ export function LabDetail({
         </div>
       </div>
       {shellError && <p className="-mt-3 text-[0.71875rem] text-rose-400">{shellError}</p>}
-      {hostedTried && (hostedSession || hosted.busyLab === lab.id || hosted.error) && (
+      {(mySession || (hostedTried && (hosted.busyLab === lab.id || hosted.error))) && (
         <HostedSessionPanel
-          session={hostedSession}
+          session={mySession}
           starting={hosted.busyLab === lab.id}
           error={hosted.error}
           onStop={() => {
