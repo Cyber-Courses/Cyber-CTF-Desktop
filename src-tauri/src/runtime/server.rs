@@ -57,6 +57,13 @@ pub struct HostProfile {
     /// instead of access keys stored by the launcher. No secret is kept in the keychain.
     #[serde(default)]
     pub use_cli_creds: bool,
+    /// AWS CLI profile to use with `use_cli_creds` (None = the default profile).
+    #[serde(default)]
+    pub aws_profile: Option<String>,
+    /// AWS: a monthly spend limit in USD; new cloud labs are blocked once this month's
+    /// cost passes it. None / 0 = no limit.
+    #[serde(default)]
+    pub monthly_limit: Option<f64>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -83,6 +90,10 @@ pub struct HostInput {
     password: Option<String>,
     #[serde(default)]
     use_cli_creds: Option<bool>,
+    #[serde(default)]
+    aws_profile: Option<String>,
+    #[serde(default)]
+    monthly_limit: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -321,9 +332,15 @@ fn proxmox_endpoint(h: &HostProfile) -> String {
 /// Raw environment for Terraform (credentials the provider reads itself, never variables).
 pub fn terraform_env(h: &HostProfile, password: &str) -> Vec<(String, String)> {
     match h.provider {
-        // CLI credentials: pass only the region; Terraform reads the AWS CLI's default chain
-        // (works with a local terraform, which has the host's ~/.aws).
-        Provider::Aws if h.use_cli_creds => vec![("AWS_REGION".into(), h.host.clone())],
+        // CLI credentials: pass the region (and the chosen profile); Terraform reads the AWS
+        // CLI's chain (works with a local terraform, which has the host's ~/.aws).
+        Provider::Aws if h.use_cli_creds => {
+            let mut env = vec![("AWS_REGION".to_string(), h.host.clone())];
+            if let Some(p) = &h.aws_profile {
+                env.push(("AWS_PROFILE".to_string(), p.clone()));
+            }
+            env
+        }
         Provider::Aws => vec![
             ("AWS_ACCESS_KEY_ID".into(), h.username.clone()),
             ("AWS_SECRET_ACCESS_KEY".into(), password.to_string()),
@@ -347,12 +364,19 @@ pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> 
     }
     let mut vars = vec![
         ("proxmox_endpoint", format!("https://{}:{}/", host_for_url(&h.host), h.port)),
-        ("proxmox_username", h.username.clone()),
-        ("proxmox_password", password.to_string()),
+        ("proxmox_username", super::proxmox::token_user(&h.username).to_string()),
         ("proxmox_insecure", h.insecure_tls.to_string()),
         // Snippets go over SSH to the address the player entered.
         ("proxmox_ssh_address", h.host.clone()),
     ];
+    // An API token replaces the password for the API; the snippet upload then uses the
+    // launcher's SSH key (added at apply time, see terraform.rs).
+    if super::proxmox::is_token(&h.username) {
+        vars.push(("proxmox_api_token", super::proxmox::terraform_token(&h.username, password)));
+        vars.push(("proxmox_ssh_username", super::proxmox::ssh_user(&h.username).to_string()));
+    } else {
+        vars.push(("proxmox_password", password.to_string()));
+    }
     if let Some(v) = &h.node {
         vars.push(("proxmox_node", v.clone()));
     }
@@ -431,39 +455,95 @@ pub fn lab_connection(app: &AppHandle, dir: &Path) -> Result<Option<Connection>>
 
 // --- reachability ---------------------------------------------------------
 
-/// AWS: `sts get-caller-identity` in the official CLI container (Docker is the floor).
+/// Runs an aws subcommand the way this host connects: the host CLI (CLI credentials), or the
+/// official CLI container with the keys in its environment (Docker is the floor).
+async fn aws_cmd(h: &HostProfile, env: &[(String, String)], sub: &[&str]) -> Result<String> {
+    if h.use_cli_creds {
+        crate::exec::run_env("aws", sub, None, env).await
+    } else {
+        let mut args = vec!["run", "--rm", "-e", "AWS_ACCESS_KEY_ID", "-e", "AWS_SECRET_ACCESS_KEY", "-e", "AWS_REGION", "amazon/aws-cli:2.37.9"];
+        args.extend_from_slice(sub);
+        crate::exec::run_env("docker", &args, None, env).await
+    }
+}
+
+/// AWS: verify the credentials work (`sts get-caller-identity`) and that they can actually
+/// launch EC2 (`ec2 run-instances --dry-run`, which creates nothing but checks the permission).
 async fn test_aws(h: &HostProfile, password: &str) -> TestResult {
     let started = Instant::now();
-    // CLI credentials: ask the host AWS CLI who it is (its own default chain). Stored keys:
-    // run the official CLI container with the keys in its environment (Docker is the floor).
-    let result = if h.use_cli_creds {
-        let env = [("AWS_REGION".to_string(), h.host.clone())];
-        crate::exec::run_env("aws", &["sts", "get-caller-identity", "--query", "Arn", "--output", "text"], None, &env).await
-    } else {
-        let env = terraform_env(h, password);
-        let args = ["run", "--rm", "-e", "AWS_ACCESS_KEY_ID", "-e", "AWS_SECRET_ACCESS_KEY", "-e", "AWS_REGION", "amazon/aws-cli:2.37.9", "sts", "get-caller-identity", "--query", "Arn", "--output", "text"];
-        crate::exec::run_env("docker", &args, None, &env).await
-    };
-    match result {
-        Ok(arn) => TestResult {
-            ok: true,
-            reachable: true,
-            authenticated: Some(true),
-            latency_ms: Some(started.elapsed().as_millis() as u64),
-            message: format!("Signed in to AWS as {}. Labs you start here are billed to this account.", arn.trim()),
-        },
+    let env = terraform_env(h, password);
+    let arn = match aws_cmd(h, &env, &["sts", "get-caller-identity", "--query", "Arn", "--output", "text"]).await {
+        Ok(a) => a.trim().to_string(),
         Err(Error::CommandFailed { stderr, .. }) => {
-            let denied = stderr.contains("InvalidClientTokenId") || stderr.contains("SignatureDoesNotMatch") || stderr.contains("AccessDenied");
-            TestResult {
+            let denied = stderr.contains("InvalidClientTokenId")
+                || stderr.contains("SignatureDoesNotMatch")
+                || stderr.contains("AccessDenied")
+                || stderr.contains("Unable to locate credentials")
+                || stderr.contains("sso");
+            return TestResult {
                 ok: false,
                 reachable: true,
                 authenticated: denied.then_some(false),
                 latency_ms: None,
-                message: if denied { "AWS rejected these keys.".into() } else { format!("AWS check failed: {}", stderr.lines().last().unwrap_or_default()) },
-            }
+                message: if denied {
+                    "AWS rejected these credentials, or the profile isn't signed in.".into()
+                } else {
+                    format!("AWS check failed: {}", stderr.lines().last().unwrap_or_default())
+                },
+            };
         }
-        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("AWS check failed: {e}") },
+        Err(e) => return TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("AWS check failed: {e}") },
+    };
+    // Can this identity launch EC2? A dry run creates nothing; it only checks the permission.
+    let dry = aws_cmd(h, &env, &["ec2", "run-instances", "--dry-run", "--instance-type", "t3.micro", "--image-id", "ami-00000000000000000", "--output", "text"]).await;
+    let latency = Some(started.elapsed().as_millis() as u64);
+    let stderr = match &dry {
+        Err(Error::CommandFailed { stderr, .. }) => stderr.clone(),
+        _ => String::new(),
+    };
+    if stderr.contains("UnauthorizedOperation") {
+        return TestResult {
+            ok: false,
+            reachable: true,
+            authenticated: Some(true),
+            latency_ms: latency,
+            message: format!("Signed in as {arn}, but this identity can't launch EC2 (ec2:RunInstances is denied). Add EC2 permissions to it."),
+        };
     }
+    TestResult {
+        ok: true,
+        reachable: true,
+        authenticated: Some(true),
+        latency_ms: latency,
+        message: format!("Signed in as {arn}, and able to launch EC2. Labs run here are billed to this account."),
+    }
+}
+
+/// This month's AWS spend so far (USD) for a host, via Cost Explorer. None if unreadable.
+async fn month_to_date_cost(h: &HostProfile, password: &str) -> Option<f64> {
+    let env = terraform_env(h, password);
+    let period = crate::cloud::month_period();
+    let out = aws_cmd(
+        h,
+        &env,
+        &["ce", "get-cost-and-usage", "--time-period", period.as_str(), "--granularity", "MONTHLY", "--metrics", "UnblendedCost", "--query", "ResultsByTime[0].Total.UnblendedCost.Amount", "--output", "text"],
+    )
+    .await
+    .ok()?;
+    out.trim().parse::<f64>().ok()
+}
+
+/// `(spent, limit)` when an AWS account is at or over its monthly budget; None otherwise
+/// (no budget, under it, not AWS, or the spend couldn't be read). Used to block a launch.
+pub async fn budget_exceeded(app: &AppHandle, id: &str) -> Option<(f64, f64)> {
+    let host = find(&load(app).ok()?, id).ok()?;
+    if host.provider != Provider::Aws {
+        return None;
+    }
+    let limit = host.monthly_limit.filter(|v| *v > 0.0)?;
+    let password = if host.use_cli_creds { String::new() } else { get_secret(id).ok()? };
+    let spent = month_to_date_cost(&host, &password).await?;
+    (spent >= limit).then_some((spent, limit))
 }
 
 async fn test_host(h: &HostProfile, password: &str) -> TestResult {
@@ -495,40 +575,12 @@ async fn test_host(h: &HostProfile, password: &str) -> TestResult {
                 _ => TestResult { ok: false, reachable: true, authenticated: None, latency_ms, message: format!("Port {} is open but doesn't answer as SSH. Enable SSH on the ESXi host.", h.port) },
             }
         }
-        // Proxmox: log in to the API for a ticket, which verifies the credentials.
+        // Proxmox: sign in to the API (token or user + password), then check what a lab
+        // launch needs (node, storage content, bridge, SSH key for token setups).
         Provider::Proxmox => {
             drop(stream);
-            let url = format!("{}/access/ticket", proxmox_endpoint(h));
-            let res = reqwest::Client::builder()
-                .timeout(TEST_TIMEOUT)
-                .tls_danger_accept_invalid_certs(h.insecure_tls)
-                .build()
-                .map_err(|e| e.to_string())
-                .map(|c| c.post(url).form(&[("username", h.username.as_str()), ("password", password)]).send());
-            let res = match res {
-                Ok(fut) => fut.await,
-                Err(e) => return TestResult { ok: false, reachable: true, authenticated: None, latency_ms, message: e },
-            };
-            match res {
-                Ok(r) if r.status().is_success() => TestResult { ok: true, reachable: true, authenticated: Some(true), latency_ms, message: "Connected and signed in to the Proxmox API.".into() },
-                Ok(r) if r.status().as_u16() == 401 => TestResult {
-                    ok: false,
-                    reachable: true,
-                    authenticated: Some(false),
-                    latency_ms,
-                    message: "Proxmox rejected the credentials. Use user@realm, e.g. root@pam.".into(),
-                },
-                Ok(r) => TestResult { ok: false, reachable: true, authenticated: None, latency_ms, message: format!("Proxmox API answered HTTP {}", r.status()) },
-                Err(e) => {
-                    let detail = std::iter::successors(Some(&e as &dyn std::error::Error), |e| e.source()).map(|e| e.to_string()).collect::<Vec<_>>().join(": ");
-                    let message = if detail.to_lowercase().contains("certificate") {
-                        "Reachable, but the host's TLS certificate isn't trusted. Proxmox uses a self-signed certificate by default: turn on \"Self-signed certificate\" for this host, or install a trusted one.".into()
-                    } else {
-                        format!("Reachable, but the API call failed: {detail}")
-                    };
-                    TestResult { ok: false, reachable: true, authenticated: None, latency_ms, message }
-                }
-            }
+            let r = super::proxmox::test(h, password).await;
+            TestResult { ok: r.ok, reachable: true, authenticated: r.authenticated, latency_ms, message: r.message }
         }
         _ => TestResult { ok: true, reachable: true, authenticated: None, latency_ms, message: "Reachable".into() },
     }
@@ -590,6 +642,8 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
             _ => None,
         },
         use_cli_creds: use_cli,
+        aws_profile: if use_cli { clean_opt(input.aws_profile, "profile")? } else { None },
+        monthly_limit: input.monthly_limit.filter(|v| *v > 0.0),
     };
     match input.password.filter(|p| !p.is_empty()) {
         Some(p) if p.len() <= 1024 && !p.contains('\0') => set_secret(&id, &p)?,
@@ -667,7 +721,12 @@ pub async fn server_open_setup(app: AppHandle, id: Option<String>, kind: Option<
 #[tauri::command]
 pub async fn server_test(app: AppHandle, id: String) -> Result<TestResult> {
     let host = find(&load(&app)?, &id)?;
-    let password = get_secret(&id)?;
+    // CLI-credential hosts keep no secret; the CLI resolves its own credentials.
+    let password = if host.use_cli_creds { String::new() } else { get_secret(&id)? };
+    // Token hosts SSH with the launcher's key: make sure it exists before checking it.
+    if host.provider == Provider::Proxmox && super::proxmox::is_token(&host.username) {
+        super::ssh::ensure_key(&app).await?;
+    }
     Ok(test_host(&host, &password).await)
 }
 
@@ -691,6 +750,38 @@ pub fn server_running_labs(app: AppHandle) -> HashMap<String, u32> {
     counts
 }
 
+/// A host's hardware headroom, shown on its row so you can see what it can run.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostCapacity {
+    pub cores: u64,
+    pub mem_total: u64,
+    pub mem_free: u64,
+}
+
+/// Queries a host for its capacity (Proxmox only; cheap API calls). Returns `None` for other
+/// providers or if anything fails, so the UI just omits it rather than showing an error.
+#[tauri::command]
+pub async fn server_capacity(app: AppHandle, id: String) -> Option<HostCapacity> {
+    let host = find(&load(&app).ok()?, &id).ok()?;
+    if host.provider != Provider::Proxmox {
+        return None;
+    }
+    let password = get_secret(&id).ok()?;
+    proxmox_capacity(&host, &password).await
+}
+
+async fn proxmox_capacity(h: &HostProfile, password: &str) -> Option<HostCapacity> {
+    let session = super::proxmox::sign_in(h, password).await.ok()?;
+    let node = session.node(h).await.ok()?;
+    let d = session.call(&format!("/nodes/{node}/status")).await.ok()?;
+    Some(HostCapacity {
+        cores: d["cpuinfo"]["cpus"].as_u64()?,
+        mem_total: d["memory"]["total"].as_u64()?,
+        mem_free: d["memory"]["free"].as_u64()?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -709,6 +800,8 @@ mod tests {
             insecure_tls: false,
             auto_stop_hours: None,
             use_cli_creds: false,
+            aws_profile: None,
+            monthly_limit: None,
         }
     }
 

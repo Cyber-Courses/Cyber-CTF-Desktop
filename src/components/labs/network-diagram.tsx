@@ -8,7 +8,6 @@ import {
   EdgeLabelRenderer,
   getSmoothStepPath,
   Handle,
-  MarkerType,
   Position,
   ReactFlow,
   ReactFlowProvider,
@@ -81,11 +80,11 @@ function CopyText({ text, children }: { text: string; children: React.ReactNode 
   );
 }
 
-function PortHandles({ accent = "#6b7280", sides = false }: { accent?: string; sides?: boolean }) {
+function PortHandles({ accent = "#6b7280", sides = false, top = true }: { accent?: string; sides?: boolean; top?: boolean }) {
   const style = { "--handle-accent": accent } as React.CSSProperties;
   return (
     <>
-      <Handle type="target" position={Position.Top} className="topology-handle" style={style} />
+      {top && <Handle type="target" position={Position.Top} className="topology-handle" style={style} />}
       <Handle type="source" position={Position.Bottom} className="topology-handle" style={style} />
       {/* A pivot links to whole network segments, left (nearer) and right (deeper). */}
       {sides && <Handle id="w" type="target" position={Position.Left} className="topology-handle" style={style} />}
@@ -94,31 +93,45 @@ function PortHandles({ accent = "#6b7280", sides = false }: { accent?: string; s
   );
 }
 
-/** A localhost port-binding: a small node on the host-card edge, linked to its container. */
-function HostPortNode({ data }: NodeProps<Node<{ addr: string }>>) {
+/** Where a published port's link ends: an invisible anchor on the card's bottom edge. The
+ *  visible tab is drawn over the edge by the diagram (outside the canvas, which clips). */
+function HostPortNode() {
   return (
-    <div className="hostport">
-      <Handle type="target" position={Position.Top} className="topology-handle" style={{ "--handle-accent": "#54c171" } as React.CSSProperties} />
-      <Plug size={11} />
-      <span className="mono">{data.addr}</span>
+    <div className="hostport-anchor">
+      <Handle type="target" position={Position.Top} className="topology-handle hostport-handle" />
+    </div>
+  );
+}
+
+/** Where a bridge's uplink starts: an invisible point far above, hidden by the card header. */
+function UplinkNode() {
+  return (
+    <div className="hostport-anchor">
+      <Handle type="source" position={Position.Bottom} className="topology-handle hostport-handle" />
     </div>
   );
 }
 
 /** A dashed network segment (area) that frames the nodes inside it. */
-function ZoneNode({ data }: NodeProps<Node<{ label: string; tone?: "attack"; isolated?: boolean }>>) {
+/** `label` is the network's name; `detail` (its subnet) goes on a second line. */
+type ZoneData = { label: string; detail?: string; tone?: "attack"; isolated?: boolean; labelLeft?: number; portW?: number; portE?: number };
+
+function ZoneNode({ data }: NodeProps<Node<ZoneData>>) {
   return (
-    <div className={`zone ${data.tone === "attack" ? "zone-attack" : ""}`}>
+    <div className={cn("zone", data.tone === "attack" && "zone-attack")}>
       {/* The segment's own ports: pivots plug into the network here. */}
-      <Handle id="w" type="target" position={Position.Left} className="topology-handle zone-handle" />
-      <Handle id="e" type="source" position={Position.Right} className="topology-handle zone-handle" />
-      <span className="zone-label">
-        {data.label}
-        {data.isolated && (
-          <span className="zone-isolated">
-            <Lock size={9} /> no internet
-          </span>
-        )}
+      <Handle id="w" type="target" position={Position.Left} className="topology-handle zone-handle" style={data.portW !== undefined ? { top: data.portW } : undefined} />
+      <Handle id="e" type="source" position={Position.Right} className="topology-handle zone-handle" style={data.portE !== undefined ? { top: data.portE } : undefined} />
+      <span className="zone-label" style={data.labelLeft !== undefined ? { left: data.labelLeft } : undefined}>
+        <span className="zone-title">
+          {data.label}
+          {data.isolated && (
+            <span className="zone-isolated">
+              <Lock size={9} /> no internet
+            </span>
+          )}
+        </span>
+        {data.detail && <span className="zone-detail mono">{data.detail}</span>}
       </span>
     </div>
   );
@@ -128,7 +141,9 @@ function ZoneNode({ data }: NodeProps<Node<{ label: string; tone?: "attack"; iso
 function BridgeNode({ data }: NodeProps<Node<{ label: string; tone?: "attack" }>>) {
   return (
     <div className={`bridge ${data.tone === "attack" ? "bridge-attack" : ""}`}>
-      <PortHandles accent={data.tone === "attack" ? attack : "#6b7280"} />
+      <PortHandles accent={data.tone === "attack" ? attack : "#6b7280"} top={false} />
+      {/* The uplink to the host arrives here, unseen: the line just leaves the bridge upward. */}
+      <Handle id="up" type="target" position={Position.Top} className="topology-handle hostport-handle" />
       <Network size={16} />
       <span className="bridge-label">{data.label}</span>
     </div>
@@ -158,16 +173,39 @@ function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string
   );
 }
 
-type ServiceType = "database" | "web" | "cache" | "worker" | "service";
-type ComputerData = { hostname: string; image: string; type: ServiceType; ifaces: LabInterface[]; running: boolean; ports: Port[] };
+type ServiceType = "database" | "web" | "cache" | "worker" | "ssh" | "service";
+/** One row of a machine card: a service and the ports it listens on. */
+type ServiceRow = { title: string; type: ServiceType; label: string; ports: Port[] };
+type ComputerData = { hostname: string; image: string; type: ServiceType; ifaces: LabInterface[]; running: boolean; ports: Port[]; rows: ServiceRow[] };
 
 const serviceMeta: Record<ServiceType, { icon: LucideIcon; label: string; color: string }> = {
   database: { icon: Database, label: "database", color: "#56b6e6" },
   web: { icon: Globe2, label: "web / api", color: violet },
   cache: { icon: Zap, label: "cache", color: "#f5b544" },
   worker: { icon: Workflow, label: "worker", color: "#a3a3a3" },
+  ssh: { icon: Terminal, label: "ssh", color: "#7fc8a9" },
   service: { icon: Box, label: "service", color: "#a3a3a3" },
 };
+
+/** A declared kind, mapped onto the known looks; anything else is a plain service. */
+function declaredType(kind: string): ServiceType {
+  const k = kind.toLowerCase();
+  return k === "database" || k === "web" || k === "cache" || k === "worker" || k === "ssh" ? k : "service";
+}
+
+/** The card's service rows. Declared services (compose labels) each get a row with their
+ *  ports; container ports none of them claims stay on a plain row (they're still facts).
+ *  With nothing declared, one row: the image, its look, every port. */
+function serviceRows(m: Machine, ports: Port[], fallback: ServiceType): ServiceRow[] {
+  const declared = m.services ?? [];
+  if (declared.length === 0) return [{ title: m.image || serviceMeta[fallback].label, type: fallback, label: serviceMeta[fallback].label, ports }];
+  const byTarget = (n: number) => ports.find((p) => (p.target || p.published) === n) ?? { published: 0, target: n };
+  const rows: ServiceRow[] = declared.map((d) => ({ title: d.name, type: declaredType(d.kind), label: d.kind || "service", ports: d.ports.map(byTarget) }));
+  const claimed = new Set(declared.flatMap((d) => d.ports));
+  const rest = ports.filter((p) => !claimed.has(p.target || p.published));
+  if (rest.length) rows.push({ title: "other ports", type: "service", label: "not declared", ports: rest });
+  return rows;
+}
 
 function serviceType(image: string, name: string): ServiceType {
   const s = `${image} ${name}`.toLowerCase();
@@ -178,9 +216,43 @@ function serviceType(image: string, name: string): ServiceType {
   return "service";
 }
 
-function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
-  const meta = serviceMeta[data.type];
+/** One service row: what it is, and the ports it listens on (inside the container). Publishing
+ *  to the host is shown once, by the 127.0.0.1 node below, not here too. */
+function ServiceChip({ row, ip }: { row: ServiceRow; ip: string }) {
+  const meta = serviceMeta[row.type];
   const ServiceIcon = meta.icon;
+  return (
+    <div className="service-chip" style={{ "--service-color": meta.color } as React.CSSProperties}>
+      <div className="service-icon">
+        <ServiceIcon size={15} />
+      </div>
+      <div className="service-main">
+        <span>{row.title}</span>
+        <small>{row.label}</small>
+      </div>
+      <div className="service-ports">
+        {row.ports.length === 0 ? (
+          <span className="door-none">no ports</span>
+        ) : (
+          row.ports.map((p, i) => {
+            const bind = p.target || p.published;
+            return (
+              <CopyText key={i} text={`${ip}:${bind}`}>
+                <span className="door">
+                  <DoorOpen size={12} />
+                  <span className="mono">:{bind}</span>
+                </span>
+              </CopyText>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
+  const meta = serviceMeta[data.rows[0]?.type ?? data.type];
   const ip = data.ifaces[0]?.ip ?? "";
   const pivot = data.ifaces.length > 1;
   return (
@@ -208,34 +280,12 @@ function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
       ) : (
         <div className="computer-ip mono">{isIp(ip) ? <CopyText text={ip}>{ip}</CopyText> : ip || "resolving…"}</div>
       )}
-      <div className="service-chip" style={{ "--service-color": meta.color } as React.CSSProperties}>
-        <div className="service-icon">
-          <ServiceIcon size={15} />
-        </div>
-        <div className="service-main">
-          <span>{data.image}</span>
-          <small>{meta.label}</small>
-        </div>
-      </div>
-      {/* service ports = doors into the machine */}
-      <div className="doors">
-        {data.ports.length === 0 ? (
-          <span className="door-none">no open ports</span>
-        ) : (
-          data.ports.map((p, i) => {
-            // The port the service listens on inside the container. Publishing to the host is
-            // shown once, by the 127.0.0.1 node below, not here too.
-            const bind = p.target || p.published;
-            return (
-              <CopyText key={i} text={`${ip}:${bind}`}>
-                <span className="door">
-                  <DoorOpen size={12} />
-                  <span className="mono">:{bind}</span>
-                </span>
-              </CopyText>
-            );
-          })
-        )}
+      {/* With declared services, the image moves up here: the rows below name the services. */}
+      {data.rows.length > 1 || data.rows[0]?.title !== data.image ? <div className="computer-image mono">{data.image}</div> : null}
+      <div className="service-rows">
+        {data.rows.map((r) => (
+          <ServiceChip key={r.title} row={r} ip={ip} />
+        ))}
       </div>
     </div>
   );
@@ -270,16 +320,27 @@ function labelPoint(pts: Pt[]): Pt {
 
 type LinkData = { label?: string; route?: Pt[] };
 
-/** Draws ELK's route. If a node was dragged away from it, falls back to a smooth step. */
-function LinkEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, data }: EdgeProps<Edge<LinkData>>) {
+/** Draws ELK's route, as a plain cable (no arrowheads: links have no direction). If a node was dragged away from it, falls back to a smooth step. */
+function LinkEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data }: EdgeProps<Edge<LinkData>>) {
   const route = data?.route;
   // ELK ends on the border; the handle dot straddles it, a few px off along the link.
   const near = (a: Pt, x: number, y: number) => Math.abs(a.x - x) < 10 && Math.abs(a.y - y) < 10;
   let path: string;
   let at: Pt;
   if (route && route.length >= 2 && near(route[0], sourceX, sourceY) && near(route[route.length - 1], targetX, targetY)) {
-    // Snap the ends onto the handles.
-    const pts = [{ x: sourceX, y: sourceY }, ...route.slice(1, -1), { x: targetX, y: targetY }];
+    // Snap the ends onto the handles, dragging the neighbouring bend along so the first and
+    // last segments stay straight (a few px of drift would otherwise kink into an S).
+    const pts = route.map((p) => ({ ...p }));
+    const snap = (end: number, next: number, x: number, y: number) => {
+      const vertical = Math.abs(pts[end].x - pts[next].x) < 0.5;
+      if (pts.length > 2) {
+        if (vertical) pts[next].x = x;
+        else pts[next].y = y;
+      }
+      pts[end] = { x, y };
+    };
+    snap(0, 1, sourceX, sourceY);
+    snap(pts.length - 1, pts.length - 2, targetX, targetY);
     path = roundedPath(pts);
     at = labelPoint(pts);
   } else {
@@ -289,7 +350,7 @@ function LinkEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
   }
   return (
     <>
-      <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} />
+      <BaseEdge id={id} path={path} style={style} />
       {data?.label && (
         <EdgeLabelRenderer>
           <div className="edge-label" style={{ transform: `translate(-50%, -50%) translate(${at.x}px,${at.y}px)` }}>
@@ -301,7 +362,7 @@ function LinkEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
   );
 }
 
-const nodeTypes = { zone: ZoneNode, bridge: BridgeNode, attacker: AttackerNode, computer: ComputerNode, hostport: HostPortNode };
+const nodeTypes = { zone: ZoneNode, bridge: BridgeNode, attacker: AttackerNode, computer: ComputerNode, hostport: HostPortNode, uplink: UplinkNode };
 const edgeTypes = { link: LinkEdge };
 
 const GREY = "#4f4f4f";
@@ -318,12 +379,11 @@ function link(id: string, source: string, target: string, color: string, opts: {
     animated: opts.animated,
     data: { label: opts.label },
     style: { stroke: color, strokeWidth: 1.8, strokeDasharray: opts.animated || opts.dashed ? "5 5" : undefined, opacity: color === GREY ? 0.8 : 1 },
-    markerEnd: { type: MarkerType.ArrowClosed, color, width: 15, height: 15 },
   };
 }
 
 const BRIDGE = { w: 136, h: 60 };
-const HOSTPORT_W = 128;
+const ANCHOR = 2; // a published port's anchor node, a point on the card's edge
 
 /** The lab as a graph: zones (networks) holding bridges and single-homed machines, pivots
  *  between zones, the attack zone on top and localhost bindings below. Positions come later. */
@@ -380,6 +440,15 @@ function topology(machines: Machine[], networks: LabNetwork[], attacker: Attacke
     nodes.push({ id: `bridge-${n.name}`, type: "bridge", position: { x: 0, y: 0 }, style: { width: BRIDGE.w, height: BRIDGE.h }, data: { label: `${netLabel(n.name)} bridge` }, draggable: false }),
   );
 
+  // A network with a route out (not compose `internal`) is wired up to the host: its bridge's
+  // uplink runs up under the card header. An isolated network gets none.
+  ordered
+    .filter((n) => !n.internal)
+    .forEach((n) => {
+      nodes.push({ id: `up-${n.name}`, type: "uplink", position: { x: 0, y: 0 }, style: { width: ANCHOR, height: ANCHOR }, data: {}, draggable: false, selectable: false });
+      edges.push({ ...link(`e-up-${n.name}`, `up-${n.name}`, `bridge-${n.name}`, GREY), targetHandle: "up" });
+    });
+
   // The attack box is a host on the lab network like the others (one attack box can be
   // attached to several running labs at once), first in its zone so it reads leftmost.
   // No attack box at all (VM labs) draws none.
@@ -397,7 +466,7 @@ function topology(machines: Machine[], networks: LabNetwork[], attacker: Attacke
       id,
       type: "computer",
       position: { x: 0, y: 0 },
-      data: { hostname: m.name, image: m.image || serviceMeta[type].label, type, ifaces, running: m.state === "running", ports: uniquePorts(m.ports) } satisfies ComputerData,
+      data: { hostname: m.name, image: m.image || serviceMeta[type].label, type, ifaces, running: m.state === "running", ports: uniquePorts(m.ports), rows: serviceRows(m, uniquePorts(m.ports), type) } satisfies ComputerData,
     });
     if (ifaces.length === 1) {
       members.get(ifaces[0].network)!.push(id);
@@ -419,18 +488,16 @@ function topology(machines: Machine[], networks: LabNetwork[], attacker: Attacke
       .filter((p) => p.published > 0)
       .forEach((p) => {
         const hp = `hp-${m.name}-${p.published}`;
-        nodes.push({ id: hp, type: "hostport", position: { x: 0, y: 0 }, style: { width: HOSTPORT_W }, data: { addr: `127.0.0.1:${p.published}` }, draggable: false, selectable: false });
+        nodes.push({ id: hp, type: "hostport", position: { x: 0, y: 0 }, style: { width: ANCHOR, height: ANCHOR }, data: { port: p.published }, draggable: false, selectable: false });
         edges.push(link(`e-${hp}`, id, hp, GREEN, { dashed: true, label: "published" }));
       });
   });
 
   ordered.forEach((n) => {
     const ids = members.get(n.name)!;
-    const hosts = machines.filter((m) => ifacesOf(m).some((i) => i.network === n.name));
-    const exposed = hosts.filter((m) => m.ports.some((p) => p.published > 0)).length;
-    const label = [`${netLabel(n.name).toUpperCase()} NETWORK`, n.subnet, `${hosts.length} ${hosts.length === 1 ? "host" : "hosts"}`, exposed ? `${exposed} exposed` : ""].filter(Boolean).join(" · ");
-    zones.push({ id: `zone-${n.name}`, members: ids, data: { label, isolated: n.internal } });
+    zones.push({ id: `zone-${n.name}`, members: ids, data: { label: `${netLabel(n.name).toUpperCase()} NETWORK`, detail: n.subnet, isolated: n.internal } });
   });
+
 
   return { nodes, edges, zones };
 }
@@ -443,7 +510,8 @@ const elk = new ELK();
  *  Returns absolute positions, zone frames and routes. */
 async function layout(topo: Topology, size: (id: string) => { w: number; h: number }) {
   const inZone = new Set(topo.zones.flatMap((z) => z.members));
-  const isHostPort = (id: string) => id.startsWith("hp-");
+  // Published ports and uplinks are placed after ELK, around the laid-out lab.
+  const isHostPort = (id: string) => id.startsWith("hp-") || id.startsWith("up-");
   // Every node gets two fixed ports, top-centre in and bottom-centre out, matching the
   // React Flow handles, so ELK's routes end exactly on the dots.
   // Pivots (top-level machines) also get mid-height side ports, west in and east out.
@@ -498,7 +566,7 @@ async function layout(topo: Topology, size: (id: string) => { w: number; h: numb
           "elk.direction": "DOWN",
           "elk.layered.spacing.nodeNodeBetweenLayers": "40",
           "elk.spacing.nodeNode": "24",
-          "elk.padding": "[top=36,left=20,bottom=20,right=20]",
+          "elk.padding": "[top=20,left=20,bottom=20,right=20]",
           "elk.portConstraints": "FIXED_SIDE",
         },
         children: z.members.map((id) => leaf(id)),
@@ -511,7 +579,7 @@ async function layout(topo: Topology, size: (id: string) => { w: number; h: numb
       ...topo.nodes.filter((n) => !inZone.has(n.id) && !isHostPort(n.id)).map((n) => leaf(n.id, true)),
     ],
     edges: topo.edges
-      .filter((e) => !isHostPort(e.target))
+      .filter((e) => !isHostPort(e.target) && !isHostPort(e.source))
       .map((e) => ({ id: e.id, sources: [port(e.source, e.sourceHandle, "out")], targets: [port(e.target, e.targetHandle, "in")] })),
   };
   const out = await elk.layout(graph);
@@ -532,9 +600,15 @@ async function layout(topo: Topology, size: (id: string) => { w: number; h: numb
   };
   collect(out);
 
-  // The host edge: each binding under its container, side by side when it has several.
-  let height = out.height ?? 0;
-  const bottom = Math.max(...[...boxes.values()].map((b) => b.y + b.h)) + 46;
+  // Published ports: a row below everything, each under its container (side by side when
+  // it has several), linked up to it. The view docks this row on the card's bottom edge.
+  const laid = [...boxes.values()];
+  const minX = Math.min(...laid.map((b) => b.x));
+  const minY = Math.min(...laid.map((b) => b.y));
+  let maxX = Math.max(...laid.map((b) => b.x + b.w));
+  let maxY = Math.max(...laid.map((b) => b.y + b.h));
+  const rowY = maxY + 54;
+  let docked = false;
   const byMachine = new Map<string, Edge<LinkData>[]>();
   topo.edges.filter((e) => isHostPort(e.target)).forEach((e) => byMachine.set(e.source, [...(byMachine.get(e.source) ?? []), e]));
   byMachine.forEach((list, machine) => {
@@ -543,30 +617,35 @@ async function layout(topo: Topology, size: (id: string) => { w: number; h: numb
     list.forEach((e, k) => {
       const { w, h } = size(e.target);
       const x = m.x + m.w / 2 - w / 2 + (k - (list.length - 1) / 2) * (w + 14);
-      boxes.set(e.target, { x, y: bottom, w, h });
+      boxes.set(e.target, { x, y: rowY, w, h });
       routes.set(e.id, [
         { x: m.x + m.w / 2, y: m.y + m.h },
-        { x: m.x + m.w / 2, y: bottom - 20 },
-        { x: x + w / 2, y: bottom - 20 },
-        { x: x + w / 2, y: bottom },
+        { x: m.x + m.w / 2, y: rowY - 24 },
+        { x: x + w / 2, y: rowY - 24 },
+        { x: x + w / 2, y: rowY },
       ]);
-      height = Math.max(height, bottom + h + 24);
+      maxX = Math.max(maxX, x + w);
+      maxY = Math.max(maxY, rowY + h);
+      docked = true;
     });
   });
-  const width = Math.max(out.width ?? 0, ...[...boxes.values()].map((b) => b.x + b.w + 24));
-  return { boxes, routes, width, height };
+  const bounds = { x: minX, y: minY, w: maxX - minX, h: maxY - minY, docked };
+  const width = bounds.w + 48;
+  const height = bounds.h + 48;
+  return { boxes, routes, width, height, bounds };
 }
 
-const PAD = 0.06;
+type Bounds = { x: number; y: number; w: number; h: number; docked: boolean };
 
-function Flow({ topo, onSize, fitKey }: { topo: Topology; onSize: (w: number, h: number) => void; fitKey: string }) {
+function Flow({ topo, onSize, width: shellW, height: shellH }: { topo: Topology; onSize: (w: number, h: number) => void; width: number; height: number }) {
   // First pass renders the nodes invisibly so React Flow measures them; then ELK lays them out
   // with their real sizes (a card grows with its interfaces and ports).
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(topo.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const measured = useNodesInitialized();
-  const { getNode, fitView } = useReactFlow();
+  const { getNode, setViewport } = useReactFlow();
   const [ready, setReady] = useState(false);
+  const [bounds, setBounds] = useState<Bounds | null>(null);
 
   useEffect(() => {
     if (!measured || ready) return;
@@ -576,15 +655,76 @@ function Flow({ topo, onSize, fitKey }: { topo: Topology; onSize: (w: number, h:
       return { w: n?.measured?.width ?? 200, h: n?.measured?.height ?? 120 };
     };
     layout(topo, size)
-      .then(({ boxes, routes, width, height }) => {
+      .then(({ boxes, routes, bounds: laid }) => {
         if (!live) return;
         const zones: Node[] = topo.zones.map((z) => {
           const b = boxes.get(z.id)!;
-          return { id: z.id, type: "zone", position: { x: b.x, y: b.y }, style: { width: b.w, height: b.h }, data: z.data, draggable: false, selectable: false };
+          const br = boxes.get(z.members[0]);
+          // Widen a narrow segment (evenly, so its contents stay centred) until the label at the
+          // left end of the top edge clears the centred bridge. 9px caps ≈ 6.4px a character.
+          // Two lines: the name in 9px caps (≈ 6.4px a character), the detail in 9.5px mono (≈ 5.8px).
+          const labelW = Math.max(String(z.data.label).length * 6.4 + (z.data.isolated ? 92 : 0), String(z.data.detail ?? "").length * 5.8) + 22;
+          const w = Math.max(b.w, (br?.w ?? 0) + 2 * (14 + labelW + 12));
+          const x = b.x - (w - b.w) / 2;
+          // The bridge sits in the middle of the segment's top edge, like a gateway: the frame
+          // starts at the bridge's centre line.
+          const top = br ? br.y + br.h / 2 : b.y;
+          if (br) {
+            br.x = x + w / 2 - br.w / 2;
+            // Re-draw the bridge's links as a bus from its new centre: down, across, down.
+            const sx = x + w / 2;
+            const sy = br.y + br.h;
+            topo.edges
+              .filter((e) => e.source === z.members[0])
+              .forEach((e) => {
+                const r = routes.get(e.id);
+                if (!r) return;
+                const end = r[r.length - 1];
+                const busY = Math.min(sy + 20, end.y - 12);
+                routes.set(e.id, Math.abs(end.x - sx) < 1 ? [{ x: sx, y: sy }, end] : [{ x: sx, y: sy }, { x: sx, y: busY }, { x: end.x, y: busY }, end]);
+              });
+          }
+          // Side ports stay where ELK routed the pivot links (moved out with a widened frame).
+          const side = (h: "w" | "e") => {
+            const e = topo.edges.find((e) => (h === "e" ? e.source === z.id && e.sourceHandle === "e" : e.target === z.id && e.targetHandle === "w"));
+            const r = e && routes.get(e.id);
+            if (!r) return undefined;
+            const pt = h === "e" ? r[0] : r[r.length - 1];
+            pt.x = h === "e" ? x + w : x;
+            return pt.y - top;
+          };
+          return {
+            id: z.id,
+            type: "zone",
+            position: { x, y: top },
+            style: { width: w, height: b.y + b.h - top },
+            data: { ...z.data, labelLeft: 14, portW: side("w"), portE: side("e") },
+            draggable: false,
+            selectable: false,
+          };
         });
+        // Uplinks: straight up from each (centred) bridge to a point far above the view, so
+        // the line slides under the card header without showing where it lands.
+        topo.edges
+          .filter((e) => e.source.startsWith("up-"))
+          .forEach((e) => {
+            const br = boxes.get(e.target);
+            if (!br) return;
+            const cx = br.x + br.w / 2;
+            boxes.set(e.source, { x: cx - ANCHOR / 2, y: br.y - 2000, w: ANCHOR, h: ANCHOR });
+            routes.set(e.id, [
+              { x: cx, y: br.y - 2000 + ANCHOR },
+              { x: cx, y: br.y },
+            ]);
+          });
         setNodes([...zones, ...topo.nodes.map((n) => ({ ...n, position: { x: boxes.get(n.id)?.x ?? 0, y: boxes.get(n.id)?.y ?? 0 } }))]);
         setEdges(topo.edges.map((e) => ({ ...e, data: { ...e.data, route: routes.get(e.id) } })));
-        onSize(width, height);
+        // Widened zones can reach past what ELK laid out: frame the final shapes.
+        const x0 = Math.min(laid.x, ...zones.map((z) => z.position.x));
+        const x1 = Math.max(laid.x + laid.w, ...zones.map((z) => z.position.x + Number(z.style?.width ?? 0)));
+        const final = { ...laid, x: x0, w: x1 - x0 };
+        setBounds(final);
+        onSize(final.w, final.h + (final.docked ? 26 : 50));
         setReady(true);
       })
       .catch((e) => {
@@ -596,14 +736,31 @@ function Flow({ topo, onSize, fitKey }: { topo: Topology; onSize: (w: number, h:
     };
   }, [measured, ready, topo, getNode, setNodes, setEdges, onSize]);
 
-  // Fit once laid out, and again whenever the shell changes size.
+  // Fit once laid out, and again whenever the shell changes size. With published ports, their
+  // anchors sit exactly on the bottom edge of the card (your machine): ports in its wall.
+  const view = useMemo(() => {
+    if (!ready || !bounds || !shellW || !shellH) return null;
+    const side = 24;
+    const top = 26;
+    const bottom = bounds.docked ? 0 : 24;
+    const zoom = Math.min(1.05, (shellW - 2 * side) / Math.max(bounds.w, 1), (shellH - top - bottom) / Math.max(bounds.h, 1));
+    const x = (shellW - bounds.w * zoom) / 2 - bounds.x * zoom;
+    const y = bounds.docked ? shellH - (bounds.y + bounds.h) * zoom : (shellH - bounds.h * zoom) / 2 - bounds.y * zoom;
+    return { x, y, zoom };
+  }, [ready, bounds, shellW, shellH]);
   useEffect(() => {
-    if (!ready) return;
-    const t = setTimeout(() => fitView({ padding: PAD, maxZoom: 1.05 }), 30);
-    return () => clearTimeout(t);
-  }, [ready, fitView, fitKey]);
+    if (view) setViewport(view);
+  }, [view, setViewport]);
+
+  // Published ports as tabs over the card's bottom edge, each under its link's anchor.
+  const tabs = view
+    ? nodes
+        .filter((n) => n.type === "hostport")
+        .map((n) => ({ id: n.id, port: Number((n.data as { port: number }).port), left: (n.position.x + ANCHOR / 2) * view.zoom + view.x }))
+    : [];
 
   return (
+    <>
     <ReactFlow
       className={cn("transition-opacity duration-200", ready ? "opacity-100" : "opacity-0")}
       nodes={nodes}
@@ -614,21 +771,35 @@ function Flow({ topo, onSize, fitKey }: { topo: Topology; onSize: (w: number, h:
       onEdgesChange={onEdgesChange}
       minZoom={0.25}
       maxZoom={1.5}
+      // A fitted picture, not a canvas: panning or zooming would slide the ports off the edge.
+      panOnDrag={false}
       zoomOnScroll={false}
-      zoomOnPinch
+      zoomOnPinch={false}
       zoomOnDoubleClick={false}
+      panOnScroll={false}
+      preventScrolling={false}
       nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
     >
       <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#242424" />
     </ReactFlow>
+    {ready &&
+      tabs.map((t) => (
+        <span key={t.id} className="port-tab" style={{ left: t.left }} title={`Published to 127.0.0.1:${t.port}`}>
+          <CopyText text={`127.0.0.1:${t.port}`}>
+            <Plug size={11} />
+            <span className="mono">:{t.port}</span>
+          </CopyText>
+        </span>
+      ))}
+    </>
   );
 }
 
 export function NetworkDiagram({ machines, networks = [], attacker = null, host = null }: { machines: Machine[]; networks?: LabNetwork[]; attacker?: Attacker; host?: string | null }) {
   // Re-layout only when the topology changes (not on every status poll).
   const sig =
-    machines.map((m) => `${m.name}:${m.state}:${m.ip}:${(m.interfaces ?? []).map((i) => `${i.network}=${i.ip}`).join(",")}:${m.ports.map((p) => `${p.published}-${p.target}`).join(",")}`).join("|") +
+    machines.map((m) => `${m.name}:${m.state}:${m.ip}:${(m.interfaces ?? []).map((i) => `${i.network}=${i.ip}`).join(",")}:${(m.services ?? []).map((v) => `${v.name}=${v.kind}/${v.ports.join("+")}`).join(",")}:${m.ports.map((p) => `${p.published}-${p.target}`).join(",")}`).join("|") +
     `#${networks.map((n) => `${n.name}=${n.subnet}${n.internal ? "!" : ""}`).join(",")}` +
     `#${attacker?.running ? `${attacker.ip}@${attacker.labNetwork ?? ""}` : "off"}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps -- sig captures everything drawn
@@ -647,16 +818,25 @@ export function NetworkDiagram({ machines, networks = [], attacker = null, host 
     return () => ro.disconnect();
   }, []);
   const onSize = useCallback((w: number, h: number) => setGraph({ w, h }), []);
-  const scale = graph && width ? Math.min(1.05, (width * (1 - 2 * PAD)) / Math.max(graph.w, 1)) : 1;
-  const height = graph ? Math.round(Math.min(720, Math.max(340, (graph.h * scale) / (1 - 2 * PAD)))) : 430;
+  // onSize gets the drawing's size plus its vertical margins; the side margins are 24px each.
+  const scale = graph && width ? Math.min(1.05, (width - 48) / Math.max(graph.w, 1)) : 1;
+  const height = graph ? Math.round(Math.min(720, Math.max(220, graph.h * scale))) : 430;
 
   return (
-    <div className="hostcard">
+    <div className={cn("hostcard", machines.some((m) => m.ports.some((p) => p.published > 0)) && "hostcard-docked")}>
       <div className="hostcard-header">
         <span className="hostcard-icon">{host ? <Server size={16} /> : <Laptop size={16} />}</span>
         <div>
           <div className="hostcard-title">{host ?? "Your machine"}</div>
-          <div className="hostcard-sub mono">{host ? "server · docker host" : "127.0.0.1 · host"}</div>
+          <div className="hostcard-sub mono">
+            {host ? (
+              "server · docker host"
+            ) : (
+              <>
+                <CopyText text="127.0.0.1">127.0.0.1</CopyText> · host
+              </>
+            )}
+          </div>
         </div>
         <span className="hostcard-online">
           <i /> online
@@ -665,19 +845,8 @@ export function NetworkDiagram({ machines, networks = [], attacker = null, host 
 
       <div ref={shell} className="topology-shell" style={{ height }}>
         <ReactFlowProvider key={sig}>
-          <Flow topo={topo} onSize={onSize} fitKey={`${width}x${height}`} />
+          <Flow topo={topo} onSize={onSize} width={width} height={height} />
         </ReactFlowProvider>
-      </div>
-      <div className="topology-legend topology-legend-bar">
-        <div>
-          <DoorOpen size={12} /> <span>service port</span>
-        </div>
-        <div>
-          <Plug size={12} className="legend-exposed" /> <span>published to 127.0.0.1</span>
-        </div>
-        <div>
-          <Copy size={11} /> <span>click to copy</span>
-        </div>
       </div>
     </div>
   );

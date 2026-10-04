@@ -32,6 +32,23 @@ pub struct Machine {
     /// two networks is a pivot (dual-homed); empty when the runtime can't tell.
     #[serde(default)]
     pub interfaces: Vec<Interface>,
+    /// The services running inside, as the lab declares them (compose labels
+    /// `cyberctf.service.<name>: "<kind>:<port>,<port>"`). A container may run several;
+    /// empty when the lab declares none (never inferred).
+    #[serde(default)]
+    pub services: Vec<Service>,
+}
+
+/// One service inside a machine, as declared by the lab.
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Service {
+    /// The lab's name for it, e.g. "portal", "ssh".
+    pub name: String,
+    /// What it is, as declared: "web", "database", "cache", "worker", "ssh" or free text.
+    pub kind: String,
+    /// The ports it listens on inside the container.
+    pub ports: Vec<u16>,
 }
 
 /// One network interface of a machine: the lab network it sits on and its address there.

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * CyberCTF design primitives: the Vercel/Geist-style monochrome token system shared
+ * Cyber CTF design primitives: the Vercel/Geist-style monochrome token system shared
  * across the Cyber family (the same contract Cyber Courses builds on, minus the learn
  * accent). Components use semantic tokens (bg-card, text-muted-foreground, border,
  * bg-primary...) so the whole app restyles from here. Dark-first: the launcher runs dark.
@@ -34,6 +34,10 @@
 
   --link: #ededed;
   --learn: #a78bfa;
+  /* Filled accent buttons: a deeper violet so white text stays readable (~4.8:1). */
+  --learn-solid: #7c5cf0;
+  --learn-solid-hover: #8a6cf4;
+  --learn-solid-active: #6f4fe3;
   --destructive: #ff6166;
   --success: #62c073;
   --warning: #f1a10d;
@@ -63,6 +67,9 @@
   --color-ring: var(--ring);
   --color-link: var(--link);
   --color-learn: var(--learn);
+  --color-learn-solid: var(--learn-solid);
+  --color-learn-solid-hover: var(--learn-solid-hover);
+  --color-learn-solid-active: var(--learn-solid-active);
   --color-destructive: var(--destructive);
   --color-success: var(--success);
   --color-warning: var(--warning);
@@ -126,14 +133,15 @@ body {
  * fixed height rather than the full viewport.
  * ------------------------------------------------------------------ */
 /* "Your machine" is the wrapping card; the diagram lives in its body. */
-.hostcard { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #0a0a0a; }
-.hostcard-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: #111; }
+.hostcard { border: 1px solid var(--border); border-radius: 12px; background: #0a0a0a; }
+.hostcard-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); border-radius: 12px 12px 0 0; background: #111; }
 .hostcard-icon { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: #0c0c0c; color: #b5b5b5; }
 .hostcard-title { font-size: 13px; font-weight: 600; }
 .hostcard-sub { font-size: 10.5px; color: #777; }
 .hostcard-online { margin-left: auto; display: flex; align-items: center; gap: 6px; color: #70c988; font-size: 10.5px; }
 .hostcard-online i { width: 6px; height: 6px; border-radius: 50%; background: #54c171; box-shadow: 0 0 0 3px rgba(84,193,113,.1); }
-.topology-shell { position: relative; width: 100%; height: 430px; overflow: hidden; background: #070707; }
+.topology-shell { position: relative; width: 100%; height: 430px; background: #070707; border-radius: 0 0 11px 11px; }
+.topology-shell > .react-flow { border-radius: 0 0 11px 11px; overflow: hidden; }
 .react-flow { background: radial-gradient(ellipse at 70% 40%, rgba(240,97,109,.05), transparent 42%); }
 .netpill { position: absolute; top: 12px; left: 14px; z-index: 5; display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8f8f8f; background: rgba(10,10,10,.82); border: 1px solid var(--border); border-radius: 20px; padding: 4px 11px; }
 .netpill .mono { font-weight: 500; letter-spacing: 0; text-transform: none; color: #6a6a6a; }
@@ -163,8 +171,6 @@ body {
 .door-host { color: #54c171; }
 .door-none { font-size: 10.5px; color: #707070; }
 /* Localhost port-binding node on the host-card edge. */
-.hostport { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; padding: 5px 9px; border: 1px solid rgba(84,193,113,.35); border-radius: 8px; background: rgba(84,193,113,.08); color: #8fd3a0; font-size: 10.5px; }
-.hostport > svg { color: #54c171; }
 .react-flow__pane { cursor: grab; }
 .react-flow__pane:active { cursor: grabbing; }
 .react-flow__background pattern circle { fill: #292929; }
@@ -221,17 +227,35 @@ body {
 .topology-handle { width: 9px; height: 9px; border: 2px solid #070707; border-radius: 50%; background: #777; box-shadow: 0 0 0 1px var(--handle-accent, #777); }
 .topology-handle:hover { background: #ededed; }
 .edge-label { position: absolute; padding: 3px 7px; border: 1px solid #292929; border-radius: 5px; background: #111; color: #858585; font-family: var(--font-mono), monospace; font-size: 9px; pointer-events: all; }
-.topology-legend { position: absolute; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 15px; padding: 7px 11px; border: 1px solid #232323; border-radius: 7px; background: rgba(15,15,15,.85); color: #777; font-size: 10px; backdrop-filter: blur(10px); z-index: 5; }
-.topology-legend > div { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.legend-line { width: 18px; height: 0; display: inline-block; border-top: 1.5px solid #737373; }
-.attack-line { border-top-color: #f0616d; border-top-style: dashed; }
-.legend-exposed { color: #54c171; }
-.topology-legend b { color: #9a9a9a; font-weight: 400; }
 /* Network diagram: per-network interfaces on a pivot, isolated (internal) networks. */
 .ifaces { display: flex; flex-direction: column; gap: 3px; margin-top: 7px; }
 .iface { display: flex; align-items: center; gap: 7px; color: #858585; font-size: 10px; }
 .iface-net { min-width: 52px; padding: 1px 6px; border: 1px solid #2c2c2c; border-radius: 4px; background: #181818; color: #a39bc2; font-size: 9px; font-weight: 600; letter-spacing: .04em; text-align: center; }
-.zone-label { display: inline-flex; align-items: center; gap: 7px; }
+/* Two-line label straddling the segment's top edge: name, then subnet and counts. */
+.zone .zone-label { top: -15px; display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 4px 11px 5px; border-radius: 9px; }
+.zone-title { display: inline-flex; align-items: center; gap: 7px; }
+.zone-detail { font-size: 9.5px; font-weight: 400; letter-spacing: 0; color: #6f6f6f; }
 .zone-isolated { display: inline-flex; align-items: center; gap: 3px; padding-left: 7px; border-left: 1px solid #2a2a2a; color: #c9a85a; letter-spacing: .06em; }
-.topology-legend-bar { position: static; justify-content: flex-end; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: #0c0c0c; backdrop-filter: none; padding: 8px 14px; }
-.zone .zone-handle { pointer-events: none; }
+/* A segment's side ports are anchors for pivot links only, never drawn. */
+.zone .zone-handle { pointer-events: none; opacity: 0; }
+/* A service's ports sit on its row, at the right: the port belongs to the service. */
+.service-ports { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 50%; }
+.service-ports .door { border-color: color-mix(in srgb, var(--service-color) 35%, #2f2f2f); background: color-mix(in srgb, var(--service-color) 8%, #1b1b1b); }
+.service-ports .door > svg { color: var(--service-color); }
+/* Several services in one container: one row each, stacked. */
+.service-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 13px; }
+.service-rows .service-chip { margin-top: 0; }
+.computer-image { margin-top: 3px; color: #6f6f6f; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The host the published ports land on (your machine, or the server). */
+.zone-host { border-style: solid; border-color: rgba(84,193,113,.28); background: rgba(84,193,113,.03); }
+.zone-host .zone-label { color: #8fd3a0; border-color: rgba(84,193,113,.3); }
+/* A published port: a tab straddling the card's bottom edge (an opening in the machine's wall). */
+/* The tabs hang below the card: keep a full section gap (space-y-5 = 1.25rem) under them. */
+.hostcard-docked { margin-bottom: 2.25rem; }
+.hostport-anchor { width: 100%; height: 100%; }
+.hostport-handle { opacity: 0; }
+.port-tab { position: absolute; bottom: 0; z-index: 6; transform: translate(-50%, 50%); padding: 4px 9px; border: 1px solid rgba(84,193,113,.4); border-radius: 7px; background: #0d1a11; color: #8fd3a0; font-size: 10.5px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.port-tab svg { color: #54c171; }
+.port-tab .copy-chip { gap: 5px; }
+.react-flow__pane { cursor: default; }
+.react-flow__pane:active { cursor: default; }

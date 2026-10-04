@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { CheckCircle2, ChevronDown, Pencil, Plus, Square, Trash2, X, XCircle, Zap } from "lucide-react";
+import { CheckCircle2, ChevronDown, Cloud, Pencil, Plus, Square, Trash2, X, XCircle, Zap } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useLabs, type Lab } from "@/lib/use-labs";
 import {
   awsMonthToDateCost,
-  cloudLogin,
   installDependency,
   labStop,
   provisioningImages,
@@ -40,7 +39,6 @@ export function CloudScreen() {
   const [report, setReport] = useState<SystemReport | null>(null);
   const [provImages, setProvImages] = useState<ProvisioningImage[] | null>(null);
   const [cliBusy, setCliBusy] = useState<string | null>(null);
-  const [loginBusy, setLoginBusy] = useState<string | null>(null);
   const [pullBusy, setPullBusy] = useState<string | null>(null);
   const [envOpen, setEnvOpen] = useState<boolean | null>(null);
   const [spend, setSpend] = useState<Record<string, number | null>>({});
@@ -124,18 +122,6 @@ export function CloudScreen() {
     }
   }
 
-  async function login(p: CloudProvider) {
-    setLoginBusy(p);
-    setError(null);
-    try {
-      await cloudLogin(p, () => {});
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoginBusy(null);
-    }
-  }
-
   async function pull(image: string) {
     setPullBusy(image);
     setError(null);
@@ -161,7 +147,7 @@ export function CloudScreen() {
   });
   const envReady = !!report?.cloudClis.aws.installed && !!report?.terraform.installed;
   // Only one install/pull/sign-in at a time: brew (and others) can't run two at once.
-  const busyOp = cliBusy !== null || pullBusy !== null || loginBusy !== null;
+  const busyOp = cliBusy !== null || pullBusy !== null;
   const envExpanded = envOpen ?? !envReady;
 
   return (
@@ -246,10 +232,19 @@ export function CloudScreen() {
               <ImageRow key={img.image} image={img} note="runs in Docker (best on Windows)" busy={pullBusy === img.image} locked={busyOp} onPull={() => pull(img.image)} />
             ))}
             <div className="border-t border-border px-3.5 py-2.5">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">Other providers · provisioning coming</p>
-              <div className="mt-2 space-y-1.5">
-                <OtherCli name="Azure CLI" provider="azure" tool={report?.cloudClis.azure} busy={cliBusy === "azurecli"} loginBusy={loginBusy === "azure"} locked={busyOp} onInstall={() => installCli("azurecli")} onLogin={() => login("azure")} />
-                <OtherCli name="Google Cloud CLI" provider="gcp" tool={report?.cloudClis.gcloud} busy={cliBusy === "gcloud"} loginBusy={loginBusy === "gcp"} locked={busyOp} onInstall={() => installCli("gcloud")} onLogin={() => login("gcp")} />
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">More providers · coming soon</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {COMING_SOON.map((p) => (
+                  <span key={p.id} className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground">
+                    {p.logo ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- static export, plain asset
+                      <img src={`/brands/${p.id}.svg`} alt="" className="size-3.5" draggable={false} />
+                    ) : (
+                      <Cloud className="size-3.5" />
+                    )}
+                    {p.label}
+                  </span>
+                ))}
               </div>
             </div>
           </div>
@@ -258,6 +253,14 @@ export function CloudScreen() {
     </div>
   );
 }
+
+/** Providers shown as "coming soon" in the Environment panel (logo = SVG in public/brands). */
+const COMING_SOON: { id: string; label: string; logo: boolean }[] = [
+  { id: "azure", label: "Microsoft Azure", logo: true },
+  { id: "gcp", label: "Google Cloud", logo: true },
+  { id: "digitalocean", label: "DigitalOcean", logo: false },
+  { id: "hetzner", label: "Hetzner", logo: false },
+];
 
 const PROVIDERS: { id: CloudProvider; label: string }[] = [
   { id: "aws", label: "Amazon Web Services" },
@@ -419,22 +422,10 @@ function ImageRow({ image, note, busy, locked, onPull }: { image: ProvisioningIm
   );
 }
 
-function OtherCli({ name, provider, tool, busy, loginBusy, locked, onInstall, onLogin }: { name: string; provider: CloudProvider; tool?: Tool; busy: boolean; loginBusy: boolean; locked: boolean; onInstall: () => void; onLogin: () => void }) {
-  const installed = !!tool?.installed;
-  return (
-    <div className="flex items-center gap-2 text-[12px]">
-      <Logo provider={provider} />
-      <span className="text-muted-foreground">{name}</span>
-      <span className="ml-auto flex items-center gap-2">
-        {installed ? (
-          <Button variant="ghost" size="sm" onClick={onLogin} disabled={loginBusy || locked}>{loginBusy ? "Signing in…" : "Sign in"}</Button>
-        ) : tool ? (
-          <Button variant="ghost" size="sm" onClick={onInstall} disabled={busy || locked}>{busy ? "Installing…" : "Install"}</Button>
-        ) : null}
-      </span>
-    </div>
-  );
-}
+// Azure and GCP can't run labs yet, so these rows don't offer an install or sign-in: the
+// azure-cli brew formula alone compiles llvm + rust, a long build for a provider that does
+// nothing here. Only AWS (CliRow) and Terraform are installable. Props kept so the call
+// sites don't need to change when provisioning for these providers lands.
 
 function Step({ n, title, body }: { n: number; title: string; body: string }) {
   return (

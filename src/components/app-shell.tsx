@@ -8,12 +8,13 @@ import { Labs } from "@/components/Labs";
 import { HomeScreen } from "@/components/screens/home-screen";
 import { MachineScreen } from "@/components/screens/machine-screen";
 import { ServerScreen } from "@/components/screens/server-screen";
+import { CloudScreen } from "@/components/screens/cloud-screen";
 import { HostedScreen } from "@/components/screens/hosted-screen";
 import { SettingsScreen } from "@/components/screens/settings-screen";
 import { Onboarding } from "@/components/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
+import { authStatus, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 type Tab = "home" | "labs" | "machine" | "setup" | "server" | "cloud" | "hosted" | "events" | "settings";
@@ -54,7 +55,10 @@ export function AppShell() {
   const check = () => systemCheck().then(setReport).catch(() => setReport(null));
   useEffect(() => {
     check();
+    authStatus().then(setAuth).catch(() => setAuth({ loggedIn: false, name: null, email: null }));
     try {
+      // Reads a per-machine flag once on mount (localStorage isn't available during render).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOnboarded(localStorage.getItem(ONBOARDED_KEY) === "1");
     } catch {
       setOnboarded(true);
@@ -138,7 +142,7 @@ export function AppShell() {
             <span className={cn("size-1.5 rounded-full", auth?.loggedIn ? "bg-emerald-500" : "bg-muted-foreground/40")} />
             {auth?.loggedIn ? "Launcher online" : "Launcher offline"}
           </div>
-          <Account onChange={setAuth} />
+          <Account status={auth} onChange={setAuth} />
         </div>
       </aside>
 
@@ -153,7 +157,7 @@ export function AppShell() {
         <div className="flex-1 overflow-y-auto">
           <UpdateBanner />
           <div className="mx-auto w-full max-w-[1120px] px-5 py-5">
-            <Screen tab={tab} report={report} auth={auth} openLab={openLab} onRefresh={check} onNavigate={navigate} />
+            <Screen tab={tab} report={report} auth={auth} openLab={openLab} onRefresh={check} onNavigate={navigate} onAuthChange={setAuth} />
           </div>
         </div>
       </main>
@@ -172,6 +176,7 @@ function Screen({
   openLab,
   onRefresh,
   onNavigate,
+  onAuthChange,
 }: {
   tab: Tab;
   report: SystemReport | null;
@@ -179,9 +184,10 @@ function Screen({
   openLab: string | null;
   onRefresh: () => void | Promise<void>;
   onNavigate: (t: Tab, slug?: string) => void;
+  onAuthChange: (status: AuthStatus) => void;
 }): ReactNode {
   if (tab === "home") return <HomeScreen report={report} auth={auth} onNavigate={onNavigate} />;
-  if (tab === "settings") return <SettingsScreen auth={auth} />;
+  if (tab === "settings") return <SettingsScreen auth={auth} onAuthChange={onAuthChange} onNavigate={onNavigate} />;
   if (tab === "machine")
     return report ? (
       <MachineScreen report={report} onRefresh={onRefresh} onNavigate={onNavigate} />
@@ -189,9 +195,9 @@ function Screen({
       <p className="text-sm text-muted-foreground">Checking this machine…</p>
     );
   if (tab === "server") return <ServerScreen onNavigate={onNavigate} />;
-  if (tab === "cloud") return <ServerScreen kind="cloud" onNavigate={onNavigate} />;
+  if (tab === "cloud") return <CloudScreen />;
   if (tab === "hosted") return <HostedScreen onNavigate={onNavigate} />;
   if (tab === "events")
     return <ComingSoon icon="sparkles" title="Events" description="Join live CTF events where labs are hosted by Cyber CTF: nothing to run on your machine, each participant gets their own lab for the event's duration." />;
-  return report ? <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} openSlug={openLab} /> : <p className="text-sm text-muted-foreground">Loading…</p>;
+  return report ? <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} report={report} openSlug={openLab} /> : <p className="text-sm text-muted-foreground">Loading…</p>;
 }

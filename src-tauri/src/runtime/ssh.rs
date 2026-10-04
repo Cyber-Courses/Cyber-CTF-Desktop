@@ -28,6 +28,11 @@ pub fn launcher_key() -> Option<PathBuf> {
     LAUNCHER_KEY.get().cloned()
 }
 
+#[cfg(test)]
+pub fn set_launcher_key_for_test(key: PathBuf) {
+    let _ = LAUNCHER_KEY.set(key);
+}
+
 /// The launcher's private key, created on first use. Returns (key path, public key line).
 pub async fn ensure_key(app: &AppHandle) -> Result<(PathBuf, String)> {
     let key = ssh_dir(app)?.join("id_ed25519");

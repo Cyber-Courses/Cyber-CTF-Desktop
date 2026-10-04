@@ -8,7 +8,7 @@ use std::path::Path;
 use super::compose::{self, PsEntry, Publisher};
 use crate::error::Result;
 use crate::exec::run;
-use crate::runtime::{Interface, LabStatus, Machine, Network, Port};
+use crate::runtime::{Interface, LabStatus, Machine, Network, Port, Service};
 
 /// True for services that aren't a web UI (databases, caches, brokers): the Open button
 /// must never point a browser at one.
@@ -41,35 +41,64 @@ pub fn short_network(id: &str, name: &str) -> String {
     name.strip_prefix(&format!("{}_", compose::project(id))).unwrap_or(name).to_string()
 }
 
-/// Each running container's interfaces (network -> address), keyed by container name.
-/// `docker compose ps` doesn't carry addresses, so we inspect the live containers once.
+/// What `docker inspect` tells about one running container: its interfaces and the
+/// services the lab declares in it.
+#[derive(Default)]
+struct Inspected {
+    interfaces: Vec<Interface>,
+    services: Vec<Service>,
+}
+
+/// Each running container's interfaces (network -> address) and declared services, keyed by
+/// container name. `docker compose ps` carries neither addresses nor a parseable label map
+/// (it joins labels with commas), so we inspect the live containers once.
 /// Best effort: an empty map (e.g. inspect failed) just means the UI shows no IPs.
-async fn container_ifaces(dir: &Path, id: &str, names: &[String]) -> HashMap<String, Vec<Interface>> {
+async fn inspect_containers(dir: &Path, id: &str, names: &[String]) -> HashMap<String, Inspected> {
     if names.is_empty() {
         return HashMap::new();
     }
-    let mut args: Vec<&str> = vec!["inspect", "-f", "{{.Name}}\t{{range $k, $v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}"];
+    let mut args: Vec<&str> = vec!["inspect", "-f", "{{.Name}}\t{{range $k, $v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}\t{{json .Config.Labels}}"];
     args.extend(names.iter().map(String::as_str));
     let out = match run("docker", &args, Some(dir)).await {
         Ok(out) => out,
         Err(_) => return HashMap::new(),
     };
-    parse_ifaces(id, &out)
+    parse_inspect(id, &out)
 }
 
-fn parse_ifaces(id: &str, out: &str) -> HashMap<String, Vec<Interface>> {
+fn parse_inspect(id: &str, out: &str) -> HashMap<String, Inspected> {
     out.lines()
         .filter_map(|line| {
-            let (name, rest) = line.split_once('\t')?;
-            let ifaces = rest
+            let mut cols = line.splitn(3, '\t');
+            let name = cols.next()?;
+            let interfaces = cols
+                .next()
+                .unwrap_or_default()
                 .split_whitespace()
                 .filter_map(|kv| kv.split_once('='))
                 .filter(|(_, ip)| !ip.is_empty())
                 .map(|(net, ip)| Interface { network: short_network(id, net), ip: ip.to_string() })
                 .collect();
-            Some((name.trim_start_matches('/').to_string(), ifaces))
+            let labels: HashMap<String, String> = cols.next().and_then(|j| serde_json::from_str(j).ok()).unwrap_or_default();
+            Some((name.trim_start_matches('/').to_string(), Inspected { interfaces, services: declared_services(&labels) }))
         })
         .collect()
+}
+
+/// The services a lab declares on a container: `cyberctf.service.<name>: "<kind>:<ports>"`,
+/// ports comma-separated and optional (`worker`). Malformed ports are skipped, never guessed.
+fn declared_services(labels: &HashMap<String, String>) -> Vec<Service> {
+    let mut services: Vec<Service> = labels
+        .iter()
+        .filter_map(|(k, v)| {
+            let name = k.strip_prefix("cyberctf.service.")?.trim();
+            let (kind, ports) = v.split_once(':').unwrap_or((v, ""));
+            let ports = ports.split(',').filter_map(|p| p.trim().parse::<u16>().ok()).filter(|p| *p > 0).collect();
+            (!name.is_empty()).then(|| Service { name: name.to_string(), kind: kind.trim().to_string(), ports })
+        })
+        .collect();
+    services.sort_by(|a, b| a.name.cmp(&b.name));
+    services
 }
 
 /// The lab's networks (Compose labels them with the project), with subnet and isolation.
@@ -129,7 +158,7 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     let running = entries.iter().any(|e| e.state == "running");
     let url = if running { first_published_url(&entries) } else { None };
     let run_names: Vec<String> = entries.iter().filter(|e| e.state == "running").map(|e| e.name.clone()).collect();
-    let mut ifaces = container_ifaces(dir, id, &run_names).await;
+    let mut inspected = inspect_containers(dir, id, &run_names).await;
     let networks = if running { lab_networks(id).await } else { Vec::new() };
     // Serving containers (those that publish a port) that should be up but aren't: a lab
     // whose web died is reported degraded, not fine. One-shot init jobs publish nothing, so
@@ -153,17 +182,17 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
         .filter(|e| e.state == "running")
         .map(|e| {
             let ports = tcp_ports(&e.publishers);
-            let interfaces = ifaces.remove(&e.name).unwrap_or_default();
+            let Inspected { interfaces, services } = inspected.remove(&e.name).unwrap_or_default();
             let ip = interfaces.first().map(|i| i.ip.clone()).unwrap_or_default();
             // A running container that fails its compose healthcheck is surfaced as unhealthy,
             // so the UI greys it like a dead one instead of showing a broken lab as fine.
             let state = if e.health == "unhealthy" { "unhealthy".to_string() } else { e.state };
-            Machine { name: e.service, state, image: e.image, ip, ports, interfaces }
+            Machine { name: e.service, state, image: e.image, ip, ports, interfaces, services }
         })
         .collect();
     for (service, state) in down {
         if !machines.iter().any(|m| m.name == service) {
-            machines.push(Machine { name: service, state, image: String::new(), ip: String::new(), ports: Vec::new(), interfaces: Vec::new() });
+            machines.push(Machine { name: service, state, image: String::new(), ip: String::new(), ports: Vec::new(), interfaces: Vec::new(), services: Vec::new() });
         }
     }
     Ok(LabStatus { running, machines, networks, url, host: None, expires_at: None })
@@ -178,7 +207,7 @@ pub async fn primary_url(dir: &Path, id: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{first_published_url, parse_ifaces, parse_networks, tcp_ports};
+    use super::{declared_services, first_published_url, parse_inspect, parse_networks, tcp_ports};
     use super::compose::parse_ps;
 
     #[test]
@@ -209,7 +238,7 @@ mod tests {
     #[test]
     fn reads_every_interface_with_the_lab_network_name() {
         let out = "/cyberctf-sqli-web-1\tcyberctf-sqli_dmz=172.21.0.3 cyberctf-sqli_internal=172.22.0.2 \n/cyberctf-sqli-db-1\tcyberctf-sqli_internal=172.22.0.3 \n/x\tcyberctf-sqli_dmz= \n";
-        let m = parse_ifaces("sqli", out);
+        let m: std::collections::HashMap<_, _> = parse_inspect("sqli", out).into_iter().map(|(k, v)| (k, v.interfaces)).collect();
         let web: Vec<(&str, &str)> = m["cyberctf-sqli-web-1"].iter().map(|i| (i.network.as_str(), i.ip.as_str())).collect();
         assert_eq!(web, vec![("dmz", "172.21.0.3"), ("internal", "172.22.0.2")]);
         assert_eq!(m["cyberctf-sqli-db-1"][0].network, "internal");
@@ -233,5 +262,18 @@ mod tests {
           {"URL":"","TargetPort":33060,"PublishedPort":0,"Protocol":"tcp"}]}]"#;
         let ports = tcp_ports(&parse_ps(out)[0].publishers);
         assert_eq!(ports.iter().map(|p| (p.published, p.target)).collect::<Vec<_>>(), vec![(3207, 3207), (0, 33060)]);
+    }
+
+    #[test]
+    fn reads_the_services_a_lab_declares_and_nothing_else() {
+        let out = "/cyberctf-x-app-1\tcyberctf-x_default=172.20.0.2 \t{\"cyberctf.service.web\":\"web:80,443\",\"cyberctf.service.ssh\":\"ssh:22\",\"cyberctf.service.jobs\":\"worker\",\"com.docker.compose.service\":\"app\"}\n";
+        let m = parse_inspect("x", out);
+        let s = &m["cyberctf-x-app-1"].services;
+        let got: Vec<(&str, &str, Vec<u16>)> = s.iter().map(|s| (s.name.as_str(), s.kind.as_str(), s.ports.clone())).collect();
+        assert_eq!(got, vec![("jobs", "worker", vec![]), ("ssh", "ssh", vec![22]), ("web", "web", vec![80, 443])]);
+        assert_eq!(m["cyberctf-x-app-1"].interfaces[0].ip, "172.20.0.2");
+        // No labels, null labels: no services (never inferred).
+        assert!(parse_inspect("x", "/a\t\tnull\n")["a"].services.is_empty());
+        assert!(declared_services(&[("cyberctf.service.db".to_string(), "database:abc".to_string())].into()).first().unwrap().ports.is_empty());
     }
 }

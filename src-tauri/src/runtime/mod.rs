@@ -6,7 +6,9 @@ mod docker;
 mod exegol;
 mod model;
 pub mod server;
+pub mod server_selftest;
 pub mod providers;
+mod proxmox;
 mod ssh;
 mod terraform;
 mod vm;
@@ -19,7 +21,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::{Error, Result};
 
-pub use model::{Interface, LabStatus, Machine, Network, Port};
+pub use model::{Interface, LabStatus, Machine, Network, Port, Service};
 
 /// Mirrors `LabRuntime` in CyberBackend.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -94,6 +96,12 @@ pub async fn start(
             // The launcher's key, so "Open shell" can reach the attack box on the lab host.
             vars.push(("ssh_public_key".into(), ssh::ensure_key(app).await?.1));
             if provider == providers::Provider::Aws {
+                // Stop before spending if this account is over its monthly budget.
+                if let Some((spent, limit)) = server::budget_exceeded(app, host).await {
+                    return Err(Error::Invalid(format!(
+                        "Monthly budget reached for this account: ${spent:.2} of ${limit:.2} spent this month. Raise the budget in the account settings, or wait until next month."
+                    )));
+                }
                 // SSH open to this machine's public IP only.
                 vars.push(("allowed_cidr".into(), format!("{}/32", public_ip().await?)));
                 log("This lab runs in your AWS account and is billed there until you stop it.".into());

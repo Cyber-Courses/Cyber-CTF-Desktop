@@ -1,29 +1,40 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { Cloud, Cpu, ExternalLink, Gauge, HardDrive, MemoryStick, RefreshCw, Server, Terminal, Wrench, X, type LucideIcon } from "lucide-react";
-import { Spinner } from "@/components/ui/spinner";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { ChevronRight, Container, Cpu, HardDrive, MemoryStick, Server, Square, Trash2, Wrench, type LucideIcon } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
-import { Meter } from "@/components/ui/meter";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { SelfTest } from "@/components/machine/self-test";
+import { EngineMark, engineName } from "@/components/machine/setup-steps";
 import {
-  installDependency,
-  installVagrantPlugin,
+  apiQuery,
   machineMetrics,
   machineOpenSetup,
-  type Dependency,
-  type DockerEngine,
+  machineStorage,
+  machineStorageClean,
+  machineWorkloadStop,
+  machineWorkloads,
   type MachineMetrics,
+  type ProviderStatus,
+  type Storage,
   type SystemReport,
   type Tool,
+  type Workload,
 } from "@/lib/tauri";
-import { assessRam } from "@/lib/capacity";
-import { DOWNLOAD, INSTALLABLE, providerLabel, usableHypervisors } from "@/lib/hypervisors";
+import { getAttackImage, getLastTest, getVmProvider, type LastTest } from "@/lib/settings";
+import { PROVIDER_LABELS, providerLabel, usableHypervisors } from "@/lib/hypervisors";
 import { cn } from "@/lib/utils";
 
-const gb = (b: number) => b / 1e9;
-const fmtGB = (b: number) => `${gb(b).toFixed(gb(b) < 10 ? 1 : 0)} GB`;
+// ---------- formatting ----------
+
+const GB = 1e9;
+function fmtBytes(b: number) {
+  if (b >= GB) return `${(b / GB).toFixed(b >= 10 * GB ? 0 : 1)} GB`;
+  if (b >= 1e6) return `${Math.round(b / 1e6)} MB`;
+  return `${Math.max(1, Math.round(b / 1e3))} kB`;
+}
 function fmtUptime(s: number) {
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);
@@ -32,70 +43,182 @@ function fmtUptime(s: number) {
   if (h) return `${h}h ${m}m`;
   return `${m}m`;
 }
+function ago(at: number, now: number) {
+  const s = Math.max(0, (now - at) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  const d = Math.floor(s / 86400);
+  return d === 1 ? "yesterday" : `${d} days ago`;
+}
+/** Strip the tool name from `docker --version`-style output, keep the version number. */
+const ver = (t: Tool) => (t.installed ? (t.version?.match(/\d+\.\d+(\.\d+)?/)?.[0] ?? "installed") : "not installed");
+const OS_NAME: Record<string, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
 
-/** One segment of the stats strip: label, big value, meter, sub-line. */
-function Stat({ icon: Icon, label, value, sub, pct }: { icon: LucideIcon; label: string; value: string; sub: string; pct: number }) {
+/** Free memory each lab type wants to start comfortably. */
+const WANT_FREE = { docker: 2 * GB, vm: 8 * GB };
+
+// ---------- small parts ----------
+
+/** The last minute of a 0-100 series as a thin line with a soft fill. */
+function Sparkline({ values, className }: { values: number[]; className?: string }) {
+  if (values.length < 2) return <div className={cn("h-7", className)} />;
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * 100},${28 - (Math.max(0, Math.min(100, v)) / 100) * 26 - 1}`);
+  return (
+    <svg viewBox="0 0 100 28" preserveAspectRatio="none" className={cn("h-7 w-full text-learn", className)} aria-hidden>
+      <polygon points={`0,28 ${pts.join(" ")} 100,28`} className="fill-current opacity-10" />
+      <polyline points={pts.join(" ")} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function Stat({ icon: Icon, label, value, sub, history }: { icon: LucideIcon; label: string; value: string | null; sub: string; history: number[] }) {
   return (
     <div className="min-w-0 px-4 py-3.5">
       <div className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
         <Icon className="size-3.5" /> {label}
       </div>
-      <div className="mt-1.5 flex items-baseline justify-between gap-2">
-        <span className="text-xl font-semibold tracking-tight tabular-nums">{value}</span>
-        <span className="truncate text-[11.5px] tabular-nums text-muted-foreground">{sub}</span>
-      </div>
-      <Meter value={pct} className="mt-2.5" />
+      {value === null ? (
+        <>
+          <Skeleton className="mt-2 h-6 w-16" />
+          <Skeleton className="mt-2.5 h-7 w-full" />
+        </>
+      ) : (
+        <>
+          <div className="mt-1.5 flex items-baseline justify-between gap-2">
+            <span className="text-xl font-semibold tracking-tight tabular-nums">{value}</span>
+            <span className="truncate text-[11.5px] tabular-nums text-muted-foreground">{sub}</span>
+          </div>
+          <Sparkline values={history} className="mt-1.5" />
+        </>
+      )}
     </div>
   );
 }
 
-/** A dependency/status row. Healthy rows stay quiet (muted value); only problems get an amber dot. */
-function Row({ name, mono, ok, detail, action }: { name: string; mono?: string | null; ok?: boolean; detail: string; action?: ReactNode }) {
-  const bad = ok === false;
+type Tone = "ok" | "warn" | "fail" | "muted";
+
+function StatusPill({ tone, children }: { tone: Tone; children: ReactNode }) {
+  const c = { ok: "text-emerald-500", warn: "text-amber-500", fail: "text-rose-500", muted: "text-muted-foreground" }[tone];
+  const dot = { ok: "bg-emerald-500", warn: "bg-amber-500", fail: "bg-rose-500", muted: "bg-muted-foreground/50" }[tone];
   return (
-    <div className="flex min-h-11 items-center gap-2.5 border-b border-border px-3.5 py-2 text-[12.5px] last:border-b-0">
-      <span className="text-foreground">{name}</span>
-      {mono && <span className="font-mono text-[11px] text-muted-foreground">{mono}</span>}
-      <span className="ml-auto flex min-w-0 items-center gap-3">
-        <span className={cn("flex min-w-0 items-center gap-1.5", bad ? "text-amber-500" : "font-mono text-[11.5px] text-muted-foreground")}>
-          {bad && <span className="size-1.5 shrink-0 rounded-full bg-amber-500" />}
-          <span className="truncate">{detail}</span>
-        </span>
-        {action}
-      </span>
+    <span className={cn("inline-flex items-center gap-1.5 text-[12px] font-medium", c)}>
+      <span className={cn("size-1.5 rounded-full", dot)} />
+      {children}
+    </span>
+  );
+}
+
+/** A read-only tool row for the Details section. */
+function DetailRow({ name, value, bad }: { name: string; value: string; bad?: boolean }) {
+  return (
+    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2 text-[12.5px] last:border-b-0">
+      <span className="text-muted-foreground">{name}</span>
+      <span className={cn("ml-auto font-mono text-[11.5px]", bad ? "text-amber-500" : "text-foreground")}>{value}</span>
     </div>
   );
 }
 
-const ENGINE_NAME: Record<DockerEngine, string> = {
-  "docker-desktop": "Docker Desktop",
-  "docker-engine": "Docker Engine",
-  orbstack: "OrbStack",
-  colima: "Colima",
-  "rancher-desktop": "Rancher Desktop",
-  podman: "Podman",
-};
-const OS_NAME: Record<string, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
-/** Strip the tool name from `docker --version`-style output, keep the version number. */
-const ver = (t: Tool) => (t.installed ? (t.version?.match(/\d+\.\d+(\.\d+)?/)?.[0] ?? "installed") : "not installed");
+function ListSkeleton() {
+  return (
+    <div className="space-y-2 p-3.5">
+      <Skeleton className="h-4 w-2/3" />
+      <Skeleton className="h-4 w-1/2" />
+    </div>
+  );
+}
+
+// ---------- lab types ----------
+
+type LabKind = "docker" | "vm";
+
+function TypeIcon({ children }: { children: ReactNode }) {
+  return <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground">{children}</span>;
+}
+
+/** One lab type: what it runs on, whether it's ready, and the one action that matters. */
+function LabTypeRow({
+  kind,
+  icon,
+  title,
+  tone,
+  status,
+  detail,
+  hint,
+  actions,
+  testing,
+  onTestDone,
+}: {
+  kind: LabKind;
+  icon: ReactNode;
+  title: string;
+  tone: Tone;
+  status: string;
+  detail: ReactNode;
+  hint?: string;
+  actions: ReactNode;
+  testing: boolean;
+  onTestDone: () => void;
+}) {
+  return (
+    <div className="border-b border-border last:border-b-0">
+      <div className="flex flex-wrap items-center gap-3 px-3.5 py-3">
+        {icon}
+        <div className="min-w-0 flex-1">
+          <p className="flex flex-wrap items-center gap-x-2.5 text-[13px] font-medium">
+            {title}
+            <StatusPill tone={tone}>{status}</StatusPill>
+          </p>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">{detail}</p>
+          {hint && <p className="mt-1 text-[12px] text-amber-500">{hint}</p>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+      </div>
+      {testing && (
+        <div className="px-3.5 pb-3.5">
+          <SelfTest
+            kind={kind}
+            title={kind === "docker" ? "Container lab test" : "VM lab test"}
+            description={kind === "docker" ? "Two containers on a lab network, then removed." : "Boots a real test VM, checks it, then deletes it."}
+            auto
+            onResult={(r) => {
+              if (r === "ok" || r === "fail") onTestDone();
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- screen ----------
 
 export function MachineScreen({
   report,
-  onRefresh,
   onNavigate,
 }: {
   report: SystemReport;
   onRefresh: () => void | Promise<void>;
   onNavigate: (tab: "cloud" | "server") => void;
 }) {
+  // Live usage, with the last minute of history for the sparklines.
   const [m, setM] = useState<MachineMetrics | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [log, setLog] = useState<string[]>([]);
-  const logEnd = useRef<HTMLDivElement>(null);
-
+  const [hist, setHist] = useState<{ cpu: number[]; mem: number[]; disk: number[] }>({ cpu: [], mem: [], disk: [] });
   useEffect(() => {
     let alive = true;
-    const tick = () => machineMetrics().then((x) => alive && setM(x)).catch(() => {});
+    const push = (a: number[], v: number) => [...a, v].slice(-24);
+    const tick = () =>
+      machineMetrics()
+        .then((x) => {
+          if (!alive) return;
+          setM(x);
+          setHist((h) => ({
+            cpu: push(h.cpu, x.cpu),
+            mem: push(h.mem, x.memTotal ? (x.memUsed / x.memTotal) * 100 : 0),
+            disk: push(h.disk, x.diskTotal ? (x.diskUsed / x.diskTotal) * 100 : 0),
+          }));
+        })
+        .catch(() => {});
     tick();
     const id = setInterval(tick, 2500);
     return () => {
@@ -104,179 +227,303 @@ export function MachineScreen({
     };
   }, []);
 
-  async function runInstall(id: string, start: string, fn: (onLog: (line: string) => void) => Promise<void>) {
-    setBusy(id);
-    setLog([start]);
+  // What's running, polled slower (asks Docker and Vagrant).
+  const [workloads, setWorkloads] = useState<Workload[] | null>(null);
+  const [stopping, setStopping] = useState<string | null>(null);
+  const loadWorkloads = useCallback(() => {
+    machineWorkloads().then(setWorkloads).catch(() => setWorkloads([]));
+  }, []);
+  useEffect(() => {
+    loadWorkloads();
+    const id = setInterval(loadWorkloads, 8000);
+    return () => clearInterval(id);
+  }, [loadWorkloads]);
+
+  // Lab titles for the running list (the runtime only knows ids).
+  const [titles, setTitles] = useState<Record<string, string>>({});
+  useEffect(() => {
+    apiQuery<{ labs: { id: string; title: string }[] }>("{ labs { id title } }")
+      .then((d) => setTitles(Object.fromEntries(d.labs.map((l) => [l.id, l.title]))))
+      .catch(() => {});
+  }, []);
+
+  // Downloaded images and VM boxes.
+  const [storage, setStorage] = useState<Storage | null>(null);
+  const [showStorage, setShowStorage] = useState(false);
+  const [confirmClean, setConfirmClean] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+  const [freed, setFreed] = useState<number | null>(null);
+  const loadStorage = useCallback(() => {
+    machineStorage([getAttackImage()])
+      .then(setStorage)
+      .catch(() => setStorage({ images: [], boxes: [] }));
+  }, []);
+  useEffect(() => {
+    loadStorage();
+  }, [loadStorage]);
+
+  // Last self-test per lab type (kept locally), and which test is open inline.
+  const [last, setLast] = useState<Record<LabKind, LastTest | null>>(() => ({ docker: getLastTest("docker"), vm: getLastTest("vm") }));
+  const [testing, setTesting] = useState<LabKind | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const refreshLast = () => {
+    setLast({ docker: getLastTest("docker"), vm: getLastTest("vm") });
+    setNow(Date.now());
+    loadWorkloads();
+  };
+
+  async function stop(w: Workload) {
+    setStopping(`${w.kind}:${w.id}`);
     try {
-      await fn((line) => {
-        setLog((l) => [...l, line]);
-        requestAnimationFrame(() => logEnd.current?.scrollIntoView({ block: "end" }));
-      });
-    } catch (e) {
-      setLog((l) => [...l, `✗ ${String(e)}`]);
+      await machineWorkloadStop(w.kind, w.id);
+    } catch {
+      /* the list shows what's still running */
     } finally {
-      setBusy(null);
-      await onRefresh();
+      setStopping(null);
+      loadWorkloads();
     }
   }
-  const installDep = (dep: Dependency, msg: string) => runInstall(dep, msg, (log) => installDependency(dep, log));
-  const installPlugin = (plugin: string) => runInstall(plugin, `Installing ${plugin}…`, (log) => installVagrantPlugin(plugin, log));
 
-  function Install({ id, onClick, children }: { id: string; onClick: () => void; children: ReactNode }) {
-    return (
-      <Button variant="learn" size="sm" onClick={onClick} disabled={busy !== null}>
-        {busy === id ? "Installing…" : children}
-      </Button>
-    );
+  async function clean() {
+    setCleaning(true);
+    try {
+      setFreed(await machineStorageClean([getAttackImage()]));
+    } catch {
+      setFreed(0);
+    } finally {
+      setCleaning(false);
+      setConfirmClean(false);
+      loadStorage();
+    }
   }
+
+  // ----- each lab type -----
+  const memFree = m ? m.memTotal - m.memUsed : null;
+  const lowFor = (kind: LabKind) => memFree !== null && memFree < WANT_FREE[kind];
+  const freeHint = (kind: LabKind) =>
+    lowFor(kind) ? `${kind === "vm" ? "VM" : "Container"} labs want about ${fmtBytes(WANT_FREE[kind])} of free memory; ${fmtBytes(Math.max(0, memFree!))} free now.` : undefined;
+  const testLine = (t: LastTest | null) =>
+    !t ? <span>not tested yet</span> : t.result === "ok" ? <span>tested {ago(t.at, now)}</span> : <span className="text-rose-500">last test failed {ago(t.at, now)}</span>;
 
   const dockerReady = report.docker.installed && report.dockerRunning;
   const hypervisors = usableHypervisors(report);
-  const localPlugins = report.vmProviders.filter((p) => p.plugin && !p.remote && (p.hypervisor === true || p.pluginInstalled));
+  const vmReadyList: ProviderStatus[] = report.vmProviders.filter((p) => !p.remote && p.available && p.hypervisor !== false);
+  const preferred = getVmProvider();
+  const vmProvider = vmReadyList.find((p) => p.provider === preferred) ?? vmReadyList[0] ?? null;
+  const vmApplicable = hypervisors.length > 0;
+  const hasHypervisor = hypervisors.some((p) => p.hypervisor === true);
+
+  const fix = (step: string) => machineOpenSetup(step).catch(() => {});
+  const testBtn = (kind: LabKind) => (
+    <Button variant="outline" size="sm" onClick={() => setTesting(testing === kind ? null : kind)}>
+      {testing === kind ? "Hide test" : "Test"}
+    </Button>
+  );
+
+  const needsSetup = (!dockerReady ? 1 : 0) + (vmApplicable && !vmProvider ? 1 : 0);
+  const labMem = (workloads ?? []).reduce((a, w) => a + w.memBytes, 0);
+  const storeItems = storage ? [...storage.images, ...storage.boxes] : [];
+  const storeTotal = storeItems.reduce((a, i) => a + i.bytes, 0);
   const memPct = m && m.memTotal ? (m.memUsed / m.memTotal) * 100 : 0;
   const diskPct = m && m.diskTotal ? (m.diskUsed / m.diskTotal) * 100 : 0;
-  const cap = m ? assessRam(m.memTotal) : null;
-
-  // Everything that keeps a lab type from running, for the header summary.
-  const hasHypervisor = hypervisors.some((p) => p.hypervisor === true);
-  const issues = [
-    !report.docker.installed,
-    report.docker.installed && !report.dockerRunning,
-    report.docker.installed && !report.dockerCompose.installed,
-    hypervisors.length > 0 && !hasHypervisor,
-    hasHypervisor && !report.vagrant.installed,
-    ...localPlugins.map((p) => report.vagrant.installed && !p.pluginInstalled),
-  ].filter(Boolean).length;
 
   return (
     <div className="space-y-5">
-      {/* 3. Summary header */}
+      {/* Summary */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium", issues ? "border-amber-500/30 text-amber-500" : "border-emerald-500/30 text-emerald-500")}>
-          <span className={cn("size-1.5 rounded-full", issues ? "bg-amber-500" : "bg-emerald-500")} />
-          {issues ? `${issues} ${issues === 1 ? "item" : "items"} to fix` : "Ready"}
+        <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium", needsSetup ? "border-amber-500/30 text-amber-500" : "border-emerald-500/30 text-emerald-500")}>
+          <span className={cn("size-1.5 rounded-full", needsSetup ? "bg-amber-500" : "bg-emerald-500")} />
+          {needsSetup ? `${needsSetup} lab ${needsSetup === 1 ? "type needs" : "types need"} setup` : "Ready for labs"}
         </span>
-        {/* 2. Capacity as a quiet pill when fine */}
-        {cap && cap.level === "ok" && (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground">
-            <Gauge className="size-3.5" /> {cap.totalGB.toFixed(0)} GB RAM · {cap.title.toLowerCase()}
-          </span>
-        )}
-        <span className="ml-auto flex items-center gap-3">
-          <span className="text-[12px] text-muted-foreground">
-            {OS_NAME[report.os] ?? report.os} · {report.arch}
-            {m ? ` · up ${fmtUptime(m.uptimeSecs)}` : ""}
-          </span>
-          <Button variant={dockerReady ? "outline" : "learn"} size="sm" onClick={() => machineOpenSetup().catch(() => {})}>
-            <Wrench className="size-3.5" /> {dockerReady ? "Setup" : "Set up this machine"}
-          </Button>
+        <span className="text-[12px] text-muted-foreground">
+          {OS_NAME[report.os] ?? report.os} · {report.arch}
+          {m ? ` · up ${fmtUptime(m.uptimeSecs)}` : ""}
         </span>
+        <Button className="ml-auto" variant={needsSetup ? "learn" : "outline"} size="sm" onClick={() => machineOpenSetup().catch(() => {})}>
+          <Wrench className="size-3.5" /> {needsSetup ? "Set up this machine" : "Setup"}
+        </Button>
       </div>
 
-      {/* 1. Live health: one strip */}
+      {/* Live usage */}
       <Panel className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        <Stat icon={Cpu} label="CPU" value={m ? `${Math.round(m.cpu)}%` : "…"} sub={m ? `${m.cores} cores` : ""} pct={m ? m.cpu : 0} />
-        <Stat icon={MemoryStick} label="Memory" value={m ? `${Math.round(memPct)}%` : "…"} sub={m ? `${fmtGB(m.memUsed)} / ${fmtGB(m.memTotal)}` : ""} pct={memPct} />
-        <Stat icon={HardDrive} label="Disk" value={m ? `${Math.round(diskPct)}%` : "…"} sub={m ? `${fmtGB(m.diskUsed)} / ${fmtGB(m.diskTotal)}` : ""} pct={diskPct} />
+        <Stat icon={Cpu} label="CPU" value={m ? `${Math.round(m.cpu)}%` : null} sub={m ? `${m.cores} cores` : ""} history={hist.cpu} />
+        <Stat icon={MemoryStick} label="Memory" value={m ? `${Math.round(memPct)}%` : null} sub={m ? `${fmtBytes(m.memUsed)} / ${fmtBytes(m.memTotal)}` : ""} history={hist.mem} />
+        <Stat icon={HardDrive} label="Disk" value={m ? `${Math.round(diskPct)}%` : null} sub={m ? `${fmtBytes(m.diskTotal - m.diskUsed)} free` : ""} history={hist.disk} />
       </Panel>
 
-      {/* 2. Capacity callout, only when RAM is tight or low */}
-      {cap && cap.level !== "ok" && (
-        <Panel className={cap.level === "tight" ? "border-amber-500/30" : "border-rose-500/30"}>
-          <div className="flex flex-wrap items-center gap-3 p-3.5">
-            <Gauge className={cn("size-4 shrink-0", cap.level === "tight" ? "text-amber-500" : "text-rose-500")} />
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-medium">
-                {cap.title} <span className="ml-1 font-mono text-[11px] text-muted-foreground">{cap.totalGB.toFixed(cap.totalGB < 10 ? 1 : 0)} GB RAM</span>
-              </p>
-              <p className="text-[12px] text-muted-foreground">{cap.detail}</p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => onNavigate("cloud")}><Cloud className="size-3.5" /> Cloud</Button>
-              <Button variant="outline" size="sm" onClick={() => onNavigate("server")}><Server className="size-3.5" /> Server</Button>
-            </div>
-          </div>
-        </Panel>
-      )}
+      {/* What can run */}
+      <Panel>
+        <PanelHeader title="Labs on this machine" />
+        <LabTypeRow
+          kind="docker"
+          icon={dockerReady && report.dockerEngine ? <EngineMark id={report.dockerEngine} /> : <TypeIcon><Container className="size-4" /></TypeIcon>}
+          title="Container labs"
+          tone={dockerReady ? (last.docker?.result === "fail" ? "fail" : "ok") : "warn"}
+          status={dockerReady ? (last.docker?.result === "fail" ? "Test failed" : "Ready") : report.docker.installed ? "Engine stopped" : "Needs setup"}
+          detail={
+            dockerReady ? (
+              <>
+                {report.dockerEngine ? engineName(report.dockerEngine) : "Docker"} · {testLine(last.docker)}
+              </>
+            ) : report.docker.installed ? (
+              "A container engine is installed but not running. Start it to run labs."
+            ) : (
+              "No container engine yet. Docker Desktop, OrbStack or Colima all work."
+            )
+          }
+          hint={dockerReady ? freeHint("docker") : undefined}
+          actions={dockerReady ? testBtn("docker") : <Button variant="learn" size="sm" onClick={() => fix("docker")}>Fix</Button>}
+          testing={testing === "docker"}
+          onTestDone={refreshLast}
+        />
+        <LabTypeRow
+          kind="vm"
+          icon={<TypeIcon><Server className="size-4" /></TypeIcon>}
+          title="VM labs"
+          tone={!vmApplicable ? "muted" : vmProvider ? (last.vm?.result === "fail" ? "fail" : "ok") : "warn"}
+          status={!vmApplicable ? "Not on this machine" : vmProvider ? (last.vm?.result === "fail" ? "Test failed" : "Ready") : "Needs setup"}
+          detail={
+            !vmApplicable ? (
+              "No local hypervisor runs on this machine. VM labs can run on a server instead."
+            ) : vmProvider ? (
+              <>
+                {providerLabel(vmProvider)}
+                {vmReadyList.length > 1 && !preferred ? " (automatic, change in Settings)" : ""} · {testLine(last.vm)}
+              </>
+            ) : hasHypervisor ? (
+              "Vagrant or the hypervisor's Vagrant plugin is missing."
+            ) : (
+              "Needed for Active Directory, Windows and multi-host labs. Install a hypervisor."
+            )
+          }
+          hint={vmProvider ? freeHint("vm") : undefined}
+          actions={
+            !vmApplicable ? (
+              <Button variant="outline" size="sm" onClick={() => onNavigate("server")}>Use a server</Button>
+            ) : vmProvider ? (
+              <>
+                {lowFor("vm") && <Button variant="ghost" size="sm" onClick={() => onNavigate("server")}>Use a server</Button>}
+                {testBtn("vm")}
+              </>
+            ) : (
+              <Button variant="learn" size="sm" onClick={() => fix(hasHypervisor ? "vagrant" : "vm")}>Fix</Button>
+            )
+          }
+          testing={testing === "vm"}
+          onTestDone={refreshLast}
+        />
+      </Panel>
 
-      {/* 4. Containers + VMs side by side on wide windows */}
       <div className="grid items-start gap-5 lg:grid-cols-2">
+        {/* Running now */}
+        <Panel>
+          <PanelHeader title="Running now" action={labMem > 0 ? <span className="text-[11.5px] tabular-nums text-muted-foreground">{fmtBytes(labMem)} in use</span> : undefined} />
+          {workloads === null ? (
+            <ListSkeleton />
+          ) : workloads.length === 0 ? (
+            <p className="px-3.5 py-3 text-[12.5px] text-muted-foreground">Nothing running.</p>
+          ) : (
+            workloads.map((w) => {
+              const key = `${w.kind}:${w.id}`;
+              const name = w.id === "selftest" ? "Setup test" : (titles[w.id] ?? w.id);
+              const meta =
+                w.kind === "docker"
+                  ? `${w.count} container${w.count === 1 ? "" : "s"}${w.memBytes ? ` · ${fmtBytes(w.memBytes)}` : ""}`
+                  : `${w.count} VM${w.count === 1 ? "" : "s"}${w.provider ? ` · ${PROVIDER_LABELS[w.provider] ?? w.provider}` : ""}`;
+              return (
+                <div key={key} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
+                  {w.kind === "docker" ? <Container className="size-4 shrink-0 text-muted-foreground" /> : <Server className="size-4 shrink-0 text-muted-foreground" />}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12.5px] font-medium">{name}</p>
+                    <p className="text-[11.5px] tabular-nums text-muted-foreground">{meta}</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => stop(w)} disabled={stopping !== null}>
+                    {stopping === key ? <><Spinner className="size-3.5" /> Stopping…</> : <><Square className="size-3" /> Stop</>}
+                  </Button>
+                </div>
+              );
+            })
+          )}
+        </Panel>
+
+        {/* Downloads */}
         <Panel>
           <PanelHeader
-            title="Containers"
+            title="Downloads"
             action={
-              dockerReady ? null : !report.docker.installed ? (
-                <Install id="docker" onClick={() => installDep("docker", "Installing the container engine…")}>Install Docker</Install>
-              ) : (
-                <Button variant="outline" size="sm" onClick={() => onRefresh()}><RefreshCw className="size-3.5" /> Re-check</Button>
-              )
+              storage && storeItems.length > 0 && !confirmClean ? (
+                <Button variant="outline" size="sm" onClick={() => setConfirmClean(true)} disabled={cleaning}><Trash2 className="size-3.5" /> Clean up</Button>
+              ) : undefined
             }
           />
-          <Row name="Engine" ok={report.docker.installed ? report.dockerRunning : false} detail={!report.docker.installed ? "not installed" : !report.dockerRunning ? "stopped" : report.dockerEngine ? ENGINE_NAME[report.dockerEngine] : "running"} />
-          <Row name="Docker" ok={report.docker.installed} detail={ver(report.docker)} />
-          <Row name="Docker Compose" ok={report.docker.installed ? report.dockerCompose.installed : undefined} detail={ver(report.dockerCompose)} />
-          <Row name="Running containers" detail={m ? String(m.containers) : "…"} />
-        </Panel>
-
-        <Panel>
-          <PanelHeader title="Virtual machines" />
-          {hypervisors.map((p) => (
-            <Row
-              key={p.provider}
-              name={providerLabel(p)}
-              ok={p.hypervisor === false ? false : undefined}
-              detail={p.hypervisor === true ? "installed" : p.hypervisor === false ? "not installed" : "built in"}
-              action={
-                p.hypervisor === true
-                  ? undefined
-                  : INSTALLABLE[p.provider]
-                    ? <Install id={p.provider} onClick={() => installDep(INSTALLABLE[p.provider]!, `Installing ${providerLabel(p)}…`)}>Install</Install>
-                    : DOWNLOAD[p.provider]
-                      ? <Button variant="outline" size="sm" onClick={() => openUrl(DOWNLOAD[p.provider]!).catch(() => {})}><ExternalLink className="size-3.5" /> Get</Button>
-                      : undefined
-              }
-            />
-          ))}
-          <Row
-            name="Vagrant"
-            ok={report.vagrant.installed}
-            detail={ver(report.vagrant)}
-            action={!report.vagrant.installed ? <Install id="vagrant" onClick={() => installDep("vagrant", "Installing Vagrant…")}>Install</Install> : undefined}
-          />
-          {localPlugins.map((p) => (
-            <Row
-              key={p.provider}
-              name={providerLabel(p)}
-              mono={p.plugin}
-              ok={p.pluginInstalled}
-              detail={p.pluginInstalled ? "installed" : "not installed"}
-              action={report.vagrant.installed && !p.pluginInstalled && p.plugin ? <Install id={p.plugin} onClick={() => installPlugin(p.plugin!)}>Install</Install> : undefined}
-            />
-          ))}
+          {storage === null ? (
+            <ListSkeleton />
+          ) : (
+            <>
+              <button
+                onClick={() => setShowStorage((v) => !v)}
+                disabled={storeItems.length === 0}
+                className="flex w-full items-center gap-3 border-b border-border px-3.5 py-2.5 text-left last:border-b-0 enabled:hover:bg-muted/40"
+              >
+                <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", showStorage && "rotate-90", storeItems.length === 0 && "opacity-0")} />
+                <div className="min-w-0 flex-1 text-[12.5px]">
+                  <p className="font-medium">{storeItems.length ? `${fmtBytes(storeTotal)} of lab downloads` : "No lab downloads yet"}</p>
+                  <p className="text-[11.5px] text-muted-foreground">
+                    {storage.images.length} container image{storage.images.length === 1 ? "" : "s"} · {storage.boxes.length} VM image{storage.boxes.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+              </button>
+              {showStorage &&
+                storeItems.map((it) => (
+                  <div key={it.name} className="flex items-center gap-3 border-b border-border py-1.5 pr-3.5 pl-10 text-[12px] last:border-b-0">
+                    <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-muted-foreground">{it.name}</span>
+                    <span className="tabular-nums text-muted-foreground">{fmtBytes(it.bytes)}</span>
+                  </div>
+                ))}
+              {confirmClean && (
+                <div className="flex flex-wrap items-center gap-3 border-t border-border bg-muted/30 px-3.5 py-3">
+                  <p className="min-w-0 flex-1 text-[12px]">Remove {fmtBytes(storeTotal)}? Labs download what they need again on their next start. Anything in use stays.</p>
+                  <div className="flex gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmClean(false)} disabled={cleaning}>Cancel</Button>
+                    <Button variant="destructive" size="sm" onClick={clean} disabled={cleaning}>
+                      {cleaning ? <><Spinner className="size-3.5" /> Removing…</> : "Remove"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {freed !== null && !confirmClean && (
+                <p className="border-t border-border px-3.5 py-2 text-[12px] text-muted-foreground">{freed > 0 ? `Freed ${fmtBytes(freed)}.` : "Nothing could be removed (all in use)."}</p>
+              )}
+            </>
+          )}
         </Panel>
       </div>
 
-      {/* 6. Installer log: slide-in drawer pinned to the bottom of the window */}
-      {(busy || log.length > 0) && (
-        <div className="fixed inset-x-4 bottom-4 z-40 ml-auto max-w-xl animate-rise-in overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/50">
-          <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
-            {busy ? <Spinner className="size-3.5" /> : <Terminal className="size-3.5 text-muted-foreground" />}
-            <h3 className="text-[13px] font-medium">{busy ? "Installing…" : "Installer"}</h3>
-            <button
-              onClick={() => setLog([])}
-              disabled={!!busy}
-              className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
-              aria-label="Close installer log"
-            >
-              <X className="size-3.5" />
-            </button>
-          </div>
-          <pre className="max-h-48 overflow-auto px-3.5 py-3 font-mono text-[11.5px] leading-relaxed text-muted-foreground">
-            {log.join("\n")}
-            <div ref={logEnd} />
-          </pre>
-        </div>
-      )}
+      {/* Tool versions, for people who want them */}
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[12.5px] text-muted-foreground hover:text-foreground">
+          <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" /> Details
+        </summary>
+        <Panel className="mt-2.5">
+          <DetailRow name="Container engine" value={report.dockerEngine ? engineName(report.dockerEngine) : report.dockerRunning ? "running" : "not running"} bad={!report.dockerRunning} />
+          <DetailRow name="Docker CLI" value={ver(report.docker)} bad={!report.docker.installed} />
+          <DetailRow name="Docker Compose" value={ver(report.dockerCompose)} bad={!report.dockerCompose.installed} />
+          <DetailRow name="Vagrant" value={ver(report.vagrant)} bad={hasHypervisor && !report.vagrant.installed} />
+          {hypervisors.map((p) => (
+            <DetailRow
+              key={p.provider}
+              name={providerLabel(p)}
+              value={p.hypervisor === true ? (p.plugin ? (p.pluginInstalled ? `installed · ${p.plugin}` : `plugin ${p.plugin} missing`) : "installed") : p.hypervisor === false ? "not installed" : "built in"}
+              bad={p.hypervisor === true && !p.pluginInstalled}
+            />
+          ))}
+          <DetailRow name={report.pkgManager.name} value={report.pkgManager.installed ? "installed" : "not installed"} bad={!report.pkgManager.installed} />
+        </Panel>
+      </details>
     </div>
   );
 }

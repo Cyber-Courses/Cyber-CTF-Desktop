@@ -12,10 +12,8 @@ import { NetworkDiagram } from "@/components/labs/network-diagram";
 import { DeploySteps, duration } from "@/components/labs/deploy-steps";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/lib/use-labs";
 import { apiQuery, labAttackShell, labCheck, exegolShell, exegolStart, exegolStatus, exegolStop, serverList, type ExegolStatus, type LabCheck, type ServerHost, type LabStatus } from "@/lib/tauri";
-import { getAttackImage, getAutoAttackBox, setAutoAttackBox } from "@/lib/settings";
+import { getAttackImage, getAutoAttackBox } from "@/lib/settings";
 import { cn } from "@/lib/utils";
-
-type Tab = "overview" | "brief" | "deployment";
 
 export function LabDetail({
   lab,
@@ -44,8 +42,8 @@ export function LabDetail({
   const [exegolBusy, setExegolBusy] = useState(false);
   const [exegolLog, setExegolLog] = useState<string[]>([]);
   const [check, setCheck] = useState<LabCheck | "checking" | null>(null);
-  const [tab, setTab] = useState<Tab>("overview");
-  const [autoAttack, setAutoAttack] = useState(() => getAutoAttackBox());
+  // Set in Settings; read once per visit.
+  const [autoAttack] = useState(() => getAutoAttackBox());
   const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
@@ -66,14 +64,6 @@ export function LabDetail({
   const RuntimeIcon = rt?.runtime === "VM" ? Server : Container;
   const isDocker = rt?.runtime !== "VM";
   const remote = !!status?.host;
-
-  // Follow the start-up while it runs; back to the overview once the lab is up.
-  const [shownTab, setShownTab] = useState<Tab | null>(null);
-  const activeTab: Tab = shownTab ?? (starting ? "deployment" : tab);
-  const pick = (t: Tab) => {
-    setTab(t);
-    setShownTab(t);
-  };
 
   async function verify() {
     setCheck("checking");
@@ -247,61 +237,41 @@ export function LabDetail({
       )}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18.75rem]">
-        <div className="min-w-0 space-y-4">
-          <div className="flex gap-1 border-b border-border">
-            {(["overview", "brief", ...(logs.length > 0 || busy ? (["deployment"] as const) : [])] as Tab[]).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => pick(t)}
-                className={cn(
-                  "-mb-px border-b-2 px-3 py-2 text-[0.8125rem] capitalize transition-colors",
-                  activeTab === t ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-
-          {activeTab === "overview" && (
-            <div className="space-y-5">
-              {lab.question && (
-                <Panel>
-                  <PanelHeader title="Objective" />
-                  <p className="p-4 text-[0.8125rem] leading-relaxed text-foreground">{lab.question}</p>
-                </Panel>
-              )}
-              {running && status && status.machines.length > 0 ? (
-                <NetworkDiagram machines={status.machines} networks={status.networks} host={status.host} attacker={exegol ? { running: exegol.running, ip: exegol.ip, labNetwork: exegol.labNetwork } : null} />
-              ) : (
-                <Panel>
-                  <PanelHeader title="Network" />
-                  <p className="px-4 py-10 text-center text-[0.78125rem] text-muted-foreground">Start the lab to see its machines and network.</p>
-                </Panel>
-              )}
-            </div>
-          )}
-
-          {activeTab === "brief" && (
+        <div className="min-w-0 space-y-5">
+          {lab.question && (
             <Panel>
-              <div className="p-4">
-                {content === undefined ? (
-                  <div className="flex items-center gap-2 text-[0.78125rem] text-muted-foreground"><Spinner className="size-4" /> Loading the brief…</div>
-                ) : content ? (
-                  <Markdown content={content} className="space-y-3 text-[0.8125rem] leading-relaxed text-foreground" />
-                ) : (
-                  <p className="text-[0.78125rem] text-muted-foreground">No briefing for this lab yet. Start it and dig in.</p>
-                )}
-              </div>
+              <PanelHeader title="Objective" />
+              <p className="p-4 text-[0.8125rem] leading-relaxed text-foreground">{lab.question}</p>
             </Panel>
           )}
 
-          {activeTab === "deployment" && (
+          {(logs.length > 0 || busy) && (
             <Panel>
               <DeploySteps lines={logs} busy={busy} ready={running} />
             </Panel>
           )}
+
+          {running && status && status.machines.length > 0 ? (
+            <NetworkDiagram machines={status.machines} networks={status.networks} host={status.host} attacker={exegol ? { running: exegol.running, ip: exegol.ip, labNetwork: exegol.labNetwork } : null} />
+          ) : (
+            <Panel>
+              <PanelHeader title="Network" />
+              <p className="px-4 py-10 text-center text-[0.78125rem] text-muted-foreground">Start the lab to see its machines and network.</p>
+            </Panel>
+          )}
+
+          <Panel>
+            <PanelHeader title="Brief" />
+            <div className="p-4">
+              {content === undefined ? (
+                <div className="flex items-center gap-2 text-[0.78125rem] text-muted-foreground"><Spinner className="size-4" /> Loading the brief…</div>
+              ) : content ? (
+                <Markdown content={content} className="space-y-3 text-[0.8125rem] leading-relaxed text-foreground" />
+              ) : (
+                <p className="text-[0.78125rem] text-muted-foreground">No briefing for this lab yet. Start it and dig in.</p>
+              )}
+            </div>
+          </Panel>
         </div>
 
         <aside className="h-fit space-y-4 lg:sticky lg:top-2">
@@ -335,20 +305,6 @@ export function LabDetail({
                 </p>
                 {!remote && exegol && !exegol.imagePresent && !exegol.running && (
                   <p className="text-[0.71875rem] text-amber-500">The first start downloads <span className="font-mono">{getAttackImage()}</span> (several GB).</p>
-                )}
-                {!remote && (
-                  <label className="flex cursor-pointer items-center gap-2 text-[0.75rem] text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={autoAttack}
-                      onChange={(e) => {
-                        setAutoAttack(e.target.checked);
-                        setAutoAttackBox(e.target.checked);
-                      }}
-                      className="accent-[var(--learn)]"
-                    />
-                    Start with the lab
-                  </label>
                 )}
                 {running && !remote && (
                   <div className="space-y-2">

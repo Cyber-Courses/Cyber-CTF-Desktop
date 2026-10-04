@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 
 type Tab = "labs";
 
-/** Labs CyberCTF runs on its own infrastructure, the player just opens them in a browser.
+/** Labs Cyber CTF runs on its own infrastructure, the player just opens them in a browser.
  *  Distinct from Server (your hardware) and Cloud (your account). Backend not built yet. */
 export function HostedScreen({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   return (
@@ -19,7 +19,7 @@ export function HostedScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
             <span className="rounded border border-border px-1.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground/70">Early access</span>
           </div>
           <p className="mt-1 max-w-xl text-[13px] text-muted-foreground">
-            Web labs we run on CyberCTF&rsquo;s own infrastructure. Open them straight in your browser, nothing to install, download, or run on your machine.
+            Web labs we run on Cyber CTF&rsquo;s own infrastructure. Open them straight in your browser, nothing to install, download, or run on your machine.
           </p>
         </div>
         <Globe className="hidden size-10 shrink-0 text-muted-foreground/40 sm:block" />

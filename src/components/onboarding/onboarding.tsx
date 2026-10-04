@@ -1,28 +1,21 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  authLogin,
-  authStatus,
-  installDependency,
-  machineOpenSetup,
-  systemCheck,
-  type AuthStatus,
-  type SystemReport,
-} from "@/lib/tauri";
+import { MachineStepBody, SetupOutcome, canContinue, machineSteps, nextLabel, stepMeta, useMachineSetup, type MachineStep } from "@/components/machine/setup-steps";
+import { authLogin, authStatus, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-const STEP_COUNT = 4;
+type OnboardingStep = "welcome" | "signin" | MachineStep | "done";
 
-function StepHeader({ icon, title, description }: { icon: IconName; title: string; description: string }) {
+function StepHeader({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
   return (
     <div className="text-center">
       <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-border bg-surface">
-        <Icon name={icon} className="size-6 text-foreground" />
+        {icon}
       </div>
       <h1 className="mt-6 text-2xl font-semibold tracking-tight">{title}</h1>
       <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">{description}</p>
@@ -59,25 +52,28 @@ function SummaryRow({ ok, label, value }: { ok: boolean; label: string; value: s
 }
 
 export function Onboarding({ onComplete }: { onComplete: () => void }) {
-  const [step, setStep] = useState(0);
+  const [i, setI] = useState(0);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [report, setReport] = useState<SystemReport | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
-  const [installing, setInstalling] = useState(false);
-  const [installerOpened, setInstallerOpened] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
-  const logEnd = useRef<HTMLDivElement>(null);
 
-  const refreshReport = () => systemCheck().then(setReport).catch(() => setReport(null));
+  const refreshReport = () => {
+    systemCheck().then(setReport).catch(() => setReport(null));
+  };
   useEffect(() => {
     authStatus().then(setAuth).catch(() => setAuth(null));
     refreshReport();
+    // Poll so an install finished in a native installer is picked up without a re-check.
+    const id = setInterval(refreshReport, 5000);
+    return () => clearInterval(id);
   }, []);
-  useEffect(() => logEnd.current?.scrollIntoView({ block: "end" }), [logs]);
 
-  const dockerReady = report ? report.docker.installed && report.dockerRunning : false;
-  const next = () => setStep((s) => Math.min(s + 1, STEP_COUNT - 1));
-  const back = () => setStep((s) => Math.max(s - 1, 0));
+  // The machine steps are the same ones the "Set up this machine" window shows.
+  const setup = useMachineSetup(report, refreshReport);
+  const steps: OnboardingStep[] = ["welcome", "signin", ...machineSteps(report), "done"];
+  const step = steps[Math.min(i, steps.length - 1)];
+  const next = () => setI((n) => Math.min(n + 1, steps.length - 1));
+  const back = () => setI((n) => Math.max(n - 1, 0));
 
   async function login() {
     setLoggingIn(true);
@@ -90,20 +86,6 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
     }
   }
 
-  async function installDocker() {
-    setInstalling(true);
-    setLogs([]);
-    try {
-      await installDependency("docker", (line) => setLogs((l) => [...l, line]));
-      setInstallerOpened(true);
-    } catch (e) {
-      setLogs((l) => [...l, `✗ ${String(e)}`]);
-    } finally {
-      setInstalling(false);
-      refreshReport();
-    }
-  }
-
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       {/* Draggable title bar (Overlay style has no native bar); room for traffic lights. */}
@@ -112,7 +94,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
           <Image src="/logo-mark.svg" alt="" width={18} height={18} className="size-[18px]" priority />
           <span className="text-xs font-medium tracking-tight text-muted-foreground">Cyber CTF</span>
         </div>
-        {step < STEP_COUNT - 1 && (
+        {step !== "done" && (
           <button onClick={onComplete} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
             Skip setup
           </button>
@@ -120,15 +102,15 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
       </div>
 
       {/* Progress segments */}
-      <div className="mx-auto flex w-full max-w-md gap-1.5 px-6 pt-1">
-        {Array.from({ length: STEP_COUNT }).map((_, i) => (
-          <div key={i} className={cn("h-1 flex-1 rounded-full transition-colors", i <= step ? "bg-learn" : "bg-muted")} />
+      <div className="mx-auto flex w-full max-w-lg gap-1.5 px-6 pt-1">
+        {steps.map((_, n) => (
+          <div key={n} className={cn("h-1 flex-1 rounded-full transition-colors", n <= i ? "bg-learn" : "bg-muted")} />
         ))}
       </div>
 
       <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-8">
-        <div key={step} className="w-full max-w-md animate-rise-in">
-          {step === 0 && (
+        <div key={step} className="w-full max-w-lg animate-rise-in">
+          {step === "welcome" && (
             <div>
               <div className="text-center">
                 <div className="mx-auto flex size-16 items-center justify-center rounded-2xl border border-border bg-surface">
@@ -136,21 +118,22 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                 </div>
                 <h1 className="mt-6 text-2xl font-semibold tracking-tight">Welcome to Cyber CTF</h1>
                 <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
-                  Run realistic, isolated security labs on your own machine, launched from the app or straight from the website.
+                  Run realistic, isolated security labs on your machine, your own server or the cloud, launched from the app or straight from the website.
                 </p>
               </div>
               <div className="mt-8 space-y-2.5">
-                <Feature icon="container" title="Container & VM labs" description="Docker containers and full virtual machines, isolated per lab." />
-                <Feature icon="shield" title="Real targets" description="Exploit genuinely vulnerable systems, not simulations." />
-                <Feature icon="plug" title="Launch from anywhere" description="Start a lab on the website; it runs here on your machine." />
+                <Feature icon="container" title="Container & VM labs" description="Docker containers and full virtual machines, each lab on its own isolated network." />
+                <Feature icon="cloud" title="Run it where you want" description="On this machine, your own server (Proxmox, ESXi) or the cloud (AWS), which stops itself when you're done." />
+                <Feature icon="shield" title="Real targets" description="Exploit genuinely vulnerable systems from an attack box plugged into the lab network." />
+                <Feature icon="plug" title="Launch from anywhere" description="Start a lab from the website, even on your phone; it runs on the machine you pick." />
               </div>
               <Button variant="learn" size="lg" className="mt-8 w-full" onClick={next}>Get started</Button>
             </div>
           )}
 
-          {step === 1 && (
+          {step === "signin" && (
             <div>
-              <StepHeader icon="user" title="Sign in" description="Connect your Cyber CTF account to register this machine and launch labs from any device." />
+              <StepHeader icon={<Icon name="user" className="size-6 text-foreground" />} title="Sign in" description="Connect your Cyber CTF account to register this machine and launch labs from any device." />
               <div className="mt-8">
                 {auth?.loggedIn ? (
                   <div className="flex items-center gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3.5">
@@ -178,64 +161,37 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
             </div>
           )}
 
-          {step === 2 && (
-            <div>
-              <StepHeader icon="container" title="Set up this machine" description="Container labs run on Docker. Install it in one click, or set it up later." />
-              <div className="mt-8">
-                {report === null ? (
-                  <div className="flex items-center gap-2.5 rounded-lg border border-border bg-card p-3.5 text-sm text-muted-foreground">
-                    <Spinner className="size-4" /> Checking for Docker…
-                  </div>
-                ) : dockerReady ? (
-                  <div className="flex items-center gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3.5">
-                    <span className="flex size-7 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
-                      <Icon name="check" className="size-4" />
-                    </span>
-                    <p className="text-sm font-medium text-foreground">Docker is ready</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3.5">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">Docker {report.docker.installed ? "isn’t running" : "isn’t installed"}</p>
-                        <p className="text-xs text-muted-foreground">Needed for container labs.</p>
-                      </div>
-                      {!installerOpened ? (
-                        <Button variant="learn" onClick={installDocker} disabled={installing}>
-                          {installing ? (<><Spinner className="size-4" /> Installing…</>) : "Install Docker Desktop"}
-                        </Button>
-                      ) : (
-                        <Button variant="outline" onClick={refreshReport}>Re-check</Button>
-                      )}
-                    </div>
-                    {installerOpened && (
-                      <p className="text-xs text-muted-foreground">Finish in Docker’s installer, launch Docker Desktop, then press Re-check.</p>
-                    )}
-                    {logs.length > 0 && (
-                      <pre className="max-h-40 overflow-auto rounded-lg bg-muted p-3 text-xs text-muted-foreground">
-                        {logs.join("\n")}
-                        <div ref={logEnd} />
-                      </pre>
-                    )}
-                    <button onClick={() => machineOpenSetup().catch(() => {})} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
-                      Open the step-by-step guide (recommended on Windows)
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="mt-8 flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={back}>Back</Button>
-                <Button className="flex-1" onClick={next}>{dockerReady ? "Continue" : "I’ll do this later"}</Button>
-              </div>
+          {/* A machine step before the machine check answers: just the loader, no step header. */}
+          {step !== "welcome" && step !== "signin" && step !== "done" && report === null && (
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Spinner className="size-4" /> Checking this machine…
             </div>
           )}
 
-          {step === 3 && (
+          {step !== "welcome" && step !== "signin" && step !== "done" && report !== null && (() => {
+            const meta = stepMeta(step, report);
+            return (
+              <div>
+                <StepHeader icon={<meta.icon className="size-6 text-foreground" />} title={meta.title} description={meta.description} />
+                <div className="mt-8">
+                  <MachineStepBody step={step} report={report} setup={setup} />
+                </div>
+                <div className="mt-8 flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={back} disabled={setup.busy}>Back</Button>
+                  <Button className="flex-1" onClick={next} disabled={setup.busy || !canContinue(step, report, setup)}>{nextLabel(step, report)}</Button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {step === "done" && (
             <div>
-              <StepHeader icon="sparkles" title="You’re all set" description="You can change any of this later in Settings or This machine." />
+              <StepHeader icon={<Icon name="sparkles" className="size-6 text-foreground" />} title="You’re all set" description="You can change any of this later in Settings or This machine." />
               <div className="mt-8 space-y-2.5">
                 <SummaryRow ok={!!auth?.loggedIn} label="Account" value={auth?.loggedIn ? `Signed in${auth.name ? ` as ${auth.name}` : ""}` : "Not signed in"} />
-                <SummaryRow ok={dockerReady} label="Docker" value={dockerReady ? "Ready" : "Set up later"} />
+              </div>
+              <div className="mt-2.5">
+                <SetupOutcome report={report} setup={setup} />
               </div>
               <Button variant="learn" size="lg" className="mt-8 w-full" onClick={onComplete}>Browse labs</Button>
             </div>

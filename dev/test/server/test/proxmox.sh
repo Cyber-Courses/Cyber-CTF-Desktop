@@ -4,6 +4,8 @@
 #   test/proxmox.sh             # PVE_HOST (default: the Fusion host if built, else 192.168.56.10), KEEP=1
 #   PVE_STORAGE / PVE_BRIDGE    # default local-lvm + vmbr1 on the Fusion host, local + vmbr0 on VirtualBox
 #   test/proxmox.sh destroy
+# PVE_AUTH=token: sign in with an API token (root@pam!cyberctf-test, privilege separation
+# off) and upload the snippet over SSH with the test key, like a launcher token host.
 # NO_KVM=1 for a Proxmox host without nested virtualization (the VirtualBox test host on
 # an Intel Mac): creates the VM stopped, then starts it in software emulation (slow).
 set -eu
@@ -23,10 +25,20 @@ RUN="$STATE/runs/proxmox"; mkdir -p "$RUN"
 rm -rf "$RUN/deploy"; cp -R "$LAB/deploy" "$RUN/"
 [ -z "${NO_KVM:-}" ] || printf 'resource "proxmox_virtual_environment_vm" "labhost" {\n  started = false\n}\n' > "$RUN/deploy/terraform/proxmox/test_override.tf"
 KEY=$(test_key)
+AUTH="-e TF_VAR_proxmox_password=$PVE_ROOT_PASSWORD"
+if [ "${PVE_AUTH:-password}" = token ]; then
+  # A fresh token each run (the secret is only shown at creation), and the test key on root.
+  SECRET=$(node "pveum user token remove root@pam cyberctf-test >/dev/null 2>&1; pveum user token add root@pam cyberctf-test --privsep 0 --output-format json" | sed -n 's/.*"value":"\([^"]*\)".*/\1/p')
+  [ -n "$SECRET" ] || { echo "couldn't create the API token"; exit 1; }
+  node "grep -qF '$(cut -d' ' -f2 "$KEY.pub")' ~/.ssh/authorized_keys || echo '$(cat "$KEY.pub")' >> ~/.ssh/authorized_keys"
+  cp "$KEY" "$RUN/ssh_key"; chmod 600 "$RUN/ssh_key"
+  AUTH="-e TF_VAR_proxmox_api_token=root@pam!cyberctf-test=$SECRET -e TF_VAR_proxmox_ssh_private_key_file=/state/ssh_key"
+  echo "== API token root@pam!cyberctf-test (SSH with the test key)"
+fi
 tf() {
   docker run --rm --entrypoint sh -v "$RUN/deploy:/deploy" -v "$RUN:/state" -w /deploy/terraform/proxmox \
     -e TF_DATA_DIR=/state/.terraform \
-    -e TF_VAR_proxmox_endpoint="https://$HOST:8006/" -e TF_VAR_proxmox_username=root@pam -e TF_VAR_proxmox_password="$PVE_ROOT_PASSWORD" \
+    -e TF_VAR_proxmox_endpoint="https://$HOST:8006/" -e TF_VAR_proxmox_username=root@pam $AUTH \
     -e TF_VAR_proxmox_insecure=true -e TF_VAR_proxmox_ssh_address="$HOST" -e TF_VAR_proxmox_storage="${PVE_STORAGE:-local}" -e TF_VAR_proxmox_bridge="${PVE_BRIDGE:-vmbr0}" \
     -e TF_VAR_cpu_type="${PVE_CPU:-$([ -n "${NO_KVM:-}" ] && echo x86-64-v2-AES || echo host)}" \
     -e TF_VAR_lab_slug=invoice-portal-api -e TF_VAR_lab_repository=CyberCTF/invoice-portal-api -e TF_VAR_lab_commit="$(git -C "$LAB" rev-parse HEAD)" \

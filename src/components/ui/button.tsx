@@ -13,7 +13,9 @@ const BASE =
 
 const VARIANTS: Record<Variant, string> = {
   default: "bg-primary text-primary-foreground hover:bg-primary/90",
-  learn: "bg-learn text-white hover:bg-learn/90",
+  // Filled accent: deeper violet, a hairline edge and a top highlight for depth.
+  learn:
+    "border border-white/10 bg-learn-solid text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.16),0_1px_2px_rgb(0_0_0/0.4)] hover:bg-learn-solid-hover active:bg-learn-solid-active",
   outline: "border border-border bg-background hover:bg-muted hover:text-foreground",
   secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
   ghost: "hover:bg-muted hover:text-foreground",

@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { authLogin, authLogout, authStatus, type AuthStatus } from "@/lib/tauri";
+import { useState } from "react";
+import { authLogin, authLogout, type AuthStatus } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Spinner } from "@/components/ui/spinner";
 
-function initials(name: string | null, email: string | null): string {
+export function initials(name: string | null, email: string | null): string {
   const src = (name || email || "").trim();
   if (!src) return "?";
   const parts = src.split(/\s+/);
@@ -14,26 +14,16 @@ function initials(name: string | null, email: string | null): string {
   return src.slice(0, 2).toUpperCase();
 }
 
-export function Account({ onChange }: { onChange: (status: AuthStatus) => void }) {
-  const [status, setStatus] = useState<AuthStatus | null>(null);
+/** Shared sign-in/out actions, so the sidebar and Settings drive the same auth state. */
+export function useAuthActions(onChange: (status: AuthStatus) => void) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const update = (s: AuthStatus) => {
-    setStatus(s);
-    onChange(s);
-  };
-
-  useEffect(() => {
-    authStatus().then(update).catch((e) => setError(String(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   async function login() {
     setBusy(true);
     setError(null);
     try {
-      update(await authLogin());
+      onChange(await authLogin());
     } catch (e) {
       setError(String(e));
     } finally {
@@ -43,8 +33,14 @@ export function Account({ onChange }: { onChange: (status: AuthStatus) => void }
 
   async function logout() {
     await authLogout();
-    update({ loggedIn: false, name: null, email: null });
+    onChange({ loggedIn: false, name: null, email: null });
   }
+
+  return { login, logout, busy, error };
+}
+
+export function Account({ status, onChange }: { status: AuthStatus | null; onChange: (status: AuthStatus) => void }) {
+  const { login, logout, busy, error } = useAuthActions(onChange);
 
   if (!status) return null;
 

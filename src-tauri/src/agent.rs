@@ -55,7 +55,7 @@ fn machine_name() -> String {
     };
     match user {
         Some(u) => format!("{u}'s {os}"),
-        None => format!("CyberCTF {os}"),
+        None => format!("Cyber CTF {os}"),
     }
 }
 
@@ -95,7 +95,7 @@ async fn heartbeat(app: &AppHandle, agent_id: &str) -> Result<()> {
 
 /// Attack box for labs launched from the website onto a host: the default image (the
 /// per-machine setting lives in the webview). Matches DEFAULT_ATTACK_IMAGE in settings.ts.
-const DEFAULT_ATTACK_IMAGE: &str = "kalilinux/kali-rolling";
+const DEFAULT_ATTACK_IMAGE: &str = "cyberctf/attack-box";
 
 #[derive(Default)]
 struct Progress<'a> {

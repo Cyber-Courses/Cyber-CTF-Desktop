@@ -39,14 +39,18 @@ export type DockerEngine = "docker-desktop" | "orbstack" | "colima" | "rancher-d
 export interface SystemReport {
   os: string;
   arch: string;
-  pkgManager: { name: string; installed: boolean };
+  pkgManager: { name: string; installed: boolean; version: string | null };
   docker: Tool;
   dockerRunning: boolean;
   /** The Docker-compatible engine that answers, when one does. */
   dockerEngine: DockerEngine | null;
+  /** Every engine whose Docker context answers; several can run side by side. */
+  dockerEnginesRunning: DockerEngine[];
   dockerCompose: Tool;
   vagrant: Tool;
   terraform: Tool;
+  /** VMware OVF Tool (the ESXi Vagrant plugin needs it). */
+  ovftool: Tool;
   cloudClis: { aws: Tool; azure: Tool; gcloud: Tool };
   vmProviders: ProviderStatus[];
 }
@@ -65,6 +69,17 @@ export interface LabMachine {
   ports: { published: number; target: number }[];
   /** Every network it is plugged into; two or more = a pivot. Empty when unknown. */
   interfaces: LabInterface[];
+  /** Services the lab declares inside it (compose labels); empty when none are declared. */
+  services: LabService[];
+}
+
+/** A service inside a machine, as the lab declares it (`cyberctf.service.<name>`). */
+export interface LabService {
+  name: string;
+  /** As declared: "web", "database", "cache", "worker", "ssh" or free text. */
+  kind: string;
+  /** Ports it listens on inside the container. */
+  ports: number[];
 }
 
 /** A lab network segment (a Docker network = a switch). */
@@ -89,6 +104,8 @@ export interface LabStatus {
 }
 
 export const systemCheck = () => invoke<SystemReport>("system_check");
+/** Points the Docker CLI at another running engine (`docker context use`). */
+export const dockerUseEngine = (engine: DockerEngine) => invoke<void>("docker_use_engine", { engine });
 
 export interface MachineMetrics {
   cpu: number;
@@ -105,7 +122,8 @@ export interface MachineMetrics {
 export const machineMetrics = () => invoke<MachineMetrics>("machine_metrics");
 
 /** Opens the guided "set up this machine" window. */
-export const machineOpenSetup = () => invoke<void>("machine_open_setup");
+/** Opens the setup window, optionally at one step (e.g. "docker", "vm"). */
+export const machineOpenSetup = (step?: string) => invoke<void>("machine_open_setup", { step: step ?? null });
 
 export function labStart(id: string, runtime: Runtime, provider: Provider | null, host: string | null, onLog: (line: string) => void) {
   const logs = new Channel<string>();
@@ -215,6 +233,12 @@ export interface ServerHost {
   insecureTls: boolean;
   /** AWS: terminate a lab's instance this many hours after start (0 = never). */
   autoStopHours: number | null;
+  /** AWS: use the AWS CLI's own credentials (default chain) instead of stored keys. */
+  useCliCreds?: boolean;
+  /** AWS: the CLI profile to use with useCliCreds (null/undefined = default profile). */
+  awsProfile?: string | null;
+  /** AWS: monthly spend limit in USD (null/0 = no limit). */
+  monthlyLimit?: number | null;
 }
 
 /** Form payload; `id` null creates a host, `password` null keeps the stored one. */
@@ -239,6 +263,23 @@ export interface ServerTest {
   message: string;
 }
 
+/** The identity the host AWS CLI resolves from its default credentials, or null if none. */
+/** The identity the AWS CLI resolves for a profile (or the default chain), or null. */
+export const awsCliIdentity = (profile?: string) => invoke<string | null>("aws_cli_identity", { profile: profile ?? null });
+
+/** AWS CLI profiles configured on this machine. */
+export const awsProfiles = () => invoke<string[]>("aws_profiles");
+
+/** This month's AWS spend so far (USD) from Cost Explorer, or null if unavailable. */
+export const awsMonthToDateCost = (profile?: string) => invoke<number | null>("aws_month_to_date_cost", { profile: profile ?? null });
+
+/** Browser sign-in for an AWS profile (or the default) via `aws login`, streaming output. */
+export function awsLogin(profile: string | null, onLog: (line: string) => void) {
+  const logs = new Channel<string>();
+  logs.onmessage = onLog;
+  return invoke<void>("aws_login", { profile, logs });
+}
+
 export const serverList = () => invoke<ServerList>("server_list");
 export const serverSave = (input: ServerHostInput) => invoke<ServerHost>("server_save", { input });
 export const serverRemove = (id: string) => invoke<void>("server_remove", { id });
@@ -246,6 +287,19 @@ export const serverSetDefault = (id: string | null) => invoke<void>("server_set_
 export const serverTest = (id: string) => invoke<ServerTest>("server_test", { id });
 /** How many installed labs are currently running on each host, keyed by host id. */
 export const serverRunningLabs = () => invoke<Record<string, number>>("server_running_labs");
+/** A host's hardware headroom (Proxmox only; null otherwise or on failure). */
+export interface HostCapacity {
+  cores: number;
+  memTotal: number;
+  memFree: number;
+}
+export const serverCapacity = (id: string) => invoke<HostCapacity | null>("server_capacity", { id });
+/** Real-VM self-test: provisions a throwaway VM on the host, checks it, then destroys it. */
+export function serverSelftest(id: string, onEvent: (e: SelfTestEvent) => void) {
+  const events = new Channel<SelfTestEvent>();
+  events.onmessage = onEvent;
+  return invoke<void>("server_selftest", { id, events });
+}
 /** Opens (or focuses) the setup window, for a new host or to edit `id`. */
 export const serverOpenSetup = (id: string | null, kind: "server" | "cloud" = "server") =>
   invoke<void>("server_open_setup", { id, kind });
@@ -302,3 +356,46 @@ export function installVagrantPlugin(plugin: string, onLog: (line: string) => vo
   logs.onmessage = onLog;
   return invoke<void>("install_vagrant_plugin", { plugin, logs });
 }
+
+/** One step of a setup self-test, as it progresses. */
+export interface SelfTestEvent {
+  step: string;
+  label: string;
+  state: "running" | "ok" | "fail" | "skip";
+  detail: string | null;
+}
+
+/** Runs a setup self-test: `docker` boots a throwaway two-container lab, `vm` checks the hypervisor + Vagrant. */
+export function machineSelftest(kind: "docker" | "vm", provider: Provider | null, onEvent: (e: SelfTestEvent) => void) {
+  const events = new Channel<SelfTestEvent>();
+  events.onmessage = onEvent;
+  return invoke<void>("machine_selftest", { kind, provider, events });
+}
+
+/** Starts a self-test's download (test image / VM box) in the background, so the test itself is quick. */
+export const machineSelftestPrefetch = (kind: "docker" | "vm", provider: Provider | null) => invoke<void>("machine_selftest_prefetch", { kind, provider });
+
+/** Something Cyber CTF is running here: a lab's containers or VMs, or a setup test. */
+export interface Workload {
+  id: string;
+  kind: "docker" | "vm";
+  count: number;
+  /** 0 when unknown (VMs). */
+  memBytes: number;
+  provider: string | null;
+}
+export const machineWorkloads = () => invoke<Workload[]>("machine_workloads");
+export const machineWorkloadStop = (kind: "docker" | "vm", id: string) => invoke<void>("machine_workload_stop", { kind, id });
+
+export interface StoredItem {
+  name: string;
+  bytes: number;
+}
+/** Images and VM boxes Cyber CTF downloaded, present on this machine. */
+export interface Storage {
+  images: StoredItem[];
+  boxes: StoredItem[];
+}
+export const machineStorage = (extraImages: string[]) => invoke<Storage>("machine_storage", { extraImages });
+/** Removes them (not ones still in use). Resolves to the bytes freed. */
+export const machineStorageClean = (extraImages: string[]) => invoke<number>("machine_storage_clean", { extraImages });

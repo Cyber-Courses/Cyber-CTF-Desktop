@@ -35,11 +35,27 @@ pub struct ExegolStatus {
     pub shell_cmd: String,
 }
 
-/// The lab's Docker network: Compose labels its networks with the project name.
-async fn lab_network(id: &str) -> Option<String> {
+/// The lab's Docker networks (Compose labels them with the project name), the main one
+/// first: `<project>_default` when the lab has it, so the attack box's reported address
+/// is the one most targets see.
+async fn lab_networks(id: &str) -> Vec<String> {
     let filter = format!("label=com.docker.compose.project=cyberctf-{id}");
-    let out = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await.ok()?;
-    out.lines().map(str::trim).find(|l| !l.is_empty()).map(str::to_string)
+    let out = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await.unwrap_or_default();
+    main_first(out.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect())
+}
+
+fn main_first(mut networks: Vec<String>) -> Vec<String> {
+    networks.sort();
+    if let Some(i) = networks.iter().position(|n| n.ends_with("_default")) {
+        let main = networks.remove(i);
+        networks.insert(0, main);
+    }
+    networks
+}
+
+/// The main lab network.
+async fn lab_network(id: &str) -> Option<String> {
+    lab_networks(id).await.into_iter().next()
 }
 
 pub async fn status(id: &str, image: &str) -> ExegolStatus {
@@ -67,9 +83,10 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
         log(format!("Pulling {image} — a large image, downloads only once…"));
         stream("docker", &["pull", image], None, &[], &mut log).await?;
     }
-    let lab_net = lab_network(id)
-        .await
-        .ok_or_else(|| Error::Invalid("the lab network isn't up — start the lab first".into()))?;
+    let lab_nets = lab_networks(id).await;
+    if lab_nets.is_empty() {
+        return Err(Error::Invalid("the lab network isn't up — start the lab first".into()));
+    }
     let attack_net = format!("cyberctf-{id}-attack");
     // Own network first, then join the lab network: a distinct attack segment that can
     // still reach the targets (so the attacker is not on the same subnet as the lab).
@@ -85,8 +102,11 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
         &mut log,
     )
     .await?;
-    log(format!("Connecting to the lab network {lab_net}…"));
-    run("docker", &["network", "connect", &lab_net, &name], None).await?;
+    // Every lab network, so labs with their own segments (dmz, internal...) are reachable.
+    for lab_net in &lab_nets {
+        log(format!("Connecting to the lab network {}…", super::docker::short_network(id, lab_net)));
+        run("docker", &["network", "connect", lab_net, &name], None).await?;
+    }
     log("✓ Attack box ready — open a shell to start.".into());
     Ok(())
 }
@@ -111,7 +131,7 @@ fn applescript_string(s: &str) -> String {
 }
 
 /// Opens the OS terminal on `command` (a POSIX shell command line), titled
-/// "CyberCTF attack box". The command line itself never stays on screen: the window is
+/// "Cyber CTF attack box". The command line itself never stays on screen: the window is
 /// cleared first, and the command replaces the shell (exec), so leaving the box ends the
 /// session. DOCKER_CLI_HINTS=false drops Docker's "What's next" ad on exit.
 pub fn open_terminal(command: &str) -> Result<()> {
@@ -121,7 +141,7 @@ pub fn open_terminal(command: &str) -> Result<()> {
         // The leading space keeps it out of shell history where HIST_IGNORE_SPACE is on.
         let line = applescript_string(&format!(" clear; DOCKER_CLI_HINTS=false exec {command}"));
         let script = format!(
-            "tell application \"Terminal\"\nactivate\ndo script \"{line}\"\nset custom title of front window to \"CyberCTF attack box\"\nend tell"
+            "tell application \"Terminal\"\nactivate\ndo script \"{line}\"\nset custom title of front window to \"Cyber CTF attack box\"\nend tell"
         );
         std::process::Command::new("osascript").arg("-e").arg(script).spawn()?;
         Ok(())
@@ -134,7 +154,7 @@ pub fn open_terminal(command: &str) -> Result<()> {
         // (POSIX single quotes become double quotes).
         let command = command.replace('\'', "\"");
         std::process::Command::new("cmd")
-            .raw_arg(format!("/c start \"CyberCTF attack box\" cmd /c \"cls & {command}\""))
+            .raw_arg(format!("/c start \"Cyber CTF attack box\" cmd /c \"cls & {command}\""))
             .env("DOCKER_CLI_HINTS", "false")
             .spawn()?;
         Ok(())
@@ -153,7 +173,15 @@ pub fn open_terminal(command: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::applescript_string;
+    use super::{applescript_string, main_first};
+
+    #[test]
+    fn main_lab_network_comes_first() {
+        let nets = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(main_first(nets(&["cyberctf-a_internal", "cyberctf-a_default", "cyberctf-a_dmz"])), nets(&["cyberctf-a_default", "cyberctf-a_dmz", "cyberctf-a_internal"]));
+        assert_eq!(main_first(nets(&["cyberctf-a_lan", "cyberctf-a_dmz"])), nets(&["cyberctf-a_dmz", "cyberctf-a_lan"]));
+        assert!(main_first(Vec::new()).is_empty());
+    }
 
     #[test]
     fn applescript_escaping_keeps_shell_quoting_intact() {

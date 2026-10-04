@@ -1,6 +1,6 @@
-# CyberCTF Desktop
+# Cyber CTF Desktop
 
-Desktop launcher for CyberCTF labs, built with [Tauri 2](https://tauri.app). It runs **Docker labs** (Docker Compose) and **VM labs** (Vagrant, on any supported hypervisor) on the player's machine. Replaces the Electron [Cyber-CTF-Launcher](https://github.com/Cyber-Courses/Cyber-CTF-Launcher).
+Desktop launcher for Cyber CTF labs, built with [Tauri 2](https://tauri.app). It runs **Docker labs** (Docker Compose) and **VM labs** (Vagrant, on any supported hypervisor) on the player's machine. Replaces the Electron [Cyber-CTF-Launcher](https://github.com/Cyber-Courses/Cyber-CTF-Launcher).
 
 ## Architecture
 

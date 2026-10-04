@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MachineSetup } from "@/components/machine/machine-setup";
 import { systemCheck, type SystemReport } from "@/lib/tauri";
 
-/** The guided machine-setup window (opened by `machine_open_setup`). */
+/** The guided machine-setup window (opened by `machine_open_setup`, optionally `?step=`). */
 export default function MachineSetupWindow() {
   const [report, setReport] = useState<SystemReport | null>(null);
+  // Deep link: the step in the URL on open, or a later "Fix" while the window is open.
+  const [startAt, setStartAt] = useState<{ step: string; nonce: number } | null>(() => {
+    const step = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("step");
+    return step ? { step, nonce: 0 } : null;
+  });
   const check = () => {
     systemCheck().then(setReport).catch(() => {});
   };
@@ -18,16 +24,13 @@ export default function MachineSetupWindow() {
     const id = setInterval(check, 5000);
     return () => clearInterval(id);
   }, []);
+  useEffect(() => {
+    const off = listen<string>("machine-setup-step", (e) => setStartAt({ step: e.payload, nonce: Date.now() }));
+    return () => {
+      off.then((f) => f()).catch(() => {});
+    };
+  }, []);
   const close = () => getCurrentWindow().close().catch(() => {});
 
-  return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      {/* Overlay title bar: room for the traffic lights, drag the window from the strip. */}
-      <div data-tauri-drag-region className="h-10 shrink-0 select-none" />
-      {/* Centered in the window; the bottom pad mirrors the title strip so it sits optically centered. */}
-      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-6 pb-10">
-        <MachineSetup report={report} onRefresh={check} onClose={close} />
-      </main>
-    </div>
-  );
+  return <MachineSetup report={report} onRefresh={check} onClose={close} startAt={startAt} />;
 }

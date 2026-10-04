@@ -2,13 +2,16 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, CheckCircle2, Cloud, ExternalLink, HardDrive, Network, Play, Server, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, Cloud, ExternalLink, HardDrive, Network, Play, Server, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/labs/log-console";
 import { Requirement } from "@/components/machine/setup-steps";
 import {
   awsCliIdentity,
+  awsLogin,
+  awsMonthToDateCost,
+  awsProfiles,
   cloudLogin,
   serverSave,
   serverTest,
@@ -52,7 +55,7 @@ export const EMPTY_HOST: ServerHostInput = {
 };
 
 /** A new AWS account: region + access keys. */
-export const EMPTY_CLOUD: ServerHostInput = { ...EMPTY_HOST, provider: "aws", host: "eu-west-3", datastore: "t3.medium", insecureTls: false, autoStopHours: 4 };
+export const EMPTY_CLOUD: ServerHostInput = { ...EMPTY_HOST, provider: "aws", host: "eu-west-3", useCliCreds: true, insecureTls: false, autoStopHours: 4 };
 
 /** Common AWS regions for the cloud setup dropdown (code, human name). */
 const AWS_REGIONS: [string, string][] = [
@@ -65,15 +68,6 @@ const AWS_REGIONS: [string, string][] = [
   ["ap-southeast-1", "Asia Pacific (Singapore)"],
   ["ap-northeast-1", "Asia Pacific (Tokyo)"],
 ];
-
-/** Instance types offered, with spec and approximate us-east-1 on-demand Linux $/hour. */
-const AWS_INSTANCE_TYPES: { type: string; spec: string; usdPerHour: number }[] = [
-  { type: "t3.small", spec: "2 vCPU · 2 GiB", usdPerHour: 0.0208 },
-  { type: "t3.medium", spec: "2 vCPU · 4 GiB", usdPerHour: 0.0416 },
-  { type: "t3.large", spec: "2 vCPU · 8 GiB", usdPerHour: 0.0832 },
-  { type: "t3.xlarge", spec: "4 vCPU · 16 GiB", usdPerHour: 0.1664 },
-];
-const DEFAULT_INSTANCE = "t3.medium";
 
 /** Proxmox's own logo (official media kit, unaltered), or a neutral mark for ESXi / AWS. */
 export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
@@ -94,7 +88,7 @@ export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
   );
 }
 
-type StepKey = "provider" | "hypervisor" | "tools" | "connection" | "placement" | "account" | "connect" | "test";
+type StepKey = "provider" | "hypervisor" | "tools" | "connection" | "placement" | "account" | "credentials" | "options" | "connect" | "test";
 /** Cloud providers offered in the cloud setup. AWS is the supported target; Azure and GCP
  *  connect via their CLI's own sign-in (no lab provisioning yet). */
 const CLOUD_META: Record<CloudProvider, { label: string; cli: string; color: string; ready: boolean }> = {
@@ -102,6 +96,16 @@ const CLOUD_META: Record<CloudProvider, { label: string; cli: string; color: str
   azure: { label: "Microsoft Azure", cli: "az", color: "#3b8eea", ready: false },
   gcp: { label: "Google Cloud", cli: "gcloud", color: "#34a853", ready: false },
 };
+
+/** The provider picker. Only AWS is a real target today; the rest are coming soon.
+ *  `logo` marks the ones with an SVG in public/brands (others fall back to a cloud icon). */
+const CLOUD_PICKER: { id: string; label: string; ready: boolean; logo: boolean }[] = [
+  { id: "aws", label: "Amazon Web Services", ready: true, logo: true },
+  { id: "azure", label: "Microsoft Azure", ready: false, logo: true },
+  { id: "gcp", label: "Google Cloud", ready: false, logo: true },
+  { id: "digitalocean", label: "DigitalOcean", ready: false, logo: false },
+  { id: "hetzner", label: "Hetzner", ready: false, logo: false },
+];
 
 export function HostSetupPage({
   initial,
@@ -132,23 +136,46 @@ export function HostSetupPage({
 
   const editing = initial.id !== null;
   const cloud = v.provider === "aws";
-  const awsType = v.datastore || DEFAULT_INSTANCE;
-  const awsPrice = AWS_INSTANCE_TYPES.find((t) => t.type === awsType)?.usdPerHour ?? null;
-  // If the AWS CLI already has credentials (aws configure), offer to use them instead of keys.
+  // AWS can connect through the CLI (a profile / browser sign-in) or with access keys.
+  const [profiles, setProfiles] = useState<string[]>([]);
   const [awsIdentity, setAwsIdentity] = useState<string | null>(null);
+  const [checkingId, setCheckingId] = useState(false);
+  const [mtdCost, setMtdCost] = useState<number | null>(null);
   useEffect(() => {
-    if (cloud) awsCliIdentity().then(setAwsIdentity).catch(() => {});
+    if (cloud) awsProfiles().then(setProfiles).catch(() => {});
   }, [cloud]);
+  useEffect(() => {
+    if (!cloud) return;
+    setCheckingId(true);
+    awsCliIdentity(v.awsProfile ?? undefined)
+      .then(setAwsIdentity)
+      .catch(() => setAwsIdentity(null))
+      .finally(() => setCheckingId(false));
+    awsMonthToDateCost(v.awsProfile ?? undefined).then(setMtdCost).catch(() => setMtdCost(null));
+  }, [cloud, v.awsProfile]);
+
+  async function awsSignIn() {
+    setSigningIn(true);
+    setSignInLog(["Signing in to AWS…"]);
+    try {
+      await awsLogin(v.awsProfile ?? null, (l) => setSignInLog((x) => [...(x ?? []), l]));
+      const id = await awsCliIdentity(v.awsProfile ?? undefined);
+      setAwsIdentity(id);
+      setSignInLog((x) => [...(x ?? []), id ? `✓ Signed in as ${id}` : "✗ Not signed in"]);
+    } catch (e) {
+      setSignInLog((x) => [...(x ?? []), `✗ ${String(e)}`]);
+    } finally {
+      setSigningIn(false);
+    }
+  }
   const kind = KIND[v.provider];
   const status = report?.vmProviders.find((p) => p.provider === v.provider);
 
   // The ordered steps for this setup. Editing skips the hypervisor choice.
   const steps: StepKey[] = cloud
     ? editing
-      ? ["account", "test"]
-      : cloudProvider === "aws"
-        ? ["provider", "tools", "account", "test"]
-        : ["provider", "tools", "connect"]
+      ? ["account", "credentials", "options", "test"]
+      : ["provider", "tools", "account", "credentials", "options", "test"]
     : editing
       ? ["connection", "placement", "test"]
       : ["hypervisor", "tools", "connection", "placement", "test"];
@@ -289,7 +316,9 @@ export function HostSetupPage({
             description={cloud ? `The ${CLOUD_META[cloudProvider].label} CLI, used to connect and provision.` : `What the launcher needs here to run labs on ${KIND[v.provider].label}.`}
           >
             <div className="overflow-hidden rounded-lg border border-border">
-              {cloud ? (
+              {!report ? (
+                <div className="flex items-center gap-2 px-3.5 py-3 text-[12.5px] text-muted-foreground"><Spinner className="size-4" /> Checking this machine…</div>
+              ) : cloud ? (
                 <>
                   <Requirement
                     ok={cloudCliOk}
@@ -404,24 +433,70 @@ export function HostSetupPage({
         )}
 
         {key === "account" && (
-          <Step icon={Cloud} title="AWS account" description="An IAM user's access keys and a region. Labs run as EC2 instances in your account.">
+          <Step icon={Cloud} title="How to connect" description="Choose how the launcher signs in to AWS.">
             <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[12px] text-amber-500">
-              Labs run in your account and are billed there{awsPrice != null ? ` (about $${awsPrice.toFixed(3)}/hour for ${awsType})` : ""} until they stop. Stop, and the lab&apos;s auto-stop, destroy everything the lab created.
+              Labs run in your account and are billed while they run; the cost depends on each lab&apos;s size. Stopping a lab, or its auto-stop, destroys what it created.
             </p>
-            {awsIdentity && (
-              <div className="mb-4 grid gap-2 sm:grid-cols-2">
-                <button type="button" onClick={() => set("useCliCreds", true)} className={cn("rounded-lg border p-3 text-left transition-colors", v.useCliCreds ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60")}>
-                  <span className="block text-[12.5px] font-medium">Use the AWS CLI&apos;s credentials</span>
-                  <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">Signed in as {awsIdentity}</span>
-                </button>
-                <button type="button" onClick={() => set("useCliCreds", false)} className={cn("rounded-lg border p-3 text-left transition-colors", !v.useCliCreds ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60")}>
-                  <span className="block text-[12.5px] font-medium">Enter access keys</span>
-                  <span className="mt-0.5 block text-[11px] text-muted-foreground">An IAM user&apos;s key and secret</span>
-                </button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" onClick={() => set("useCliCreds", true)} className={cn("rounded-lg border p-3 text-left transition-colors", v.useCliCreds ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60")}>
+                <span className="block text-[12.5px] font-medium">Use the AWS CLI</span>
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">A profile or browser sign-in. No secret stored.</span>
+              </button>
+              <button type="button" onClick={() => set("useCliCreds", false)} className={cn("rounded-lg border p-3 text-left transition-colors", !v.useCliCreds ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60")}>
+                <span className="block text-[12.5px] font-medium">Access keys</span>
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">An IAM user&apos;s key and secret.</span>
+              </button>
+            </div>
+            <Nav
+              left={i > 0 ? <Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button> : <Button variant="ghost" onClick={onDone}>Cancel</Button>}
+              right={<Button variant="learn" onClick={next}>Continue</Button>}
+            />
+          </Step>
+        )}
+
+        {key === "credentials" && (
+          <Step icon={Cloud} title={v.useCliCreds ? "AWS CLI" : "Access keys"} description={v.useCliCreds ? "Pick a profile, or sign in with the browser." : "An IAM user's access keys."}>
+            {v.useCliCreds ? (
+              <div className="space-y-3">
+                {profiles.length > 0 && (
+                  <Field label="Profile">
+                    <Select value={v.awsProfile ?? ""} onChange={(e) => set("awsProfile", e.target.value || null)}>
+                      <option value="">default</option>
+                      {profiles.map((p) => <option key={p} value={p}>{p}</option>)}
+                    </Select>
+                  </Field>
+                )}
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[12px]">
+                  {checkingId ? (
+                    <span className="flex items-center gap-1.5 text-muted-foreground"><Spinner className="size-3.5" /> Checking…</span>
+                  ) : awsIdentity ? (
+                    <span className="flex items-center gap-1.5 text-emerald-500"><CheckCircle2 className="size-3.5" /> Signed in as {awsIdentity}</span>
+                  ) : (
+                    <span className="text-muted-foreground">Not signed in on this profile.</span>
+                  )}
+                  <Button variant="outline" size="sm" className="ml-auto" onClick={awsSignIn} disabled={signingIn}>
+                    {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (browser)
+                  </Button>
+                </div>
+                {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" />}
               </div>
+            ) : (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Access key ID" hint="An IAM user with EC2 access"><Input {...text("username")} placeholder="AKIA…" /></Field>
+                  <Field label="Secret access key" hint="Stored in your OS keychain">
+                    <Input type="password" value={v.password ?? ""} onChange={(e) => set("password", e.target.value || null)} placeholder={editing ? "Unchanged" : ""} autoComplete="off" />
+                  </Field>
+                </div>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  No keys yet?{" "}
+                  <button type="button" onClick={() => openUrl("https://console.aws.amazon.com/iam/home#/security_credentials").catch(() => {})} className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline">
+                    Create them in the AWS console <ExternalLink className="size-3" />
+                  </button>
+                </p>
+              </>
             )}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Name"><Input {...text("name")} placeholder="My AWS" /></Field>
+            <div className="mt-3">
               <Field label="Region">
                 <Select value={v.host} onChange={(e) => set("host", e.target.value)}>
                   {v.host && !AWS_REGIONS.some(([code]) => code === v.host) && <option value={v.host}>{v.host}</option>}
@@ -429,66 +504,84 @@ export function HostSetupPage({
                 </Select>
               </Field>
             </div>
-            {!v.useCliCreds && (
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <Field label="Access key ID" hint="An IAM user with EC2 access"><Input {...text("username")} placeholder="AKIA…" /></Field>
-                <Field label="Secret access key" hint="Stored in your OS keychain">
-                  <Input type="password" value={v.password ?? ""} onChange={(e) => set("password", e.target.value || null)} placeholder={editing ? "Unchanged" : ""} autoComplete="off" />
-                </Field>
-              </div>
-            )}
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Field label="Instance type">
-                <Select value={awsType} onChange={(e) => set("datastore", e.target.value)}>
-                  {AWS_INSTANCE_TYPES.map((t) => <option key={t.type} value={t.type}>{t.type} ({t.spec})</option>)}
+            {error && <p className="mt-3 text-[12px] text-destructive">{error}</p>}
+            <Nav
+              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
+              right={<Button variant="learn" onClick={next} disabled={!connectionOk}>Continue</Button>}
+            />
+          </Step>
+        )}
+
+        {key === "options" && (
+          <Step icon={Cloud} title="Lab settings" description="Name this account and choose when idle labs stop.">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Name"><Input {...text("name")} placeholder="My AWS" /></Field>
+              <Field label="Auto-stop">
+                <Select value={String(v.autoStopHours ?? 4)} onChange={(e) => set("autoStopHours", Number(e.target.value))}>
+                  {[1, 2, 4, 8, 12, 24].map((h) => <option key={h} value={h}>{h} hour{h > 1 ? "s" : ""}</option>)}
+                  <option value={0}>Never</option>
                 </Select>
-              </Field>
-              <Field label="Auto-stop after (hours)" hint="0 = never">
-                <Input type="number" min={0} max={72} value={v.autoStopHours ?? 4} onChange={(e) => set("autoStopHours", e.target.value === "" ? null : Number(e.target.value))} />
               </Field>
             </div>
             <p className="mt-2 text-[11.5px] text-muted-foreground">
-              {awsPrice != null && (v.autoStopHours ?? 0) > 0
-                ? `About $${(awsPrice * (v.autoStopHours ?? 0)).toFixed(2)} for a ${v.autoStopHours}-hour session. `
-                : ""}
-              The instance terminates itself when the time is up, even if this machine is off. Prices are approximate (us-east-1 on-demand Linux).
+              An auto-stopped lab terminates itself when the time is up, even if this machine is off. Each lab picks its own instance size, so the cost depends on the lab.
             </p>
+            <div className="mt-3">
+              <Field label="Monthly budget (USD)" hint="optional">
+                <Input type="number" min={0} step={5} value={v.monthlyLimit ?? ""} onChange={(e) => set("monthlyLimit", e.target.value === "" ? null : Number(e.target.value))} placeholder="no limit" />
+              </Field>
+              {mtdCost != null && (
+                <p className={cn("mt-1.5 text-[11.5px]", v.monthlyLimit && mtdCost >= v.monthlyLimit ? "text-rose-400" : "text-muted-foreground")}>
+                  Spent this month: ${mtdCost.toFixed(2)}{v.monthlyLimit ? ` of $${v.monthlyLimit.toFixed(2)}` : ""}.
+                </p>
+              )}
+            </div>
             {error && <p className="mt-3 text-[12px] text-destructive">{error}</p>}
             <Nav
-              left={i > 0 ? <Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button> : <Button variant="ghost" onClick={onDone}>Cancel</Button>}
+              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
               right={<Button variant="learn" onClick={saveAndTest} disabled={saving || !connectionOk}>{saving && <Spinner className="size-4" />} Save and test</Button>}
             />
           </Step>
         )}
 
         {key === "provider" && (
-          <Step icon={Cloud} title="Choose a cloud provider" description="Where labs run as throwaway instances in your own account.">
-            <div className="grid grid-cols-3 gap-2.5">
-              {(Object.keys(CLOUD_META) as CloudProvider[]).map((p) => {
-                const m = CLOUD_META[p];
-                const selected = cloudProvider === p;
+          <Step icon={Cloud} title="Choose a cloud provider" description="Where labs run as throwaway instances in your own account. AWS today; more coming.">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+              {CLOUD_PICKER.map((p) => {
+                const selected = p.ready && cloudProvider === p.id;
                 return (
                   <button
-                    key={p}
+                    key={p.id}
                     type="button"
-                    onClick={() => setCloudProvider(p)}
+                    disabled={!p.ready}
+                    onClick={() => p.ready && setCloudProvider(p.id as CloudProvider)}
                     className={cn(
                       "relative rounded-xl border p-4 text-left transition-colors",
-                      selected ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60",
+                      !p.ready
+                        ? "cursor-default border-border opacity-55"
+                        : selected
+                          ? "border-learn bg-learn/5 ring-1 ring-learn/40"
+                          : "border-border hover:border-ring/60",
                     )}
                   >
-                    <span className={cn("absolute right-3 top-3 grid size-4 place-items-center rounded-full border transition-colors", selected ? "border-learn bg-learn text-white" : "border-muted-foreground/30")}>
-                      {selected && <CheckCircle2 className="size-3" />}
-                    </span>
-                    {/* eslint-disable-next-line @next/next/no-img-element -- static export, plain asset */}
-                    <img src={`/brands/${p}.svg`} alt="" className="size-6" draggable={false} />
-                    <p className="mt-2 text-[12.5px] font-medium">{m.label}</p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">{m.ready ? "Available" : "Sign-in only"}</p>
+                    {p.ready && (
+                      <span className={cn("absolute right-3 top-3 grid size-4 place-items-center rounded-full border transition-colors", selected ? "border-learn bg-learn text-white" : "border-muted-foreground/30")}>
+                        {selected && <CheckCircle2 className="size-3" />}
+                      </span>
+                    )}
+                    {p.logo ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- static export, plain asset
+                      <img src={`/brands/${p.id}.svg`} alt="" className="size-6" draggable={false} />
+                    ) : (
+                      <Cloud className="size-6 text-muted-foreground" />
+                    )}
+                    <p className="mt-2 text-[12.5px] font-medium">{p.label}</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">{p.ready ? "Available" : "Coming soon"}</p>
                   </button>
                 );
               })}
             </div>
-            <Nav left={<Button variant="ghost" onClick={onDone}>Cancel</Button>} right={<Button variant="learn" onClick={next}>Continue</Button>} />
+            <Nav left={<Button variant="ghost" onClick={onDone}>Cancel</Button>} right={<Button variant="learn" onClick={next} disabled={!CLOUD_META[cloudProvider]?.ready}>Continue</Button>} />
           </Step>
         )}
 
@@ -607,13 +700,19 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   );
 }
 
-function Select({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+function Select({ className, children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select
-      {...props}
-      className="w-full cursor-pointer rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-foreground outline-none focus:border-ring"
-    >
-      {children}
-    </select>
+    <div className="relative">
+      <select
+        {...props}
+        className={cn(
+          "w-full cursor-pointer appearance-none rounded-md border border-border bg-card px-3 py-2 pr-9 text-[13px] text-foreground outline-none transition-colors hover:border-ring/60 focus:border-ring",
+          className,
+        )}
+      >
+        {children}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+    </div>
   );
 }

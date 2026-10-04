@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { serverList, labLaunch, labStop } from "@/lib/tauri";
-import { getAttackImage } from "@/lib/settings";
+import { serverList, labLaunch, labStop, type Provider } from "@/lib/tauri";
+import { getAttackImage, getVmProvider } from "@/lib/settings";
 import { notify } from "@/lib/notify";
 import type { Lab } from "@/lib/use-labs";
 
@@ -31,8 +31,11 @@ export function useLabActions(refresh: (lab: Lab) => void) {
         if (vm && host === undefined) host = await defaultHostFor(lab);
         // Docker labs go to a server host only when one is picked explicitly.
         const remote = host != null;
-        // Locally, use the first provider the lab supports that isn't a remote hypervisor.
-        const provider = vm && !remote ? (lab.runtime.providers.find((p) => p !== "vmware_esxi" && p !== "proxmox") ?? null) : null;
+        // Locally: the hypervisor picked in Settings when the lab supports it, else the
+        // first provider the lab supports that isn't a remote hypervisor.
+        const preferred = getVmProvider();
+        const local: Provider[] = lab.runtime.providers.filter((p) => p !== "vmware_esxi" && p !== "proxmox");
+        const provider = vm && !remote ? ((preferred && local.includes(preferred) ? preferred : local[0]) ?? null) : null;
         // Remotely the lab network isn't reachable from here: start the attack box next to it.
         await labLaunch(lab.id, provider, remote ? host! : null, remote ? getAttackImage() : null, (line) => setLogs((l) => [...l, line]));
         setLogs((l) => [...l, "✓ Lab is running"]);

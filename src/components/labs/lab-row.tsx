@@ -1,10 +1,10 @@
 "use client";
 
-import { ChevronRight, Container, ExternalLink, Play, Server } from "lucide-react";
+import { CheckCircle2, ChevronRight, Container, ExternalLink, Play, Server, Wrench } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Spinner } from "@/components/ui/spinner";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/lib/use-labs";
-import type { LabStatus } from "@/lib/tauri";
+import { machineOpenSetup, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 /** A compact, Vercel-style action button used inside dense rows. */
@@ -23,7 +23,7 @@ function MiniButton({
 }) {
   const tones = {
     default: "border-border bg-card text-foreground hover:border-ring/60",
-    learn: "border-learn bg-learn text-[#140b2e] font-medium hover:bg-learn/90",
+    learn: "border-white/10 bg-learn-solid text-white font-medium shadow-[inset_0_1px_0_rgb(255_255_255/0.16)] hover:bg-learn-solid-hover active:bg-learn-solid-active",
     danger: "border-transparent bg-destructive/12 text-destructive hover:bg-destructive/20",
   };
   return (
@@ -59,6 +59,8 @@ export function LabRow({
   onStart,
   onStop,
   showDescription = true,
+  solved = false,
+  setup = null,
 }: {
   lab: Lab;
   status?: LabStatus;
@@ -69,6 +71,10 @@ export function LabRow({
   onStart: () => void;
   onStop: () => void;
   showDescription?: boolean;
+  /** The player already solved it (website evidence). */
+  solved?: boolean;
+  /** What this machine is missing to run it (see lab-readiness), or null. */
+  setup?: string | null;
 }) {
   const rt = lab.runtime;
   const native = rt?.architectures.includes(hostArch) ?? true;
@@ -85,7 +91,10 @@ export function LabRow({
       </span>
 
       <div className="w-56 shrink-0">
-        <p className="truncate text-[13.5px] font-medium text-foreground">{lab.title}</p>
+        <p className="flex items-center gap-1.5 truncate text-[0.84375rem] font-medium text-foreground">
+          {solved && <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" aria-label="Solved" />}
+          <span className="truncate">{lab.title}</span>
+        </p>
         <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
           {lab.difficulty > 0 && (
             <span className="inline-flex items-center gap-1">
@@ -112,6 +121,9 @@ export function LabRow({
 
         {running ? (
           <>
+            <span className="hidden items-center gap-1.5 text-[0.6875rem] text-emerald-500 sm:inline-flex">
+              <span className="size-1.5 rounded-full bg-emerald-500" /> on {status?.host ?? "this machine"}
+            </span>
             {status?.url && (
               <MiniButton tone="learn" onClick={() => openUrl(status.url!).catch(() => {})}>
                 <ExternalLink className="size-3" /> Open
@@ -121,6 +133,10 @@ export function LabRow({
               {busy ? "Stopping…" : "Stop"}
             </MiniButton>
           </>
+        ) : setup ? (
+          <MiniButton onClick={() => machineOpenSetup().catch(() => {})} title="Open machine setup">
+            <Wrench className="size-3" /> {setup}
+          </MiniButton>
         ) : (
           <MiniButton
             tone="learn"

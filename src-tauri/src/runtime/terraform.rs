@@ -65,7 +65,8 @@ pub async fn apply(deploy: &Path, state: &Path, target: &str, vars: &[(String, S
     }
     std::fs::write(state.join(RUN_FILE), serde_json::to_string(&run).unwrap_or_default())?;
     let mut log = log;
-    terraform(deploy, state, target, &with_env(vars, env), "apply", &mut log).await?;
+    let vars = with_ssh_key(vars, ssh::launcher_key());
+    terraform(deploy, state, target, &with_env(&vars, env), "apply", &mut log).await?;
     wait_ready(state, &mut log).await
 }
 
@@ -178,6 +179,18 @@ pub async fn destroy(deploy: &Path, state: &Path, target: &str, vars: &[(String,
     Ok(())
 }
 
+/// Proxmox token setups upload the cloud-init snippet over SSH with the launcher's key
+/// (a token can't SSH): point the module at it.
+fn with_ssh_key(vars: &[(String, String)], key: Option<std::path::PathBuf>) -> Vec<(String, String)> {
+    let mut out = vars.to_vec();
+    let token = vars.iter().any(|(k, v)| k == "proxmox_api_token" && !v.is_empty());
+    let set = vars.iter().any(|(k, _)| k == "proxmox_ssh_private_key_file");
+    if let (true, false, Some(key)) = (token, set, key) {
+        out.push(("proxmox_ssh_private_key_file".into(), key.to_string_lossy().to_string()));
+    }
+    out
+}
+
 fn with_env(vars: &[(String, String)], env: &[(String, String)]) -> Vec<(String, String)> {
     vars.iter().map(|(k, v)| (format!("TF_VAR_{k}"), v.clone())).chain(env.iter().cloned()).collect()
 }
@@ -225,6 +238,15 @@ mod tests {
         let out = with_env(&vars, &env);
         assert!(out.contains(&("TF_VAR_region".to_string(), "eu-west-3".to_string())));
         assert!(out.contains(&("AWS_ACCESS_KEY_ID".to_string(), "AKIA".to_string())));
+    }
+
+    #[test]
+    fn token_setups_get_the_launcher_key() {
+        let key = Some(std::path::PathBuf::from("/k/id_ed25519"));
+        let token = vec![("proxmox_api_token".to_string(), "root@pam!x=s".to_string())];
+        assert!(with_ssh_key(&token, key.clone()).contains(&("proxmox_ssh_private_key_file".into(), "/k/id_ed25519".into())));
+        let password = vec![("proxmox_password".to_string(), "p".to_string())];
+        assert_eq!(with_ssh_key(&password, key), password);
     }
 
     #[test]

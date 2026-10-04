@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "homelab-setup",
-  "description": "the home-lab setup window: closes itself, drags, notifies the main window",
-  "windows": ["homelab-setup"],
+  "identifier": "setup-windows",
+  "description": "the server and machine setup windows: close themselves, drag, notify the main window",
+  "windows": ["server-setup", "machine-setup"],
   "permissions": [
     "core:default",
     "core:window:allow-close",

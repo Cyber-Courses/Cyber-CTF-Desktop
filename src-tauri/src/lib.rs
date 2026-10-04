@@ -11,7 +11,9 @@ mod install;
 mod labs;
 mod provisioning;
 mod runtime;
+mod selftest;
 mod system;
+mod workloads;
 
 use tauri::Manager;
 
@@ -95,8 +97,15 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             system::system_check,
+            system::docker_use_engine,
             system::machine_metrics,
             system::machine_open_setup,
+            selftest::machine_selftest,
+            selftest::machine_selftest_prefetch,
+            workloads::machine_workloads,
+            workloads::machine_workload_stop,
+            workloads::machine_storage,
+            workloads::machine_storage_clean,
             auth::auth_login,
             auth::auth_status,
             auth::auth_logout,
@@ -104,6 +113,10 @@ pub fn run() {
             agent::agent_info,
             install::install_dependency,
             cloud::cloud_login,
+            cloud::aws_cli_identity,
+            cloud::aws_profiles,
+            cloud::aws_login,
+            cloud::aws_month_to_date_cost,
             provisioning::provisioning_images,
             provisioning::provisioning_pull,
             install::install_vagrant_plugin,
@@ -123,8 +136,10 @@ pub fn run() {
             runtime::server::server_set_default,
             runtime::server::server_test,
             runtime::server::server_running_labs,
+            runtime::server::server_capacity,
+            runtime::server_selftest::server_selftest,
             runtime::server::server_open_setup,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running CyberCTF");
+        .expect("error while running Cyber CTF");
 }

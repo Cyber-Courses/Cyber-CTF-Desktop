@@ -1,5 +1,5 @@
 use serde::Serialize;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use crate::error::{Error, Result};
 use crate::exec::run;
@@ -18,6 +18,8 @@ pub struct Tool {
 pub struct PkgManager {
     pub name: String,
     pub installed: bool,
+    /// First line of its version output, e.g. "Homebrew 4.6.3", when installed.
+    pub version: Option<String>,
 }
 
 /// Cloud provider CLIs, for the Cloud setup (AWS / Azure / GCP).
@@ -37,21 +39,27 @@ async fn package_manager() -> PkgManager {
     } else {
         "Homebrew"
     };
-    let installed = {
+    let version = {
         #[cfg(target_os = "macos")]
         {
-            ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].iter().any(|p| std::path::Path::new(p).exists())
+            let brew = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].into_iter().find(|p| std::path::Path::new(p).exists());
+            match brew {
+                Some(b) => Some(tokio::process::Command::new(b).arg("--version").output().await.ok().and_then(|o| String::from_utf8(o.stdout).ok()).unwrap_or_default()),
+                None => None,
+            }
         }
         #[cfg(target_os = "windows")]
         {
-            run("winget", &["--version"], None).await.is_ok()
+            run("winget", &["--version"], None).await.ok()
         }
         #[cfg(target_os = "linux")]
         {
-            run("apt-get", &["--version"], None).await.is_ok()
+            run("apt-get", &["--version"], None).await.ok()
         }
     };
-    PkgManager { name: name.to_string(), installed }
+    let installed = version.is_some();
+    let version = version.and_then(|v| v.lines().next().map(|l| l.trim().to_string())).filter(|v| !v.is_empty());
+    PkgManager { name: name.to_string(), installed, version }
 }
 
 #[derive(Serialize)]
@@ -66,10 +74,16 @@ pub struct SystemReport {
     /// Which Docker-compatible engine answers, when one does: `docker-desktop`, `orbstack`,
     /// `colima`, `rancher-desktop`, `podman` or `docker-engine`.
     pub docker_engine: Option<&'static str>,
+    /// Every engine whose Docker context answers right now. Several can run side by side
+    /// (e.g. Docker Desktop and OrbStack); `docker_engine` is the one the CLI uses.
+    pub docker_engines_running: Vec<&'static str>,
     pub docker_compose: Tool,
     pub vagrant: Tool,
     /// A local terraform binary (preferred for provisioning state; container is the fallback).
     pub terraform: Tool,
+    /// VMware's OVF Tool, which the ESXi Vagrant plugin uses to upload VMs (ships with
+    /// VMware Fusion / Workstation, or standalone from Broadcom).
+    pub ovftool: Tool,
     pub cloud_clis: CloudClis,
     /// Vagrant providers (local hypervisors and remote hosts such as ESXi).
     /// Whether a given VM lab can run also depends on its boxes existing for
@@ -97,6 +111,65 @@ async fn docker_engine(os: &str) -> &'static str {
     }
 }
 
+/// The engine behind a Docker CLI context, by the names the engines give their contexts.
+/// `default` only counts on Linux, where it is the native daemon; elsewhere its socket is a
+/// link to whichever desktop app installed it, so it says nothing on its own.
+fn context_engine(name: &str, os: &str) -> Option<&'static str> {
+    let n = name.to_lowercase();
+    if n == "orbstack" {
+        Some("orbstack")
+    } else if n.starts_with("desktop-") {
+        Some("docker-desktop")
+    } else if n == "colima" || n.starts_with("colima-") {
+        Some("colima")
+    } else if n == "rancher-desktop" {
+        Some("rancher-desktop")
+    } else if n.starts_with("podman") {
+        Some("podman")
+    } else if n == "default" && os == "linux" {
+        Some("docker-engine")
+    } else {
+        None
+    }
+}
+
+/// The Docker CLI contexts, each with the engine behind it (unknown contexts are left out).
+async fn engine_contexts() -> Vec<(String, &'static str)> {
+    let out = run("docker", &["context", "ls", "--format", "{{.Name}}"], None).await.unwrap_or_default();
+    out.lines()
+        .map(|l| l.trim().trim_end_matches(" *").to_string())
+        .filter_map(|name| context_engine(&name, std::env::consts::OS).map(|e| (name, e)))
+        .collect()
+}
+
+/// Engines whose context answers, probed one by one (a stopped engine fails fast; the
+/// timeout covers one that hangs).
+async fn running_engines() -> Vec<&'static str> {
+    let mut running = Vec::new();
+    for (name, engine) in engine_contexts().await {
+        let args = ["--context", name.as_str(), "version", "--format", "{{.Server.Version}}"];
+        let probe = run("docker", &args, None);
+        if matches!(tokio::time::timeout(std::time::Duration::from_secs(4), probe).await, Ok(Ok(_))) && !running.contains(&engine) {
+            running.push(engine);
+        }
+    }
+    running
+}
+
+/// Points the Docker CLI at another running engine (`docker context use`), as the player
+/// would in a terminal. Labs then run on it.
+#[tauri::command]
+pub async fn docker_use_engine(engine: String) -> Result<()> {
+    let name = engine_contexts()
+        .await
+        .into_iter()
+        .find(|(_, e)| *e == engine)
+        .map(|(name, _)| name)
+        .ok_or_else(|| Error::Invalid(format!("no Docker context for {engine}")))?;
+    run("docker", &["context", "use", &name], None).await?;
+    Ok(())
+}
+
 async fn probe(program: &'static str, args: &[&str]) -> Tool {
     match run(program, args, None).await {
         Ok(out) => Tool { installed: true, version: out.lines().next().map(|l| l.trim().to_string()) },
@@ -116,7 +189,7 @@ pub async fn system_check() -> SystemReport {
         probe("gcloud", &["--version"]),
         probe("terraform", &["version"]),
     );
-    let vm_providers = providers::detect(vagrant.installed).await;
+    let (vm_providers, docker_engines_running, ovftool) = tokio::join!(providers::detect(vagrant.installed), running_engines(), probe("ovftool", &["--version"]));
     let docker_engine = match &daemon {
         Ok(os) => Some(docker_engine(os.trim()).await),
         Err(_) => None,
@@ -128,9 +201,11 @@ pub async fn system_check() -> SystemReport {
         docker,
         docker_running: daemon.is_ok(),
         docker_engine,
+        docker_engines_running,
         docker_compose,
         vagrant,
         terraform,
+        ovftool,
         cloud_clis: CloudClis { aws, azure, gcloud },
         vm_providers,
     }
@@ -200,13 +275,22 @@ pub async fn machine_metrics() -> MachineMetrics {
 /// Opens the guided "set up this machine" flow in its own window (label `machine-setup`),
 /// mirroring the server setup window. Focuses it if already open.
 #[tauri::command]
-pub async fn machine_open_setup(app: AppHandle) -> Result<()> {
+pub async fn machine_open_setup(app: AppHandle, step: Option<String>) -> Result<()> {
     const LABEL: &str = "machine-setup";
+    // Only known step names reach the URL / the window.
+    let step = step.filter(|s| matches!(s.as_str(), "pkgmgr" | "virtualization" | "docker" | "docker-test" | "attack" | "vm" | "vagrant" | "vm-test"));
     if let Some(existing) = app.get_webview_window(LABEL) {
+        if let Some(step) = &step {
+            let _ = existing.emit("machine-setup-step", step);
+        }
         let _ = existing.set_focus();
         return Ok(());
     }
-    let mut builder = WebviewWindowBuilder::new(&app, LABEL, WebviewUrl::App("machine-setup".into()))
+    let url = match &step {
+        Some(s) => format!("machine-setup?step={s}"),
+        None => "machine-setup".to_string(),
+    };
+    let mut builder = WebviewWindowBuilder::new(&app, LABEL, WebviewUrl::App(url.into()))
         .title("Set up this machine")
         .inner_size(720.0, 760.0)
         .min_inner_size(560.0, 560.0)

@@ -218,12 +218,12 @@ async fn receive_callback(listener: TcpListener) -> Result<(String, String)> {
         }
         let param = |k: &str| url.query_pairs().find(|(key, _)| key == k).map(|(_, v)| v.into_owned());
         let body = if param("error").is_some() {
-            "Login was cancelled or failed. You can close this tab and try again from CyberCTF."
+            "Login was cancelled or failed. You can close this tab and try again from Cyber CTF."
         } else {
-            "You are logged in. You can close this tab and return to CyberCTF."
+            "You are logged in. You can close this tab and return to Cyber CTF."
         };
         let page = format!(
-            "<!doctype html><meta charset=utf-8><title>CyberCTF</title><body style=\"font-family:system-ui;background:#0a0a0a;color:#e5e5e5;display:grid;place-items:center;height:100vh\"><p>{body}</p>"
+            "<!doctype html><meta charset=utf-8><title>Cyber CTF</title><body style=\"font-family:system-ui;background:#0a0a0a;color:#e5e5e5;display:grid;place-items:center;height:100vh\"><p>{body}</p>"
         );
         let _ = stream
             .write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{page}", page.len()).as_bytes())
