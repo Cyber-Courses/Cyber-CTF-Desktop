@@ -22,7 +22,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/ui/log-console";
 import { Markdown } from "@/components/ui/markdown";
 import { NetworkDiagram } from "@/features/labs/network-diagram";
-import { DeploySteps, duration } from "@/features/labs/deploy-steps";
+import { DeploySteps } from "@/features/labs/deploy-steps";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import {
   apiQuery,
@@ -40,6 +40,8 @@ import {
 } from "@/lib/tauri";
 import { getAttackImage, getAutoAttackBox } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import { AutoStop, StartTimer } from "@/features/labs/lab-timers";
+import { RunOnPicker, RunOnPopover } from "@/features/labs/run-on";
 
 export function LabDetail({
   lab,
@@ -470,117 +472,5 @@ export function LabDetail({
         </aside>
       </div>
     </div>
-  );
-}
-
-/** Time since Start was pressed, ticking. */
-function StartTimer() {
-  const [start] = useState(() => Date.now());
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(t);
-  }, []);
-  return <span className="font-mono tabular-nums opacity-80">{duration(now - start)}</span>;
-}
-
-const HYPERVISOR: Record<string, string> = { vmware_esxi: "ESXi", proxmox: "Proxmox", aws: "AWS, billed to you" };
-
-/** A small card under the Start button. Escape or a click outside closes it. */
-function RunOnPopover({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    const onDown = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && onClose();
-    document.addEventListener("keydown", onKey);
-    // Next tick, so the click that opened it doesn't close it.
-    const t = setTimeout(() => document.addEventListener("mousedown", onDown));
-    return () => {
-      clearTimeout(t);
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onDown);
-    };
-  }, [onClose]);
-  return (
-    <div
-      ref={ref}
-      role="dialog"
-      aria-label="Run on"
-      className="absolute right-0 top-full z-20 mt-2 w-[18rem] rounded-xl border border-border bg-card p-3 shadow-xl shadow-black/40"
-    >
-      {children}
-    </div>
-  );
-}
-
-/** "Run on: this machine | <server host>". Hosts the lab can't run on are disabled. */
-function RunOnPicker({
-  hosts,
-  hostOk,
-  localNote,
-  value,
-  onChange,
-  disabled,
-}: {
-  hosts: ServerHost[];
-  hostOk: (h: ServerHost) => boolean;
-  localNote: string;
-  value: string | null;
-  onChange: (id: string | null) => void;
-  disabled: boolean;
-}) {
-  const options = [
-    { id: null as string | null, label: "This machine", note: localNote, ok: true },
-    ...hosts.map((h) => ({ id: h.id as string | null, label: h.name, note: `${HYPERVISOR[h.provider]} · ${h.host}`, ok: hostOk(h) })),
-  ];
-  return (
-    <div className="space-y-1.5">
-      <p className="text-[0.75rem] font-medium text-foreground">Where should it run?</p>
-      <div className="overflow-hidden rounded-lg border border-border">
-        {options.map((o) => {
-          const selected = value === o.id;
-          return (
-            <button
-              key={o.id ?? "local"}
-              type="button"
-              disabled={disabled || !o.ok}
-              onClick={() => onChange(o.id)}
-              title={o.ok ? undefined : `This lab doesn't support ${o.note.split(" · ")[0]}`}
-              className={cn(
-                "flex w-full items-center gap-2.5 border-b border-border px-3 py-2 text-left last:border-b-0 transition-colors disabled:cursor-not-allowed disabled:opacity-45",
-                selected ? "bg-muted" : "hover:bg-muted/50",
-              )}
-            >
-              <span className={cn("grid size-3.5 shrink-0 place-items-center rounded-full border", selected ? "border-learn" : "border-muted-foreground/40")}>
-                {selected && <span className="size-1.5 rounded-full bg-learn" />}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12.5px] font-medium">{o.label}</span>
-                <span className="block truncate font-mono text-[10.5px] text-muted-foreground">{o.ok ? o.note : "Not supported by this lab"}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/** "Auto-stops at 19:42 · in 3h 58m" for cloud labs. */
-function AutoStop({ at }: { at: number }) {
-  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
-  useEffect(() => {
-    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 30_000);
-    return () => clearInterval(t);
-  }, []);
-  const left = Math.max(0, at - now);
-  const time = new Date(at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const h = Math.floor(left / 3600);
-  const m = Math.floor((left % 3600) / 60);
-  return (
-    <p className="text-[11.5px] text-amber-500">
-      Auto-stops at {time} · in {h > 0 ? `${h}h ` : ""}
-      {m}m
-    </p>
   );
 }

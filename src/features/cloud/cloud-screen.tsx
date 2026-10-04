@@ -1,8 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+/** The Cloud page: connect a cloud account (AWS today) and run labs as throwaway instances
+ *  in it. Kept separate from the Server page so each evolves on its own. */
+
+import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { CheckCircle2, ChevronDown, Cloud, Pencil, Plus, Square, Trash2, X, XCircle, Zap } from "lucide-react";
+import { ChevronDown, Cloud, Plus, Square } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -19,21 +22,20 @@ import {
   serverRemove,
   serverTest,
   systemCheck,
-  type CloudProvider,
   type Dependency,
   type ProvisioningImage,
   type ServerHost,
   type ServerTest,
   type SystemReport,
-  type Tool,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+import { AccountRow } from "@/features/cloud/account-row";
+import { COMING_SOON, FirstRun } from "@/features/cloud/first-run";
+import { CliRow, ImageRow, ToolRow } from "@/features/cloud/tool-rows";
 
-/** The Cloud page: connect a cloud account (AWS today) and run labs as throwaway instances
- *  in it. Kept separate from the Server page so each evolves on its own. */
 export function CloudScreen() {
   const [allHosts, setHosts] = useState<ServerHost[] | null>(null);
-  const hosts = allHosts?.filter((h) => h.provider === "aws" || h.provider === "azure") ?? null;
+  const hosts = allHosts?.filter((h) => h.provider === "aws") ?? null;
   const [error, setError] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, ServerTest | "testing">>({});
   const [report, setReport] = useState<SystemReport | null>(null);
@@ -287,255 +289,6 @@ export function CloudScreen() {
           </div>
         )}
       </Panel>
-    </div>
-  );
-}
-
-/** Providers shown as "coming soon" in the Environment panel (logo = SVG in public/brands). */
-const COMING_SOON: { id: string; label: string; logo: boolean }[] = [
-  { id: "gcp", label: "Google Cloud", logo: true },
-  { id: "digitalocean", label: "DigitalOcean", logo: true },
-  { id: "linode", label: "Linode", logo: true },
-  { id: "oracle", label: "Oracle Cloud", logo: true },
-];
-
-const PROVIDERS: { id: CloudProvider; label: string }[] = [
-  { id: "aws", label: "Amazon Web Services" },
-  { id: "azure", label: "Microsoft Azure" },
-  { id: "gcp", label: "Google Cloud" },
-];
-
-function FirstRun({ onSetup }: { onSetup: () => void }) {
-  return (
-    <div className="px-5 py-8 text-center">
-      <div className="flex items-center justify-center gap-3">
-        {PROVIDERS.map((p) => (
-          // eslint-disable-next-line @next/next/no-img-element -- static export, plain asset
-          <img key={p.id} src={`/brands/${p.id}.svg`} alt={p.label} className="size-7" draggable={false} />
-        ))}
-      </div>
-      <p className="mt-3 text-[13px] font-medium">Run labs in your own cloud account</p>
-      <p className="mx-auto mt-1 max-w-sm text-[12px] text-muted-foreground">
-        One throwaway instance per lab, destroyed when you stop it. AWS today; Azure and Google Cloud coming.
-      </p>
-      <div className="mx-auto mt-5 grid max-w-md gap-2 text-left">
-        <Step n={1} title="Connect an account" body="Access keys or your AWS CLI credentials, and a region." />
-        <Step n={2} title="Pick it on a lab" body="Terraform creates one instance, reachable over SSH from your IP." />
-        <Step n={3} title="Attack, then Stop" body="Stop destroys the instance, so billing stops with it." />
-      </div>
-      <Button variant="learn" size="sm" className="mt-5" onClick={onSetup}>
-        <Plus className="size-3.5" /> Set up cloud provider
-      </Button>
-    </div>
-  );
-}
-
-function AccountRow({
-  host,
-  test,
-  spent,
-  onTest,
-  onEdit,
-  onRemove,
-}: {
-  host: ServerHost;
-  test: ServerTest | "testing" | undefined;
-  spent?: number | null;
-  onTest: () => void;
-  onEdit: () => void;
-  onRemove: () => void;
-}) {
-  const result = test && test !== "testing" ? test : null;
-  const ok = result ? result.ok : null;
-  const [confirming, setConfirming] = useState(false);
-  const facts = [
-    host.host,
-    host.useCliCreds ? (host.awsProfile ? `CLI · ${host.awsProfile}` : "CLI credentials") : "access keys",
-    host.autoStopHours ? `auto-stop ${host.autoStopHours}h` : "no auto-stop",
-  ];
-  return (
-    <div className="border-b border-border px-3.5 py-3 last:border-b-0">
-      <div className="flex items-center gap-3">
-        {/* eslint-disable-next-line @next/next/no-img-element -- static export, plain asset */}
-        <img src={`/brands/${host.provider}.svg`} alt="" className="size-6 shrink-0" draggable={false} />
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 text-[13px] font-medium">
-            <span className="truncate">{host.name}</span>
-            <span className={cn("size-1.5 shrink-0 rounded-full", ok === null ? "bg-muted-foreground/40" : ok ? "bg-emerald-500" : "bg-rose-500")} />
-          </p>
-          <p className="truncate font-mono text-[11px] text-muted-foreground">
-            {facts.join(" · ")}
-            {result?.latencyMs != null ? ` · ${result.latencyMs} ms` : ""}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {confirming ? (
-            <>
-              <span className="mr-1 text-[11.5px] text-muted-foreground">Remove?</span>
-              <Button variant="destructive" size="sm" onClick={onRemove}>
-                Remove
-              </Button>
-              <IconButton label="Cancel" onClick={() => setConfirming(false)}>
-                <X className="size-3.5" />
-              </IconButton>
-            </>
-          ) : (
-            <>
-              <Button variant="outline" size="sm" onClick={onTest} disabled={test === "testing"}>
-                {test === "testing" ? <Spinner className="size-3.5" /> : <Zap className="size-3.5" />} Test
-              </Button>
-              <IconButton label="Edit" onClick={onEdit}>
-                <Pencil className="size-3.5" />
-              </IconButton>
-              <IconButton label="Remove" onClick={() => setConfirming(true)}>
-                <Trash2 className="size-3.5" />
-              </IconButton>
-            </>
-          )}
-        </div>
-      </div>
-      {result && (
-        <p className={cn("mt-2 flex items-start gap-1.5 pl-9 text-[12px]", ok ? "text-emerald-500" : "text-rose-400")}>
-          {ok ? <CheckCircle2 className="mt-px size-3.5 shrink-0" /> : <XCircle className="mt-px size-3.5 shrink-0" />}
-          <span>{result.message}</span>
-        </p>
-      )}
-      {host.monthlyLimit != null && (
-        <p className={cn("mt-1.5 pl-9 text-[11.5px]", spent != null && spent >= host.monthlyLimit ? "text-rose-400" : "text-muted-foreground")}>
-          Budget ${host.monthlyLimit.toFixed(0)}/mo{spent != null ? ` · $${spent.toFixed(2)} this month` : ""}
-          {spent != null && spent >= host.monthlyLimit ? " — over budget" : ""}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className="grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-    >
-      {children}
-    </button>
-  );
-}
-
-function Logo({ provider }: { provider: CloudProvider }) {
-  // eslint-disable-next-line @next/next/no-img-element -- static export, plain asset
-  return <img src={`/brands/${provider}.svg`} alt="" className="size-5 shrink-0" draggable={false} />;
-}
-
-function Status({ tool }: { tool?: Tool }) {
-  const installed = !!tool?.installed;
-  return (
-    <span className={cn("flex items-center gap-1.5 text-[12px]", installed ? "text-emerald-500" : "text-muted-foreground")}>
-      {installed && <span className="size-1.5 rounded-full bg-emerald-500" />}
-      {tool ? (installed ? (tool.version ?? "installed") : "not installed") : "…"}
-    </span>
-  );
-}
-
-function CliRow({
-  name,
-  provider,
-  tool,
-  busy,
-  locked,
-  onInstall,
-}: {
-  name: string;
-  provider: CloudProvider;
-  tool?: Tool;
-  busy: boolean;
-  locked: boolean;
-  onInstall: () => void;
-}) {
-  const installed = !!tool?.installed;
-  return (
-    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px]">
-      <Logo provider={provider} />
-      <span className="text-foreground">{name}</span>
-      <span className="ml-auto flex items-center gap-3">
-        <Status tool={tool} />
-        {!installed && tool && (
-          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy || locked}>
-            {busy ? "Installing…" : "Install"}
-          </Button>
-        )}
-      </span>
-    </div>
-  );
-}
-
-function ToolRow({
-  name,
-  note,
-  tool,
-  busy,
-  locked,
-  onInstall,
-}: {
-  name: string;
-  note: string;
-  tool?: Tool;
-  busy: boolean;
-  locked: boolean;
-  onInstall: () => void;
-}) {
-  const installed = !!tool?.installed;
-  return (
-    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px]">
-      <span className="font-medium text-foreground">{name}</span>
-      <span className="truncate text-[11.5px] text-muted-foreground">{note}</span>
-      <span className="ml-auto flex items-center gap-3">
-        <Status tool={tool} />
-        {!installed && tool && (
-          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy || locked}>
-            {busy ? "Installing…" : "Install"}
-          </Button>
-        )}
-      </span>
-    </div>
-  );
-}
-
-function ImageRow({ image, note, busy, locked, onPull }: { image: ProvisioningImage; note: string; busy: boolean; locked: boolean; onPull: () => void }) {
-  return (
-    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px]">
-      <span className="font-medium text-foreground">{image.name}</span>
-      <span className="truncate text-[11.5px] text-muted-foreground">{note}</span>
-      <span className="ml-auto flex items-center gap-3">
-        <span className={cn("flex items-center gap-1.5", image.present ? "text-emerald-500" : "text-muted-foreground")}>
-          {image.present && <span className="size-1.5 rounded-full bg-emerald-500" />}
-          {image.present ? "pulled" : "not pulled"}
-        </span>
-        {!image.present && (
-          <Button variant="learn" size="sm" onClick={onPull} disabled={busy || locked}>
-            {busy ? "Pulling…" : "Pull"}
-          </Button>
-        )}
-      </span>
-    </div>
-  );
-}
-
-// Azure and GCP can't run labs yet, so these rows don't offer an install or sign-in: the
-// azure-cli brew formula alone compiles llvm + rust, a long build for a provider that does
-// nothing here. Only AWS (CliRow) and Terraform are installable. Props kept so the call
-// sites don't need to change when provisioning for these providers lands.
-
-function Step({ n, title, body }: { n: number; title: string; body: string }) {
-  return (
-    <div className="flex gap-3">
-      <span className="grid size-5 shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold tabular-nums text-muted-foreground">{n}</span>
-      <div className="min-w-0">
-        <p className="text-[12.5px] font-medium">{title}</p>
-        <p className="text-[11.5px] text-muted-foreground">{body}</p>
-      </div>
     </div>
   );
 }
