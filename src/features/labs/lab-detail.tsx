@@ -101,6 +101,7 @@ export function LabDetail({
   // through their deploy/ layer). VM labs default to the default host; Docker labs to here.
   const [hosts, setHosts] = useState<ServerHost[]>([]);
   const [runOn, setRunOn] = useState<string | null>(null);
+  const [choosing, setChoosing] = useState(false);
   const hostOk = useCallback(
     (h: ServerHost) => !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && (h.provider === "proxmox" || h.provider === "aws")),
     [rt],
@@ -262,14 +263,45 @@ export function LabDetail({
               <Spinner className="size-4" /> Starting… <StartTimer />
             </Button>
           ) : (
-            <Button
-              variant="learn"
-              onClick={() => onStart(runOn)}
-              disabled={!loggedIn || !rt}
-              title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}
-            >
-              <Play className="size-4" /> Start lab
-            </Button>
+            <div className="relative">
+              <Button
+                variant="learn"
+                // With servers saved, ask where to run first; otherwise start here right away.
+                onClick={() => (hosts.length > 0 ? setChoosing((v) => !v) : onStart(null))}
+                disabled={!loggedIn || !rt}
+                title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}
+                aria-expanded={hosts.length > 0 ? choosing : undefined}
+              >
+                <Play className="size-4" /> Start lab
+              </Button>
+              {choosing && (
+                <RunOnPopover onClose={() => setChoosing(false)}>
+                  <RunOnPicker
+                    hosts={hosts}
+                    hostOk={hostOk}
+                    localNote={isDocker ? "Docker" : "Local hypervisor"}
+                    value={runOn}
+                    onChange={setRunOn}
+                    disabled={busy}
+                  />
+                  <div className="mt-3 flex justify-end gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => setChoosing(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="learn"
+                      size="sm"
+                      onClick={() => {
+                        setChoosing(false);
+                        void onStart(runOn);
+                      }}
+                    >
+                      <Play className="size-3.5" /> Start
+                    </Button>
+                  </div>
+                </RunOnPopover>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -355,22 +387,6 @@ export function LabDetail({
         </div>
 
         <aside className="h-fit space-y-4 lg:sticky lg:top-2">
-          {!running && !starting && hosts.length > 0 && (
-            <Panel>
-              <PanelHeader title="Run on" />
-              <div className="p-3">
-                <RunOnPicker
-                  hosts={hosts}
-                  hostOk={hostOk}
-                  localNote={isDocker ? "Docker" : "Local hypervisor"}
-                  value={runOn}
-                  onChange={setRunOn}
-                  disabled={busy}
-                />
-              </div>
-            </Panel>
-          )}
-
           {isDocker && (
             <Panel>
               <PanelHeader
@@ -470,6 +486,33 @@ function StartTimer() {
 
 const HYPERVISOR: Record<string, string> = { vmware_esxi: "ESXi", proxmox: "Proxmox", aws: "AWS, billed to you" };
 
+/** A small card under the Start button. Escape or a click outside closes it. */
+function RunOnPopover({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onDown = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && onClose();
+    document.addEventListener("keydown", onKey);
+    // Next tick, so the click that opened it doesn't close it.
+    const t = setTimeout(() => document.addEventListener("mousedown", onDown));
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [onClose]);
+  return (
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label="Run on"
+      className="absolute right-0 top-full z-20 mt-2 w-[18rem] rounded-xl border border-border bg-card p-3 shadow-xl shadow-black/40"
+    >
+      {children}
+    </div>
+  );
+}
+
 /** "Run on: this machine | <server host>". Hosts the lab can't run on are disabled. */
 function RunOnPicker({
   hosts,
@@ -492,7 +535,7 @@ function RunOnPicker({
   ];
   return (
     <div className="space-y-1.5">
-      <p className="text-[11.5px] text-muted-foreground">Run on</p>
+      <p className="text-[0.75rem] font-medium text-foreground">Where should it run?</p>
       <div className="overflow-hidden rounded-lg border border-border">
         {options.map((o) => {
           const selected = value === o.id;
