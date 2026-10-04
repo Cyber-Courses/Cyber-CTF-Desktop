@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, CheckCircle2, Cloud, ExternalLink, HardDrive, Network, Play, Server, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/labs/log-console";
 import { Requirement } from "@/components/machine/setup-steps";
 import {
+  awsCliIdentity,
   cloudLogin,
   serverSave,
   serverTest,
@@ -124,6 +125,7 @@ export function HostSetupPage({
   const [saved, setSaved] = useState<ServerHost | null>(null);
   const [test, setTest] = useState<ServerTest | "testing" | null>(null);
   const [pluginLog, setPluginLog] = useState<string[] | null>(null);
+  const [toolLabel, setToolLabel] = useState("Install");
   const [cloudProvider, setCloudProvider] = useState<CloudProvider>("aws");
   const [signingIn, setSigningIn] = useState(false);
   const [signInLog, setSignInLog] = useState<string[] | null>(null);
@@ -132,6 +134,11 @@ export function HostSetupPage({
   const cloud = v.provider === "aws";
   const awsType = v.datastore || DEFAULT_INSTANCE;
   const awsPrice = AWS_INSTANCE_TYPES.find((t) => t.type === awsType)?.usdPerHour ?? null;
+  // If the AWS CLI already has credentials (aws configure), offer to use them instead of keys.
+  const [awsIdentity, setAwsIdentity] = useState<string | null>(null);
+  useEffect(() => {
+    if (cloud) awsCliIdentity().then(setAwsIdentity).catch(() => {});
+  }, [cloud]);
   const kind = KIND[v.provider];
   const status = report?.vmProviders.find((p) => p.provider === v.provider);
 
@@ -153,13 +160,17 @@ export function HostSetupPage({
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, e.target.value),
   });
 
-  const connectionOk = v.host.trim() !== "" && v.username.trim() !== "" && (editing || (v.password ?? "") !== "");
+  const connectionOk =
+    cloud && v.useCliCreds
+      ? v.host.trim() !== ""
+      : v.host.trim() !== "" && v.username.trim() !== "" && (editing || (v.password ?? "") !== "");
   const next = () => setI((n) => Math.min(n + 1, steps.length - 1));
   const back = () => setI((n) => Math.max(n - 1, 0));
 
   // Installs one of the tools this server type needs on this machine, logging below.
   const toolBusy = pluginLog !== null && !pluginLog.at(-1)?.match(/^[✓✗]/);
   async function installTool(label: string, run: (onLog: (l: string) => void) => Promise<void>) {
+    setToolLabel(label);
     setPluginLog([`Installing ${label}…`]);
     try {
       await run((l) => setPluginLog((x) => [...(x ?? []), l]));
@@ -180,7 +191,7 @@ export function HostSetupPage({
   const cloudDep = cloudProvider === "aws" ? "awscli" : cloudProvider === "azure" ? "azurecli" : "gcloud";
   const cloudCliTool = report?.cloudClis[cloudProvider === "gcp" ? "gcloud" : cloudProvider];
   const cloudCliOk = !!cloudCliTool?.installed;
-  const toolsOk = cloud ? cloudCliOk : v.provider === "vmware_esxi" ? vagrantOk && esxiPluginOk && ovftoolOk : terraformOk;
+  const toolsOk = cloud ? cloudCliOk && terraformOk : v.provider === "vmware_esxi" ? vagrantOk && esxiPluginOk && ovftoolOk : terraformOk;
 
   async function runTest(id: string) {
     setTest("testing");
@@ -279,12 +290,20 @@ export function HostSetupPage({
           >
             <div className="overflow-hidden rounded-lg border border-border">
               {cloud ? (
-                <Requirement
-                  ok={cloudCliOk}
-                  title={`${CLOUD_META[cloudProvider].label} CLI`}
-                  detail={cloudCliOk ? (cloudCliTool?.version ?? "Installed") : `The ${CLOUD_META[cloudProvider].cli} CLI, needed to connect and provision.`}
-                  action={<Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool(`${CLOUD_META[cloudProvider].cli} CLI`, (log) => installDependency(cloudDep, log))}>Install {CLOUD_META[cloudProvider].cli}</Button>}
-                />
+                <>
+                  <Requirement
+                    ok={cloudCliOk}
+                    title={`${CLOUD_META[cloudProvider].label} CLI`}
+                    detail={cloudCliOk ? (cloudCliTool?.version ?? "Installed") : `The ${CLOUD_META[cloudProvider].cli} CLI, needed to connect and provision.`}
+                    action={<Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool(`${CLOUD_META[cloudProvider].cli} CLI`, (log) => installDependency(cloudDep, log))}>Install {CLOUD_META[cloudProvider].cli}</Button>}
+                  />
+                  <Requirement
+                    ok={terraformOk}
+                    title="Terraform"
+                    detail={terraformOk ? (report?.terraform.version ?? "Installed") : "Creates and destroys the cloud lab. Its provider plugins are fetched automatically on first run."}
+                    action={<Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool("Terraform", (log) => installDependency("terraform", log))}>Install Terraform</Button>}
+                  />
+                </>
               ) : v.provider === "vmware_esxi" ? (
                 <>
                   <Requirement
@@ -319,7 +338,7 @@ export function HostSetupPage({
                 />
               )}
             </div>
-            {pluginLog && <div className="mt-3"><LogConsole lines={pluginLog} /></div>}
+            {pluginLog && <div className="mt-3"><LogConsole lines={pluginLog} running={toolBusy} title={`Install ${toolLabel}`} /></div>}
             <Nav
               left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
               right={
@@ -389,6 +408,18 @@ export function HostSetupPage({
             <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[12px] text-amber-500">
               Labs run in your account and are billed there{awsPrice != null ? ` (about $${awsPrice.toFixed(3)}/hour for ${awsType})` : ""} until they stop. Stop, and the lab&apos;s auto-stop, destroy everything the lab created.
             </p>
+            {awsIdentity && (
+              <div className="mb-4 grid gap-2 sm:grid-cols-2">
+                <button type="button" onClick={() => set("useCliCreds", true)} className={cn("rounded-lg border p-3 text-left transition-colors", v.useCliCreds ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60")}>
+                  <span className="block text-[12.5px] font-medium">Use the AWS CLI&apos;s credentials</span>
+                  <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">Signed in as {awsIdentity}</span>
+                </button>
+                <button type="button" onClick={() => set("useCliCreds", false)} className={cn("rounded-lg border p-3 text-left transition-colors", !v.useCliCreds ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60")}>
+                  <span className="block text-[12.5px] font-medium">Enter access keys</span>
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">An IAM user&apos;s key and secret</span>
+                </button>
+              </div>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Name"><Input {...text("name")} placeholder="My AWS" /></Field>
               <Field label="Region">
@@ -398,12 +429,14 @@ export function HostSetupPage({
                 </Select>
               </Field>
             </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Field label="Access key ID" hint="An IAM user with EC2 access"><Input {...text("username")} placeholder="AKIA…" /></Field>
-              <Field label="Secret access key" hint="Stored in your OS keychain">
-                <Input type="password" value={v.password ?? ""} onChange={(e) => set("password", e.target.value || null)} placeholder={editing ? "Unchanged" : ""} autoComplete="off" />
-              </Field>
-            </div>
+            {!v.useCliCreds && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Field label="Access key ID" hint="An IAM user with EC2 access"><Input {...text("username")} placeholder="AKIA…" /></Field>
+                <Field label="Secret access key" hint="Stored in your OS keychain">
+                  <Input type="password" value={v.password ?? ""} onChange={(e) => set("password", e.target.value || null)} placeholder={editing ? "Unchanged" : ""} autoComplete="off" />
+                </Field>
+              </div>
+            )}
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Field label="Instance type">
                 <Select value={awsType} onChange={(e) => set("datastore", e.target.value)}>
@@ -469,7 +502,7 @@ export function HostSetupPage({
                 <Button variant="learn" onClick={signIn} disabled={signingIn}>
                   {signingIn && <Spinner className="size-4" />} Sign in with {CLOUD_META[cloudProvider].cli}
                 </Button>
-                {signInLog && <div className="mt-3"><LogConsole lines={signInLog} /></div>}
+                {signInLog && <div className="mt-3"><LogConsole lines={signInLog} running={signingIn} title="Sign in" /></div>}
               </>
             ) : (
               <p className="text-[12.5px] text-muted-foreground">The {CLOUD_META[cloudProvider].cli} CLI isn&apos;t installed. Install it from the Cloud page first, then come back.</p>
@@ -527,7 +560,8 @@ export function SetupTrademarks({ cloud = false }: { cloud?: boolean }) {
 
 function Step({ icon: Icon, title, description, children }: { icon: typeof Server; title: string; description: string; children: ReactNode }) {
   return (
-    <div>
+    // mt-2 separates the icon row from the "Step N of M" line above it, as in machine-setup.
+    <div className="mt-2">
       <div className="flex items-start gap-3.5">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface">
           <Icon className="size-5 text-foreground" />
@@ -537,7 +571,7 @@ function Step({ icon: Icon, title, description, children }: { icon: typeof Serve
           <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">{description}</p>
         </div>
       </div>
-      <div className="mt-5">{children}</div>
+      <div className="mt-6">{children}</div>
     </div>
   );
 }

@@ -44,20 +44,28 @@ function Setup() {
           <Spinner className="size-4" /> Loading…
         </div>
       ) : (
-        /* Scrolls when a step is long; centered in the window when it's short. */
+        /* The wizard centers in the window; the trademark is pinned at the bottom so it
+           doesn't unbalance the centering. Scrolls when a step is tall. */
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-6 pt-2 pb-10">
-            <HostSetupPage
-              initial={initial}
-              report={report}
-              onRefresh={check}
-              onSaved={() => emit(SERVER_CHANGED).catch(() => {})}
-              onDone={close}
-            />
-            <div className="mt-8">
-              <SetupTrademarks cloud={cloud} />
+          {/* my-auto centers a short step but collapses to 0 when the step is tall, so the
+              top never clips and the window scrolls (unlike justify-center on a flex child). */}
+          <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-6 py-6">
+            <div className="my-auto w-full">
+              <HostSetupPage
+                initial={initial}
+                report={report}
+                onRefresh={check}
+                onSaved={() => emit(SERVER_CHANGED).catch(() => {})}
+                onDone={close}
+              />
             </div>
           </main>
+        </div>
+      )}
+
+      {initial && (
+        <div className="shrink-0 border-t border-border/60 px-6 py-3">
+          <SetupTrademarks cloud={cloud} />
         </div>
       )}
     </div>
