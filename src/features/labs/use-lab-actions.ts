@@ -5,6 +5,7 @@ import { serverList, labLaunch, labStop, type Provider } from "@/lib/tauri";
 import { getAttackImage, getVmProvider } from "@/lib/settings";
 import { notify } from "@/lib/notify";
 import type { Lab } from "@/features/labs/use-labs";
+import { setLastRun } from "@/lib/last-run";
 
 /**
  * Start/stop actions for labs, shared across screens. Tracks which lab is busy, the
@@ -39,6 +40,7 @@ export function useLabActions(refresh: (lab: Lab) => void) {
         // Remotely the lab network isn't reachable from here: start the attack box next to it.
         await labLaunch(lab.id, provider, remote ? host! : null, remote ? getAttackImage() : null, (line) => setLogs((l) => [...l, line]));
         setLogs((l) => [...l, "✓ Lab is running"]);
+        setLastRun(lab.id);
         notify("Lab ready", remote ? `${lab.title} is running on your server.` : `${lab.title} is running on this machine.`);
       } catch (e) {
         setLogs((l) => [...l, `✗ ${String(e)}`]);

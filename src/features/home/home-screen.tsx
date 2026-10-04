@@ -8,7 +8,8 @@ import { Meter } from "@/components/ui/meter";
 import { LabRow } from "@/features/labs/lab-row";
 import { useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
-import { getLastRun, formatAgo } from "@/features/home/last-run";
+import { getLastRun } from "@/lib/last-run";
+import { formatAgo } from "@/lib/format";
 import { assessRam } from "@/features/home/capacity";
 import { machineMetrics, machineOpenSetup, type AuthStatus, type MachineMetrics, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
@@ -54,6 +55,8 @@ export function HomeScreen({
   const { labs, statuses, refreshStatus } = useLabs(auth?.loggedIn ?? false);
   const { busy, launch, stop } = useLabActions(refreshStatus);
   const [metrics, setMetrics] = useState<MachineMetrics | null>(null);
+  // "Now" for the "last run" labels, taken once per visit.
+  const [now] = useState(() => Date.now());
 
   useEffect(() => {
     let alive = true;
@@ -234,7 +237,7 @@ export function HomeScreen({
                     </span>
                     <button onClick={() => onNavigate("labs", lab.slug)} className="min-w-0 flex-1 text-left">
                       <p className="truncate text-[0.78125rem] font-medium hover:text-learn">{lab.title}</p>
-                      <p className="text-[0.65625rem] text-muted-foreground">last run {formatAgo(ts)}</p>
+                      <p className="text-[0.65625rem] text-muted-foreground">last run {formatAgo(ts, now)}</p>
                     </button>
                     <button
                       onClick={() => launch(lab)}
