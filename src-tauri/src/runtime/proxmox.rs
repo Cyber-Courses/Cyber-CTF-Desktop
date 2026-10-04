@@ -57,11 +57,8 @@ pub enum SignInError {
 }
 
 pub async fn sign_in(h: &HostProfile, secret: &str) -> Result<Session, SignInError> {
-    let client = reqwest::Client::builder()
-        .timeout(TIMEOUT)
-        .tls_danger_accept_invalid_certs(h.insecure_tls)
-        .build()
-        .map_err(|e| SignInError::Failed(e.to_string()))?;
+    let client =
+        reqwest::Client::builder().timeout(TIMEOUT).tls_danger_accept_invalid_certs(h.insecure_tls).build().map_err(|e| SignInError::Failed(e.to_string()))?;
     let base = endpoint(h);
     if is_token(&h.username) {
         let session = Session { client, base, auth: ("Authorization", format!("PVEAPIToken={}={secret}", h.username)) };
@@ -117,13 +114,7 @@ impl std::fmt::Display for CallError {
 impl Session {
     /// GET `path` (under /api2/json) and return its `data`.
     pub async fn call(&self, path: &str) -> Result<Value, CallError> {
-        let res = self
-            .client
-            .get(format!("{}{path}", self.base))
-            .header(self.auth.0, &self.auth.1)
-            .send()
-            .await
-            .map_err(|e| CallError::Other(describe(&e)))?;
+        let res = self.client.get(format!("{}{path}", self.base)).header(self.auth.0, &self.auth.1).send().await.map_err(|e| CallError::Other(describe(&e)))?;
         if !res.status().is_success() {
             return Err(CallError::Status(res.status().as_u16()));
         }
@@ -167,7 +158,8 @@ const STORAGE_HINT: &str = "In the Proxmox web UI: Datacenter > Storage > select
 
 /// Missing storage content a lab launch needs, as fix-it sentences.
 fn storage_problems(storages: &Value, vm_storage: &str) -> Vec<String> {
-    let mut needs: Vec<(&str, &str, &str)> = vec![(IMAGE_STORAGE, "iso", "ISO image"), (SNIPPET_STORAGE, "snippets", "Snippets"), (vm_storage, "images", "Disk image")];
+    let mut needs: Vec<(&str, &str, &str)> =
+        vec![(IMAGE_STORAGE, "iso", "ISO image"), (SNIPPET_STORAGE, "snippets", "Snippets"), (vm_storage, "images", "Disk image")];
     needs.dedup();
     let mut problems = Vec::new();
     for (id, content, label) in needs {
@@ -186,14 +178,19 @@ pub async fn test(h: &HostProfile, secret: &str) -> Report {
     let session = match sign_in(h, secret).await {
         Ok(s) => s,
         Err(SignInError::Rejected) if is_token(&h.username) => {
-            return fail(Some(false), "Proxmox rejected the API token. Check the token id (user@realm!name) and its secret.")
+            return fail(Some(false), "Proxmox rejected the API token. Check the token id (user@realm!name) and its secret.");
         }
         Err(SignInError::Rejected) => return fail(Some(false), "Proxmox rejected the credentials. Use user@realm, e.g. root@pam."),
         Err(SignInError::Failed(e)) => return fail(None, format!("Reachable, but the API call failed: {e}")),
     };
     let node = match session.node(h).await {
         Ok(n) => n,
-        Err(CallError::Status(403)) => return fail(Some(true), "Signed in, but this user or token can't list nodes. Give it the Administrator role, or create the token with privilege separation off."),
+        Err(CallError::Status(403)) => {
+            return fail(
+                Some(true),
+                "Signed in, but this user or token can't list nodes. Give it the Administrator role, or create the token with privilege separation off.",
+            );
+        }
         Err(e) => return fail(Some(true), format!("Signed in, but listing nodes failed: {e}")),
     };
 
@@ -213,14 +210,18 @@ pub async fn test(h: &HostProfile, secret: &str) -> Report {
         }
         Err(e) => problems.push(format!("Couldn't list the node's network ({e}).")),
     }
-    if is_token(&h.username) {
-        if let Some(problem) = ssh_key_problem(h).await {
-            problems.push(problem);
-        }
+    if is_token(&h.username)
+        && let Some(problem) = ssh_key_problem(h).await
+    {
+        problems.push(problem);
     }
 
     if problems.is_empty() {
-        Report { ok: true, authenticated: Some(true), message: format!("Signed in to the Proxmox API; node {node}, storage and bridge {bridge} are ready for labs.") }
+        Report {
+            ok: true,
+            authenticated: Some(true),
+            message: format!("Signed in to the Proxmox API; node {node}, storage and bridge {bridge} are ready for labs."),
+        }
     } else {
         fail(Some(true), format!("Signed in, but a lab launch would fail:\n• {}", problems.join("\n• ")))
     }

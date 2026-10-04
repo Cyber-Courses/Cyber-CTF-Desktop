@@ -87,7 +87,7 @@ mod tests {
         let paths: Vec<PathBuf> = std::env::split_paths(&out).collect();
         if !paths.is_empty() {
             assert_eq!(paths[0], PathBuf::from("/usr/bin"));
-            assert_eq!(paths.iter().filter(|p| **p == PathBuf::from("/usr/bin")).count(), 1);
+            assert_eq!(paths.iter().filter(|p| p.as_path() == std::path::Path::new("/usr/bin")).count(), 1);
         }
     }
 }

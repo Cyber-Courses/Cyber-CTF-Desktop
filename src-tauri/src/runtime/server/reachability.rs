@@ -1,0 +1,208 @@
+//! Can the launcher reach a server or cloud account, and what it costs: connection tests
+//! (SSH / Proxmox API / AWS STS / Azure CLI), month-to-date spend and the budget check.
+
+use super::*;
+
+// --- reachability ---------------------------------------------------------
+
+/// Runs an aws subcommand the way this host connects: the host CLI (CLI credentials), or the
+/// official CLI container with the keys in its environment (Docker is the floor).
+pub(super) async fn aws_cmd(h: &HostProfile, env: &[(String, String)], sub: &[&str]) -> Result<String> {
+    if h.use_cli_creds {
+        crate::exec::run_env("aws", sub, None, env).await
+    } else {
+        let mut args = vec!["run", "--rm", "-e", "AWS_ACCESS_KEY_ID", "-e", "AWS_SECRET_ACCESS_KEY", "-e", "AWS_REGION", "amazon/aws-cli:2.37.9"];
+        args.extend_from_slice(sub);
+        crate::exec::run_env("docker", &args, None, env).await
+    }
+}
+
+/// AWS: verify the credentials work (`sts get-caller-identity`) and that they can actually
+/// launch EC2 (`ec2 run-instances --dry-run`, which creates nothing but checks the permission).
+pub(super) async fn test_aws(h: &HostProfile, password: &str) -> TestResult {
+    let started = Instant::now();
+    let env = terraform_env(h, password);
+    let arn = match aws_cmd(h, &env, &["sts", "get-caller-identity", "--query", "Arn", "--output", "text"]).await {
+        Ok(a) => a.trim().to_string(),
+        Err(Error::CommandFailed { stderr, .. }) => {
+            let denied = stderr.contains("InvalidClientTokenId")
+                || stderr.contains("SignatureDoesNotMatch")
+                || stderr.contains("AccessDenied")
+                || stderr.contains("Unable to locate credentials")
+                || stderr.contains("sso");
+            return TestResult {
+                ok: false,
+                reachable: true,
+                authenticated: denied.then_some(false),
+                latency_ms: None,
+                message: if denied {
+                    "AWS rejected these credentials, or the profile isn't signed in.".into()
+                } else {
+                    format!("AWS check failed: {}", stderr.lines().last().unwrap_or_default())
+                },
+            };
+        }
+        Err(e) => return TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("AWS check failed: {e}") },
+    };
+    // Can this identity launch EC2? A dry run creates nothing; it only checks the permission.
+    let dry =
+        aws_cmd(h, &env, &["ec2", "run-instances", "--dry-run", "--instance-type", "t3.micro", "--image-id", "ami-00000000000000000", "--output", "text"])
+            .await;
+    let latency = Some(started.elapsed().as_millis() as u64);
+    let stderr = match &dry {
+        Err(Error::CommandFailed { stderr, .. }) => stderr.clone(),
+        _ => String::new(),
+    };
+    if stderr.contains("UnauthorizedOperation") {
+        return TestResult {
+            ok: false,
+            reachable: true,
+            authenticated: Some(true),
+            latency_ms: latency,
+            message: format!("Signed in as {arn}, but this identity can't launch EC2 (ec2:RunInstances is denied). Add EC2 permissions to it."),
+        };
+    }
+    TestResult {
+        ok: true,
+        reachable: true,
+        authenticated: Some(true),
+        latency_ms: latency,
+        message: format!("Signed in as {arn}, and able to launch EC2. Labs run here are billed to this account."),
+    }
+}
+
+/// This month's AWS spend so far (USD) for a host, via Cost Explorer. None if unreadable.
+pub(super) async fn month_to_date_cost(h: &HostProfile, password: &str) -> Option<f64> {
+    let env = terraform_env(h, password);
+    let period = crate::cloud::month_period();
+    let out = aws_cmd(
+        h,
+        &env,
+        &[
+            "ce",
+            "get-cost-and-usage",
+            "--time-period",
+            period.as_str(),
+            "--granularity",
+            "MONTHLY",
+            "--metrics",
+            "UnblendedCost",
+            "--query",
+            "ResultsByTime[0].Total.UnblendedCost.Amount",
+            "--output",
+            "text",
+        ],
+    )
+    .await
+    .ok()?;
+    out.trim().parse::<f64>().ok()
+}
+
+/// `(spent, limit)` when an AWS account is at or over its monthly budget; None otherwise
+/// (no budget, under it, not AWS, or the spend couldn't be read). Used to block a launch.
+pub async fn budget_exceeded(app: &AppHandle, id: &str) -> Option<(f64, f64)> {
+    let host = find(&load(app).ok()?, id).ok()?;
+    if host.provider != Provider::Aws {
+        return None;
+    }
+    let limit = host.monthly_limit.filter(|v| *v > 0.0)?;
+    let password = if host.use_cli_creds { String::new() } else { get_secret(id).ok()? };
+    let spent = month_to_date_cost(&host, &password).await?;
+    (spent >= limit).then_some((spent, limit))
+}
+
+/// Azure: `az account show` for the subscription confirms the CLI is signed in and the
+/// subscription is reachable. (az has no cheap VM-create dry-run like AWS.)
+pub(super) async fn test_azure(h: &HostProfile) -> TestResult {
+    let started = Instant::now();
+    let args = ["account", "show", "--subscription", h.username.as_str(), "--query", "name", "--output", "tsv"];
+    match crate::exec::run("az", &args, None).await {
+        Ok(name) => TestResult {
+            ok: true,
+            reachable: true,
+            authenticated: Some(true),
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            message: format!("Signed in to Azure subscription \"{}\". Labs run here are billed to it.", name.trim()),
+        },
+        Err(Error::CommandFailed { stderr, .. }) => {
+            let not_in = stderr.contains("az login") || stderr.contains("not logged in") || stderr.contains("AADSTS") || stderr.contains("was not found");
+            TestResult {
+                ok: false,
+                reachable: true,
+                authenticated: Some(false),
+                latency_ms: None,
+                message: if not_in {
+                    "Not signed in to Azure, or no access to that subscription. Sign in and check the subscription id.".into()
+                } else {
+                    format!("Azure check failed: {}", stderr.lines().last().unwrap_or_default())
+                },
+            }
+        }
+        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("Azure check failed: {e}") },
+    }
+}
+
+pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
+    if h.provider == Provider::Aws {
+        return test_aws(h, password).await;
+    }
+    if h.provider == Provider::Azure {
+        return test_azure(h).await;
+    }
+    let started = Instant::now();
+    let connect = tokio::time::timeout(TEST_TIMEOUT, TcpStream::connect((h.host.as_str(), h.port))).await;
+    let mut stream = match connect {
+        Ok(Ok(s)) => s,
+        Ok(Err(e)) => {
+            return TestResult {
+                ok: false,
+                reachable: false,
+                authenticated: None,
+                latency_ms: None,
+                message: format!("Can't reach {}:{}: {e}", h.host, h.port),
+            };
+        }
+        Err(_) => {
+            return TestResult {
+                ok: false,
+                reachable: false,
+                authenticated: None,
+                latency_ms: None,
+                message: format!("Timed out reaching {}:{}", h.host, h.port),
+            };
+        }
+    };
+    let latency_ms = Some(started.elapsed().as_millis() as u64);
+
+    match h.provider {
+        // vagrant-vmware-esxi drives ESXi over SSH: check the port actually speaks SSH.
+        Provider::VmwareEsxi => {
+            let mut buf = [0u8; 64];
+            let banner = tokio::time::timeout(TEST_TIMEOUT, stream.read(&mut buf)).await;
+            match banner {
+                Ok(Ok(n)) if buf[..n].starts_with(b"SSH-") => TestResult {
+                    ok: true,
+                    reachable: true,
+                    authenticated: None,
+                    latency_ms,
+                    message: "SSH is up. Make sure SSH is enabled on the ESXi host; the password is checked on first lab start.".into(),
+                },
+                _ => TestResult {
+                    ok: false,
+                    reachable: true,
+                    authenticated: None,
+                    latency_ms,
+                    message: format!("Port {} is open but doesn't answer as SSH. Enable SSH on the ESXi host.", h.port),
+                },
+            }
+        }
+        // Proxmox: sign in to the API (token or user + password), then check what a lab
+        // launch needs (node, storage content, bridge, SSH key for token setups).
+        Provider::Proxmox => {
+            drop(stream);
+            let r = crate::runtime::proxmox::test(h, password).await;
+            TestResult { ok: r.ok, reachable: true, authenticated: r.authenticated, latency_ms, message: r.message }
+        }
+        _ => TestResult { ok: true, reachable: true, authenticated: None, latency_ms, message: "Reachable".into() },
+    }
+}

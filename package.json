@@ -9,7 +9,7 @@
     "lint": "eslint",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" && cargo fmt --manifest-path src-tauri/Cargo.toml",
     "typecheck": "tsc --noEmit",
-    "check": "prettier --check \"src/**/*.{ts,tsx,css}\" && tsc --noEmit && eslint src && cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings"
+    "check": "prettier --check \"src/**/*.{ts,tsx,css}\" && tsc --noEmit && eslint src && cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",

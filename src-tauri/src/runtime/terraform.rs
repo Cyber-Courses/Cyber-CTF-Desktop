@@ -165,13 +165,13 @@ pub async fn destroy(deploy: &Path, state: &Path, target: &str, vars: &[(String,
         return Ok(());
     }
     let mut all: Vec<(String, String)> = vars.to_vec();
-    if let Ok(raw) = std::fs::read_to_string(state.join(RUN_FILE)) {
-        if let Ok(Value::Object(run)) = serde_json::from_str::<Value>(&raw) {
-            for (k, v) in run {
-                // Strings only: lab variables (expires_at is a number).
-                if let Some(v) = v.as_str() {
-                    all.push((k, v.to_string()));
-                }
+    if let Ok(raw) = std::fs::read_to_string(state.join(RUN_FILE))
+        && let Ok(Value::Object(run)) = serde_json::from_str::<Value>(&raw)
+    {
+        for (k, v) in run {
+            // Strings only: lab variables (expires_at is a number).
+            if let Some(v) = v.as_str() {
+                all.push((k, v.to_string()));
             }
         }
     }
