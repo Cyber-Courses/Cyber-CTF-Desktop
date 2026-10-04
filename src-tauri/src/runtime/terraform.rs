@@ -1,7 +1,9 @@
-//! Terraform targets of a lab's `deploy/terraform/<target>/` module (Proxmox server
-//! today, AWS cloud next). A local `terraform` binary is used when installed (simpler
-//! state: plain files, no bind mount) and the official container otherwise. Variables
-//! reach it as `TF_VAR_*` through the environment (never on the command line).
+//! Terraform targets of a lab's `deploy/terraform/<target>/` module (Proxmox servers and the
+//! AWS / Azure / GCP clouds). A local `terraform` binary is required; state is kept as plain
+//! files on the host. A containerised terraform would be simpler to ship but couldn't reach the
+//! host's cloud CLI auth (`~/.aws`, `az login` / `~/.azure`, gcloud ADC), so the cloud targets
+//! need the host binary. Variables reach it as `TF_VAR_*` through the environment (never on the
+//! command line).
 //!
 //! State lives outside the lab folder (`state_dir`), because reinstalling a lab at a new
 //! commit replaces that folder and must not orphan the VM it created.
@@ -35,7 +37,7 @@ async fn terraform(deploy: &Path, state: &Path, target: &str, env: &[(String, St
 }
 
 /// Runs terraform from the host PATH (init, then the command). State lives in `state` as
-/// plain files, which is simpler than the container's bind-mounted volume.
+/// plain files on the host.
 async fn terraform_host(deploy: &Path, state: &Path, target: &str, env: &[(String, String)], command: &str, mut log: impl FnMut(String)) -> Result<()> {
     let dir = deploy.join("terraform").join(target);
     let backend = format!("-backend-config=path={}", state.join("terraform.tfstate").display());

@@ -120,7 +120,7 @@ pub struct Connection {
     pub name: String,
     pub env: Vec<(String, String)>,
     pub tf_vars: Vec<(String, String)>,
-    /// Raw env for the Terraform container (cloud credentials).
+    /// Raw environment for Terraform (cloud credentials the provider reads itself).
     pub tf_env: Vec<(String, String)>,
 }
 

@@ -16,13 +16,16 @@ export function ProviderStep({ s }: { s: HostSetup }) {
       title="Choose a cloud provider"
       description="Where labs run as throwaway instances in your own account. AWS, Azure and Google Cloud; more coming."
     >
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+      <div role="radiogroup" aria-label="Cloud provider" className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         {CLOUD_PICKER.map((p) => {
           const selected = p.ready && cloudProvider === p.id;
           return (
             <button
               key={p.id}
               type="button"
+              role="radio"
+              aria-checked={selected}
+              aria-label={p.label}
               disabled={!p.ready}
               onClick={() => p.ready && pickProvider(p.id as CloudProvider)}
               className={cn(

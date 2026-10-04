@@ -14,9 +14,12 @@ export function AccountStep({ s }: { s: HostSetup }) {
         Labs run in your account and are billed while they run; the cost depends on each lab&apos;s size. Stopping a lab, or its auto-stop, destroys what it
         created.
       </p>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div role="radiogroup" aria-label="How to connect" className="grid gap-2 sm:grid-cols-2">
         <button
           type="button"
+          role="radio"
+          aria-checked={v.useCliCreds}
+          aria-label="Use the AWS CLI"
           onClick={() => set("useCliCreds", true)}
           className={cn(
             "rounded-lg border p-3 text-left transition-colors",
@@ -28,6 +31,9 @@ export function AccountStep({ s }: { s: HostSetup }) {
         </button>
         <button
           type="button"
+          role="radio"
+          aria-checked={!v.useCliCreds}
+          aria-label="Access keys"
           onClick={() => set("useCliCreds", false)}
           className={cn(
             "rounded-lg border p-3 text-left transition-colors",
