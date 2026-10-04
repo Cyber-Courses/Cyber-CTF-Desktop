@@ -9,6 +9,7 @@ export const KIND: Record<RemoteProvider, { label: string; note: string; port: n
   aws: { label: "AWS", note: "EC2 in your own account", port: 443, user: "AKIA…", plugin: "" },
   azure: { label: "Azure", note: "VMs in your own subscription", port: 443, user: "subscription id", plugin: "" },
   gcp: { label: "Google Cloud", note: "VMs in your own project", port: 443, user: "project id", plugin: "" },
+  digitalocean: { label: "DigitalOcean", note: "Droplets in your own account", port: 443, user: "API token", plugin: "" },
 };
 
 /** Server hypervisors, as opposed to cloud accounts. */
@@ -69,6 +70,19 @@ export const GCP_REGIONS: [string, string][] = [
   ["asia-southeast1", "Singapore"],
 ];
 
+/** Common DigitalOcean regions for the cloud setup dropdown (slug, human name). */
+export const DO_REGIONS: [string, string][] = [
+  ["fra1", "Frankfurt"],
+  ["ams3", "Amsterdam"],
+  ["lon1", "London"],
+  ["nyc3", "New York"],
+  ["sfo3", "San Francisco"],
+  ["tor1", "Toronto"],
+  ["sgp1", "Singapore"],
+  ["blr1", "Bangalore"],
+  ["syd1", "Sydney"],
+];
+
 export type StepKey = "provider" | "hypervisor" | "tools" | "connection" | "placement" | "account" | "credentials" | "options" | "test";
 /** Cloud providers offered in the cloud setup. AWS, Azure and GCP each provision labs in the
  *  player's own account; `ready` gates which are selectable. */
@@ -76,6 +90,7 @@ export const CLOUD_META: Record<CloudProvider, { label: string; cli: string; col
   aws: { label: "Amazon Web Services", cli: "aws", color: "#ff9900", ready: true },
   azure: { label: "Microsoft Azure", cli: "az", color: "#3b8eea", ready: true },
   gcp: { label: "Google Cloud", cli: "gcloud", color: "#34a853", ready: true },
+  digitalocean: { label: "DigitalOcean", cli: "", color: "#0080ff", ready: true },
 };
 
 /** The provider picker. AWS, Azure and GCP are live targets; the rest are coming soon.
@@ -84,7 +99,7 @@ export const CLOUD_PICKER: { id: string; label: string; ready: boolean; logo: bo
   { id: "aws", label: "Amazon Web Services", ready: true, logo: true },
   { id: "azure", label: "Microsoft Azure", ready: true, logo: true },
   { id: "gcp", label: "Google Cloud", ready: true, logo: true },
-  { id: "digitalocean", label: "DigitalOcean", ready: false, logo: true },
+  { id: "digitalocean", label: "DigitalOcean", ready: true, logo: true },
   { id: "linode", label: "Linode", ready: false, logo: true },
   { id: "oracle", label: "Oracle Cloud", ready: false, logo: true },
 ];

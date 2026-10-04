@@ -1,7 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 
 export type Provider =
-  "virtualbox" | "vmware_desktop" | "hyperv" | "parallels" | "libvirt" | "qemu" | "utm" | "vmware_esxi" | "proxmox" | "aws" | "azure" | "gcp";
+  "virtualbox" | "vmware_desktop" | "hyperv" | "parallels" | "libvirt" | "qemu" | "utm" | "vmware_esxi" | "proxmox" | "aws" | "azure" | "gcp" | "digitalocean";
 
 export interface Tool {
   installed: boolean;

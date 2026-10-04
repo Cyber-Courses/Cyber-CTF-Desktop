@@ -5,7 +5,7 @@ import { ArrowLeft, CheckCircle2, Cloud, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/ui/log-console";
-import { AWS_REGIONS, AZURE_LOCATIONS, GCP_REGIONS } from "@/features/servers/host-setup/constants";
+import { AWS_REGIONS, AZURE_LOCATIONS, DO_REGIONS, GCP_REGIONS } from "@/features/servers/host-setup/constants";
 import { Field, Input, Nav, Select, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
 
@@ -18,6 +18,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
     editing,
     azure,
     gcp,
+    digitalocean,
     profiles,
     awsIdentity,
     checkingId,
@@ -38,18 +39,42 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
   return (
     <Step
       icon={Cloud}
-      title={azure ? "Azure subscription" : gcp ? "Google Cloud project" : v.useCliCreds ? "AWS CLI" : "Access keys"}
+      title={azure ? "Azure subscription" : gcp ? "Google Cloud project" : digitalocean ? "DigitalOcean token" : v.useCliCreds ? "AWS CLI" : "Access keys"}
       description={
         azure
           ? "Sign in with the Azure CLI, then pick your subscription and location."
           : gcp
             ? "Sign in with the gcloud CLI, then pick a billing account. Each lab creates its own project."
-            : v.useCliCreds
-              ? "Pick a profile, or sign in with the browser."
-              : "An IAM user's access keys."
+            : digitalocean
+              ? "Paste a DigitalOcean API token with read/write scope, and pick a region."
+              : v.useCliCreds
+                ? "Pick a profile, or sign in with the browser."
+                : "An IAM user's access keys."
       }
     >
-      {azure ? (
+      {digitalocean ? (
+        <div className="space-y-3">
+          <Field label="API token" hint="read/write scope">
+            <Input
+              type="password"
+              value={v.password ?? ""}
+              onChange={(e) => set("password", e.target.value || null)}
+              placeholder={editing ? "Unchanged" : "dop_v1_…"}
+              autoComplete="off"
+            />
+          </Field>
+          <p className="text-[0.6875rem] text-muted-foreground">
+            No token?{" "}
+            <button
+              type="button"
+              onClick={() => openUrl("https://cloud.digitalocean.com/account/api/tokens").catch(() => {})}
+              className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+            >
+              Create one in the DigitalOcean console <ExternalLink className="size-3" />
+            </button>
+          </p>
+        </div>
+      ) : azure ? (
         <div className="space-y-3">
           {azureChecking ? (
             <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem] text-muted-foreground">
@@ -212,10 +237,10 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
       <div className="mt-3">
         <Field label={azure ? "Location" : "Region"}>
           <Select value={v.host} onChange={(e) => set("host", e.target.value)}>
-            {v.host && !(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : AWS_REGIONS).some(([code]) => code === v.host) && (
+            {v.host && !(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : digitalocean ? DO_REGIONS : AWS_REGIONS).some(([code]) => code === v.host) && (
               <option value={v.host}>{v.host}</option>
             )}
-            {(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : AWS_REGIONS).map(([code, name]) => (
+            {(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : digitalocean ? DO_REGIONS : AWS_REGIONS).map(([code, name]) => (
               <option key={code} value={code}>
                 {code} — {name}
               </option>

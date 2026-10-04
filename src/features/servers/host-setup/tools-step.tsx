@@ -30,6 +30,7 @@ export function ToolsStep({ s }: { s: HostSetup }) {
     ovftoolOk,
     terraformOk,
     cloudDep,
+    cloudHasCli,
     cloudCliTool,
     cloudCliOk,
     toolsOk,
@@ -37,10 +38,12 @@ export function ToolsStep({ s }: { s: HostSetup }) {
   return (
     <Step
       icon={HardDrive}
-      title={cloud ? "Command-line tool" : "Tools on this machine"}
+      title={cloud ? "Command-line tools" : "Tools on this machine"}
       description={
         cloud
-          ? `The ${CLOUD_META[cloudProvider].label} CLI, used to connect and provision.`
+          ? cloudHasCli
+            ? `The ${CLOUD_META[cloudProvider].label} CLI and Terraform, used to connect and provision.`
+            : "Terraform connects to DigitalOcean with your API token and provisions the lab. No CLI needed."
           : `What the launcher needs here to run labs on ${KIND[v.provider].label}.`
       }
     >
@@ -51,21 +54,23 @@ export function ToolsStep({ s }: { s: HostSetup }) {
           </div>
         ) : cloud ? (
           <>
-            <Requirement
-              ok={cloudCliOk}
-              title={`${CLOUD_META[cloudProvider].label} CLI`}
-              detail={cloudCliOk ? (cloudCliTool?.version ?? "Installed") : `The ${CLOUD_META[cloudProvider].cli} CLI, needed to connect and provision.`}
-              action={
-                <Button
-                  variant="learn"
-                  size="sm"
-                  disabled={toolBusy}
-                  onClick={() => installTool(`${CLOUD_META[cloudProvider].cli} CLI`, (log) => installDependency(cloudDep, log))}
-                >
-                  Install {CLOUD_META[cloudProvider].cli}
-                </Button>
-              }
-            />
+            {cloudHasCli && (
+              <Requirement
+                ok={cloudCliOk}
+                title={`${CLOUD_META[cloudProvider].label} CLI`}
+                detail={cloudCliOk ? (cloudCliTool?.version ?? "Installed") : `The ${CLOUD_META[cloudProvider].cli} CLI, needed to connect and provision.`}
+                action={
+                  <Button
+                    variant="learn"
+                    size="sm"
+                    disabled={toolBusy}
+                    onClick={() => installTool(`${CLOUD_META[cloudProvider].cli} CLI`, (log) => installDependency(cloudDep, log))}
+                  >
+                    Install {CLOUD_META[cloudProvider].cli}
+                  </Button>
+                }
+              />
+            )}
             <Requirement
               ok={terraformOk}
               title="Terraform"

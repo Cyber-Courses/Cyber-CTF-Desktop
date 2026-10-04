@@ -55,7 +55,8 @@ export function useHostSetup({
   const aws = v.provider === "aws";
   const azure = v.provider === "azure";
   const gcp = v.provider === "gcp";
-  const cloud = aws || azure || gcp;
+  const digitalocean = v.provider === "digitalocean";
+  const cloud = aws || azure || gcp || digitalocean;
   // Azure and GCP authenticate through their CLI (no access keys); the flow is the same shape.
   const cliAuth = azure || gcp;
   // Derived from the saved provider (not separate state) so it stays correct when editing an
@@ -162,7 +163,7 @@ export function useHostSetup({
     setV((s) => ({
       ...s,
       provider: id as RemoteProvider,
-      host: id === "azure" ? "westeurope" : id === "gcp" ? "europe-west1" : "eu-west-3",
+      host: id === "azure" ? "westeurope" : id === "gcp" ? "europe-west1" : id === "digitalocean" ? "fra1" : "eu-west-3",
       username: "",
       password: null,
       useCliCreds: id === "aws",
@@ -175,12 +176,12 @@ export function useHostSetup({
   };
   const steps: StepKey[] = cloud
     ? editing
-      ? cliAuth
-        ? ["credentials", "options", "test"]
-        : ["account", "credentials", "options", "test"]
-      : cliAuth
-        ? ["provider", "tools", "credentials", "options", "test"]
-        : ["provider", "tools", "account", "credentials", "options", "test"]
+      ? aws
+        ? ["account", "credentials", "options", "test"]
+        : ["credentials", "options", "test"]
+      : aws
+        ? ["provider", "tools", "account", "credentials", "options", "test"]
+        : ["provider", "tools", "credentials", "options", "test"]
     : editing
       ? ["connection", "placement", "test"]
       : ["hypervisor", "tools", "connection", "placement", "test"];
@@ -192,11 +193,13 @@ export function useHostSetup({
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, e.target.value),
   });
 
-  const connectionOk = cliAuth
-    ? v.host.trim() !== "" && v.username.trim() !== ""
-    : cloud && v.useCliCreds
-      ? v.host.trim() !== ""
-      : v.host.trim() !== "" && v.username.trim() !== "" && (editing || (v.password ?? "") !== "");
+  const connectionOk = digitalocean
+    ? v.host.trim() !== "" && (editing || (v.password ?? "") !== "")
+    : cliAuth
+      ? v.host.trim() !== "" && v.username.trim() !== ""
+      : cloud && v.useCliCreds
+        ? v.host.trim() !== ""
+        : v.host.trim() !== "" && v.username.trim() !== "" && (editing || (v.password ?? "") !== "");
   const next = () => setI((n) => Math.min(n + 1, steps.length - 1));
   const back = () => setI((n) => Math.max(n - 1, 0));
 
@@ -221,10 +224,17 @@ export function useHostSetup({
   const esxiPluginOk = !!status?.pluginInstalled;
   const ovftoolOk = !!report?.ovftool?.installed;
   const terraformOk = !!report?.terraform.installed;
-  const cloudDep: Dependency = cloudProvider === "aws" ? "awscli" : cloudProvider === "azure" ? "azurecli" : "gcloud";
-  const cloudCliTool = report?.cloudClis[cloudProvider === "gcp" ? "gcloud" : cloudProvider];
+  // DigitalOcean uses an API token (no CLI); every other cloud has one to install.
+  const cloudHasCli = cloud && CLOUD_META[cloudProvider].cli !== "";
+  const cloudDep: Dependency = cloudProvider === "azure" ? "azurecli" : cloudProvider === "gcp" ? "gcloud" : "awscli";
+  const cloudCliKey = cloudProvider === "gcp" ? "gcloud" : cloudProvider === "azure" ? "azure" : "aws";
+  const cloudCliTool = cloudHasCli ? report?.cloudClis[cloudCliKey] : undefined;
   const cloudCliOk = !!cloudCliTool?.installed;
-  const toolsOk = cloud ? cloudCliOk && terraformOk : v.provider === "vmware_esxi" ? vagrantOk && esxiPluginOk && ovftoolOk : terraformOk;
+  const toolsOk = cloud
+    ? (cloudHasCli ? cloudCliOk : true) && terraformOk
+    : v.provider === "vmware_esxi"
+      ? vagrantOk && esxiPluginOk && ovftoolOk
+      : terraformOk;
 
   async function runTest(id: string) {
     setTest("testing");
@@ -301,6 +311,7 @@ export function useHostSetup({
     aws,
     azure,
     gcp,
+    digitalocean,
     cliAuth,
     cloud,
     profiles,
@@ -335,6 +346,7 @@ export function useHostSetup({
     ovftoolOk,
     terraformOk,
     cloudDep,
+    cloudHasCli,
     cloudCliTool,
     cloudCliOk,
     toolsOk,

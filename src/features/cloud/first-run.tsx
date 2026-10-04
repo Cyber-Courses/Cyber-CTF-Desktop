@@ -7,7 +7,6 @@ import { Step } from "@/features/cloud/tool-rows";
 
 /** Providers shown as "coming soon" in the Environment panel (logo = SVG in public/brands). */
 export const COMING_SOON: { id: string; label: string; logo: boolean }[] = [
-  { id: "digitalocean", label: "DigitalOcean", logo: true },
   { id: "linode", label: "Linode", logo: true },
   { id: "oracle", label: "Oracle Cloud", logo: true },
 ];
