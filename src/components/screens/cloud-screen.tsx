@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { CheckCircle2, ChevronDown, Pencil, Plus, Trash2, X, XCircle, Zap } from "lucide-react";
+import { CheckCircle2, ChevronDown, Pencil, Plus, Square, Trash2, X, XCircle, Zap } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { useLabs, type Lab } from "@/lib/use-labs";
 import {
   awsMonthToDateCost,
   cloudLogin,
   installDependency,
+  labStop,
   provisioningImages,
   provisioningPull,
   SERVER_CHANGED,
@@ -42,6 +44,8 @@ export function CloudScreen() {
   const [pullBusy, setPullBusy] = useState<string | null>(null);
   const [envOpen, setEnvOpen] = useState<boolean | null>(null);
   const [spend, setSpend] = useState<Record<string, number | null>>({});
+  const { labs, statuses, refreshStatus } = useLabs();
+  const [stopping, setStopping] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     serverList()
@@ -95,6 +99,19 @@ export function CloudScreen() {
     }
   }
 
+  async function stopLab(l: Lab) {
+    if (!l.runtime) return;
+    setStopping(l.id);
+    try {
+      await labStop(l.id, l.runtime.runtime, () => {});
+      refreshStatus(l);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setStopping(null);
+    }
+  }
+
   async function installCli(dep: Dependency) {
     setCliBusy(dep);
     try {
@@ -136,6 +153,12 @@ export function CloudScreen() {
     const s = spend[h.id];
     return h.monthlyLimit != null && s != null && s >= h.monthlyLimit;
   });
+  // Labs running on one of these cloud accounts right now (status.host is the account name).
+  const accountNames = new Set((hosts ?? []).map((h) => h.name));
+  const running = (labs ?? []).filter((l) => {
+    const s = statuses[l.id];
+    return l.runtime && s?.running && !!s.host && accountNames.has(s.host);
+  });
   const envReady = !!report?.cloudClis.aws.installed && !!report?.terraform.installed;
   // Only one install/pull/sign-in at a time: brew (and others) can't run two at once.
   const busyOp = cliBusy !== null || pullBusy !== null || loginBusy !== null;
@@ -156,6 +179,30 @@ export function CloudScreen() {
         <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12.5px] text-rose-300">
           {over.length === 1 ? `${over[0].name} is over its monthly budget` : `${over.length} accounts are over their monthly budget`} — new labs there are blocked until you raise the budget or next month.
         </p>
+      )}
+
+      {running.length > 0 && (
+        <Panel>
+          <PanelHeader title="Running now" action={<span className="text-[11.5px] text-muted-foreground">Billing while they run</span>} />
+          {running.map((l) => {
+            const s = statuses[l.id];
+            return (
+              <div key={l.id} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
+                <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{l.title}</p>
+                  <p className="truncate text-[11px] text-muted-foreground">
+                    {s?.host}
+                    {s?.expiresAt ? ` · auto-stops ${new Date(s.expiresAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+                  </p>
+                </div>
+                <Button variant="destructive" size="sm" onClick={() => stopLab(l)} disabled={stopping === l.id}>
+                  {stopping === l.id ? <Spinner className="size-3.5" /> : <Square className="size-3.5" />} Stop
+                </Button>
+              </div>
+            );
+          })}
+        </Panel>
       )}
 
       <Panel>
