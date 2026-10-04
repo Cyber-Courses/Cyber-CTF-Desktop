@@ -122,6 +122,7 @@ pub fn run() {
             runtime::server::server_remove,
             runtime::server::server_set_default,
             runtime::server::server_test,
+            runtime::server::server_running_labs,
             runtime::server::server_open_setup,
         ])
         .run(tauri::generate_context!())

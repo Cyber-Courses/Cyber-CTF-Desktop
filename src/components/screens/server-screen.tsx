@@ -17,6 +17,7 @@ import {
   serverList,
   serverOpenSetup,
   serverRemove,
+  serverRunningLabs,
   serverSetDefault,
   serverTest,
   systemCheck,
@@ -76,6 +77,7 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
   const [defaultId, setDefaultId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, ServerTest | "testing">>({});
+  const [running, setRunning] = useState<Record<string, number>>({});
   const [report, setReport] = useState<SystemReport | null>(null);
   const [cliBusy, setCliBusy] = useState<string | null>(null);
   const [provImages, setProvImages] = useState<ProvisioningImage[] | null>(null);
@@ -112,16 +114,27 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
   }, [test]);
   useEffect(reload, [reload]);
 
+  // Running-labs-per-host, refreshed on a slow poll (labs start and stop from other screens).
+  const loadRunning = useCallback(() => {
+    serverRunningLabs().then(setRunning).catch(() => {});
+  }, []);
+  useEffect(() => {
+    loadRunning();
+    const timer = setInterval(loadRunning, 8000);
+    return () => clearInterval(timer);
+  }, [loadRunning]);
+
   // The setup window saves hosts; refresh (and re-test the changed one) when it says so.
   useEffect(() => {
     const off = listen(SERVER_CHANGED, () => {
       tested.current.clear();
       reload();
+      loadRunning();
     });
     return () => {
       off.then((f) => f()).catch(() => {});
     };
-  }, [reload]);
+  }, [reload, loadRunning]);
 
   useEffect(() => {
     if (!cloud) return;
@@ -227,6 +240,7 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
               host={h}
               isDefault={h.id === defaultId}
               canDefault={!cloud}
+              running={running[h.id] ?? 0}
               test={tests[h.id]}
               onTest={() => test(h.id)}
               onEdit={() => open(h.id)}
@@ -315,6 +329,7 @@ function HostRow({
   host,
   isDefault,
   canDefault,
+  running,
   test,
   onTest,
   onEdit,
@@ -324,6 +339,7 @@ function HostRow({
   host: ServerHost;
   isDefault: boolean;
   canDefault: boolean;
+  running: number;
   test: ServerTest | "testing" | undefined;
   onTest: () => void;
   onEdit: () => void;
@@ -359,7 +375,15 @@ function HostRow({
               </button>
             )}
           </p>
-          <p className="mt-0.5 truncate font-mono text-[11.5px] text-muted-foreground">{endpoint}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-muted-foreground">
+            <span className="truncate font-mono">{endpoint}</span>
+            {running > 0 && (
+              <span className="inline-flex items-center gap-1 font-medium text-learn">
+                <span className="size-1.5 rounded-full bg-learn" />
+                {running} lab{running > 1 ? "s" : ""} running
+              </span>
+            )}
+          </p>
           {result && !result.ok && <p className="mt-1 text-[12px] text-rose-500">{result.message}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">

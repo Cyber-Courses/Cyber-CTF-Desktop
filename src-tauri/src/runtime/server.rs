@@ -6,6 +6,7 @@
 //! own: a lab's Vagrantfile reads `ENV` and sets `esxi.*` / `proxmox.*` from it. This
 //! module defines that contract (`connection_env`), documented in `docs/server.md`.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -668,6 +669,26 @@ pub async fn server_test(app: AppHandle, id: String) -> Result<TestResult> {
     let host = find(&load(&app)?, &id)?;
     let password = get_secret(&id)?;
     Ok(test_host(&host, &password).await)
+}
+
+/// How many installed labs are currently running on each host, keyed by host id. A lab
+/// leaves a `.cyberctf-host` marker in its directory while it runs on a host (written on
+/// start, cleared on stop), so this is filesystem-only: no host calls, no credentials.
+#[tauri::command]
+pub fn server_running_labs(app: AppHandle) -> HashMap<String, u32> {
+    let mut counts: HashMap<String, u32> = HashMap::new();
+    let Ok(labs) = app.path().app_data_dir().map(|d| d.join("labs")) else { return counts };
+    if let Ok(entries) = std::fs::read_dir(labs) {
+        for e in entries.flatten() {
+            if let Ok(id) = std::fs::read_to_string(e.path().join(HOST_MARKER)) {
+                let id = id.trim();
+                if !id.is_empty() {
+                    *counts.entry(id.to_string()).or_default() += 1;
+                }
+            }
+        }
+    }
+    counts
 }
 
 #[cfg(test)]
