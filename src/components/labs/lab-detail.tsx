@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, CheckCircle2, Container, Crosshair, ExternalLink, Play, Server, Square, Terminal } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Container, Crosshair, ExternalLink, Play, Server, ShieldAlert, ShieldCheck, Square, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
@@ -10,7 +10,7 @@ import { LogConsole } from "@/components/labs/log-console";
 import { Markdown } from "@/components/labs/markdown";
 import { NetworkDiagram } from "@/components/labs/network-diagram";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/lib/use-labs";
-import { apiQuery, labAttackShell, exegolShell, exegolStart, exegolStatus, exegolStop, serverList, type ExegolStatus, type ServerHost, type LabStatus } from "@/lib/tauri";
+import { apiQuery, labAttackShell, labCheck, exegolShell, exegolStart, exegolStatus, exegolStop, serverList, type ExegolStatus, type LabCheck, type ServerHost, type LabStatus } from "@/lib/tauri";
 import { getAttackImage } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +41,7 @@ export function LabDetail({
   const [exegolBusy, setExegolBusy] = useState(false);
   const [exegolLog, setExegolLog] = useState<string[]>([]);
   const exegolLogEnd = useRef<HTMLDivElement>(null);
+  const [check, setCheck] = useState<LabCheck | "checking" | null>(null);
 
   useEffect(() => {
     apiQuery<{ labs: { contentMd: string | null }[] }>(
@@ -56,6 +57,20 @@ export function LabDetail({
   const running = status?.running ?? false;
   const url = status?.url;
   const down = (status?.machines ?? []).filter((m) => m.state !== "running");
+
+  // Clear a stale verification result once the lab stops.
+  useEffect(() => {
+    if (!running) setCheck(null);
+  }, [running]);
+
+  async function verify() {
+    setCheck("checking");
+    try {
+      setCheck(await labCheck(lab.id, "DOCKER"));
+    } catch (e) {
+      setCheck({ available: true, ok: false, output: String(e) });
+    }
+  }
   const RuntimeIcon = rt?.runtime === "VM" ? Server : Container;
   const isDocker = rt?.runtime !== "VM";
 
@@ -143,7 +158,7 @@ export function LabDetail({
           )}
 
           {running && status && status.machines.length > 0 ? (
-            <NetworkDiagram machines={status.machines} attacker={exegol ? { running: exegol.running, ip: exegol.ip } : null} />
+            <NetworkDiagram machines={status.machines} networks={status.networks} host={status.host} attacker={exegol ? { running: exegol.running, ip: exegol.ip, labNetwork: exegol.labNetwork } : null} />
           ) : (
             <Panel>
               <PanelHeader title="Network" />
@@ -212,6 +227,22 @@ export function LabDetail({
                     <Button variant="destructive" className="w-full" onClick={onStop} disabled={busy}>
                       {busy ? "Stopping…" : "Stop lab"}
                     </Button>
+                    {isDocker && (
+                      <Button variant="outline" className="w-full" onClick={verify} disabled={check === "checking"}>
+                        {check === "checking" ? <Spinner className="size-4" /> : <ShieldCheck className="size-4" />} Verify exploitability
+                      </Button>
+                    )}
+                    {check && check !== "checking" && (check.available ? (
+                      <div className={cn("flex items-start gap-2 rounded-lg border p-2.5 text-[12px]", check.ok ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200" : "border-rose-500/25 bg-rose-500/10 text-rose-200")}>
+                        {check.ok ? <ShieldCheck className="mt-px size-4 shrink-0 text-emerald-500" /> : <ShieldAlert className="mt-px size-4 shrink-0 text-rose-400" />}
+                        <span>{check.ok ? "Exploitable: the challenge is still solvable." : "Broken: the lab can no longer be solved. Reset it (Stop, then Start)."}</span>
+                      </div>
+                    ) : (
+                      <p className="text-[11.5px] text-muted-foreground">This lab has no exploitability check.</p>
+                    ))}
+                    {check && check !== "checking" && check.available && !check.ok && check.output && (
+                      <LogConsole lines={check.output.split("\n")} />
+                    )}
                   </>
                 ) : (
                   <>

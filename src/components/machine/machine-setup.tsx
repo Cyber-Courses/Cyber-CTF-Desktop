@@ -5,7 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, Check, CheckCircle2, Container, Copy, Cpu, ExternalLink, Package, Play, RefreshCw, Server, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { installDependency, type Dependency, type SystemReport } from "@/lib/tauri";
+import { installDependency, type Dependency, type DockerEngine, type SystemReport } from "@/lib/tauri";
 import { DOWNLOAD, INSTALLABLE, providerLabel, usableHypervisors } from "@/lib/hypervisors";
 import { cn } from "@/lib/utils";
 
@@ -130,50 +130,65 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
         )}
 
         {key === "docker" && (
-          <Step icon={Container} title="Container engine" description={isMac ? "Container labs need a Docker-compatible engine. Docker Desktop is the easy default; OrbStack or Colima also work." : isWin ? "Container labs run on Docker Desktop (it uses the WSL 2 you enabled). Any Docker-compatible engine works." : "Container labs run on Docker Engine, or any Docker-compatible engine."}>
-            {dockerReady ? (
-              <Ready>Docker is installed and running.</Ready>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-[#0f0f0f] p-3.5">
-                  <div>
-                    <p className="text-[13px] font-medium">Docker {report?.docker.installed ? "isn’t running" : "isn’t installed"}</p>
-                    <p className="text-[12px] text-muted-foreground">{report?.docker.installed ? "Launch Docker Desktop, then re-check." : "Opens Docker’s trusted installer."}</p>
-                  </div>
-                  {!installerOpened && !report?.docker.installed ? (
-                    <Button variant="learn" onClick={installDocker} disabled={installing}>
-                      {installing ? <><Spinner className="size-4" /> Installing…</> : "Install Docker"}
-                    </Button>
-                  ) : (
-                    <Button variant="outline" onClick={() => onRefresh()}><RefreshCw className="size-3.5" /> Re-check</Button>
-                  )}
-                </div>
-                {installerOpened && <p className="text-[12px] text-muted-foreground">Finish in Docker’s installer, launch Docker Desktop, then press Re-check.</p>}
-                {isMac && <p className="text-[12px] text-muted-foreground">After installing, open Docker Desktop once and wait until it reports “running”.</p>}
-                {isMac && (
-                  <p className="text-[12px] text-muted-foreground">
-                    Prefer a lighter engine? Get{" "}
-                    <button onClick={() => openUrl("https://orbstack.dev/").catch(() => {})} className="text-learn hover:underline">OrbStack</button>{" "}or{" "}
-                    <button onClick={() => openUrl("https://github.com/abiosoft/colima").catch(() => {})} className="text-learn hover:underline">Colima</button>{" "}— both Docker-compatible.
-                  </p>
-                )}
-                {isWin && <p className="text-[12px] text-muted-foreground">A reboot may be needed after enabling WSL. If Docker says virtualization is off, go back a step.</p>}
-                {!isMac && !isWin && (
-                  <div className="space-y-2 rounded-lg border border-border bg-[#0f0f0f] p-3 text-[12px] text-muted-foreground">
-                    <p>After Docker Engine installs, let your user run it and start the service:</p>
-                    <CmdRow cmd="sudo usermod -aG docker $USER" />
-                    <CmdRow cmd="sudo systemctl enable --now docker" />
-                    <p>Then log out and back in.</p>
-                  </div>
-                )}
-                {logs.length > 0 && (
-                  <pre className="max-h-40 overflow-auto rounded-lg border border-border bg-[#070707] p-3 font-mono text-[11.5px] leading-relaxed text-muted-foreground">
-                    {logs.join("\n")}
-                    <div ref={logEnd} />
-                  </pre>
-                )}
+          <Step icon={Container} title="Container engine" description={isWin ? "Container labs need a Docker-compatible engine (it uses the WSL 2 you enabled). Pick any of these." : "Container labs need a Docker-compatible engine. Pick any of these, they all work."}>
+            <div className="space-y-3">
+              <div className="overflow-hidden rounded-lg border border-border">
+                {ENGINES.filter((e) => e.os.includes(os)).map((e) => {
+                  const inUse = report.dockerEngine === e.id;
+                  const primary = e.id === (isMac || isWin ? "docker-desktop" : "docker-engine");
+                  return (
+                    <div key={e.id} className={cn("flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0", inUse && "bg-emerald-500/[0.06]")}>
+                      <EngineLogo engine={e} />
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+                          {e.name}
+                          {primary && !inUse && <span className="rounded border border-border px-1.5 py-px text-[10.5px] font-normal text-muted-foreground">Recommended</span>}
+                        </p>
+                        <p className="text-[12px] text-muted-foreground">{e.note}</p>
+                      </div>
+                      <span className="ml-auto flex shrink-0 items-center gap-2">
+                        {inUse ? (
+                          <span className="flex items-center gap-1.5 text-[12px] text-emerald-500"><span className="size-1.5 rounded-full bg-emerald-500" /> In use</span>
+                        ) : primary && !report.docker.installed ? (
+                          !installerOpened ? (
+                            <Button variant="learn" size="sm" onClick={installDocker} disabled={installing}>
+                              {installing ? <><Spinner className="size-3.5" /> Installing…</> : "Install"}
+                            </Button>
+                          ) : (
+                            <Button variant="outline" size="sm" onClick={() => onRefresh()}><RefreshCw className="size-3.5" /> Re-check</Button>
+                          )
+                        ) : (
+                          <Button variant="outline" size="sm" onClick={() => openUrl(e.url).catch(() => {})}><ExternalLink className="size-3.5" /> Get</Button>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-            )}
+              {!dockerReady && report.docker.installed ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3.5">
+                  <p className="text-[12.5px] text-foreground">An engine is installed but not running. Start it, then re-check.</p>
+                  <Button variant="outline" size="sm" onClick={() => onRefresh()}><RefreshCw className="size-3.5" /> Re-check</Button>
+                </div>
+              ) : null}
+              {!dockerReady && installerOpened && <p className="text-[12px] text-muted-foreground">Finish in Docker’s installer, launch Docker Desktop, then press Re-check.</p>}
+              {!dockerReady && isWin && <p className="text-[12px] text-muted-foreground">A reboot may be needed after enabling WSL. If Docker says virtualization is off, go back a step.</p>}
+              {!dockerReady && !isMac && !isWin && (
+                <div className="space-y-2 rounded-lg border border-border bg-[#0f0f0f] p-3 text-[12px] text-muted-foreground">
+                  <p>After Docker Engine installs, let your user run it and start the service:</p>
+                  <CmdRow cmd="sudo usermod -aG docker $USER" />
+                  <CmdRow cmd="sudo systemctl enable --now docker" />
+                  <p>Then log out and back in.</p>
+                </div>
+              )}
+              {logs.length > 0 && (
+                <pre className="max-h-40 overflow-auto rounded-lg border border-border bg-[#070707] p-3 font-mono text-[11.5px] leading-relaxed text-muted-foreground">
+                  {logs.join("\n")}
+                  <div ref={logEnd} />
+                </pre>
+              )}
+            </div>
+            <div className="mt-4"><EngineTrademarks /></div>
             <Nav
               left={isWin ? <Button variant="outline" onClick={back} disabled={installing}><ArrowLeft className="size-4" /> Back</Button> : undefined}
               right={<Button variant="learn" onClick={next} disabled={installing}>{dockerReady ? "Continue" : "Skip for now"}</Button>}
@@ -182,7 +197,7 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
         )}
 
         {key === "vm" && (
-          <Step icon={Server} title="Virtual machines (optional)" description="Some labs are full VMs (routers, Windows, multi-host networks). Install a hypervisor to run those, or skip, you can do it later from the Machine page.">
+          <Step icon={Server} title="Virtual machines" description="Labs built from full VMs (Active Directory domains, Windows hosts, routers, multi-host networks) need a hypervisor. You can also add one later from the Machine page.">
             {report && usableHypervisors(report).length > 0 ? (
               <div className="overflow-hidden rounded-lg border border-border">
                 {usableHypervisors(report).map((p) => (
@@ -243,6 +258,38 @@ export function MachineSetup({ report, onRefresh, onClose }: { report: SystemRep
   );
 }
 
+/** Docker-compatible engines, per OS. The recommended one gets the one-click install; others link out. */
+type Engine = { id: DockerEngine; name: string; note: string; url: string; os: string[]; logo: string; tile?: boolean };
+const ENGINES: Engine[] = [
+  { id: "docker-desktop", name: "Docker Desktop", note: "The official app. Easiest to set up.", url: "https://www.docker.com/products/docker-desktop/", os: ["macos", "windows", "linux"], logo: "/brands/docker.svg" },
+  { id: "docker-engine", name: "Docker Engine", note: "The native daemon, no desktop app.", url: "https://docs.docker.com/engine/install/", os: ["linux"], logo: "/brands/docker.svg" },
+  { id: "orbstack", name: "OrbStack", note: "Fast and light on memory. Free for personal use.", url: "https://orbstack.dev/", os: ["macos"], logo: "/brands/orbstack.png", tile: true },
+  { id: "colima", name: "Colima", note: "Open source, command line only.", url: "https://github.com/abiosoft/colima", os: ["macos", "linux"], logo: "/brands/colima.png" },
+  { id: "rancher-desktop", name: "Rancher Desktop", note: "Open source. Choose the dockerd (moby) engine.", url: "https://rancherdesktop.io/", os: ["macos", "windows", "linux"], logo: "/brands/rancher-desktop.svg", tile: true },
+];
+
+/** Brand mark in a fixed square. App icons (`tile`) fill it; bare marks sit on a light chip so dark artwork stays legible. */
+function EngineLogo({ engine }: { engine: Engine }) {
+  return engine.tile ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={engine.logo} alt="" className="size-8 shrink-0 rounded-lg object-contain" />
+  ) : (
+    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white p-1.5">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={engine.logo} alt="" className="size-full object-contain" />
+    </span>
+  );
+}
+
+/** Trademark notice for the engine marks shown above. */
+function EngineTrademarks() {
+  return (
+    <p className="text-[11px] leading-relaxed text-muted-foreground/70">
+      Docker and the Docker logo are trademarks of Docker, Inc. OrbStack, Colima and Rancher Desktop marks belong to their respective owners. CyberCTF isn&apos;t affiliated with any of them.
+    </p>
+  );
+}
+
 function Step({ icon: Icon, title, description, children }: { icon: typeof Cpu; title: string; description: string; children: React.ReactNode }) {
   return (
     <div>
@@ -289,17 +336,6 @@ function Num({ n, children }: { n: number; children: React.ReactNode }) {
       <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-border bg-card text-[11px] font-medium text-muted-foreground">{n}</span>
       <div className="min-w-0 text-[12.5px] leading-relaxed text-foreground">{children}</div>
     </li>
-  );
-}
-
-function Ready({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3.5">
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
-        <Check className="size-4" />
-      </span>
-      <p className="text-[13px] font-medium text-foreground">{children}</p>
-    </div>
   );
 }
 

@@ -63,6 +63,9 @@ pub struct SystemReport {
     pub docker: Tool,
     /// The Docker daemon answers (Docker Desktop / engine is started).
     pub docker_running: bool,
+    /// Which Docker-compatible engine answers, when one does: `docker-desktop`, `orbstack`,
+    /// `colima`, `rancher-desktop`, `podman` or `docker-engine`.
+    pub docker_engine: Option<&'static str>,
     pub docker_compose: Tool,
     pub vagrant: Tool,
     /// A local terraform binary (preferred for provisioning state; container is the fallback).
@@ -73,6 +76,25 @@ pub struct SystemReport {
     /// this architecture: x86-only boxes (e.g. pfSense) cannot run on ARM hosts
     /// with a local hypervisor, but can on a remote x86 host.
     pub vm_providers: Vec<ProviderStatus>,
+}
+
+/// Name the running engine from the daemon's OS string and the active CLI context.
+async fn docker_engine(os: &str) -> &'static str {
+    let context = run("docker", &["context", "show"], None).await.unwrap_or_default().to_lowercase();
+    let os = os.to_lowercase();
+    if os.contains("orbstack") || context.contains("orbstack") {
+        "orbstack"
+    } else if context.contains("colima") {
+        "colima"
+    } else if os.contains("rancher") || context.contains("rancher") {
+        "rancher-desktop"
+    } else if os.contains("podman") || context.contains("podman") {
+        "podman"
+    } else if os.contains("docker desktop") || context.starts_with("desktop-") {
+        "docker-desktop"
+    } else {
+        "docker-engine"
+    }
 }
 
 async fn probe(program: &'static str, args: &[&str]) -> Tool {
@@ -88,19 +110,24 @@ pub async fn system_check() -> SystemReport {
         probe("docker", &["--version"]),
         probe("docker", &["compose", "version", "--short"]),
         probe("vagrant", &["--version"]),
-        run("docker", &["info", "--format", "{{.ServerVersion}}"], None),
+        run("docker", &["info", "--format", "{{.OperatingSystem}}"], None),
         probe("aws", &["--version"]),
         probe("az", &["version"]),
         probe("gcloud", &["--version"]),
         probe("terraform", &["version"]),
     );
     let vm_providers = providers::detect(vagrant.installed).await;
+    let docker_engine = match &daemon {
+        Ok(os) => Some(docker_engine(os.trim()).await),
+        Err(_) => None,
+    };
     SystemReport {
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
         pkg_manager: package_manager().await,
         docker,
         docker_running: daemon.is_ok(),
+        docker_engine,
         docker_compose,
         vagrant,
         terraform,

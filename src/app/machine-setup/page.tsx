@@ -21,10 +21,11 @@ export default function MachineSetupWindow() {
   const close = () => getCurrentWindow().close().catch(() => {});
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* Overlay title bar: room for the traffic lights, drag the window from the strip. */}
-      <div data-tauri-drag-region className="h-10 select-none" />
-      <main className="mx-auto max-w-2xl px-6 pb-8">
+      <div data-tauri-drag-region className="h-10 shrink-0 select-none" />
+      {/* Centered in the window; the bottom pad mirrors the title strip so it sits optically centered. */}
+      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-6 pb-10">
         <MachineSetup report={report} onRefresh={check} onClose={close} />
       </main>
     </div>

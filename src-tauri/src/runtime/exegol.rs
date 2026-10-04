@@ -27,8 +27,10 @@ pub struct ExegolStatus {
     /// The image is pulled locally (otherwise the first start downloads it, several GB).
     pub image_present: bool,
     pub running: bool,
-    /// The attack box's address on the lab network, once running.
+    /// The attack box's address on the lab network (what the targets see), once running.
     pub ip: String,
+    /// The lab network it is plugged into (the lab's name for it, e.g. "default"), once running.
+    pub lab_network: String,
     /// The command that attaches a shell (shown so the player can also run it anywhere).
     pub shell_cmd: String,
 }
@@ -43,9 +45,9 @@ async fn lab_network(id: &str) -> Option<String> {
 pub async fn status(id: &str, image: &str) -> ExegolStatus {
     let image_present = run("docker", &["image", "inspect", image], None).await.is_ok();
     let name = container(id);
-    let attack_net = format!("cyberctf-{id}-attack");
-    // Report the attacker's address on its OWN network (distinct from the lab subnet).
-    let tmpl = format!("{{{{.State.Running}}}}\t{{{{with index .NetworkSettings.Networks \"{attack_net}\"}}}}{{{{.IPAddress}}}}{{{{end}}}}");
+    // Report the attacker's address on the lab network: the one the targets see it from.
+    let lab_net = lab_network(id).await.unwrap_or_default();
+    let tmpl = format!("{{{{.State.Running}}}}\t{{{{with index .NetworkSettings.Networks \"{lab_net}\"}}}}{{{{.IPAddress}}}}{{{{end}}}}");
     let probe = run("docker", &["inspect", "-f", &tmpl, &name], None).await;
     let (running, ip) = match probe {
         Ok(out) => {
@@ -55,7 +57,8 @@ pub async fn status(id: &str, image: &str) -> ExegolStatus {
         }
         Err(_) => (false, String::new()),
     };
-    ExegolStatus { image_present, running, ip, shell_cmd: format!("docker exec -it {name} bash") }
+    let lab_network = if running && !lab_net.is_empty() { super::docker::short_network(id, &lab_net) } else { String::new() };
+    ExegolStatus { image_present, running, ip, lab_network, shell_cmd: format!("docker exec -it {name} bash") }
 }
 
 pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result<()> {

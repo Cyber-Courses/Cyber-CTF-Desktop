@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@dagrejs/dagre':
-        specifier: ^3.1.1
-        version: 3.1.1
       '@tauri-apps/api':
         specifier: ^2.12.0
         version: 2.12.0
@@ -29,6 +26,9 @@ importers:
       '@xyflow/react':
         specifier: ^12.12.0
         version: 12.12.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      elkjs:
+        specifier: ^0.12.0
+        version: 0.12.0
       lucide-react:
         specifier: ^1.50.0
         version: 1.50.0(@types/react@19.3.0)(react@19.2.8)
@@ -142,12 +142,6 @@ packages:
   '@babel/types@7.29.8':
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
-
-  '@dagrejs/dagre@3.1.1':
-    resolution: {integrity: sha512-zroZB1dFOFiGgv4Xcrn1DckB1o4aOikPqD2NDQPV0WM//CXGcS6xiD0rNkqHmw6FEg4tabt4nxPLwgCWT+Vb2A==}
-
-  '@dagrejs/graphlib@4.0.5':
-    resolution: {integrity: sha512-7xrBTqIts3o+PMUZX97wSc+7TUbW+/rULzGNCTP6yooNVDXbzw4Wutg/H/xOutTB/c/k0YqOAavgPh4/Zk9PFA==}
 
   '@emnapi/core@1.10.0':
     resolution: {integrity: sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw==}
@@ -1156,6 +1150,9 @@ packages:
 
   electron-to-chromium@1.5.443:
     resolution: {integrity: sha512-TDJG36L9A3CWWwZ97HKaE+Iz1sW80pNp6sAU0owzCIV3Zc9eVyRqZK8Vz6NKuMIU8WjP0pIkoqCa0VRf/yFD0Q==}
+
+  elkjs@0.12.0:
+    resolution: {integrity: sha512-YZcKynxVxYoKIOEpywEPwCFdg+BTbxQRNf3pbwdDCvc8O3kQD8bmIwSxKU1eOTVc4Xo+VG9Te+575mlfvOrhEQ==}
 
   emoji-regex@9.2.2:
     resolution: {integrity: sha512-L18DaJsXSUk2+42pv8mLs5jJT2hqFkFE4j21wOmgbUqsZ2hL72NsUU785g9RXgo3s0ZNgVl42TiHp3ZtOv/Vyg==}
@@ -2340,12 +2337,6 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@dagrejs/dagre@3.1.1':
-    dependencies:
-      '@dagrejs/graphlib': 4.0.5
-
-  '@dagrejs/graphlib@4.0.5': {}
-
   '@emnapi/core@1.10.0':
     dependencies:
       '@emnapi/wasi-threads': 1.2.1
@@ -3250,6 +3241,8 @@ snapshots:
       gopd: 1.2.0
 
   electron-to-chromium@1.5.443: {}
+
+  elkjs@0.12.0: {}
 
   emoji-regex@9.2.2: {}
 

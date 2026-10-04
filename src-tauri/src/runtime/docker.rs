@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use super::{LabStatus, Machine, Port};
+use super::{Interface, LabStatus, Machine, Network, Port};
 use crate::error::{Error, Result};
 use crate::exec::{run, run_env, stream};
 
@@ -101,12 +101,57 @@ pub async fn stop(dir: &Path, id: &str, log: impl FnMut(String)) -> Result<()> {
     .await
 }
 
+fn config_has_service(json: &str, name: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| v.get("services").and_then(|s| s.as_object()).map(|m| m.contains_key(name)))
+        .unwrap_or(false)
+}
+
+/// Result of a lab's self-verification (the `check` service).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Check {
+    /// The lab ships a `check` service, so verification is possible.
+    pub available: bool,
+    /// The check passed: the challenge is still in a solvable state.
+    pub ok: bool,
+    /// The check's combined output (why it failed, when it did).
+    pub output: String,
+}
+
+/// Runs the lab's `check` service (compose `check` profile): a container on the lab network
+/// that asserts the intended exploit path still works, so a learner who broke their box is
+/// told to reset it instead of fighting a lab that can no longer be solved. Exit 0 = solvable.
+pub async fn check(dir: &Path, id: &str) -> Result<Check> {
+    let project = project(id);
+    let config = run("docker", &["compose", "-p", &project, "-f", "docker-compose.yml", "config", "--format", "json"], Some(dir))
+        .await
+        .ok();
+    if !config.as_deref().map(|c| config_has_service(c, "check")).unwrap_or(false) {
+        return Ok(Check { available: false, ok: false, output: String::new() });
+    }
+    let mut lines: Vec<String> = Vec::new();
+    let res = stream(
+        "docker",
+        &["compose", "-p", &project, "-f", "docker-compose.yml", "--profile", "check", "run", "--rm", "--no-deps", "check"],
+        Some(dir),
+        &[],
+        |l| lines.push(l),
+    )
+    .await;
+    Ok(Check { available: true, ok: res.is_ok(), output: lines.join("\n") })
+}
+
 #[derive(Deserialize)]
 struct PsEntry {
     #[serde(rename = "Service")]
     service: String,
     #[serde(rename = "State")]
     state: String,
+    /// Compose healthcheck result: "healthy" / "unhealthy" / "starting" / "" (none declared).
+    #[serde(rename = "Health", default)]
+    health: String,
     #[serde(rename = "Image", default)]
     image: String,
     #[serde(rename = "Name", default)]
@@ -150,26 +195,88 @@ fn first_published_url(entries: &[PsEntry]) -> Option<String> {
         .map(|port| format!("http://127.0.0.1:{port}"))
 }
 
-/// Each running container's address on the lab network, keyed by container name.
-/// `docker compose ps` doesn't carry the IP, so we inspect the live containers once.
+/// The lab's own name for a Docker network: Compose prefixes the compose key with the
+/// project (`cyberctf-<id>_dmz` -> `dmz`). Other names are returned unchanged.
+pub fn short_network(id: &str, name: &str) -> String {
+    name.strip_prefix(&format!("{}_", project(id))).unwrap_or(name).to_string()
+}
+
+/// Each running container's interfaces (network -> address), keyed by container name.
+/// `docker compose ps` doesn't carry addresses, so we inspect the live containers once.
 /// Best effort: an empty map (e.g. inspect failed) just means the UI shows no IPs.
-async fn container_ips(dir: &Path, names: &[String]) -> std::collections::HashMap<String, String> {
+async fn container_ifaces(dir: &Path, id: &str, names: &[String]) -> std::collections::HashMap<String, Vec<Interface>> {
     use std::collections::HashMap;
     if names.is_empty() {
         return HashMap::new();
     }
-    let mut args: Vec<&str> = vec!["inspect", "-f", "{{.Name}}\t{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}"];
+    let mut args: Vec<&str> = vec!["inspect", "-f", "{{.Name}}\t{{range $k, $v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}"];
     args.extend(names.iter().map(String::as_str));
     let out = match run("docker", &args, Some(dir)).await {
         Ok(out) => out,
         Err(_) => return HashMap::new(),
     };
+    parse_ifaces(id, &out)
+}
+
+fn parse_ifaces(id: &str, out: &str) -> std::collections::HashMap<String, Vec<Interface>> {
     out.lines()
         .filter_map(|line| {
             let (name, rest) = line.split_once('\t')?;
-            let ip = rest.split_whitespace().next()?.to_string();
-            Some((name.trim_start_matches('/').to_string(), ip))
+            let ifaces = rest
+                .split_whitespace()
+                .filter_map(|kv| kv.split_once('='))
+                .filter(|(_, ip)| !ip.is_empty())
+                .map(|(net, ip)| Interface { network: short_network(id, net), ip: ip.to_string() })
+                .collect();
+            Some((name.trim_start_matches('/').to_string(), ifaces))
         })
+        .collect()
+}
+
+/// The lab's networks (Compose labels them with the project), with subnet and isolation.
+async fn lab_networks(id: &str) -> Vec<Network> {
+    let filter = format!("label=com.docker.compose.project={}", project(id));
+    let Ok(names) = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await else {
+        return Vec::new();
+    };
+    let names: Vec<&str> = names.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    if names.is_empty() {
+        return Vec::new();
+    }
+    let mut args = vec!["network", "inspect", "-f", "{{.Name}}\t{{range .IPAM.Config}}{{.Subnet}} {{end}}\t{{.Internal}}"];
+    args.extend(names);
+    match run("docker", &args, None).await {
+        Ok(out) => parse_networks(id, &out),
+        Err(_) => Vec::new(),
+    }
+}
+
+fn parse_networks(id: &str, out: &str) -> Vec<Network> {
+    let mut nets: Vec<Network> = out
+        .lines()
+        .filter_map(|line| {
+            let mut cols = line.split('\t');
+            let name = cols.next()?.trim();
+            // Docker may list an IPv6 range too; the diagram shows the IPv4 one.
+            let subnets: Vec<&str> = cols.next().unwrap_or_default().split_whitespace().collect();
+            let subnet = subnets.iter().find(|s| !s.contains(':')).or(subnets.first()).copied().unwrap_or_default();
+            let internal = cols.next().is_some_and(|c| c.trim() == "true");
+            (!name.is_empty()).then(|| Network { name: short_network(id, name), subnet: subnet.to_string(), internal })
+        })
+        .collect();
+    nets.sort_by(|a, b| a.name.cmp(&b.name));
+    nets
+}
+
+/// A container's TCP ports, once each. Docker lists a published port once per address
+/// family (0.0.0.0 and ::), which would otherwise draw every door twice.
+fn tcp_ports(publishers: &[Publisher]) -> Vec<Port> {
+    let mut seen = std::collections::HashSet::new();
+    publishers
+        .iter()
+        .filter(|p| (p.target_port > 0 || p.published_port > 0) && (p.protocol.is_empty() || p.protocol == "tcp"))
+        .filter(|p| seen.insert((p.published_port, p.target_port)))
+        .map(|p| Port { published: p.published_port, target: p.target_port })
         .collect()
 }
 
@@ -198,7 +305,8 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     let running = entries.iter().any(|e| e.state == "running");
     let url = if running { first_published_url(&entries) } else { None };
     let run_names: Vec<String> = entries.iter().filter(|e| e.state == "running").map(|e| e.name.clone()).collect();
-    let ips = container_ips(dir, &run_names).await;
+    let mut ifaces = container_ifaces(dir, id, &run_names).await;
+    let networks = if running { lab_networks(id).await } else { Vec::new() };
     // Serving containers (those that publish a port) that should be up but aren't: a lab
     // whose web died is reported degraded, not fine. One-shot init jobs publish nothing, so
     // their normal exit is ignored. Config is only consulted while the lab is up.
@@ -220,22 +328,21 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
         .into_iter()
         .filter(|e| e.state == "running")
         .map(|e| {
-            let ports = e
-                .publishers
-                .iter()
-                .filter(|p| (p.target_port > 0 || p.published_port > 0) && (p.protocol.is_empty() || p.protocol == "tcp"))
-                .map(|p| Port { published: p.published_port, target: p.target_port })
-                .collect();
-            let ip = ips.get(&e.name).cloned().unwrap_or_default();
-            Machine { name: e.service, state: e.state, image: e.image, ip, ports }
+            let ports = tcp_ports(&e.publishers);
+            let interfaces = ifaces.remove(&e.name).unwrap_or_default();
+            let ip = interfaces.first().map(|i| i.ip.clone()).unwrap_or_default();
+            // A running container that fails its compose healthcheck is surfaced as unhealthy,
+            // so the UI greys it like a dead one instead of showing a broken lab as fine.
+            let state = if e.health == "unhealthy" { "unhealthy".to_string() } else { e.state };
+            Machine { name: e.service, state, image: e.image, ip, ports, interfaces }
         })
         .collect();
     for (service, state) in down {
         if !machines.iter().any(|m| m.name == service) {
-            machines.push(Machine { name: service, state, image: String::new(), ip: String::new(), ports: Vec::new() });
+            machines.push(Machine { name: service, state, image: String::new(), ip: String::new(), ports: Vec::new(), interfaces: Vec::new() });
         }
     }
-    Ok(LabStatus { running, machines, url, host: None, expires_at: None })
+    Ok(LabStatus { running, machines, networks, url, host: None, expires_at: None })
 }
 
 /// Where the lab is reachable on this machine (its first published port), once running.
@@ -253,7 +360,7 @@ pub async fn primary_url(dir: &Path, id: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{first_published_url, host_ports_from_config, parse_ps};
+    use super::{first_published_url, host_ports_from_config, parse_ifaces, parse_networks, parse_ps, tcp_ports};
 
     #[test]
     fn reads_published_host_ports_from_config() {
@@ -296,5 +403,34 @@ mod tests {
         let db_only = r#"[{"Service":"database","Image":"mysql:8.0","State":"running","Publishers":[{"PublishedPort":3207,"Protocol":"tcp"}]},
           {"Service":"web","State":"exited","Publishers":[]}]"#;
         assert_eq!(first_published_url(&parse_ps(db_only)), None);
+    }
+
+    #[test]
+    fn reads_every_interface_with_the_lab_network_name() {
+        let out = "/cyberctf-sqli-web-1\tcyberctf-sqli_dmz=172.21.0.3 cyberctf-sqli_internal=172.22.0.2 \n/cyberctf-sqli-db-1\tcyberctf-sqli_internal=172.22.0.3 \n/x\tcyberctf-sqli_dmz= \n";
+        let m = parse_ifaces("sqli", out);
+        let web: Vec<(&str, &str)> = m["cyberctf-sqli-web-1"].iter().map(|i| (i.network.as_str(), i.ip.as_str())).collect();
+        assert_eq!(web, vec![("dmz", "172.21.0.3"), ("internal", "172.22.0.2")]);
+        assert_eq!(m["cyberctf-sqli-db-1"][0].network, "internal");
+        assert!(m["x"].is_empty(), "a network with no address yet is skipped");
+    }
+
+    #[test]
+    fn reads_networks_preferring_ipv4_subnets() {
+        let out = "cyberctf-sqli_internal\tfd00::/64 172.22.0.0/16 \ttrue\ncyberctf-sqli_default\t172.21.0.0/16 \tfalse\n";
+        let n = parse_networks("sqli", out);
+        assert_eq!(n.iter().map(|n| n.name.as_str()).collect::<Vec<_>>(), vec!["default", "internal"]);
+        assert_eq!(n[1].subnet, "172.22.0.0/16");
+        assert!(n[1].internal && !n[0].internal);
+    }
+
+    #[test]
+    fn lists_a_port_published_on_ipv4_and_ipv6_once() {
+        let out = r#"[{"Service":"db","State":"running","Publishers":[
+          {"URL":"0.0.0.0","TargetPort":3207,"PublishedPort":3207,"Protocol":"tcp"},
+          {"URL":"::","TargetPort":3207,"PublishedPort":3207,"Protocol":"tcp"},
+          {"URL":"","TargetPort":33060,"PublishedPort":0,"Protocol":"tcp"}]}]"#;
+        let ports = tcp_ports(&parse_ps(out)[0].publishers);
+        assert_eq!(ports.iter().map(|p| (p.published, p.target)).collect::<Vec<_>>(), vec![(3207, 3207), (0, 33060)]);
     }
 }

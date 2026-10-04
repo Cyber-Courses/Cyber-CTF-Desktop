@@ -154,11 +154,11 @@ pub fn status(state: &Path) -> LabStatus {
     let created = (!outputs["vm_id"]["value"].is_null() || !outputs["instance_id"]["value"].is_null()) && !expired;
     let ip = outputs["ip"]["value"].as_str().unwrap_or_default().to_string();
     let machines = if created {
-        vec![Machine { name: "labhost".into(), state: "running".into(), image: String::new(), ip, ports: Vec::new() }]
+        vec![Machine { name: "labhost".into(), state: "running".into(), image: String::new(), ip, ports: Vec::new(), interfaces: Vec::new() }]
     } else {
         Vec::new()
     };
-    LabStatus { running: created, machines, url: None, host: None, expires_at: expires_at.filter(|_| created) }
+    LabStatus { running: created, machines, networks: Vec::new(), url: None, host: None, expires_at: expires_at.filter(|_| created) }
 }
 
 #[cfg(test)]

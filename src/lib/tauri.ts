@@ -34,12 +34,16 @@ export interface ProviderStatus {
   reason: string | null;
 }
 
+export type DockerEngine = "docker-desktop" | "orbstack" | "colima" | "rancher-desktop" | "podman" | "docker-engine";
+
 export interface SystemReport {
   os: string;
   arch: string;
   pkgManager: { name: string; installed: boolean };
   docker: Tool;
   dockerRunning: boolean;
+  /** The Docker-compatible engine that answers, when one does. */
+  dockerEngine: DockerEngine | null;
   dockerCompose: Tool;
   vagrant: Tool;
   terraform: Tool;
@@ -47,9 +51,35 @@ export interface SystemReport {
   vmProviders: ProviderStatus[];
 }
 
+/** A machine's address on one lab network (the lab's name for it, e.g. "dmz"). */
+export interface LabInterface {
+  network: string;
+  ip: string;
+}
+
+export interface LabMachine {
+  name: string;
+  state: string;
+  image: string;
+  ip: string;
+  ports: { published: number; target: number }[];
+  /** Every network it is plugged into; two or more = a pivot. Empty when unknown. */
+  interfaces: LabInterface[];
+}
+
+/** A lab network segment (a Docker network = a switch). */
+export interface LabNetwork {
+  name: string;
+  subnet: string;
+  /** No route out (compose `internal: true`). */
+  internal: boolean;
+}
+
 export interface LabStatus {
   running: boolean;
-  machines: { name: string; state: string; image: string; ip: string; ports: { published: number; target: number }[] }[];
+  machines: LabMachine[];
+  /** The lab's network segments (Docker labs); empty when the runtime doesn't report them. */
+  networks: LabNetwork[];
   /** Loopback URL where the lab is reachable, once running (null for VM labs / no port). */
   url: string | null;
   /** Server host name a VM lab runs on; null when it runs on this machine. */
@@ -91,10 +121,22 @@ export function labStop(id: string, runtime: Runtime, onLog: (line: string) => v
 
 export const labStatus = (id: string, runtime: Runtime) => invoke<LabStatus>("lab_status", { id, runtime });
 
+/** Result of a lab's exploitability self-check (the lab's `check` service). */
+export interface LabCheck {
+  available: boolean;
+  ok: boolean;
+  output: string;
+}
+
+/** Runs a lab's exploitability check: is the intended exploit path still solvable? */
+export const labCheck = (id: string, runtime: Runtime) => invoke<LabCheck>("lab_check", { id, runtime });
+
 export interface ExegolStatus {
   imagePresent: boolean;
   running: boolean;
   ip: string;
+  /** The lab network the attack box is plugged into, once running. */
+  labNetwork: string;
   shellCmd: string;
 }
 

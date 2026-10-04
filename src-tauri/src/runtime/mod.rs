@@ -50,6 +50,31 @@ pub struct Machine {
     /// Ports the software inside it binds (for the network diagram).
     #[serde(default)]
     pub ports: Vec<Port>,
+    /// Every network the machine is plugged into, with its address there. A machine on
+    /// two networks is a pivot (dual-homed); empty when the runtime can't tell.
+    #[serde(default)]
+    pub interfaces: Vec<Interface>,
+}
+
+/// One network interface of a machine: the lab network it sits on and its address there.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Interface {
+    /// The lab's own name for the network (the compose key, e.g. "dmz"), not Docker's.
+    pub network: String,
+    pub ip: String,
+}
+
+/// A network segment of the lab (a Docker network = a switch the machines plug into).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Network {
+    /// The lab's own name for it (the compose key), e.g. "default", "dmz", "internal".
+    pub name: String,
+    /// CIDR, e.g. "172.20.0.0/16" (empty if Docker didn't report one).
+    pub subnet: String,
+    /// No route out (compose `internal: true`): its machines can't reach the internet.
+    pub internal: bool,
 }
 
 #[derive(Serialize)]
@@ -57,6 +82,8 @@ pub struct Machine {
 pub struct LabStatus {
     pub running: bool,
     pub machines: Vec<Machine>,
+    /// The lab's network segments (Docker labs); empty when the runtime doesn't report them.
+    pub networks: Vec<Network>,
     /// Loopback URL where the lab is reachable on this machine, once running (Docker labs
     /// with a published port). None for VM labs or when nothing is published yet.
     pub url: Option<String>,
@@ -268,6 +295,17 @@ pub async fn lab_stop(app: AppHandle, id: String, runtime: Runtime, logs: Channe
 pub async fn lab_status(app: AppHandle, id: String, runtime: Runtime) -> Result<LabStatus> {
     let dir = lab_dir(&app, &id)?;
     status(&app, &dir, &id, runtime).await
+}
+
+/// Runs a lab's exploitability check: does the intended exploit path still work? Lets a
+/// learner who broke their box know to reset it. Local Docker labs only for now.
+#[tauri::command]
+pub async fn lab_check(app: AppHandle, id: String, runtime: Runtime) -> Result<docker::Check> {
+    let dir = lab_dir(&app, &id)?;
+    match runtime {
+        Runtime::Docker if server::lab_connection(&app, &dir)?.is_none() => docker::check(&dir, &id).await,
+        _ => Ok(docker::Check { available: false, ok: false, output: String::new() }),
+    }
 }
 
 /// Opens the attack box shell of a running lab, wherever it runs: the local container,

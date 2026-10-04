@@ -227,3 +227,11 @@ body {
 .attack-line { border-top-color: #f0616d; border-top-style: dashed; }
 .legend-exposed { color: #54c171; }
 .topology-legend b { color: #9a9a9a; font-weight: 400; }
+/* Network diagram: per-network interfaces on a pivot, isolated (internal) networks. */
+.ifaces { display: flex; flex-direction: column; gap: 3px; margin-top: 7px; }
+.iface { display: flex; align-items: center; gap: 7px; color: #858585; font-size: 10px; }
+.iface-net { min-width: 52px; padding: 1px 6px; border: 1px solid #2c2c2c; border-radius: 4px; background: #181818; color: #a39bc2; font-size: 9px; font-weight: 600; letter-spacing: .04em; text-align: center; }
+.zone-label { display: inline-flex; align-items: center; gap: 7px; }
+.zone-isolated { display: inline-flex; align-items: center; gap: 3px; padding-left: 7px; border-left: 1px solid #2a2a2a; color: #c9a85a; letter-spacing: .06em; }
+.topology-legend-bar { position: static; justify-content: flex-end; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: #0c0c0c; backdrop-filter: none; padding: 8px 14px; }
+.zone .zone-handle { pointer-events: none; }

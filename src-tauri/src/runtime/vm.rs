@@ -23,7 +23,7 @@ fn parse_status(out: &str) -> Vec<Machine> {
             let mut parts = line.splitn(4, ',');
             let (_ts, target, kind, data) = (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
             (kind == "state" && !target.is_empty())
-                .then(|| Machine { name: target.to_string(), state: data.to_string(), image: String::new(), ip: String::new(), ports: Vec::new() })
+                .then(|| Machine { name: target.to_string(), state: data.to_string(), image: String::new(), ip: String::new(), ports: Vec::new(), interfaces: Vec::new() })
         })
         .collect()
 }
@@ -32,7 +32,7 @@ pub async fn status(dir: &Path, env: &[(String, String)]) -> Result<LabStatus> {
     let out = run_env("vagrant", &["status", "--machine-readable"], Some(dir), env).await?;
     let machines = parse_status(&out);
     let running = !machines.is_empty() && machines.iter().all(|m| m.state == "running");
-    Ok(LabStatus { running, machines, url: None, host: None, expires_at: None })
+    Ok(LabStatus { running, machines, networks: Vec::new(), url: None, host: None, expires_at: None })
 }
 
 #[cfg(test)]
