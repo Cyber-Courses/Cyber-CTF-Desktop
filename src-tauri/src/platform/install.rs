@@ -128,7 +128,16 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Libvirt => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y libvirt-daemon-system virt-manager"])],
             Dependency::Utm => return Err(Error::Invalid("UTM is only available on macOS.".into())),
             // Cloud CLIs via each vendor's official installer (best effort across distros).
-            Dependency::Awscli => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y awscli"])],
+            // AWS CLI v2 from the official bundle: the distro `awscli` package is v1, which has no
+            // `aws login` (the app needs v2 >= 2.32). `uname -m` is x86_64/aarch64, matching the URLs.
+            Dependency::Awscli => vec![step(
+                "pkexec",
+                &[
+                    "sh",
+                    "-c",
+                    "curl -sL \"https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip\" -o /tmp/awscliv2.zip && { command -v unzip >/dev/null || { apt-get update && apt-get install -y unzip; }; } && unzip -oq /tmp/awscliv2.zip -d /tmp && /tmp/aws/install --update && rm -rf /tmp/awscliv2.zip /tmp/aws",
+                ],
+            )],
             Dependency::Azurecli => vec![step("pkexec", &["sh", "-c", "curl -sL https://aka.ms/InstallAzureCLIDeb | bash"])],
             Dependency::Gcloud => vec![step("pkexec", &["sh", "-c", "curl -sSL https://sdk.cloud.google.com | bash -s -- --disable-prompts"])],
         })

@@ -6,6 +6,26 @@ use tokio::process::Command;
 
 use crate::error::{Error, Result};
 
+/// Tools that ship as a `.cmd`/`.bat` wrapper on Windows (not a real `.exe`). `CreateProcessW`
+/// only appends `.exe` and does not consult `PATHEXT`, so `Command::new("az")` can't find
+/// `az.cmd`; these must be launched through `cmd.exe`. `aws`/`terraform`/`docker`/`vagrant`
+/// are real `.exe` and resolve directly.
+#[cfg(windows)]
+const WINDOWS_CMD_SHIM: &[&str] = &["az", "gcloud"];
+
+/// Builds the Command, routing Windows batch-wrapper tools through `cmd /C` so they resolve.
+fn build(program: &str, args: &[&str]) -> Command {
+    #[cfg(windows)]
+    if WINDOWS_CMD_SHIM.contains(&program) {
+        let mut cmd = Command::new("cmd");
+        cmd.arg("/C").arg(program).args(args);
+        return cmd;
+    }
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+    cmd
+}
+
 /// Runs a program without a shell (arguments are never interpolated) and returns stdout.
 pub async fn run(program: &'static str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
     run_env(program, args, cwd, &[]).await
@@ -13,8 +33,8 @@ pub async fn run(program: &'static str, args: &[&str], cwd: Option<&Path>) -> Re
 
 /// `run` with extra environment variables.
 pub async fn run_env(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)]) -> Result<String> {
-    let mut cmd = Command::new(program);
-    cmd.args(args).stdin(Stdio::null());
+    let mut cmd = build(program, args);
+    cmd.stdin(Stdio::null());
     cmd.envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
@@ -35,8 +55,8 @@ pub async fn run_env(program: &'static str, args: &[&str], cwd: Option<&Path>, e
 /// Like `run`, but adds `env` to the process environment and forwards every
 /// stdout/stderr line to `on_line` as it arrives.
 pub async fn stream(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)], mut on_line: impl FnMut(String)) -> Result<()> {
-    let mut cmd = Command::new(program);
-    cmd.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut cmd = build(program, args);
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd.envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
     if let Some(dir) = cwd {
         cmd.current_dir(dir);

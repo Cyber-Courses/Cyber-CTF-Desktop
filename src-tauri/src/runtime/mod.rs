@@ -88,17 +88,20 @@ pub async fn start(
             vars.extend(lab_vars(dir, id, env)?);
             // The launcher's key, so "Open shell" can reach the attack box on the lab host.
             vars.push(("ssh_public_key".into(), ssh::ensure_key(app).await?.1));
+            // Every cloud target's firewall opens SSH to this machine's public IP only; without
+            // this the security group / NSG / firewall has no inbound rule and the lab is
+            // unreachable (while still billing).
+            vars.push(("allowed_cidr".into(), format!("{}/32", public_ip().await?)));
             if provider == providers::Provider::Aws {
-                // Stop before spending if this account is over its monthly budget.
+                // Stop before spending if this account is over its monthly budget (AWS only; the
+                // other clouds have no cost read yet).
                 if let Some((spent, limit)) = server::budget_exceeded(app, host).await {
                     return Err(Error::Invalid(format!(
                         "Monthly budget reached for this account: ${spent:.2} of ${limit:.2} spent this month. Raise the budget in the account settings, or wait until next month."
                     )));
                 }
-                // SSH open to this machine's public IP only.
-                vars.push(("allowed_cidr".into(), format!("{}/32", public_ip().await?)));
-                log("This lab runs in your AWS account and is billed there until you stop it.".into());
             }
+            log(format!("This lab runs in your {} account and is billed there until you stop it.", conn.provider.id().to_uppercase()));
             terraform::apply(&dir.join("deploy"), &state_dir(app, id, target)?, target, &vars, &conn.tf_env, log).await
         }
         (Runtime::Docker, provider) => {
