@@ -12,12 +12,14 @@ import { Button } from "@/components/ui/button";
 
 const SERVERS = new Set(["vmware_esxi", "proxmox"]);
 
-/** Every place a lab could run besides its default runtime here, and whether this one can (from its providers). */
+/** Every place a lab could run, and whether this one can (its runtime here, then its providers). */
 function runPlaces(rt: NonNullable<Lab["runtime"]>): { icon: LucideIcon; label: string; available: boolean }[] {
   // providers also carries "hosted" (not a launcher Provider), so compare as strings.
   const local = rt.providers.some((p: string) => !SERVERS.has(p) && !CLOUDS.has(p) && p !== "hosted");
+  const vm = rt.runtime === "VM";
   return [
-    { icon: Monitor, label: "VM on this machine", available: rt.runtime === "DOCKER" && local },
+    { icon: Container, label: "Container on this machine", available: !vm },
+    { icon: Monitor, label: "VM on this machine", available: vm || local },
     { icon: Server, label: "Your server", available: rt.providers.some((p) => SERVERS.has(p)) },
     { icon: Cloud, label: "Your cloud account", available: rt.providers.some((p) => CLOUDS.has(p)) },
     { icon: Globe, label: "Hosted by Cyber CTF", available: rt.hosted ?? false },
@@ -79,7 +81,7 @@ export function LabRow({
   const rt = lab.runtime;
   const native = rt?.architectures.includes(hostArch) ?? true;
   const running = status?.running ?? false;
-  const RuntimeIcon = rt?.runtime === "VM" ? Server : Container;
+  const RuntimeIcon = rt?.runtime === "VM" ? Monitor : Container;
 
   return (
     <div
@@ -111,10 +113,8 @@ export function LabRow({
       <div className="ml-auto flex shrink-0 items-center gap-3">
         {rt && (
           <span className="hidden items-center gap-1.5 text-[0.6875rem] text-muted-foreground xl:inline-flex">
-            <RuntimeIcon className="size-3" />
-            {rt.runtime === "VM" ? "VM" : "Container"}
-            {!native && <span className="text-amber-500">· emulated</span>}
-            <span className="ml-0.5 inline-flex items-center gap-1">
+            {!native && <span className="text-amber-500">emulated</span>}
+            <span className="inline-flex items-center gap-1">
               {runPlaces(rt).map(({ icon: Icon, label, available }) => {
                 const hint = available ? `Runs on: ${label}` : `Not available: ${label}`;
                 return (
