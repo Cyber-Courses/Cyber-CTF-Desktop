@@ -123,13 +123,33 @@ pub async fn check_budget(app: &AppHandle, id: &str) -> BudgetCheck {
     } else {
         match get_secret(id) {
             Ok(p) => p,
-            Err(_) => return BudgetCheck::Unverifiable("no stored credentials for this account".into()),
+            Err(_) => {
+                return BudgetCheck::Unverifiable("No stored credentials for this account. Re-enter its access keys, then launch again.".into());
+            }
         }
     };
     match month_to_date_cost(&host, &password).await {
         Ok(spent) if spent >= limit => BudgetCheck::Over(spent, limit),
         Ok(_) => BudgetCheck::Ok,
-        Err(e) => BudgetCheck::Unverifiable(e.to_string()),
+        Err(e) => BudgetCheck::Unverifiable(budget_unverifiable_message(&e.to_string())),
+    }
+}
+
+/// Turns a Cost Explorer failure into actionable guidance. An expired / missing sign-in is the
+/// common case (and the launch would fail on it too), so it gets a "reauthenticate" message
+/// rather than the misleading "enable Cost Explorer".
+fn budget_unverifiable_message(err: &str) -> String {
+    let lower = err.to_lowercase();
+    let auth = ["expired", "aws login", "invalidclienttokenid", "unable to locate credentials", "sso", "not logged in", "tokenrefresh", "credentials"]
+        .iter()
+        .any(|m| lower.contains(m));
+    if auth {
+        "Your AWS session has expired or you're not signed in. Reauthenticate with `aws login` (or pick a valid profile), then launch again.".into()
+    } else {
+        format!(
+            "Couldn't read this account's spend to check its monthly budget ({}). Enable Cost Explorer in the AWS Billing console (it can take ~24h to activate), or remove the budget on this account, then try again.",
+            err.lines().last().unwrap_or_default()
+        )
     }
 }
 
