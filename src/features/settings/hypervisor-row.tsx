@@ -2,25 +2,61 @@
 
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { LogConsole } from "@/components/ui/log-console";
+import { RadioList, RadioRow } from "@/components/ui/radio-row";
 import { Spinner } from "@/components/ui/spinner";
-import { type Provider, type ProviderStatus, type SystemReport } from "@/lib/tauri";
-import { getVmProvider, setVmProvider } from "@/lib/settings";
+import { HypervisorLogo } from "@/features/machine/hypervisor-logo";
 import { providerLabel } from "@/features/machine/hypervisors";
 import { Row } from "@/features/settings/settings-layout";
-import { Segmented } from "@/components/ui/segmented";
+import { getVmProvider, setVmProvider } from "@/lib/settings";
+import { installVagrantPlugin, type Provider, type ProviderStatus, type SystemReport } from "@/lib/tauri";
 
-export function HypervisorRow({ report, onSaved, onNavigate }: { report: SystemReport | null; onSaved: () => void; onNavigate: (tab: "machine") => void }) {
+/**
+ * Which local hypervisor VM labs run on. Every installed one is listed: the ready ones can be
+ * picked (or Automatic, the first ready one); one that's installed but missing its Vagrant
+ * add-on says so and offers to install it, then becomes pickable.
+ */
+export function HypervisorRow({
+  report,
+  onSaved,
+  onNavigate,
+  onRefresh,
+}: {
+  report: SystemReport | null;
+  onSaved: () => void;
+  onNavigate: (tab: "machine") => void;
+  onRefresh: () => void;
+}) {
   const [provider, setProvider] = useState<Provider | null>(() => getVmProvider());
-  // Local hypervisors VM labs can start on right now (hypervisor + Vagrant plugin ready).
-  const ready: ProviderStatus[] | null = report ? report.vmProviders.filter((p) => !p.remote && p.available && p.hypervisor !== false) : null;
-  // A saved choice that's no longer installed falls back to automatic.
-  const effective = ready?.some((h) => h.provider === provider) ? provider : null;
+  const [installing, setInstalling] = useState<string | null>(null);
+  const [log, setLog] = useState<string[] | null>(null);
+
+  const local = report ? report.vmProviders.filter((p) => !p.remote && p.hypervisor === true) : null;
+  // Ready = hypervisor + Vagrant + its plugin: VM labs can start on it right now.
+  const ready: ProviderStatus[] = (local ?? []).filter((p) => p.available);
+  const notReady: ProviderStatus[] = (local ?? []).filter((p) => !p.available);
+  // A saved choice that's no longer ready falls back to automatic.
+  const effective = ready.some((h) => h.provider === provider) ? provider : null;
 
   function choose(p: Provider | null) {
     setVmProvider(p);
     setProvider(p);
     onSaved();
+  }
+
+  async function installAddon(plugin: string) {
+    setInstalling(plugin);
+    setLog([`Installing the Vagrant add-on ${plugin}…`]);
+    try {
+      await installVagrantPlugin(plugin, (l) => setLog((x) => [...(x ?? []), l]));
+      setLog((x) => [...(x ?? []), "✓ Installed"]);
+    } catch (e) {
+      setLog((x) => [...(x ?? []), `✗ ${String(e)}`]);
+    } finally {
+      setInstalling(null);
+      onRefresh();
+    }
   }
 
   const setupLink = (
@@ -29,7 +65,7 @@ export function HypervisorRow({ report, onSaved, onNavigate }: { report: SystemR
     </button>
   );
 
-  if (ready === null) {
+  if (local === null) {
     return (
       <Row
         title="Hypervisor for VM labs"
@@ -41,42 +77,76 @@ export function HypervisorRow({ report, onSaved, onNavigate }: { report: SystemR
       />
     );
   }
-
-  if (ready.length === 0) {
-    return <Row title="Hypervisor for VM labs" description={<>No hypervisor is ready on this machine yet. {setupLink}</>} />;
+  if (local.length === 0) {
+    return <Row title="Hypervisor for VM labs" description={<>No hypervisor is installed on this machine yet. {setupLink}</>} />;
   }
 
-  const options: (Provider | null)[] = ready.length > 1 ? [null, ...ready.map((h) => h.provider)] : [];
-
+  const current = ready.find((h) => h.provider === (effective ?? ready[0]?.provider));
   return (
     <Row
+      stacked
       title="Hypervisor for VM labs"
       description={
-        ready.length === 1 ? (
-          <>VM labs run on {providerLabel(ready[0])}, the only hypervisor ready here.</>
-        ) : effective === null ? (
-          <>Automatic picks {providerLabel(ready[0])}, the first ready hypervisor.</>
+        current ? (
+          <>VM labs and the VM test run on {providerLabel(current)}.</>
         ) : (
-          <>VM labs and the VM test run on {providerLabel(ready.find((h) => h.provider === effective)!)}.</>
+          <>None of the installed hypervisors can run VM labs yet. Install its Vagrant add-on below.</>
         )
       }
-      control={
-        ready.length === 1 ? (
-          <Badge variant="success" dot>
-            {providerLabel(ready[0])}
-          </Badge>
-        ) : (
-          <Segmented
-            label="Hypervisor"
-            value={effective}
-            onChange={choose}
-            options={options.map((p) => {
-              const status = ready.find((h) => h.provider === p);
-              return { value: p, label: p === null ? "Automatic" : status ? providerLabel(status) : p };
-            })}
-          />
-        )
-      }
-    />
+    >
+      {ready.length > 0 && (
+        <RadioList label="Hypervisor for VM labs" className="mt-3">
+          {ready.length > 1 && (
+            <RadioRow
+              selected={effective === null}
+              onSelect={() => choose(null)}
+              title="Automatic"
+              subtitle={`Uses ${providerLabel(ready[0])}, the first ready hypervisor.`}
+            />
+          )}
+          {ready.map((h) => (
+            <RadioRow
+              key={h.provider}
+              selected={effective === h.provider || (ready.length === 1 && effective === null)}
+              onSelect={() => choose(h.provider)}
+              title={
+                <span className="flex items-center gap-2">
+                  <HypervisorLogo provider={h.provider} size="sm" />
+                  {providerLabel(h)}
+                </span>
+              }
+              subtitle={h.plugin ? `Ready · Vagrant add-on ${h.plugin}` : "Ready · built into Vagrant"}
+            />
+          ))}
+        </RadioList>
+      )}
+      {notReady.length > 0 && (
+        <div className="mt-3 overflow-hidden rounded-lg border border-border">
+          {notReady.map((h) => (
+            <div key={h.provider} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
+              <HypervisorLogo provider={h.provider} size="sm" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.8125rem] font-medium text-foreground">{providerLabel(h)}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {h.plugin && !h.pluginInstalled ? `Installed · needs the Vagrant add-on ${h.plugin}` : (h.reason ?? "Installed · not ready for VM labs")}
+                </p>
+              </div>
+              {h.plugin && !h.pluginInstalled && (
+                <Button variant="outline" size="sm" disabled={installing !== null || !report?.vagrant.installed} onClick={() => installAddon(h.plugin!)}>
+                  {installing === h.plugin ? (
+                    <>
+                      <Spinner className="size-3.5" /> Installing…
+                    </>
+                  ) : (
+                    "Install add-on"
+                  )}
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {log && <LogConsole lines={log} running={installing !== null} title="Vagrant add-on" />}
+    </Row>
   );
 }

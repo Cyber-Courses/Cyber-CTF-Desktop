@@ -35,6 +35,10 @@ export function SettingsScreen({
       .then(setReport)
       .catch(() => setReport(null));
   }, []);
+  const recheck = () =>
+    systemCheck()
+      .then(setReport)
+      .catch(() => {});
 
   // The agent registers once signed in, so re-read it whenever auth changes.
   useEffect(() => {
@@ -50,7 +54,7 @@ export function SettingsScreen({
 
       <Section title="Labs" description="How labs start on this machine. Saved on this computer only." saved={labsSaved}>
         <AttackBoxRows onSaved={flashLabs} />
-        <HypervisorRow report={report} onSaved={flashLabs} onNavigate={onNavigate} />
+        <HypervisorRow report={report} onSaved={flashLabs} onNavigate={onNavigate} onRefresh={recheck} />
       </Section>
 
       <AboutSection version={version} report={report} agent={auth?.loggedIn ? agent : null} />

@@ -9,16 +9,17 @@ const LOGOS: Partial<Record<Provider, string>> = {
 };
 
 /** A hypervisor's logo on a light tile (like the container engines), or a neutral icon. */
-export function HypervisorLogo({ provider }: { provider: Provider | null | undefined }) {
+export function HypervisorLogo({ provider, size = "md" }: { provider: Provider | null | undefined; size?: "sm" | "md" }) {
   const logo = provider ? LOGOS[provider] : undefined;
+  const box = size === "sm" ? "size-6 rounded-md p-1" : "size-8 rounded-lg p-1.5";
   return logo ? (
-    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white p-1.5">
+    <span className={`flex shrink-0 items-center justify-center bg-white ${box}`}>
       {/* eslint-disable-next-line @next/next/no-img-element -- static export, plain asset */}
       <img src={logo} alt="" className="size-full object-contain" />
     </span>
   ) : (
-    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground">
-      <Server className="size-4" />
+    <span className={`flex shrink-0 items-center justify-center border border-border bg-surface text-muted-foreground ${box.replace(/p-[\d.]+/, "")}`}>
+      <Server className={size === "sm" ? "size-3.5" : "size-4"} />
     </span>
   );
 }
