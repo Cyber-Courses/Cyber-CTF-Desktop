@@ -10,7 +10,26 @@ import { Field, Input, Nav, Select, Step } from "@/features/servers/host-setup/f
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
 
 export function CredentialsStep({ s }: { s: HostSetup }) {
-  const { v, error, signingIn, signInLog, editing, azure, gcp, cliAuth, profiles, awsIdentity, checkingId, awsSignIn, set, text, connectionOk, next, back, signIn } = s;
+  const {
+    v,
+    error,
+    signingIn,
+    signInLog,
+    editing,
+    azure,
+    gcp,
+    cliAuth,
+    profiles,
+    awsIdentity,
+    checkingId,
+    awsSignIn,
+    set,
+    text,
+    connectionOk,
+    next,
+    back,
+    signIn,
+  } = s;
   return (
     <Step
       icon={Cloud}
@@ -101,7 +120,9 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
       <div className="mt-3">
         <Field label={azure ? "Location" : "Region"}>
           <Select value={v.host} onChange={(e) => set("host", e.target.value)}>
-            {v.host && !(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : AWS_REGIONS).some(([code]) => code === v.host) && <option value={v.host}>{v.host}</option>}
+            {v.host && !(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : AWS_REGIONS).some(([code]) => code === v.host) && (
+              <option value={v.host}>{v.host}</option>
+            )}
             {(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : AWS_REGIONS).map(([code, name]) => (
               <option key={code} value={code}>
                 {code} — {name}
