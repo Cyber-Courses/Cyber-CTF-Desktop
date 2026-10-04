@@ -26,6 +26,9 @@ pub enum Provider {
     /// The player's AWS account (Terraform, a lab's deploy/terraform/aws). Not a Vagrant
     /// provider and never detected locally, so it is not in `ALL`.
     Aws,
+    /// The player's Azure subscription (Terraform, a lab's deploy/terraform/azure). Like
+    /// AWS: not a Vagrant provider, never detected locally, not in `ALL`.
+    Azure,
 }
 
 impl Provider {
@@ -53,12 +56,13 @@ impl Provider {
             Provider::VmwareEsxi => "vmware_esxi",
             Provider::Proxmox => "proxmox",
             Provider::Aws => "aws",
+            Provider::Azure => "azure",
         }
     }
 
     /// Remote providers run VMs on another host and need connection settings.
     pub fn is_remote(self) -> bool {
-        matches!(self, Provider::VmwareEsxi | Provider::Proxmox | Provider::Aws)
+        matches!(self, Provider::VmwareEsxi | Provider::Proxmox | Provider::Aws | Provider::Azure)
     }
 
     /// Whether this provider can run on the current OS at all. Local hypervisors are
@@ -85,7 +89,7 @@ impl Provider {
             Provider::Utm => Some("vagrant_utm"),
             Provider::VmwareEsxi => Some("vagrant-vmware-esxi"),
             Provider::Proxmox => Some("vagrant-proxmox"),
-            Provider::Aws => None,
+            Provider::Aws | Provider::Azure => None,
         }
     }
 
@@ -99,7 +103,7 @@ impl Provider {
             Provider::Qemu => Some((qemu_binary(), &["--version"])),
             // Hyper-V is a Windows feature, UTM is checked by its app bundle, and
             // remote providers have nothing local to probe.
-            Provider::Hyperv | Provider::Utm | Provider::VmwareEsxi | Provider::Proxmox | Provider::Aws => None,
+            Provider::Hyperv | Provider::Utm | Provider::VmwareEsxi | Provider::Proxmox | Provider::Aws | Provider::Azure => None,
         }
     }
 }

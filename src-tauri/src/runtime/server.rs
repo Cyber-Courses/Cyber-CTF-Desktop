@@ -152,7 +152,7 @@ pub const DEFAULT_AUTO_STOP_HOURS: u32 = 4;
 fn default_port(provider: Provider) -> u16 {
     match provider {
         Provider::Proxmox => 8006,
-        Provider::Aws => 443,
+        Provider::Aws | Provider::Azure => 443,
         _ => 22,
     }
 }
@@ -166,6 +166,17 @@ fn valid_region(region: &str) -> bool {
         && parts.last().is_some_and(|p| p.chars().all(|c| c.is_ascii_digit()))
 }
 
+/// An Azure location id, e.g. "westeurope" (lowercase letters/digits, no spaces).
+fn valid_azure_location(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 32 && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+}
+
+/// An Azure subscription id (a GUID, 8-4-4-4-12 hex).
+fn valid_subscription(s: &str) -> bool {
+    let p: Vec<&str> = s.split('-').collect();
+    p.len() == 5 && [8usize, 4, 4, 4, 12].iter().zip(&p).all(|(n, seg)| seg.len() == *n && seg.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
 /// An AWS access key id (AKIA... long-term, ASIA... temporary).
 fn valid_access_key_id(id: &str) -> bool {
     (16..=128).contains(&id.len()) && id.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
@@ -176,6 +187,7 @@ pub fn terraform_target(provider: Provider) -> Option<&'static str> {
     match provider {
         Provider::Proxmox => Some("proxmox"),
         Provider::Aws => Some("aws"),
+        Provider::Azure => Some("azure"),
         _ => None,
     }
 }
@@ -346,13 +358,15 @@ pub fn terraform_env(h: &HostProfile, password: &str) -> Vec<(String, String)> {
             ("AWS_SECRET_ACCESS_KEY".into(), password.to_string()),
             ("AWS_REGION".into(), h.host.clone()),
         ],
+        // azurerm uses the Azure CLI's auth (az login); it only needs the subscription id.
+        Provider::Azure => vec![("ARM_SUBSCRIPTION_ID".to_string(), h.username.clone())],
         _ => Vec::new(),
     }
 }
 
 /// Terraform variables for a host (`deploy/terraform/<target>`).
 pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> {
-    if h.provider == Provider::Aws {
+    if h.provider == Provider::Aws || h.provider == Provider::Azure {
         let mut vars = vec![
             ("region".to_string(), h.host.clone()),
             ("auto_stop_hours".to_string(), h.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS).to_string()),
@@ -403,7 +417,7 @@ pub struct Connection {
 pub fn connection(app: &AppHandle, id: &str) -> Result<Connection> {
     let host = find(&load(app)?, id)?;
     // CLI-credential hosts keep no secret; Terraform uses the AWS CLI's default chain.
-    let password = if host.use_cli_creds { String::new() } else { get_secret(id)? };
+    let password = if host.use_cli_creds || host.provider == Provider::Azure { String::new() } else { get_secret(id)? };
     Ok(Connection {
         provider: host.provider,
         name: host.name.clone(),
@@ -430,7 +444,7 @@ pub fn host_name(app: &AppHandle, id: &str) -> Option<String> {
 pub fn default_host(app: &AppHandle) -> Option<String> {
     let store = load(app).ok()?;
     // Only server hosts: a cloud account is never used implicitly (it costs money).
-    store.default.filter(|id| store.hosts.iter().any(|h| &h.id == id && h.provider != Provider::Aws))
+    store.default.filter(|id| store.hosts.iter().any(|h| &h.id == id && !matches!(h.provider, Provider::Aws | Provider::Azure)))
 }
 
 /// Records (or clears) which host a VM lab directory runs on.
@@ -546,9 +560,43 @@ pub async fn budget_exceeded(app: &AppHandle, id: &str) -> Option<(f64, f64)> {
     (spent >= limit).then_some((spent, limit))
 }
 
+/// Azure: `az account show` for the subscription confirms the CLI is signed in and the
+/// subscription is reachable. (az has no cheap VM-create dry-run like AWS.)
+async fn test_azure(h: &HostProfile) -> TestResult {
+    let started = Instant::now();
+    let args = ["account", "show", "--subscription", h.username.as_str(), "--query", "name", "--output", "tsv"];
+    match crate::exec::run("az", &args, None).await {
+        Ok(name) => TestResult {
+            ok: true,
+            reachable: true,
+            authenticated: Some(true),
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            message: format!("Signed in to Azure subscription \"{}\". Labs run here are billed to it.", name.trim()),
+        },
+        Err(Error::CommandFailed { stderr, .. }) => {
+            let not_in = stderr.contains("az login") || stderr.contains("not logged in") || stderr.contains("AADSTS") || stderr.contains("was not found");
+            TestResult {
+                ok: false,
+                reachable: true,
+                authenticated: Some(false),
+                latency_ms: None,
+                message: if not_in {
+                    "Not signed in to Azure, or no access to that subscription. Sign in and check the subscription id.".into()
+                } else {
+                    format!("Azure check failed: {}", stderr.lines().last().unwrap_or_default())
+                },
+            }
+        }
+        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("Azure check failed: {e}") },
+    }
+}
+
 async fn test_host(h: &HostProfile, password: &str) -> TestResult {
     if h.provider == Provider::Aws {
         return test_aws(h, password).await;
+    }
+    if h.provider == Provider::Azure {
+        return test_azure(h).await;
     }
     let started = Instant::now();
     let connect = tokio::time::timeout(TEST_TIMEOUT, TcpStream::connect((h.host.as_str(), h.port))).await;
@@ -598,7 +646,7 @@ pub fn server_list(app: AppHandle) -> Result<HostList> {
 #[tauri::command]
 pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
     if !input.provider.is_remote() {
-        return Err(Error::Invalid("a host must be ESXi, Proxmox or AWS".into()));
+        return Err(Error::Invalid("a host must be ESXi, Proxmox, AWS or Azure".into()));
     }
     let host = clean(&input.host, "host", 253)?;
     // AWS can connect with the AWS CLI's own credentials instead of stored keys.
@@ -610,6 +658,13 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         }
         if !use_cli && !valid_access_key_id(&username) {
             return Err(Error::Invalid("access key id looks wrong (AKIA... or ASIA...)".into()));
+        }
+    } else if input.provider == Provider::Azure {
+        if !valid_azure_location(&host) {
+            return Err(Error::Invalid("region must be an Azure location, e.g. westeurope".into()));
+        }
+        if !valid_subscription(&username) {
+            return Err(Error::Invalid("subscription must be a GUID (see `az account show`)".into()));
         }
     } else if !valid_host(&host) {
         return Err(Error::Invalid("host must be a hostname or IP address, without https:// or a path".into()));
@@ -635,7 +690,7 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         node: if input.provider == Provider::Proxmox { clean_opt(input.node, "node")? } else { None },
         insecure_tls: input.provider == Provider::Proxmox && input.insecure_tls.unwrap_or(false),
         auto_stop_hours: match input.provider {
-            Provider::Aws => match input.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS) {
+            Provider::Aws | Provider::Azure => match input.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS) {
                 h if h <= 72 => Some(h),
                 _ => return Err(Error::Invalid("auto-stop must be between 0 and 72 hours".into())),
             },
@@ -648,14 +703,14 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
     match input.password.filter(|p| !p.is_empty()) {
         Some(p) if p.len() <= 1024 && !p.contains('\0') => set_secret(&id, &p)?,
         Some(_) => return Err(Error::Invalid("invalid password".into())),
-        None if !use_cli && get_secret(&id).is_err() => return Err(Error::Invalid("enter the host's password".into())),
+        None if !use_cli && input.provider != Provider::Azure && get_secret(&id).is_err() => return Err(Error::Invalid("enter the host's password".into())),
         None => {}
     }
     match store.hosts.iter_mut().find(|h| h.id == id) {
         Some(existing) => *existing = profile.clone(),
         None => store.hosts.push(profile.clone()),
     }
-    if store.default.is_none() && profile.provider != Provider::Aws {
+    if store.default.is_none() && !matches!(profile.provider, Provider::Aws | Provider::Azure) {
         store.default = Some(id);
     }
     save(&app, &store)?;
@@ -679,7 +734,7 @@ pub fn server_remove(app: AppHandle, id: String) -> Result<()> {
 pub fn server_set_default(app: AppHandle, id: Option<String>) -> Result<()> {
     let mut store = load(&app)?;
     if let Some(id) = &id {
-        if find(&store, id)?.provider == Provider::Aws {
+        if matches!(find(&store, id)?.provider, Provider::Aws | Provider::Azure) {
             return Err(Error::Invalid("a cloud account can't be the default host".into()));
         }
     }
@@ -722,7 +777,7 @@ pub async fn server_open_setup(app: AppHandle, id: Option<String>, kind: Option<
 pub async fn server_test(app: AppHandle, id: String) -> Result<TestResult> {
     let host = find(&load(&app)?, &id)?;
     // CLI-credential hosts keep no secret; the CLI resolves its own credentials.
-    let password = if host.use_cli_creds { String::new() } else { get_secret(&id)? };
+    let password = if host.use_cli_creds || host.provider == Provider::Azure { String::new() } else { get_secret(&id)? };
     // Token hosts SSH with the launcher's key: make sure it exists before checking it.
     if host.provider == Provider::Proxmox && super::proxmox::is_token(&host.username) {
         super::ssh::ensure_key(&app).await?;
