@@ -6,10 +6,7 @@ import type { CloudProvider } from "@/lib/tauri";
 import { Step } from "@/features/cloud/tool-rows";
 
 /** Providers shown as "coming soon" in the Environment panel (logo = SVG in public/brands). */
-export const COMING_SOON: { id: string; label: string; logo: boolean }[] = [
-  { id: "linode", label: "Linode", logo: true },
-  { id: "oracle", label: "Oracle Cloud", logo: true },
-];
+export const COMING_SOON: { id: string; label: string; logo: boolean }[] = [{ id: "oracle", label: "Oracle Cloud", logo: true }];
 
 const PROVIDERS: { id: CloudProvider; label: string }[] = [
   { id: "aws", label: "Amazon Web Services" },

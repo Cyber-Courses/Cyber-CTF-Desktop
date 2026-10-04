@@ -38,7 +38,7 @@ export function awsLogin(profile: string | null, onLog: (line: string) => void) 
   return invoke<void>("aws_login", { profile, logs });
 }
 
-export type CloudProvider = "aws" | "azure" | "gcp" | "digitalocean";
+export type CloudProvider = "aws" | "azure" | "gcp" | "digitalocean" | "linode";
 
 /** Signs in to a cloud provider using its CLI's own auth (browser flow). */
 export function cloudLogin(provider: CloudProvider, onLog: (line: string) => void) {

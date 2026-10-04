@@ -56,7 +56,10 @@ export function useHostSetup({
   const azure = v.provider === "azure";
   const gcp = v.provider === "gcp";
   const digitalocean = v.provider === "digitalocean";
-  const cloud = aws || azure || gcp || digitalocean;
+  const linode = v.provider === "linode";
+  // Token clouds (DigitalOcean, Linode) authenticate with just a pasted API token (no CLI, no username).
+  const tokenCloud = digitalocean || linode;
+  const cloud = aws || azure || gcp || digitalocean || linode;
   // Azure and GCP authenticate through their CLI (no access keys); the flow is the same shape.
   const cliAuth = azure || gcp;
   // Derived from the saved provider (not separate state) so it stays correct when editing an
@@ -163,7 +166,7 @@ export function useHostSetup({
     setV((s) => ({
       ...s,
       provider: id as RemoteProvider,
-      host: id === "azure" ? "westeurope" : id === "gcp" ? "europe-west1" : id === "digitalocean" ? "fra1" : "eu-west-3",
+      host: id === "azure" ? "westeurope" : id === "gcp" ? "europe-west1" : id === "digitalocean" ? "fra1" : id === "linode" ? "eu-central" : "eu-west-3",
       username: "",
       password: null,
       useCliCreds: id === "aws",
@@ -193,7 +196,7 @@ export function useHostSetup({
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, e.target.value),
   });
 
-  const connectionOk = digitalocean
+  const connectionOk = tokenCloud
     ? v.host.trim() !== "" && (editing || (v.password ?? "") !== "")
     : cliAuth
       ? v.host.trim() !== "" && v.username.trim() !== ""
@@ -312,6 +315,8 @@ export function useHostSetup({
     azure,
     gcp,
     digitalocean,
+    linode,
+    tokenCloud,
     cliAuth,
     cloud,
     profiles,

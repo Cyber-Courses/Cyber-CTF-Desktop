@@ -35,7 +35,10 @@ import { CliRow, ImageRow, ToolRow } from "@/features/cloud/tool-rows";
 
 export function CloudScreen() {
   const [allHosts, setHosts] = useState<ServerHost[] | null>(null);
-  const hosts = allHosts?.filter((h) => h.provider === "aws" || h.provider === "azure" || h.provider === "gcp" || h.provider === "digitalocean") ?? null;
+  const hosts =
+    allHosts?.filter(
+      (h) => h.provider === "aws" || h.provider === "azure" || h.provider === "gcp" || h.provider === "digitalocean" || h.provider === "linode",
+    ) ?? null;
   const [error, setError] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, ServerTest | "testing">>({});
   const [report, setReport] = useState<SystemReport | null>(null);

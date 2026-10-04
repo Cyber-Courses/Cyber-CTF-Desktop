@@ -43,7 +43,7 @@ export function ToolsStep({ s }: { s: HostSetup }) {
         cloud
           ? cloudHasCli
             ? `The ${CLOUD_META[cloudProvider].label} CLI and Terraform, used to connect and provision.`
-            : "Terraform connects to DigitalOcean with your API token and provisions the lab. No CLI needed."
+            : `Terraform connects to ${CLOUD_META[cloudProvider].label} with your API token and provisions the lab. No CLI needed.`
           : `What the launcher needs here to run labs on ${KIND[v.provider].label}.`
       }
     >

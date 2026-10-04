@@ -27,7 +27,7 @@ export function AccountRow({
   const [confirming, setConfirming] = useState(false);
   const facts = [
     host.host,
-    host.provider === "digitalocean"
+    host.provider === "digitalocean" || host.provider === "linode"
       ? "API token"
       : host.provider !== "aws"
         ? "CLI sign-in"
