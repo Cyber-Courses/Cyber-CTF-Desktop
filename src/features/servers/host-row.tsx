@@ -8,7 +8,7 @@ import { type HostCapacity, type ServerHost, type ServerTest } from "@/lib/tauri
 import { cn } from "@/lib/utils";
 import { ServerSelfTest } from "@/features/servers/server-self-test";
 import { StatusPill, Tone, TypeIcon } from "@/features/servers/servers-parts";
-import { ago, fmtGb } from "@/features/servers/servers-screen";
+import { formatAgo, formatBytes } from "@/lib/format";
 import { VmTest } from "@/features/servers/vm-tests";
 
 export function HostRow({
@@ -80,7 +80,7 @@ export function HostRow({
                   <Cpu className="size-3" /> {capacity.cores} vCPU
                 </span>
                 <span className="inline-flex items-center gap-1">
-                  <MemoryStick className="size-3" /> {fmtGb(capacity.memFree)} free of {fmtGb(capacity.memTotal)}
+                  <MemoryStick className="size-3" /> {formatBytes(capacity.memFree)} free of {formatBytes(capacity.memTotal)}
                 </span>
               </>
             )}
@@ -92,7 +92,7 @@ export function HostRow({
             {lastVm && (
               <span className={cn("inline-flex items-center gap-1", lastVm.result === "ok" ? "text-emerald-500" : "text-rose-500")}>
                 {lastVm.result === "ok" ? <Check className="size-3" /> : <X className="size-3" />} VM test {lastVm.result === "ok" ? "passed" : "failed"} ·{" "}
-                {ago(lastVm.at, now)}
+                {formatAgo(lastVm.at, now)}
               </span>
             )}
           </p>

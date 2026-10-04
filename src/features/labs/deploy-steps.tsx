@@ -5,6 +5,7 @@ import { Check, ChevronRight, Circle, X } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/ui/log-console";
 import { cn } from "@/lib/utils";
+import { formatDuration } from "@/lib/format";
 
 /**
  * A lab's start-up as named steps with their durations, Vercel-build style. The steps are
@@ -23,13 +24,6 @@ const PHASES: Phase[] = [
 ];
 
 type Timed = { line: string; at: number };
-
-/** 0.4s, 12s, 1:05. */
-export function duration(ms: number) {
-  if (ms < 10_000) return `${(Math.max(0, ms) / 1000).toFixed(1)}s`;
-  const s = Math.floor(ms / 1000);
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
 
 /** Times each log line when it arrives; starts over when a new launch clears the log. */
 function useTimedLines(lines: string[]): Timed[] {
@@ -91,7 +85,7 @@ export function DeploySteps({ lines, busy, ready }: { lines: string[]; busy: boo
               <span className="size-1.5 rounded-full bg-emerald-500" /> Ready
             </span>
           ) : null}
-          {start && end && <span className="font-mono tabular-nums text-muted-foreground">{duration(end - start)}</span>}
+          {start && end && <span className="font-mono tabular-nums text-muted-foreground">{formatDuration(end - start)}</span>}
         </span>
       </div>
 
@@ -121,7 +115,7 @@ export function DeploySteps({ lines, busy, ready }: { lines: string[]; busy: boo
                   )}
                 </span>
                 <span className={cn("flex-1", state === "fail" ? "text-rose-300" : "text-foreground")}>{p.label}</span>
-                <span className="font-mono text-[0.6875rem] tabular-nums text-muted-foreground">{duration(to - from)}</span>
+                <span className="font-mono text-[0.6875rem] tabular-nums text-muted-foreground">{formatDuration(to - from)}</span>
                 <ChevronRight className={cn("size-3.5 text-muted-foreground/60 transition-transform", expanded && "rotate-90")} />
               </button>
               {expanded && (
@@ -163,7 +157,7 @@ export function DeploySteps({ lines, busy, ready }: { lines: string[]; busy: boo
           </button>
           {showLog && (
             <div className="mt-2">
-              <LogConsole lines={timed.map((t) => `${duration(t.at - start!).padStart(6)}  ${t.line}`)} />
+              <LogConsole lines={timed.map((t) => `${formatDuration(t.at - start!).padStart(6)}  ${t.line}`)} />
             </div>
           )}
         </div>
@@ -178,7 +172,7 @@ function TimedLog({ rows, origin }: { rows: Timed[]; origin: number }) {
     <div className="max-h-48 overflow-auto rounded-md border border-border bg-[#070707] p-2 font-mono text-[0.6875rem] leading-relaxed">
       {rows.map((r, i) => (
         <div key={i} className="flex gap-3">
-          <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground/60">{duration(r.at - origin)}</span>
+          <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground/60">{formatDuration(r.at - origin)}</span>
           <span className="min-w-0 break-words text-muted-foreground">{r.line}</span>
         </div>
       ))}

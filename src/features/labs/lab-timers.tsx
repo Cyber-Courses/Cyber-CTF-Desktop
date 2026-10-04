@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { duration } from "@/features/labs/deploy-steps";
+import { formatDuration } from "@/lib/format";
 
 /** Time since Start was pressed, ticking. */
 export function StartTimer() {
@@ -11,7 +11,7 @@ export function StartTimer() {
     const t = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(t);
   }, []);
-  return <span className="font-mono tabular-nums opacity-80">{duration(now - start)}</span>;
+  return <span className="font-mono tabular-nums opacity-80">{formatDuration(now - start)}</span>;
 }
 
 /** "Auto-stops at 19:42 · in 3h 58m" for cloud labs. */

@@ -29,18 +29,6 @@ import { VmTest, loadVmTests, saveVmTest } from "@/features/servers/vm-tests";
 
 type Tab = "setup";
 
-export function ago(at: number, now: number) {
-  const s = Math.max(0, (now - at) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  const d = Math.floor(s / 86400);
-  return d === 1 ? "yesterday" : `${d}d ago`;
-}
-
-const GB = 1e9;
-export const fmtGb = (b: number) => `${b >= 10 * GB ? Math.round(b / GB) : (b / GB).toFixed(1)} GB`;
-
 // ---------- screen ----------
 
 export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void }) {

@@ -3,11 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-function fmt(ms: number) {
-  const s = Math.max(0, Math.round(ms / 1000));
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
-}
+import { formatElapsed } from "@/lib/format";
 
 /**
  * Auto-scrolling terminal for streamed command output: black body, and a header with a
@@ -67,7 +63,7 @@ export function LogConsole({
           <Check className="size-3.5 text-emerald-500" />
         )}
         <span className="text-[11.5px] font-medium text-foreground">{running ? `${title}…` : failed ? `${title} failed` : `${title} · done`}</span>
-        <span className="ml-auto font-mono text-[11px] tabular-nums text-muted-foreground">{fmt(elapsed)}</span>
+        <span className="ml-auto font-mono text-[11px] tabular-nums text-muted-foreground">{formatElapsed(elapsed)}</span>
         {open ? <ChevronDown className="size-3.5 text-muted-foreground" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
       </button>
       {open && (

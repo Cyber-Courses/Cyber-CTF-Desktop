@@ -25,37 +25,16 @@ import { getAttackImage, getLastTest, getVmProvider, type LastTest } from "@/lib
 import { PROVIDER_LABELS, providerLabel, usableHypervisors } from "@/features/machine/hypervisors";
 import { cn } from "@/lib/utils";
 import { DetailRow, LabKind, LabTypeRow, ListSkeleton, Stat, TypeIcon } from "@/features/machine/machine-parts";
+import { formatAgo, formatBytes, formatUptime } from "@/lib/format";
 
 // ---------- formatting ----------
 
-const GB = 1e9;
-function fmtBytes(b: number) {
-  if (b >= GB) return `${(b / GB).toFixed(b >= 10 * GB ? 0 : 1)} GB`;
-  if (b >= 1e6) return `${Math.round(b / 1e6)} MB`;
-  return `${Math.max(1, Math.round(b / 1e3))} kB`;
-}
-function fmtUptime(s: number) {
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (d) return `${d}d ${h}h`;
-  if (h) return `${h}h ${m}m`;
-  return `${m}m`;
-}
-function ago(at: number, now: number) {
-  const s = Math.max(0, (now - at) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  const d = Math.floor(s / 86400);
-  return d === 1 ? "yesterday" : `${d} days ago`;
-}
 /** Strip the tool name from `docker --version`-style output, keep the version number. */
 const ver = (t: Tool) => (t.installed ? (t.version?.match(/\d+\.\d+(\.\d+)?/)?.[0] ?? "installed") : "not installed");
 const OS_NAME: Record<string, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
 
 /** Free memory each lab type wants to start comfortably. */
-const WANT_FREE = { docker: 2 * GB, vm: 8 * GB };
+const WANT_FREE = { docker: 2e9, vm: 8e9 };
 
 // ---------- screen ----------
 
@@ -174,15 +153,15 @@ export function MachineScreen({
   const lowFor = (kind: LabKind) => memFree !== null && memFree < WANT_FREE[kind];
   const freeHint = (kind: LabKind) =>
     lowFor(kind)
-      ? `${kind === "vm" ? "VM" : "Container"} labs want about ${fmtBytes(WANT_FREE[kind])} of free memory; ${fmtBytes(Math.max(0, memFree!))} free now.`
+      ? `${kind === "vm" ? "VM" : "Container"} labs want about ${formatBytes(WANT_FREE[kind])} of free memory; ${formatBytes(Math.max(0, memFree!))} free now.`
       : undefined;
   const testLine = (t: LastTest | null) =>
     !t ? (
       <span>not tested yet</span>
     ) : t.result === "ok" ? (
-      <span>tested {ago(t.at, now)}</span>
+      <span>tested {formatAgo(t.at, now)}</span>
     ) : (
-      <span className="text-rose-500">last test failed {ago(t.at, now)}</span>
+      <span className="text-rose-500">last test failed {formatAgo(t.at, now)}</span>
     );
 
   const dockerReady = report.docker.installed && report.dockerRunning;
@@ -222,7 +201,7 @@ export function MachineScreen({
         </span>
         <span className="text-[12px] text-muted-foreground">
           {OS_NAME[report.os] ?? report.os} · {report.arch}
-          {m ? ` · up ${fmtUptime(m.uptimeSecs)}` : ""}
+          {m ? ` · up ${formatUptime(m.uptimeSecs)}` : ""}
         </span>
         <Button className="ml-auto" variant={needsSetup ? "learn" : "outline"} size="sm" onClick={() => machineOpenSetup().catch(() => {})}>
           <Wrench className="size-3.5" /> {needsSetup ? "Set up this machine" : "Setup"}
@@ -236,14 +215,14 @@ export function MachineScreen({
           icon={MemoryStick}
           label="Memory"
           value={m ? `${Math.round(memPct)}%` : null}
-          sub={m ? `${fmtBytes(m.memUsed)} / ${fmtBytes(m.memTotal)}` : ""}
+          sub={m ? `${formatBytes(m.memUsed)} / ${formatBytes(m.memTotal)}` : ""}
           history={hist.mem}
         />
         <Stat
           icon={HardDrive}
           label="Disk"
           value={m ? `${Math.round(diskPct)}%` : null}
-          sub={m ? `${fmtBytes(m.diskTotal - m.diskUsed)} free` : ""}
+          sub={m ? `${formatBytes(m.diskTotal - m.diskUsed)} free` : ""}
           history={hist.disk}
         />
       </Panel>
@@ -344,7 +323,7 @@ export function MachineScreen({
         <Panel>
           <PanelHeader
             title="Running now"
-            action={labMem > 0 ? <span className="text-[11.5px] tabular-nums text-muted-foreground">{fmtBytes(labMem)} in use</span> : undefined}
+            action={labMem > 0 ? <span className="text-[11.5px] tabular-nums text-muted-foreground">{formatBytes(labMem)} in use</span> : undefined}
           />
           {workloads === null ? (
             <ListSkeleton />
@@ -356,7 +335,7 @@ export function MachineScreen({
               const name = w.id === "selftest" ? "Setup test" : (titles[w.id] ?? w.id);
               const meta =
                 w.kind === "docker"
-                  ? `${w.count} container${w.count === 1 ? "" : "s"}${w.memBytes ? ` · ${fmtBytes(w.memBytes)}` : ""}`
+                  ? `${w.count} container${w.count === 1 ? "" : "s"}${w.memBytes ? ` · ${formatBytes(w.memBytes)}` : ""}`
                   : `${w.count} VM${w.count === 1 ? "" : "s"}${w.provider ? ` · ${PROVIDER_LABELS[w.provider] ?? w.provider}` : ""}`;
               return (
                 <div key={key} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
@@ -415,7 +394,7 @@ export function MachineScreen({
                   )}
                 />
                 <div className="min-w-0 flex-1 text-[12.5px]">
-                  <p className="font-medium">{storeItems.length ? `${fmtBytes(storeTotal)} of lab downloads` : "No lab downloads yet"}</p>
+                  <p className="font-medium">{storeItems.length ? `${formatBytes(storeTotal)} of lab downloads` : "No lab downloads yet"}</p>
                   <p className="text-[11.5px] text-muted-foreground">
                     {storage.images.length} container image{storage.images.length === 1 ? "" : "s"} · {storage.boxes.length} VM image
                     {storage.boxes.length === 1 ? "" : "s"}
@@ -426,13 +405,13 @@ export function MachineScreen({
                 storeItems.map((it) => (
                   <div key={it.name} className="flex items-center gap-3 border-b border-border py-1.5 pr-3.5 pl-10 text-[12px] last:border-b-0">
                     <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-muted-foreground">{it.name}</span>
-                    <span className="tabular-nums text-muted-foreground">{fmtBytes(it.bytes)}</span>
+                    <span className="tabular-nums text-muted-foreground">{formatBytes(it.bytes)}</span>
                   </div>
                 ))}
               {confirmClean && (
                 <div className="flex flex-wrap items-center gap-3 border-t border-border bg-muted/30 px-3.5 py-3">
                   <p className="min-w-0 flex-1 text-[12px]">
-                    Remove {fmtBytes(storeTotal)}? Labs download what they need again on their next start. Anything in use stays.
+                    Remove {formatBytes(storeTotal)}? Labs download what they need again on their next start. Anything in use stays.
                   </p>
                   <div className="flex gap-2">
                     <Button variant="ghost" size="sm" onClick={() => setConfirmClean(false)} disabled={cleaning}>
@@ -452,7 +431,7 @@ export function MachineScreen({
               )}
               {freed !== null && !confirmClean && (
                 <p className="border-t border-border px-3.5 py-2 text-[12px] text-muted-foreground">
-                  {freed > 0 ? `Freed ${fmtBytes(freed)}.` : "Nothing could be removed (all in use)."}
+                  {freed > 0 ? `Freed ${formatBytes(freed)}.` : "Nothing could be removed (all in use)."}
                 </p>
               )}
             </>

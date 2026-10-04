@@ -7,14 +7,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { machineSelftest, type SelfTestEvent } from "@/lib/tauri";
 import { getVmProvider, setLastTest } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import { formatElapsed } from "@/lib/format";
 
 export type SelfTestResult = "idle" | "running" | "ok" | "fail";
-
-/** 42s, then 1:05 past a minute. */
-function elapsed(ms: number) {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
 
 /** The steps each test reports, so the list shows up front instead of growing as it runs. */
 const PLAN: Record<"docker" | "vm", { step: string; label: string }[]> = {
@@ -117,13 +112,13 @@ export function SelfTest({
         <span className="ml-auto shrink-0">
           {result === "running" ? (
             <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-              <Spinner className="size-3.5" /> Testing… <span className="font-mono tabular-nums">{run ? elapsed(now - run.start) : ""}</span>
+              <Spinner className="size-3.5" /> Testing… <span className="font-mono tabular-nums">{run ? formatElapsed(now - run.start) : ""}</span>
             </span>
           ) : result === "ok" ? (
             <span className="flex items-center gap-2">
               <span className="flex items-center gap-1.5 text-[12px] text-emerald-500">
                 <span className="size-1.5 rounded-full bg-emerald-500" /> Passed
-                {run?.end ? <span className="font-mono tabular-nums text-muted-foreground">· {elapsed(run.end - run.start)}</span> : null}
+                {run?.end ? <span className="font-mono tabular-nums text-muted-foreground">· {formatElapsed(run.end - run.start)}</span> : null}
               </span>
               <Button variant="ghost" size="sm" onClick={runTest} aria-label="Run again">
                 <RefreshCw className="size-3.5" />
@@ -132,7 +127,7 @@ export function SelfTest({
           ) : (
             <span className="flex items-center gap-2">
               {result === "fail" && run?.end && (
-                <span className="font-mono text-[12px] tabular-nums text-muted-foreground">{elapsed(run.end - run.start)}</span>
+                <span className="font-mono text-[12px] tabular-nums text-muted-foreground">{formatElapsed(run.end - run.start)}</span>
               )}
               <Button variant={result === "fail" ? "outline" : "learn"} size="sm" onClick={runTest}>
                 {result === "fail" ? (
@@ -175,7 +170,7 @@ export function SelfTest({
                 </span>
                 {times[step] && state !== "skip" && (
                   <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
-                    {elapsed((times[step].end ?? (result === "running" ? now : (run?.end ?? now))) - times[step].start)}
+                    {formatElapsed((times[step].end ?? (result === "running" ? now : (run?.end ?? now))) - times[step].start)}
                   </span>
                 )}
               </li>

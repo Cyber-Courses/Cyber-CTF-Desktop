@@ -5,6 +5,7 @@ import { Check, Circle, X } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { serverSelftest, type SelfTestEvent, type ServerHost } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+import { formatElapsed } from "@/lib/format";
 
 /** The step plan each provider reports, shown up front so the list doesn't grow as it runs. */
 const SELFTEST_PLAN: Record<"proxmox" | "esxi", { step: string; label: string }[]> = {
@@ -68,8 +69,7 @@ export function ServerSelfTest({ id, provider, onDone }: { id: string; provider:
   }, [running]);
 
   const failed = Object.values(states).some((s) => s.state === "fail") || !!error;
-  const elapsed = Math.max(0, Math.floor((now - startAt) / 1000));
-  const fmt = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+  const fmt = formatElapsed(now - startAt);
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-surface">
