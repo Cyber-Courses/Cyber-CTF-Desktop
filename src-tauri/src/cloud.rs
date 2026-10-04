@@ -5,7 +5,7 @@ use serde::Deserialize;
 use tauri::ipc::Channel;
 
 use crate::error::Result;
-use crate::exec::stream;
+use crate::exec::{run, stream};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -29,4 +29,16 @@ pub async fn cloud_login(provider: Cloud, logs: Channel<String>) -> Result<()> {
     };
     on_line(format!("$ {program} {}", args.join(" ")));
     stream(program, args, None, &[], on_line).await
+}
+
+/// The identity the host AWS CLI resolves from its default credential chain (from
+/// `aws configure`), if any, so the cloud setup can offer "use the CLI's credentials"
+/// instead of pasting keys. None when the CLI is missing or has no configured credentials.
+#[tauri::command]
+pub async fn aws_cli_identity() -> Option<String> {
+    run("aws", &["sts", "get-caller-identity", "--query", "Arn", "--output", "text"], None)
+        .await
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }

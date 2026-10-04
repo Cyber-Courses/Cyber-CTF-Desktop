@@ -52,6 +52,10 @@ pub struct HostProfile {
     /// AWS: terminate a lab's instance this many hours after it starts (0 = never).
     #[serde(default)]
     pub auto_stop_hours: Option<u32>,
+    /// AWS: use the AWS CLI's own credentials (the default chain, from `aws configure`)
+    /// instead of access keys stored by the launcher. No secret is kept in the keychain.
+    #[serde(default)]
+    pub use_cli_creds: bool,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -76,6 +80,8 @@ pub struct HostInput {
     insecure_tls: Option<bool>,
     auto_stop_hours: Option<u32>,
     password: Option<String>,
+    #[serde(default)]
+    use_cli_creds: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -314,6 +320,9 @@ fn proxmox_endpoint(h: &HostProfile) -> String {
 /// Raw environment for Terraform (credentials the provider reads itself, never variables).
 pub fn terraform_env(h: &HostProfile, password: &str) -> Vec<(String, String)> {
     match h.provider {
+        // CLI credentials: pass only the region; Terraform reads the AWS CLI's default chain
+        // (works with a local terraform, which has the host's ~/.aws).
+        Provider::Aws if h.use_cli_creds => vec![("AWS_REGION".into(), h.host.clone())],
         Provider::Aws => vec![
             ("AWS_ACCESS_KEY_ID".into(), h.username.clone()),
             ("AWS_SECRET_ACCESS_KEY".into(), password.to_string()),
@@ -368,7 +377,8 @@ pub struct Connection {
 
 pub fn connection(app: &AppHandle, id: &str) -> Result<Connection> {
     let host = find(&load(app)?, id)?;
-    let password = get_secret(id)?;
+    // CLI-credential hosts keep no secret; Terraform uses the AWS CLI's default chain.
+    let password = if host.use_cli_creds { String::new() } else { get_secret(id)? };
     Ok(Connection {
         provider: host.provider,
         name: host.name.clone(),
@@ -423,9 +433,17 @@ pub fn lab_connection(app: &AppHandle, dir: &Path) -> Result<Option<Connection>>
 /// AWS: `sts get-caller-identity` in the official CLI container (Docker is the floor).
 async fn test_aws(h: &HostProfile, password: &str) -> TestResult {
     let started = Instant::now();
-    let env = terraform_env(h, password);
-    let args = ["run", "--rm", "-e", "AWS_ACCESS_KEY_ID", "-e", "AWS_SECRET_ACCESS_KEY", "-e", "AWS_REGION", "amazon/aws-cli:2.37.9", "sts", "get-caller-identity", "--query", "Arn", "--output", "text"];
-    match crate::exec::run_env("docker", &args, None, &env).await {
+    // CLI credentials: ask the host AWS CLI who it is (its own default chain). Stored keys:
+    // run the official CLI container with the keys in its environment (Docker is the floor).
+    let result = if h.use_cli_creds {
+        let env = [("AWS_REGION".to_string(), h.host.clone())];
+        crate::exec::run_env("aws", &["sts", "get-caller-identity", "--query", "Arn", "--output", "text"], None, &env).await
+    } else {
+        let env = terraform_env(h, password);
+        let args = ["run", "--rm", "-e", "AWS_ACCESS_KEY_ID", "-e", "AWS_SECRET_ACCESS_KEY", "-e", "AWS_REGION", "amazon/aws-cli:2.37.9", "sts", "get-caller-identity", "--query", "Arn", "--output", "text"];
+        crate::exec::run_env("docker", &args, None, &env).await
+    };
+    match result {
         Ok(arn) => TestResult {
             ok: true,
             reachable: true,
@@ -530,12 +548,14 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         return Err(Error::Invalid("a host must be ESXi, Proxmox or AWS".into()));
     }
     let host = clean(&input.host, "host", 253)?;
-    let username = clean(&input.username, "username", 128)?;
+    // AWS can connect with the AWS CLI's own credentials instead of stored keys.
+    let use_cli = input.provider == Provider::Aws && input.use_cli_creds.unwrap_or(false);
+    let username = if use_cli { String::new() } else { clean(&input.username, "username", 128)? };
     if input.provider == Provider::Aws {
         if !valid_region(&host) {
             return Err(Error::Invalid("region must be an AWS region id, e.g. eu-west-3".into()));
         }
-        if !valid_access_key_id(&username) {
+        if !use_cli && !valid_access_key_id(&username) {
             return Err(Error::Invalid("access key id looks wrong (AKIA... or ASIA...)".into()));
         }
     } else if !valid_host(&host) {
@@ -568,11 +588,12 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
             },
             _ => None,
         },
+        use_cli_creds: use_cli,
     };
     match input.password.filter(|p| !p.is_empty()) {
         Some(p) if p.len() <= 1024 && !p.contains('\0') => set_secret(&id, &p)?,
         Some(_) => return Err(Error::Invalid("invalid password".into())),
-        None if get_secret(&id).is_err() => return Err(Error::Invalid("enter the host's password".into())),
+        None if !use_cli && get_secret(&id).is_err() => return Err(Error::Invalid("enter the host's password".into())),
         None => {}
     }
     match store.hosts.iter_mut().find(|h| h.id == id) {
@@ -666,6 +687,7 @@ mod tests {
             node: Some("pve".into()),
             insecure_tls: false,
             auto_stop_hours: None,
+            use_cli_creds: false,
         }
     }
 
