@@ -342,9 +342,13 @@ function CliRow({ name, provider, tool, busy, loginBusy, onInstall, onLogin }: {
           {tool ? (installed ? (tool.version ?? "installed") : "not installed") : "…"}
         </span>
         {installed ? (
-          <Button variant="outline" size="sm" onClick={onLogin} disabled={loginBusy}>
-            {loginBusy ? "Signing in…" : "Sign in"}
-          </Button>
+          // AWS connects with access keys (Set up cloud provider), not a CLI sign-in; only
+          // Azure/GCP use their CLI's own login.
+          provider === "aws" ? null : (
+            <Button variant="outline" size="sm" onClick={onLogin} disabled={loginBusy}>
+              {loginBusy ? "Signing in…" : "Sign in"}
+            </Button>
+          )
         ) : tool ? (
           <Button variant="learn" size="sm" onClick={onInstall} disabled={busy}>
             {busy ? "Installing…" : "Install"}
