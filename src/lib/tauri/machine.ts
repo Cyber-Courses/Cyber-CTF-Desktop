@@ -14,7 +14,8 @@ export type Provider =
   | "azure"
   | "gcp"
   | "digitalocean"
-  | "linode";
+  | "linode"
+  | "oci";
 
 export interface Tool {
   installed: boolean;

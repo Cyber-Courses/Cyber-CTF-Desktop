@@ -29,13 +29,15 @@ export function AccountRow({
     host.host,
     host.provider === "digitalocean" || host.provider === "linode"
       ? "API token"
-      : host.provider !== "aws"
-        ? "CLI sign-in"
-        : host.useCliCreds
-          ? host.awsProfile
-            ? `CLI · ${host.awsProfile}`
-            : "CLI credentials"
-          : "access keys",
+      : host.provider === "oci"
+        ? "API key"
+        : host.provider !== "aws"
+          ? "CLI sign-in"
+          : host.useCliCreds
+            ? host.awsProfile
+              ? `CLI · ${host.awsProfile}`
+              : "CLI credentials"
+            : "access keys",
     host.autoStopHours ? `auto-stop ${host.autoStopHours}h` : "no auto-stop",
   ];
   return (

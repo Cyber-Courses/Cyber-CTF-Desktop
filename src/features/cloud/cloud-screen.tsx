@@ -37,7 +37,13 @@ export function CloudScreen() {
   const [allHosts, setHosts] = useState<ServerHost[] | null>(null);
   const hosts =
     allHosts?.filter(
-      (h) => h.provider === "aws" || h.provider === "azure" || h.provider === "gcp" || h.provider === "digitalocean" || h.provider === "linode",
+      (h) =>
+        h.provider === "aws" ||
+        h.provider === "azure" ||
+        h.provider === "gcp" ||
+        h.provider === "digitalocean" ||
+        h.provider === "linode" ||
+        h.provider === "oci",
     ) ?? null;
   const [error, setError] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, ServerTest | "testing">>({});
@@ -276,25 +282,27 @@ export function CloudScreen() {
                 onPull={() => pull(img.image)}
               />
             ))}
-            <div className="border-t border-border px-3.5 py-2.5">
-              <p className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground/70">More providers · coming soon</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {COMING_SOON.map((p) => (
-                  <span
-                    key={p.id}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[0.6875rem] text-muted-foreground"
-                  >
-                    {p.logo ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- static export, plain asset
-                      <img src={`/brands/${p.id}.svg`} alt="" className="size-3.5" draggable={false} />
-                    ) : (
-                      <Cloud className="size-3.5" />
-                    )}
-                    {p.label}
-                  </span>
-                ))}
+            {COMING_SOON.length > 0 && (
+              <div className="border-t border-border px-3.5 py-2.5">
+                <p className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground/70">More providers · coming soon</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {COMING_SOON.map((p) => (
+                    <span
+                      key={p.id}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[0.6875rem] text-muted-foreground"
+                    >
+                      {p.logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- static export, plain asset
+                        <img src={`/brands/${p.id}.svg`} alt="" className="size-3.5" draggable={false} />
+                      ) : (
+                        <Cloud className="size-3.5" />
+                      )}
+                      {p.label}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </Panel>

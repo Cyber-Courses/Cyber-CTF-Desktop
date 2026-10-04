@@ -19,6 +19,12 @@ export type GcpBillingAccount = { id: string; name: string; open: boolean };
 /** A GCP organization the signed-in user belongs to. */
 export type GcpOrganization = { id: string; name: string };
 
+/** What the launcher found in ~/.oci/config, to prefill the OCI setup. */
+export type OciConfig = { configured: boolean; tenancy: string; region: string };
+
+/** Reads ~/.oci/config (DEFAULT profile) for the OCI setup prefill. */
+export const ociConfig = () => invoke<OciConfig>("oci_config");
+
 /** The active gcloud account email, or null if the CLI isn't signed in. */
 export const gcpAccount = () => invoke<string | null>("gcp_account");
 
@@ -38,7 +44,7 @@ export function awsLogin(profile: string | null, onLog: (line: string) => void) 
   return invoke<void>("aws_login", { profile, logs });
 }
 
-export type CloudProvider = "aws" | "azure" | "gcp" | "digitalocean" | "linode";
+export type CloudProvider = "aws" | "azure" | "gcp" | "digitalocean" | "linode" | "oci";
 
 /** Signs in to a cloud provider using its CLI's own auth (browser flow). */
 export function cloudLogin(provider: CloudProvider, onLog: (line: string) => void) {

@@ -9,10 +9,12 @@ import {
   gcpAccount,
   gcpBillingAccounts,
   gcpOrganizations,
+  ociConfig,
   serverSave,
   serverTest,
   type AzureSubscription,
   type CloudProvider,
+  type OciConfig,
   type GcpBillingAccount,
   type GcpOrganization,
   type ServerHost,
@@ -57,9 +59,10 @@ export function useHostSetup({
   const gcp = v.provider === "gcp";
   const digitalocean = v.provider === "digitalocean";
   const linode = v.provider === "linode";
+  const oci = v.provider === "oci";
   // Token clouds (DigitalOcean, Linode) authenticate with just a pasted API token (no CLI, no username).
   const tokenCloud = digitalocean || linode;
-  const cloud = aws || azure || gcp || digitalocean || linode;
+  const cloud = aws || azure || gcp || digitalocean || linode || oci;
   // Azure and GCP authenticate through their CLI (no access keys); the flow is the same shape.
   const cliAuth = azure || gcp;
   // Derived from the saved provider (not separate state) so it stays correct when editing an
@@ -78,6 +81,20 @@ export function useHostSetup({
   const [gcpOrgs, setGcpOrgs] = useState<GcpOrganization[]>([]);
   const [gcpEmail, setGcpEmail] = useState<string | null>(null);
   const [gcpChecking, setGcpChecking] = useState(false);
+  // OCI: what ~/.oci/config holds, to prefill the compartment (tenancy root) and region.
+  const [ociCfg, setOciCfg] = useState<OciConfig | null>(null);
+  useEffect(() => {
+    if (!oci) {
+      setOciCfg(null);
+      return;
+    }
+    ociConfig()
+      .then((cfg) => {
+        setOciCfg(cfg);
+        setV((s) => (s.provider === "oci" ? { ...s, username: s.username || cfg.tenancy, host: cfg.region && !editing ? cfg.region : s.host } : s));
+      })
+      .catch(() => setOciCfg(null));
+  }, [oci, editing]);
   useEffect(() => {
     if (aws)
       awsProfiles()
@@ -166,7 +183,18 @@ export function useHostSetup({
     setV((s) => ({
       ...s,
       provider: id as RemoteProvider,
-      host: id === "azure" ? "westeurope" : id === "gcp" ? "europe-west1" : id === "digitalocean" ? "fra1" : id === "linode" ? "eu-central" : "eu-west-3",
+      host:
+        id === "azure"
+          ? "westeurope"
+          : id === "gcp"
+            ? "europe-west1"
+            : id === "digitalocean"
+              ? "fra1"
+              : id === "linode"
+                ? "eu-central"
+                : id === "oci"
+                  ? "eu-frankfurt-1"
+                  : "eu-west-3",
       username: "",
       password: null,
       useCliCreds: id === "aws",
@@ -198,7 +226,7 @@ export function useHostSetup({
 
   const connectionOk = tokenCloud
     ? v.host.trim() !== "" && (editing || (v.password ?? "") !== "")
-    : cliAuth
+    : cliAuth || oci
       ? v.host.trim() !== "" && v.username.trim() !== ""
       : cloud && v.useCliCreds
         ? v.host.trim() !== ""
@@ -316,6 +344,8 @@ export function useHostSetup({
     gcp,
     digitalocean,
     linode,
+    oci,
+    ociCfg,
     tokenCloud,
     cliAuth,
     cloud,

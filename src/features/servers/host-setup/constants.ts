@@ -11,6 +11,7 @@ export const KIND: Record<RemoteProvider, { label: string; note: string; port: n
   gcp: { label: "Google Cloud", note: "VMs in your own project", port: 443, user: "project id", plugin: "" },
   digitalocean: { label: "DigitalOcean", note: "Droplets in your own account", port: 443, user: "API token", plugin: "" },
   linode: { label: "Linode", note: "Linodes in your own account", port: 443, user: "API token", plugin: "" },
+  oci: { label: "Oracle Cloud", note: "Instances in your own tenancy", port: 443, user: "compartment OCID", plugin: "" },
 };
 
 /** Server hypervisors, as opposed to cloud accounts. */
@@ -96,6 +97,18 @@ export const LINODE_REGIONS: [string, string][] = [
   ["ca-central", "Toronto"],
 ];
 
+/** Common OCI regions for the cloud setup dropdown (id, human name). */
+export const OCI_REGIONS: [string, string][] = [
+  ["eu-frankfurt-1", "Frankfurt"],
+  ["eu-amsterdam-1", "Amsterdam"],
+  ["uk-london-1", "London"],
+  ["us-ashburn-1", "Ashburn"],
+  ["us-phoenix-1", "Phoenix"],
+  ["ap-singapore-1", "Singapore"],
+  ["ap-tokyo-1", "Tokyo"],
+  ["ca-toronto-1", "Toronto"],
+];
+
 export type StepKey = "provider" | "hypervisor" | "tools" | "connection" | "placement" | "account" | "credentials" | "options" | "test";
 /** Cloud providers offered in the cloud setup. AWS, Azure and GCP each provision labs in the
  *  player's own account; `ready` gates which are selectable. */
@@ -105,6 +118,7 @@ export const CLOUD_META: Record<CloudProvider, { label: string; cli: string; col
   gcp: { label: "Google Cloud", cli: "gcloud", color: "#34a853", ready: true },
   digitalocean: { label: "DigitalOcean", cli: "", color: "#0080ff", ready: true },
   linode: { label: "Linode", cli: "", color: "#00b155", ready: true },
+  oci: { label: "Oracle Cloud", cli: "", color: "#c74634", ready: true },
 };
 
 /** The provider picker. AWS, Azure and GCP are live targets; the rest are coming soon.
@@ -115,5 +129,5 @@ export const CLOUD_PICKER: { id: string; label: string; ready: boolean; logo: bo
   { id: "gcp", label: "Google Cloud", ready: true, logo: true },
   { id: "digitalocean", label: "DigitalOcean", ready: true, logo: true },
   { id: "linode", label: "Linode", ready: true, logo: true },
-  { id: "oracle", label: "Oracle Cloud", ready: false, logo: true },
+  { id: "oci", label: "Oracle Cloud", ready: true, logo: true },
 ];

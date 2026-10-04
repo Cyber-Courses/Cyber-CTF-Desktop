@@ -5,7 +5,7 @@ import { ArrowLeft, CheckCircle2, Cloud, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/ui/log-console";
-import { AWS_REGIONS, AZURE_LOCATIONS, DO_REGIONS, GCP_REGIONS, LINODE_REGIONS } from "@/features/servers/host-setup/constants";
+import { AWS_REGIONS, AZURE_LOCATIONS, DO_REGIONS, GCP_REGIONS, LINODE_REGIONS, OCI_REGIONS } from "@/features/servers/host-setup/constants";
 import { Field, Input, Nav, Select, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
 
@@ -20,6 +20,8 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
     gcp,
     digitalocean,
     linode,
+    oci,
+    ociCfg,
     tokenCloud,
     profiles,
     awsIdentity,
@@ -50,9 +52,11 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
               ? "DigitalOcean token"
               : linode
                 ? "Linode token"
-                : v.useCliCreds
-                  ? "AWS CLI"
-                  : "Access keys"
+                : oci
+                  ? "Oracle Cloud"
+                  : v.useCliCreds
+                    ? "AWS CLI"
+                    : "Access keys"
       }
       description={
         azure
@@ -61,12 +65,36 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             ? "Sign in with the gcloud CLI, then pick a billing account. Each lab creates its own project."
             : tokenCloud
               ? `Paste a ${digitalocean ? "DigitalOcean" : "Linode"} API token with read/write scope, and pick a region.`
-              : v.useCliCreds
-                ? "Pick a profile, or sign in with the browser."
-                : "An IAM user's access keys."
+              : oci
+                ? "Uses ~/.oci/config (API signing key). Pick a compartment and region."
+                : v.useCliCreds
+                  ? "Pick a profile, or sign in with the browser."
+                  : "An IAM user's access keys."
       }
     >
-      {tokenCloud ? (
+      {oci ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem]">
+            {ociCfg?.configured ? (
+              <span className="flex items-center gap-1.5 text-emerald-500">
+                <CheckCircle2 className="size-3.5" /> Found ~/.oci/config
+              </span>
+            ) : (
+              <span className="text-muted-foreground">No ~/.oci/config found. Set it up with `oci setup config` or from the console.</span>
+            )}
+            <button
+              type="button"
+              onClick={() => openUrl("https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm").catch(() => {})}
+              className="ml-auto inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+            >
+              How to set up <ExternalLink className="size-3" />
+            </button>
+          </div>
+          <Field label="Compartment OCID" hint="the tenancy root OCID works">
+            <Input {...text("username")} placeholder="ocid1.compartment.oc1..…" />
+          </Field>
+        </div>
+      ) : tokenCloud ? (
         <div className="space-y-3">
           <Field label="API token" hint="read/write scope">
             <Input
@@ -254,14 +282,16 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
         <Field label={azure ? "Location" : "Region"}>
           <Select value={v.host} onChange={(e) => set("host", e.target.value)}>
             {v.host &&
-              !(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : digitalocean ? DO_REGIONS : linode ? LINODE_REGIONS : AWS_REGIONS).some(
+              !(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : digitalocean ? DO_REGIONS : linode ? LINODE_REGIONS : oci ? OCI_REGIONS : AWS_REGIONS).some(
                 ([code]) => code === v.host,
               ) && <option value={v.host}>{v.host}</option>}
-            {(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : digitalocean ? DO_REGIONS : linode ? LINODE_REGIONS : AWS_REGIONS).map(([code, name]) => (
-              <option key={code} value={code}>
-                {code} — {name}
-              </option>
-            ))}
+            {(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : digitalocean ? DO_REGIONS : linode ? LINODE_REGIONS : oci ? OCI_REGIONS : AWS_REGIONS).map(
+              ([code, name]) => (
+                <option key={code} value={code}>
+                  {code} — {name}
+                </option>
+              ),
+            )}
           </Select>
         </Field>
       </div>
