@@ -67,6 +67,15 @@ pub fn run() {
             }
             // Bring your own compute: register this machine and run the player's labs on it.
             account::agent::spawn(app.handle().clone());
+            // Timed teardown of expired cloud labs: once on startup, then every 5 minutes, so a
+            // forgotten (or app-was-closed) lab stops billing instead of lingering.
+            let reaper = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    runtime::reap_expired_labs(&reaper).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

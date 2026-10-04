@@ -234,6 +234,21 @@ pub fn status(state: &Path) -> LabStatus {
     LabStatus { running: created, machines, networks: Vec::new(), url: None, host: None, expires_at: expires_at.filter(|_| created) }
 }
 
+/// True when the state still holds a cloud instance whose auto-stop time has passed, so it
+/// needs a `destroy` to free the resources and end billing (an OS poweroff does not deallocate
+/// on Azure). Unlike `status`, this stays true after expiry; it's the signal the reaper uses.
+pub fn expired(state: &Path) -> bool {
+    let outputs = std::fs::read_to_string(state.join("terraform.tfstate"))
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+        .map(|v| v["outputs"].clone())
+        .unwrap_or(Value::Null);
+    let has_instance = !outputs["vm_id"]["value"].is_null() || !outputs["instance_id"]["value"].is_null();
+    let expires_at =
+        std::fs::read_to_string(state.join(RUN_FILE)).ok().and_then(|raw| serde_json::from_str::<Value>(&raw).ok()).and_then(|v| v[EXPIRES_AT].as_u64());
+    has_instance && expires_at.is_some_and(|t| now() >= t)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

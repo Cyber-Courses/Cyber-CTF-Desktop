@@ -203,6 +203,28 @@ async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Resu
     Ok(LabStatus { host: Some(c.name), ..status })
 }
 
+/// Destroys cloud labs whose auto-stop time has passed, to end billing: on Azure an OS
+/// poweroff only stops (not deallocates) the VM, so it keeps billing until a `destroy`, and a
+/// destroy also cleans up leftover resources on every cloud. Runs on startup and periodically
+/// while the app is open; a lab that expired while the app was closed is reaped at the next sweep.
+pub async fn reap_expired_labs(app: &AppHandle) {
+    let Ok(base) = app.path().app_data_dir() else { return };
+    let Ok(entries) = std::fs::read_dir(base.join("deployments")) else { return };
+    let ids: Vec<String> = entries.flatten().filter_map(|e| e.file_name().into_string().ok()).filter(|id| validate_id(id).is_ok()).collect();
+    for id in ids {
+        let Ok(dir) = lab_dir(app, &id) else { continue };
+        let Ok(Some(c)) = server::lab_connection(app, &dir) else { continue };
+        let Some(target) = server::terraform_target(c.provider) else { continue };
+        let Ok(state) = state_dir(app, &id, target) else { continue };
+        if !terraform::expired(&state) {
+            continue;
+        }
+        // Best effort: tear it down to end billing. No UI context here, so logs are dropped;
+        // if the destroy fails, the next sweep retries.
+        let _ = stop(app, &dir, &id, Runtime::Docker, |_line: String| {}).await;
+    }
+}
+
 /// Where a running lab is reachable on this machine (its first published port). None for
 /// VM labs (their address is discovered differently) or when nothing is published.
 pub async fn primary_url(dir: &Path, id: &str, runtime: Runtime) -> Option<String> {
