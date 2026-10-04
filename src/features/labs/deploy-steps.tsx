@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronRight, Circle, X } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/ui/log-console";
@@ -168,8 +168,14 @@ export function DeploySteps({ lines, busy, ready }: { lines: string[]; busy: boo
 
 /** A phase's own lines, each with its time since the launch started. */
 function TimedLog({ rows, origin }: { rows: Timed[]; origin: number }) {
+  const box = useRef<HTMLDivElement>(null);
+  // Tail the log: keep the newest line in view as the deployment streams.
+  useEffect(() => {
+    const el = box.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [rows]);
   return (
-    <div className="max-h-48 overflow-auto rounded-md border border-border bg-[#070707] p-2 font-mono text-[0.6875rem] leading-relaxed">
+    <div ref={box} className="max-h-48 overflow-auto rounded-md border border-border bg-[#070707] p-2 font-mono text-[0.6875rem] leading-relaxed">
       {rows.map((r, i) => (
         <div key={i} className="flex gap-3">
           <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground/60">{formatDuration(r.at - origin)}</span>
