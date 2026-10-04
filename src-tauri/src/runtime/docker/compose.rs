@@ -1,0 +1,144 @@
+//! Talking to the `docker compose` CLI for one lab, and parsing what it prints. Every
+//! compose call in the engine goes through here, so the project/file flags live in one place.
+
+use std::path::Path;
+
+use serde::Deserialize;
+
+use crate::error::Result;
+use crate::exec::{run, run_env, stream as exec_stream};
+
+// One compose project per lab, so labs never collide and can be cleaned up by name.
+pub(super) fn project(id: &str) -> String {
+    format!("cyberctf-{id}")
+}
+
+/// A `docker compose -p <project> -f docker-compose.yml <rest...>` argv.
+fn args(project: &str, rest: &[&str]) -> Vec<String> {
+    let mut a = vec!["compose".to_string(), "-p".into(), project.into(), "-f".into(), "docker-compose.yml".into()];
+    a.extend(rest.iter().map(|s| s.to_string()));
+    a
+}
+
+/// Runs a compose subcommand and returns its stdout.
+pub(super) async fn output(dir: &Path, project: &str, rest: &[&str]) -> Result<String> {
+    let a = args(project, rest);
+    let a: Vec<&str> = a.iter().map(String::as_str).collect();
+    run("docker", &a, Some(dir)).await
+}
+
+/// Runs a compose subcommand with extra environment, and returns its stdout.
+pub(super) async fn output_env(dir: &Path, project: &str, rest: &[&str], env: &[(String, String)]) -> Result<String> {
+    let a = args(project, rest);
+    let a: Vec<&str> = a.iter().map(String::as_str).collect();
+    run_env("docker", &a, Some(dir), env).await
+}
+
+/// Runs a compose subcommand, streaming its output line by line.
+pub(super) async fn stream(dir: &Path, project: &str, rest: &[&str], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
+    let a = args(project, rest);
+    let a: Vec<&str> = a.iter().map(String::as_str).collect();
+    exec_stream("docker", &a, Some(dir), env, log).await
+}
+
+#[derive(Deserialize)]
+pub(super) struct PsEntry {
+    #[serde(rename = "Service")]
+    pub(super) service: String,
+    #[serde(rename = "State")]
+    pub(super) state: String,
+    /// Compose healthcheck result: "healthy" / "unhealthy" / "starting" / "" (none declared).
+    #[serde(rename = "Health", default)]
+    pub(super) health: String,
+    #[serde(rename = "Image", default)]
+    pub(super) image: String,
+    #[serde(rename = "Name", default)]
+    pub(super) name: String,
+    #[serde(rename = "Publishers", default)]
+    pub(super) publishers: Vec<Publisher>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct Publisher {
+    #[serde(rename = "PublishedPort", default)]
+    pub(super) published_port: u16,
+    #[serde(rename = "TargetPort", default)]
+    pub(super) target_port: u16,
+    #[serde(rename = "Protocol", default)]
+    pub(super) protocol: String,
+}
+
+// `docker compose ps --format json` prints either a JSON array (older Compose)
+// or one JSON object per line (Compose >= 2.21).
+pub(super) fn parse_ps(out: &str) -> Vec<PsEntry> {
+    let trimmed = out.trim();
+    if trimmed.starts_with('[') {
+        return serde_json::from_str(trimmed).unwrap_or_default();
+    }
+    trimmed.lines().filter_map(|l| serde_json::from_str(l).ok()).collect()
+}
+
+/// Host ports a compose file publishes, from `docker compose config` (env resolved).
+pub(super) fn host_ports_from_config(json: &str) -> Vec<u16> {
+    let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
+    let mut ports = Vec::new();
+    if let Some(services) = v.get("services").and_then(|s| s.as_object()) {
+        for svc in services.values() {
+            let Some(arr) = svc.get("ports").and_then(|p| p.as_array()) else { continue };
+            for p in arr {
+                let published = p.get("published").and_then(|x| x.as_u64().or_else(|| x.as_str().and_then(|s| s.parse().ok())));
+                if let Some(n) = published {
+                    if n > 0 && n <= u16::MAX as u64 {
+                        ports.push(n as u16);
+                    }
+                }
+            }
+        }
+    }
+    ports
+}
+
+/// Service names a compose file publishes a host port for, from `docker compose config`.
+/// These are the lab's serving containers (web/app), as opposed to one-shot init jobs.
+pub(super) fn serving_services_from_config(json: &str) -> Vec<String> {
+    let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
+    let mut names = Vec::new();
+    if let Some(services) = v.get("services").and_then(|s| s.as_object()) {
+        for (name, svc) in services {
+            if svc.get("ports").and_then(|p| p.as_array()).is_some_and(|a| !a.is_empty()) {
+                names.push(name.clone());
+            }
+        }
+    }
+    names
+}
+
+pub(super) fn config_has_service(json: &str, name: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| v.get("services").and_then(|s| s.as_object()).map(|m| m.contains_key(name)))
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{host_ports_from_config, parse_ps};
+
+    #[test]
+    fn reads_published_host_ports_from_config() {
+        let json = r#"{"services":{"web":{"ports":[{"published":"3206","target":3206}]},"db":{"ports":[{"published":3207,"target":3207}]},"init":{}}}"#;
+        let mut ports = host_ports_from_config(json);
+        ports.sort();
+        assert_eq!(ports, vec![3206, 3207]);
+        assert!(host_ports_from_config("{}").is_empty());
+    }
+
+    #[test]
+    fn parses_both_compose_output_formats() {
+        let lines = "{\"Service\":\"web\",\"State\":\"running\"}\n{\"Service\":\"db\",\"State\":\"exited\"}\n";
+        let array = "[{\"Service\":\"web\",\"State\":\"running\"}]";
+        assert_eq!(parse_ps(lines).len(), 2);
+        assert_eq!(parse_ps(array)[0].service, "web");
+        assert!(parse_ps("").is_empty());
+    }
+}

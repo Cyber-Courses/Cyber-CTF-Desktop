@@ -1,0 +1,17 @@
+//! Docker-Compose lab engine, split by concern:
+//! - `compose`: talking to the compose CLI and parsing its output (one place for the flags)
+//! - `lifecycle`: start / stop, with the host-port collision check
+//! - `inspect`: status, networks, interfaces, the reachable URL
+//! - `check`: the exploitability self-check
+//!
+//! A new signal (a health field, another network fact) touches one of these, not all of
+//! them, so parallel work stops colliding in a single god-function.
+
+mod check;
+mod compose;
+mod inspect;
+mod lifecycle;
+
+pub use check::{check, Check};
+pub use inspect::{primary_url, short_network, status};
+pub use lifecycle::{start, stop};

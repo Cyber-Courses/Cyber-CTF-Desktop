@@ -1,174 +1,14 @@
+//! Reading a running lab: its machines, their networks and addresses, the reachable URL.
+//! `status()` is a thin composer; each signal (url, networks, interfaces, health) is its
+//! own small function so features stop sharing one body.
+
+use std::collections::HashMap;
 use std::path::Path;
 
-use serde::Deserialize;
-
-use super::{Interface, LabStatus, Machine, Network, Port};
-use crate::error::{Error, Result};
-use crate::exec::{run, run_env, stream};
-
-// One compose project per lab, so labs never collide and can be cleaned up by name.
-fn project(id: &str) -> String {
-    format!("cyberctf-{id}")
-}
-
-/// Host ports a compose file publishes, from `docker compose config` (env resolved).
-fn host_ports_from_config(json: &str) -> Vec<u16> {
-    let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
-    let mut ports = Vec::new();
-    if let Some(services) = v.get("services").and_then(|s| s.as_object()) {
-        for svc in services.values() {
-            let Some(arr) = svc.get("ports").and_then(|p| p.as_array()) else { continue };
-            for p in arr {
-                let published = p.get("published").and_then(|x| x.as_u64().or_else(|| x.as_str().and_then(|s| s.parse().ok())));
-                if let Some(n) = published {
-                    if n > 0 && n <= u16::MAX as u64 {
-                        ports.push(n as u16);
-                    }
-                }
-            }
-        }
-    }
-    ports
-}
-
-/// Service names a compose file publishes a host port for, from `docker compose config`.
-/// These are the lab's serving containers (web/app), as opposed to one-shot init jobs.
-fn serving_services_from_config(json: &str) -> Vec<String> {
-    let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
-    let mut names = Vec::new();
-    if let Some(services) = v.get("services").and_then(|s| s.as_object()) {
-        for (name, svc) in services {
-            if svc.get("ports").and_then(|p| p.as_array()).is_some_and(|a| !a.is_empty()) {
-                names.push(name.clone());
-            }
-        }
-    }
-    names
-}
-
-async fn published_host_ports(dir: &Path, project: &str, env: &[(String, String)]) -> Vec<u16> {
-    match run_env("docker", &["compose", "-p", project, "-f", "docker-compose.yml", "config", "--format", "json"], Some(dir), env).await {
-        Ok(out) => host_ports_from_config(&out),
-        Err(_) => Vec::new(),
-    }
-}
-
-async fn is_running(dir: &Path, project: &str) -> bool {
-    match run("docker", &["compose", "-p", project, "-f", "docker-compose.yml", "ps", "--format", "json"], Some(dir)).await {
-        Ok(out) => parse_ps(&out).iter().any(|e| e.state == "running"),
-        Err(_) => false,
-    }
-}
-
-/// A host port is taken if we can't bind it (another lab, or anything else, holds it).
-fn port_in_use(port: u16) -> bool {
-    std::net::TcpListener::bind(("0.0.0.0", port)).is_err()
-}
-
-pub async fn start(dir: &Path, id: &str, env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
-    let project = project(id);
-    // Two labs can't share a host port. Unless this lab is already up (idempotent restart),
-    // refuse up front with a clear message instead of a cryptic Docker bind error.
-    if !is_running(dir, &project).await {
-        for port in published_host_ports(dir, &project, env).await {
-            if port_in_use(port) {
-                return Err(Error::Invalid(format!(
-                    "Host port {port} is already in use — another lab is probably using it. Stop that lab, then start this one."
-                )));
-            }
-        }
-    }
-    stream(
-        "docker",
-        &["compose", "-p", &project, "-f", "docker-compose.yml", "up", "-d", "--pull", "missing", "--wait"],
-        Some(dir),
-        env,
-        log,
-    )
-    .await
-}
-
-/// Removes containers, networks and volumes: the next start is a clean lab.
-pub async fn stop(dir: &Path, id: &str, log: impl FnMut(String)) -> Result<()> {
-    let project = project(id);
-    stream(
-        "docker",
-        &["compose", "-p", &project, "-f", "docker-compose.yml", "down", "--volumes", "--remove-orphans"],
-        Some(dir),
-        &[],
-        log,
-    )
-    .await
-}
-
-fn config_has_service(json: &str, name: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(json)
-        .ok()
-        .and_then(|v| v.get("services").and_then(|s| s.as_object()).map(|m| m.contains_key(name)))
-        .unwrap_or(false)
-}
-
-/// Result of a lab's self-verification (the `check` service).
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Check {
-    /// The lab ships a `check` service, so verification is possible.
-    pub available: bool,
-    /// The check passed: the challenge is still in a solvable state.
-    pub ok: bool,
-    /// The check's combined output (why it failed, when it did).
-    pub output: String,
-}
-
-/// Runs the lab's `check` service (compose `check` profile): a container on the lab network
-/// that asserts the intended exploit path still works, so a learner who broke their box is
-/// told to reset it instead of fighting a lab that can no longer be solved. Exit 0 = solvable.
-pub async fn check(dir: &Path, id: &str) -> Result<Check> {
-    let project = project(id);
-    let config = run("docker", &["compose", "-p", &project, "-f", "docker-compose.yml", "config", "--format", "json"], Some(dir))
-        .await
-        .ok();
-    if !config.as_deref().map(|c| config_has_service(c, "check")).unwrap_or(false) {
-        return Ok(Check { available: false, ok: false, output: String::new() });
-    }
-    let mut lines: Vec<String> = Vec::new();
-    let res = stream(
-        "docker",
-        &["compose", "-p", &project, "-f", "docker-compose.yml", "--profile", "check", "run", "--rm", "--no-deps", "check"],
-        Some(dir),
-        &[],
-        |l| lines.push(l),
-    )
-    .await;
-    Ok(Check { available: true, ok: res.is_ok(), output: lines.join("\n") })
-}
-
-#[derive(Deserialize)]
-struct PsEntry {
-    #[serde(rename = "Service")]
-    service: String,
-    #[serde(rename = "State")]
-    state: String,
-    /// Compose healthcheck result: "healthy" / "unhealthy" / "starting" / "" (none declared).
-    #[serde(rename = "Health", default)]
-    health: String,
-    #[serde(rename = "Image", default)]
-    image: String,
-    #[serde(rename = "Name", default)]
-    name: String,
-    #[serde(rename = "Publishers", default)]
-    publishers: Vec<Publisher>,
-}
-
-#[derive(Deserialize)]
-struct Publisher {
-    #[serde(rename = "PublishedPort", default)]
-    published_port: u16,
-    #[serde(rename = "TargetPort", default)]
-    target_port: u16,
-    #[serde(rename = "Protocol", default)]
-    protocol: String,
-}
+use super::compose::{self, PsEntry, Publisher};
+use crate::error::Result;
+use crate::exec::run;
+use crate::runtime::{Interface, LabStatus, Machine, Network, Port};
 
 /// True for services that aren't a web UI (databases, caches, brokers): the Open button
 /// must never point a browser at one.
@@ -198,14 +38,13 @@ fn first_published_url(entries: &[PsEntry]) -> Option<String> {
 /// The lab's own name for a Docker network: Compose prefixes the compose key with the
 /// project (`cyberctf-<id>_dmz` -> `dmz`). Other names are returned unchanged.
 pub fn short_network(id: &str, name: &str) -> String {
-    name.strip_prefix(&format!("{}_", project(id))).unwrap_or(name).to_string()
+    name.strip_prefix(&format!("{}_", compose::project(id))).unwrap_or(name).to_string()
 }
 
 /// Each running container's interfaces (network -> address), keyed by container name.
 /// `docker compose ps` doesn't carry addresses, so we inspect the live containers once.
 /// Best effort: an empty map (e.g. inspect failed) just means the UI shows no IPs.
-async fn container_ifaces(dir: &Path, id: &str, names: &[String]) -> std::collections::HashMap<String, Vec<Interface>> {
-    use std::collections::HashMap;
+async fn container_ifaces(dir: &Path, id: &str, names: &[String]) -> HashMap<String, Vec<Interface>> {
     if names.is_empty() {
         return HashMap::new();
     }
@@ -218,7 +57,7 @@ async fn container_ifaces(dir: &Path, id: &str, names: &[String]) -> std::collec
     parse_ifaces(id, &out)
 }
 
-fn parse_ifaces(id: &str, out: &str) -> std::collections::HashMap<String, Vec<Interface>> {
+fn parse_ifaces(id: &str, out: &str) -> HashMap<String, Vec<Interface>> {
     out.lines()
         .filter_map(|line| {
             let (name, rest) = line.split_once('\t')?;
@@ -235,7 +74,7 @@ fn parse_ifaces(id: &str, out: &str) -> std::collections::HashMap<String, Vec<In
 
 /// The lab's networks (Compose labels them with the project), with subnet and isolation.
 async fn lab_networks(id: &str) -> Vec<Network> {
-    let filter = format!("label=com.docker.compose.project={}", project(id));
+    let filter = format!("label=com.docker.compose.project={}", compose::project(id));
     let Ok(names) = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await else {
         return Vec::new();
     };
@@ -280,25 +119,10 @@ fn tcp_ports(publishers: &[Publisher]) -> Vec<Port> {
         .collect()
 }
 
-// `docker compose ps --format json` prints either a JSON array (older Compose)
-// or one JSON object per line (Compose >= 2.21).
-fn parse_ps(out: &str) -> Vec<PsEntry> {
-    let trimmed = out.trim();
-    if trimmed.starts_with('[') {
-        return serde_json::from_str(trimmed).unwrap_or_default();
-    }
-    trimmed.lines().filter_map(|l| serde_json::from_str(l).ok()).collect()
-}
-
 pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
-    let project = project(id);
-    let out = run(
-        "docker",
-        &["compose", "-p", &project, "-f", "docker-compose.yml", "ps", "--all", "--format", "json"],
-        Some(dir),
-    )
-    .await?;
-    let entries = parse_ps(&out);
+    let project = compose::project(id);
+    let out = compose::output(dir, &project, &["ps", "--all", "--format", "json"]).await?;
+    let entries = compose::parse_ps(&out);
     // Labs have one-shot init services (e.g. evidence, place-evidence) that exit 0 after
     // doing their job, so the lab is "running" when at least one service is up, not when
     // every service is. Only the live services are reported to the UI.
@@ -311,10 +135,10 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     // whose web died is reported degraded, not fine. One-shot init jobs publish nothing, so
     // their normal exit is ignored. Config is only consulted while the lab is up.
     let serving = if running {
-        run("docker", &["compose", "-p", &project, "-f", "docker-compose.yml", "config", "--format", "json"], Some(dir))
+        compose::output(dir, &project, &["config", "--format", "json"])
             .await
             .ok()
-            .map(|c| serving_services_from_config(&c))
+            .map(|c| compose::serving_services_from_config(&c))
             .unwrap_or_default()
     } else {
         Vec::new()
@@ -347,38 +171,15 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
 
 /// Where the lab is reachable on this machine (its first published port), once running.
 pub async fn primary_url(dir: &Path, id: &str) -> Option<String> {
-    let project = project(id);
-    let out = run(
-        "docker",
-        &["compose", "-p", &project, "-f", "docker-compose.yml", "ps", "--format", "json"],
-        Some(dir),
-    )
-    .await
-    .ok()?;
-    first_published_url(&parse_ps(&out))
+    let project = compose::project(id);
+    let out = compose::output(dir, &project, &["ps", "--format", "json"]).await.ok()?;
+    first_published_url(&compose::parse_ps(&out))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{first_published_url, host_ports_from_config, parse_ifaces, parse_networks, parse_ps, tcp_ports};
-
-    #[test]
-    fn reads_published_host_ports_from_config() {
-        let json = r#"{"services":{"web":{"ports":[{"published":"3206","target":3206}]},"db":{"ports":[{"published":3207,"target":3207}]},"init":{}}}"#;
-        let mut ports = host_ports_from_config(json);
-        ports.sort();
-        assert_eq!(ports, vec![3206, 3207]);
-        assert!(host_ports_from_config("{}").is_empty());
-    }
-
-    #[test]
-    fn parses_both_compose_output_formats() {
-        let lines = "{\"Service\":\"web\",\"State\":\"running\"}\n{\"Service\":\"db\",\"State\":\"exited\"}\n";
-        let array = "[{\"Service\":\"web\",\"State\":\"running\"}]";
-        assert_eq!(parse_ps(lines).len(), 2);
-        assert_eq!(parse_ps(array)[0].service, "web");
-        assert!(parse_ps("").is_empty());
-    }
+    use super::{first_published_url, parse_ifaces, parse_networks, tcp_ports};
+    use super::compose::parse_ps;
 
     #[test]
     fn finds_the_first_published_tcp_port() {
