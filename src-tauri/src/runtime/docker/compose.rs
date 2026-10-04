@@ -87,10 +87,11 @@ pub(super) fn host_ports_from_config(json: &str) -> Vec<u16> {
             let Some(arr) = svc.get("ports").and_then(|p| p.as_array()) else { continue };
             for p in arr {
                 let published = p.get("published").and_then(|x| x.as_u64().or_else(|| x.as_str().and_then(|s| s.parse().ok())));
-                if let Some(n) = published {
-                    if n > 0 && n <= u16::MAX as u64 {
-                        ports.push(n as u16);
-                    }
+                if let Some(n) = published
+                    && n > 0
+                    && n <= u16::MAX as u64
+                {
+                    ports.push(n as u16);
                 }
             }
         }

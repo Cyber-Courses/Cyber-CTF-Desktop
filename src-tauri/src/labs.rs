@@ -9,7 +9,7 @@ use serde_json::json;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager};
 
-use crate::api;
+use crate::account::api;
 use crate::error::{Error, Result};
 use crate::runtime::{self, Runtime, providers::Provider};
 
@@ -145,10 +145,10 @@ pub async fn lab_launch(
     attackbox_image: Option<String>,
     logs: Channel<String>,
 ) -> Result<()> {
-    if let Some(image) = &attackbox_image {
-        if !runtime::valid_image(image) {
-            return Err(Error::Invalid(format!("invalid attack-box image `{image}`")));
-        }
+    if let Some(image) = &attackbox_image
+        && !runtime::valid_image(image)
+    {
+        return Err(Error::Invalid(format!("invalid attack-box image `{image}`")));
     }
     let log = move |line: String| {
         let _ = logs.send(line);

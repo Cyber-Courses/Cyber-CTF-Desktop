@@ -21,7 +21,7 @@ use tauri::{AppHandle, Manager};
 use super::providers::Provider;
 use super::{server, ssh, terraform, vm};
 use crate::error::{Error, Result};
-use crate::selftest::Event;
+use crate::machine::selftest::Event;
 
 /// A throwaway VM sized to boot quickly; the point is that it boots and networks, not that
 /// it is roomy.

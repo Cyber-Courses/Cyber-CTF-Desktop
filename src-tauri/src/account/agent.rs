@@ -13,9 +13,9 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_notification::NotificationExt;
 
-use crate::api;
-use crate::auth;
-use crate::colocation;
+use crate::account::api;
+use crate::account::auth;
+use crate::account::colocation;
 use crate::error::{Error, Result};
 use crate::labs;
 use crate::runtime::server;
@@ -41,10 +41,10 @@ fn install_id(app: &AppHandle) -> Result<String> {
 
 /// A human label for this machine (editable server-side later). Not an identifier.
 fn machine_name() -> String {
-    if let Ok(n) = std::env::var("CYBERCTF_AGENT_NAME") {
-        if !n.trim().is_empty() {
-            return n.trim().to_string();
-        }
+    if let Ok(n) = std::env::var("CYBERCTF_AGENT_NAME")
+        && !n.trim().is_empty()
+    {
+        return n.trim().to_string();
     }
     let user = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).ok().filter(|s| !s.trim().is_empty());
     let os = match std::env::consts::OS {
@@ -165,11 +165,11 @@ async fn poll_once(app: &AppHandle, agent_id: &str) -> Result<()> {
     let data = api::graphql("query ($a: ID) { myPendingLaunches(agentId: $a) { id } }", json!({ "a": agent_id }), true).await?;
     if let Some(sessions) = data["myPendingLaunches"].as_array() {
         for session in sessions {
-            if let Some(sid) = session.get("id").and_then(Value::as_str) {
-                if let Err(e) = claim_and_run(app, sid).await {
-                    log::warn!("lab session {sid} failed: {e}");
-                    let _ = update_state(sid, "FAILED", Progress { message: Some(&e.to_string()), ..Default::default() }).await;
-                }
+            if let Some(sid) = session.get("id").and_then(Value::as_str)
+                && let Err(e) = claim_and_run(app, sid).await
+            {
+                log::warn!("lab session {sid} failed: {e}");
+                let _ = update_state(sid, "FAILED", Progress { message: Some(&e.to_string()), ..Default::default() }).await;
             }
         }
     }
@@ -196,7 +196,7 @@ pub fn spawn(app: AppHandle) {
         let mut tick: u64 = 0;
         loop {
             if auth::access_token().await.is_ok() {
-                if tick % 5 == 0 {
+                if tick.is_multiple_of(5) {
                     let _ = heartbeat(&app, &agent_id).await;
                 }
                 let _ = poll_once(&app, &agent_id).await;

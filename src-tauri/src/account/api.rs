@@ -3,7 +3,7 @@
 
 use serde_json::{Value, json};
 
-use crate::auth;
+use crate::account::auth;
 use crate::config;
 use crate::error::{Error, Result};
 

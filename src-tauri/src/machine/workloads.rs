@@ -15,8 +15,8 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::{Error, Result};
 use crate::exec::run;
+use crate::machine::selftest;
 use crate::runtime::providers::Provider;
-use crate::selftest;
 
 fn labs_dir(app: &AppHandle) -> Result<PathBuf> {
     Ok(app.path().app_data_dir().map_err(|e| Error::Invalid(e.to_string()))?.join("labs"))

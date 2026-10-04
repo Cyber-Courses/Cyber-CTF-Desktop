@@ -1,26 +1,20 @@
-mod agent;
-mod api;
-mod auth;
+mod account;
 mod cloud;
-mod colocation;
 mod config;
-mod env_path;
 mod error;
 mod exec;
-mod install;
 mod labs;
+mod machine;
+mod platform;
 mod provisioning;
 mod runtime;
-mod selftest;
-mod system;
-mod workloads;
 
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Before anything else: GUI launches don't get the shell PATH (docker, vagrant, ovftool).
-    env_path::augment();
+    platform::env_path::augment();
     tauri::Builder::default()
         // First: a cyberctf:// link opened while the app runs goes to that window
         // (Windows/Linux would otherwise start a second instance).
@@ -72,26 +66,26 @@ pub fn run() {
                 app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
             }
             // Bring your own compute: register this machine and run the player's labs on it.
-            agent::spawn(app.handle().clone());
+            account::agent::spawn(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            system::system_check,
-            system::docker_use_engine,
-            system::machine_metrics,
-            system::machine_open_setup,
-            selftest::machine_selftest,
-            selftest::machine_selftest_prefetch,
-            workloads::machine_workloads,
-            workloads::machine_workload_stop,
-            workloads::machine_storage,
-            workloads::machine_storage_clean,
-            auth::auth_login,
-            auth::auth_status,
-            auth::auth_logout,
-            api::api_query,
-            agent::agent_info,
-            install::install_dependency,
+            machine::system::system_check,
+            machine::system::docker_use_engine,
+            machine::system::machine_metrics,
+            machine::system::machine_open_setup,
+            machine::selftest::machine_selftest,
+            machine::selftest::machine_selftest_prefetch,
+            machine::workloads::machine_workloads,
+            machine::workloads::machine_workload_stop,
+            machine::workloads::machine_storage,
+            machine::workloads::machine_storage_clean,
+            account::auth::auth_login,
+            account::auth::auth_status,
+            account::auth::auth_logout,
+            account::api::api_query,
+            account::agent::agent_info,
+            platform::install::install_dependency,
             cloud::cloud_login,
             cloud::aws_cli_identity,
             cloud::aws_profiles,
@@ -99,7 +93,7 @@ pub fn run() {
             cloud::aws_month_to_date_cost,
             provisioning::provisioning_images,
             provisioning::provisioning_pull,
-            install::install_vagrant_plugin,
+            platform::install::install_vagrant_plugin,
             labs::lab_launch,
             runtime::lab_start,
             runtime::lab_stop,
