@@ -13,14 +13,20 @@ export type AzureSubscription = { name: string; id: string; isDefault: boolean }
 /** Subscriptions the signed-in Azure account can see (`az account list`). Empty if not signed in. */
 export const azureSubscriptions = () => invoke<AzureSubscription[]>("azure_subscriptions");
 
-/** A GCP project the signed-in account can use. */
-export type GcpProject = { id: string; name: string };
+/** A GCP billing account the signed-in user can see. */
+export type GcpBillingAccount = { id: string; name: string; open: boolean };
+
+/** A GCP organization the signed-in user belongs to. */
+export type GcpOrganization = { id: string; name: string };
 
 /** The active gcloud account email, or null if the CLI isn't signed in. */
 export const gcpAccount = () => invoke<string | null>("gcp_account");
 
-/** Projects the signed-in GCP account can see (`gcloud projects list`). Empty if not signed in. */
-export const gcpProjects = () => invoke<GcpProject[]>("gcp_projects");
+/** Billing accounts the signed-in GCP user can see (for the per-lab projects). */
+export const gcpBillingAccounts = () => invoke<GcpBillingAccount[]>("gcp_billing_accounts");
+
+/** Organizations the signed-in GCP user belongs to (empty = personal / no-org account). */
+export const gcpOrganizations = () => invoke<GcpOrganization[]>("gcp_organizations");
 
 /** This month's AWS spend so far (USD) from Cost Explorer, or null if unavailable. */
 export const awsMonthToDateCost = (profile?: string) => invoke<number | null>("aws_month_to_date_cost", { profile: profile ?? null });

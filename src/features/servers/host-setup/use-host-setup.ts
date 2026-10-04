@@ -7,12 +7,14 @@ import {
   azureSubscriptions,
   cloudLogin,
   gcpAccount,
-  gcpProjects,
+  gcpBillingAccounts,
+  gcpOrganizations,
   serverSave,
   serverTest,
   type AzureSubscription,
   type CloudProvider,
-  type GcpProject,
+  type GcpBillingAccount,
+  type GcpOrganization,
   type ServerHost,
   type ServerHostInput,
   type ServerTest,
@@ -68,7 +70,8 @@ export function useHostSetup({
   // instead of typing an id.
   const [azureSubs, setAzureSubs] = useState<AzureSubscription[]>([]);
   const [azureChecking, setAzureChecking] = useState(false);
-  const [gcpProjs, setGcpProjs] = useState<GcpProject[]>([]);
+  const [gcpBilling, setGcpBilling] = useState<GcpBillingAccount[]>([]);
+  const [gcpOrgs, setGcpOrgs] = useState<GcpOrganization[]>([]);
   const [gcpEmail, setGcpEmail] = useState<string | null>(null);
   const [gcpChecking, setGcpChecking] = useState(false);
   useEffect(() => {
@@ -94,21 +97,28 @@ export function useHostSetup({
   }, [azure, loadAzureSubs]);
   const loadGcpProjects = useCallback(() => {
     setGcpChecking(true);
-    Promise.all([gcpAccount(), gcpProjects()])
-      .then(([email, projs]) => {
+    Promise.all([gcpAccount(), gcpBillingAccounts(), gcpOrganizations()])
+      .then(([email, billing, orgs]) => {
         setGcpEmail(email);
-        setGcpProjs(projs);
-        setV((s) => (s.provider === "gcp" && !s.username && projs.length > 0 ? { ...s, username: projs[0].id } : s));
+        setGcpBilling(billing);
+        setGcpOrgs(orgs);
+        // Default to the first open billing account if none chosen yet.
+        const open = billing.find((b) => b.open) ?? billing[0];
+        setV((s) => (s.provider === "gcp" && !s.username && open ? { ...s, username: open.id } : s));
       })
       .catch(() => {
         setGcpEmail(null);
-        setGcpProjs([]);
+        setGcpBilling([]);
+        setGcpOrgs([]);
       })
       .finally(() => setGcpChecking(false));
   }, []);
   useEffect(() => {
     if (gcp) loadGcpProjects();
-    else setGcpProjs([]);
+    else {
+      setGcpBilling([]);
+      setGcpOrgs([]);
+    }
   }, [gcp, loadGcpProjects]);
   useEffect(() => {
     // Only meaningful in CLI-credentials mode, where the signed-in profile *is* the account.
@@ -157,6 +167,8 @@ export function useHostSetup({
       password: null,
       useCliCreds: id === "aws",
       awsProfile: null,
+      // node = GCP org id; clear it when switching provider.
+      node: null,
       // Budget is AWS-only; don't carry one typed on AWS over to Azure/GCP.
       monthlyLimit: id === "aws" ? s.monthlyLimit : null,
     }));
@@ -301,7 +313,8 @@ export function useHostSetup({
     setMtdCost,
     azureSubs,
     azureChecking,
-    gcpProjs,
+    gcpBilling,
+    gcpOrgs,
     gcpEmail,
     gcpChecking,
     awsSignIn,

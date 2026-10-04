@@ -168,20 +168,23 @@ pub(super) async fn test_azure(h: &HostProfile) -> TestResult {
 /// in place and the project is reachable. (No cheap VM-create dry-run like AWS.)
 pub(super) async fn test_gcp(h: &HostProfile) -> TestResult {
     let started = Instant::now();
-    let args = ["projects", "describe", h.username.as_str(), "--format", "value(projectId)"];
+    // The username is the billing account id; confirm the signed-in CLI can see it (labs each
+    // create their own project linked to this account).
+    let args = ["billing", "accounts", "describe", h.username.as_str(), "--format", "value(displayName)"];
     match crate::exec::run("gcloud", &args, None).await {
-        Ok(id) => TestResult {
+        Ok(name) => TestResult {
             ok: true,
             reachable: true,
             authenticated: Some(true),
             latency_ms: Some(started.elapsed().as_millis() as u64),
-            message: format!("Signed in to Google Cloud, project \"{}\". Labs run here are billed to it.", id.trim()),
+            message: format!("Signed in to Google Cloud, billing account \"{}\". Each lab creates its own project, billed to it.", name.trim()),
         },
         Err(Error::CommandFailed { stderr, .. }) => {
             let not_in = stderr.contains("gcloud auth")
                 || stderr.contains("credentials")
                 || stderr.contains("does not have permission")
                 || stderr.contains("was not found")
+                || stderr.contains("PERMISSION_DENIED")
                 || stderr.contains("Permission denied");
             TestResult {
                 ok: false,
@@ -189,7 +192,7 @@ pub(super) async fn test_gcp(h: &HostProfile) -> TestResult {
                 authenticated: Some(false),
                 latency_ms: None,
                 message: if not_in {
-                    "Not signed in to Google Cloud, or no access to that project. Sign in and check the project id.".into()
+                    "Not signed in to Google Cloud, or no access to that billing account. Sign in and check the billing account id.".into()
                 } else {
                     format!("GCP check failed: {}", stderr.lines().last().unwrap_or_default())
                 },

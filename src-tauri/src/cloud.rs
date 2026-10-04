@@ -132,10 +132,19 @@ pub async fn azure_subscriptions() -> Vec<AzureSubscription> {
         .unwrap_or_default()
 }
 
-/// A GCP project the signed-in account can use.
+/// A GCP billing account the signed-in user can see.
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct GcpProject {
+pub struct GcpBillingAccount {
+    pub id: String,
+    pub name: String,
+    pub open: bool,
+}
+
+/// A GCP organization the signed-in user belongs to.
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GcpOrganization {
     pub id: String,
     pub name: String,
 }
@@ -151,18 +160,42 @@ pub async fn gcp_account() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// The GCP projects the signed-in account can see (`gcloud projects list`), so the user can
-/// pick one instead of typing the id. Empty when the CLI is missing or not signed in.
+/// The GCP billing accounts the signed-in user can see (`gcloud billing accounts list`), so they
+/// pick one for the per-lab projects. Empty when the CLI is missing or not signed in.
 #[tauri::command]
-pub async fn gcp_projects() -> Vec<GcpProject> {
-    run("gcloud", &["projects", "list", "--format", "json(projectId,name)"], None)
+pub async fn gcp_billing_accounts() -> Vec<GcpBillingAccount> {
+    run("gcloud", &["billing", "accounts", "list", "--format", "json"], None)
         .await
         .ok()
         .and_then(|out| serde_json::from_str::<Vec<serde_json::Value>>(&out).ok())
         .map(|arr| {
             arr.into_iter()
-                .map(|v| GcpProject { id: v["projectId"].as_str().unwrap_or_default().to_string(), name: v["name"].as_str().unwrap_or_default().to_string() })
-                .filter(|p| !p.id.is_empty())
+                .map(|v| GcpBillingAccount {
+                    id: v["name"].as_str().unwrap_or_default().trim_start_matches("billingAccounts/").to_string(),
+                    name: v["displayName"].as_str().unwrap_or_default().to_string(),
+                    open: v["open"].as_bool().unwrap_or(false),
+                })
+                .filter(|b| !b.id.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The GCP organizations the signed-in user belongs to (`gcloud organizations list`). Empty for
+/// a personal / no-org account, so the user can create projects without a parent.
+#[tauri::command]
+pub async fn gcp_organizations() -> Vec<GcpOrganization> {
+    run("gcloud", &["organizations", "list", "--format", "json"], None)
+        .await
+        .ok()
+        .and_then(|out| serde_json::from_str::<Vec<serde_json::Value>>(&out).ok())
+        .map(|arr| {
+            arr.into_iter()
+                .map(|v| GcpOrganization {
+                    id: v["name"].as_str().unwrap_or_default().trim_start_matches("organizations/").to_string(),
+                    name: v["displayName"].as_str().unwrap_or_default().to_string(),
+                })
+                .filter(|o| !o.id.is_empty())
                 .collect()
         })
         .unwrap_or_default()

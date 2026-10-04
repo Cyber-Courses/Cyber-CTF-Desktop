@@ -23,7 +23,8 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
     checkingId,
     azureSubs,
     azureChecking,
-    gcpProjs,
+    gcpBilling,
+    gcpOrgs,
     gcpEmail,
     gcpChecking,
     awsSignIn,
@@ -42,7 +43,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
         azure
           ? "Sign in with the Azure CLI, then pick your subscription and location."
           : gcp
-            ? "Sign in with the gcloud CLI, then pick your project and region."
+            ? "Sign in with the gcloud CLI, then pick a billing account. Each lab creates its own project."
             : v.useCliCreds
               ? "Pick a profile, or sign in with the browser."
               : "An IAM user's access keys."
@@ -98,22 +99,33 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             </div>
           ) : gcpEmail ? (
             <>
-              {gcpProjs.length > 0 ? (
-                <Field label="Project">
+              {gcpBilling.length > 0 ? (
+                <Field label="Billing account" hint="each lab's project is billed here">
                   <Select value={v.username} onChange={(e) => set("username", e.target.value)}>
-                    {!v.username && <option value="">Choose a project…</option>}
-                    {gcpProjs.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name ? `${p.name} (${p.id})` : p.id}
+                    {!v.username && <option value="">Choose a billing account…</option>}
+                    {gcpBilling.map((b) => (
+                      <option key={b.id} value={b.id} disabled={!b.open}>
+                        {b.name ? `${b.name} (${b.id})` : b.id}
+                        {b.open ? "" : " — closed"}
                       </option>
                     ))}
                   </Select>
                 </Field>
               ) : (
-                <Field label="Project ID" hint="no projects listed; type one">
-                  <Input {...text("username")} placeholder="my-lab-project" />
+                <Field label="Billing account" hint="none listed; type the id">
+                  <Input {...text("username")} placeholder="0X0X0X-0X0X0X-0X0X0X" />
                 </Field>
               )}
+              <Field label="Organization">
+                <Select value={v.node ?? ""} onChange={(e) => set("node", e.target.value || null)}>
+                  <option value="">No organization (personal account)</option>
+                  {gcpOrgs.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name ? `${o.name} (${o.id})` : o.id}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
               <div className="flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
                 <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
                 <span className="truncate text-emerald-500">Signed in as {gcpEmail}.</span>
@@ -125,13 +137,13 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem]">
-                <span className="text-muted-foreground">Sign in with the gcloud CLI to list your projects.</span>
+                <span className="text-muted-foreground">Sign in with the gcloud CLI to list your billing accounts.</span>
                 <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
                   {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (gcloud)
                 </Button>
               </div>
-              <Field label="Project ID" hint="or type it">
-                <Input {...text("username")} placeholder="my-lab-project" />
+              <Field label="Billing account" hint="or type the id">
+                <Input {...text("username")} placeholder="0X0X0X-0X0X0X-0X0X0X" />
               </Field>
             </>
           )}

@@ -187,13 +187,15 @@ fn valid_gcp_region(s: &str) -> bool {
     !s.is_empty() && s.len() <= 32 && s.contains('-') && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// A GCP project id: 6-30 chars, starts with a lowercase letter, then lowercase letters,
-/// digits or hyphens, and does not end with a hyphen.
-fn valid_gcp_project(s: &str) -> bool {
-    (6..=30).contains(&s.len())
-        && s.starts_with(|c: char| c.is_ascii_lowercase())
-        && !s.ends_with('-')
-        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+/// A GCP billing account id: three 6-char groups of uppercase hex, e.g. 0X0X0X-0X0X0X-0X0X0X.
+fn valid_billing_account(s: &str) -> bool {
+    let p: Vec<&str> = s.split('-').collect();
+    p.len() == 3 && p.iter().all(|g| g.len() == 6 && g.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()))
+}
+
+/// A GCP organization id: all digits (e.g. 123456789012). Empty = personal / no-org account.
+fn valid_org_id(s: &str) -> bool {
+    s.is_empty() || (s.len() <= 32 && s.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// A long-term AWS access key id (AKIA...). Temporary ASIA... keys are handled separately at
@@ -260,8 +262,11 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         if !valid_gcp_region(&host) {
             return Err(Error::Invalid("region must be a GCP region id, e.g. europe-west1".into()));
         }
-        if !valid_gcp_project(&username) {
-            return Err(Error::Invalid("project must be a GCP project id, e.g. my-lab-project".into()));
+        if !valid_billing_account(&username) {
+            return Err(Error::Invalid("billing account must look like 0X0X0X-0X0X0X-0X0X0X (see `gcloud billing accounts list`)".into()));
+        }
+        if !valid_org_id(input.node.as_deref().unwrap_or_default()) {
+            return Err(Error::Invalid("organization id must be all digits, or empty for a personal account".into()));
         }
     } else if !valid_host(&host) {
         return Err(Error::Invalid("host must be a hostname or IP address, without https:// or a path".into()));
@@ -284,7 +289,8 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         username,
         datastore: clean_opt(input.datastore, "datastore")?,
         network: clean_opt(input.network, "network")?,
-        node: if input.provider == Provider::Proxmox { clean_opt(input.node, "node")? } else { None },
+        // Proxmox uses `node`; GCP reuses it for the optional organization id.
+        node: if matches!(input.provider, Provider::Proxmox | Provider::Gcp) { clean_opt(input.node, "node")? } else { None },
         insecure_tls: input.provider == Provider::Proxmox && input.insecure_tls.unwrap_or(false),
         auto_stop_hours: match input.provider {
             Provider::Aws | Provider::Azure | Provider::Gcp => match input.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS) {

@@ -70,8 +70,9 @@ pub fn terraform_env(h: &HostProfile, password: &str) -> Vec<(String, String)> {
         ],
         // azurerm uses the Azure CLI's auth (az login); it only needs the subscription id.
         Provider::Azure => vec![("ARM_SUBSCRIPTION_ID".to_string(), h.username.clone())],
-        // The google provider uses gcloud's application-default credentials; it only needs the project.
-        Provider::Gcp => vec![("GOOGLE_PROJECT".to_string(), h.username.clone())],
+        // The google provider uses gcloud's ADC. The per-lab project is created inside the
+        // module (from the billing account / org passed as vars), so there's no GOOGLE_PROJECT.
+        Provider::Gcp => Vec::new(),
         _ => Vec::new(),
     }
 }
@@ -83,6 +84,13 @@ pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> 
             vec![("region".to_string(), h.host.clone()), ("auto_stop_hours".to_string(), h.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS).to_string())];
         if let Some(t) = &h.datastore {
             vars.push(("instance_type".into(), t.clone()));
+        }
+        // GCP creates a project per lab, linked to this billing account and (optionally) org.
+        if h.provider == Provider::Gcp {
+            vars.push(("billing_account".into(), h.username.clone()));
+            if let Some(org) = &h.node {
+                vars.push(("org_id".into(), org.clone()));
+            }
         }
         return vars;
     }
