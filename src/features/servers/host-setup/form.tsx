@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
   if (provider === "aws")
     return (
-      <span className="flex h-5 items-center gap-1.5 text-[13px] font-semibold tracking-tight">
+      <span className="flex h-5 items-center gap-1.5 text-[0.8125rem] font-semibold tracking-tight">
         <Cloud className="size-4 text-muted-foreground" /> Amazon Web Services
       </span>
     );
@@ -19,7 +19,7 @@ export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
     return <img src="/brands/proxmox-full-lockup-inverted-color.svg" alt="Proxmox" className="h-5 w-auto" draggable={false} />;
   // VMware/Broadcom logos need Broadcom's approval, so ESXi gets a neutral mark until then.
   return (
-    <span className="flex h-5 items-center gap-1.5 text-[13px] font-semibold tracking-tight">
+    <span className="flex h-5 items-center gap-1.5 text-[0.8125rem] font-semibold tracking-tight">
       <Server className="size-4 text-muted-foreground" /> VMware ESXi
     </span>
   );
@@ -29,14 +29,14 @@ export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
 export function SetupTrademarks({ cloud = false }: { cloud?: boolean }) {
   if (cloud) {
     return (
-      <p className="text-[11px] leading-relaxed text-muted-foreground/70">
+      <p className="text-[0.6875rem] leading-relaxed text-muted-foreground/70">
         Amazon Web Services and AWS are trademarks of Amazon.com, Inc. Microsoft Azure and Google Cloud are trademarks of their respective owners. Cyber CTF
         isn&apos;t affiliated with any of them.
       </p>
     );
   }
   return (
-    <p className="text-[11px] leading-relaxed text-muted-foreground/70">
+    <p className="text-[0.6875rem] leading-relaxed text-muted-foreground/70">
       Proxmox® is a registered trademark of Proxmox Server Solutions GmbH.{" "}
       <button
         onClick={() => openUrl("https://www.proxmox.com").catch(() => {})}
@@ -59,7 +59,7 @@ export function Step({ icon: Icon, title, description, children }: { icon: typeo
         </span>
         <div className="min-w-0 pt-0.5">
           <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-          <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">{description}</p>
+          <p className="mt-1 text-[0.78125rem] leading-relaxed text-muted-foreground">{description}</p>
         </div>
       </div>
       <div className="mt-6">{children}</div>
@@ -79,9 +79,9 @@ export function Nav({ left, right }: { left?: ReactNode; right: ReactNode }) {
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="flex items-baseline gap-2 text-[12px] text-muted-foreground">
+      <span className="flex items-baseline gap-2 text-[0.75rem] text-muted-foreground">
         {label}
-        {hint && <span className="text-[11px] text-muted-foreground/60">{hint}</span>}
+        {hint && <span className="text-[0.6875rem] text-muted-foreground/60">{hint}</span>}
       </span>
       {children}
     </label>
@@ -104,7 +104,7 @@ export function Select({ className, children, ...props }: React.SelectHTMLAttrib
       <select
         {...props}
         className={cn(
-          "w-full cursor-pointer appearance-none rounded-md border border-border bg-card px-3 py-2 pr-9 text-[13px] text-foreground outline-none transition-colors hover:border-ring/60 focus:border-ring",
+          "w-full cursor-pointer appearance-none rounded-md border border-border bg-card px-3 py-2 pr-9 text-[0.8125rem] text-foreground outline-none transition-colors hover:border-ring/60 focus:border-ring",
           className,
         )}
       >

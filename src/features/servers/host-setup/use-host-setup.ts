@@ -1,0 +1,268 @@
+import { useEffect, useState } from "react";
+import {
+  awsCliIdentity,
+  awsLogin,
+  awsMonthToDateCost,
+  awsProfiles,
+  cloudLogin,
+  serverSave,
+  serverTest,
+  type CloudProvider,
+  type ServerHost,
+  type ServerHostInput,
+  type ServerTest,
+  type RemoteProvider,
+  type SystemReport,
+} from "@/lib/tauri";
+import { CLOUD_META, KIND, StepKey } from "@/features/servers/host-setup/constants";
+import type { Dependency } from "@/lib/tauri";
+
+/** All the server / cloud setup state and actions, shared by the setup steps. */
+export function useHostSetup({
+  initial,
+  report,
+  onRefresh,
+  onSaved,
+  onDone,
+}: {
+  initial: ServerHostInput;
+  report: SystemReport | null;
+  onRefresh: () => void;
+  /** After every save, so the main window's host list can refresh. */
+  onSaved: (h: ServerHost) => void;
+  /** Setup finished or cancelled: the window closes. */
+  onDone: () => void;
+}) {
+  const [v, setV] = useState<ServerHostInput>(initial);
+  const [i, setI] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<ServerHost | null>(null);
+  const [test, setTest] = useState<ServerTest | "testing" | null>(null);
+  const [pluginLog, setPluginLog] = useState<string[] | null>(null);
+  const [toolLabel, setToolLabel] = useState("Install");
+  const [cloudProvider, setCloudProvider] = useState<CloudProvider>("aws");
+  const [signingIn, setSigningIn] = useState(false);
+  const [signInLog, setSignInLog] = useState<string[] | null>(null);
+
+  const editing = initial.id !== null;
+  const aws = v.provider === "aws";
+  const azure = v.provider === "azure";
+  const cloud = aws || azure;
+  // AWS can connect through the CLI (a profile / browser sign-in) or with access keys.
+  const [profiles, setProfiles] = useState<string[]>([]);
+  const [awsIdentity, setAwsIdentity] = useState<string | null>(null);
+  const [checkingId, setCheckingId] = useState(false);
+  const [mtdCost, setMtdCost] = useState<number | null>(null);
+  useEffect(() => {
+    if (aws)
+      awsProfiles()
+        .then(setProfiles)
+        .catch(() => {});
+  }, [aws]);
+  useEffect(() => {
+    if (!aws) return;
+    setCheckingId(true);
+    awsCliIdentity(v.awsProfile ?? undefined)
+      .then(setAwsIdentity)
+      .catch(() => setAwsIdentity(null))
+      .finally(() => setCheckingId(false));
+    awsMonthToDateCost(v.awsProfile ?? undefined)
+      .then(setMtdCost)
+      .catch(() => setMtdCost(null));
+  }, [aws, v.awsProfile]);
+
+  async function awsSignIn() {
+    setSigningIn(true);
+    setSignInLog(["Signing in to AWS…"]);
+    try {
+      await awsLogin(v.awsProfile ?? null, (l) => setSignInLog((x) => [...(x ?? []), l]));
+      const id = await awsCliIdentity(v.awsProfile ?? undefined);
+      setAwsIdentity(id);
+      setSignInLog((x) => [...(x ?? []), id ? `✓ Signed in as ${id}` : "✗ Not signed in"]);
+    } catch (e) {
+      setSignInLog((x) => [...(x ?? []), `✗ ${String(e)}`]);
+    } finally {
+      setSigningIn(false);
+    }
+  }
+  const kind = KIND[v.provider];
+  const status = report?.vmProviders.find((p) => p.provider === v.provider);
+
+  // The ordered steps for this setup. Editing skips the hypervisor choice.
+  // Azure has no access-keys choice (it's CLI-auth), so it skips the "how to connect" step.
+  const pickProvider = (id: CloudProvider) => {
+    setCloudProvider(id);
+    setV((s) => ({
+      ...s,
+      provider: id as RemoteProvider,
+      host: id === "azure" ? "westeurope" : "eu-west-3",
+      username: "",
+      password: null,
+      useCliCreds: id === "aws",
+      awsProfile: null,
+    }));
+  };
+  const steps: StepKey[] = cloud
+    ? editing
+      ? azure
+        ? ["credentials", "options", "test"]
+        : ["account", "credentials", "options", "test"]
+      : azure
+        ? ["provider", "tools", "credentials", "options", "test"]
+        : ["provider", "tools", "account", "credentials", "options", "test"]
+    : editing
+      ? ["connection", "placement", "test"]
+      : ["hypervisor", "tools", "connection", "placement", "test"];
+  const key = steps[Math.min(i, steps.length - 1)];
+
+  const set = <K extends keyof ServerHostInput>(k: K, value: ServerHostInput[K]) => setV((s) => ({ ...s, [k]: value }));
+  const text = (k: "name" | "host" | "username" | "datastore" | "network" | "node") => ({
+    value: (v[k] as string | null) ?? "",
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, e.target.value),
+  });
+
+  const connectionOk = azure
+    ? v.host.trim() !== "" && v.username.trim() !== ""
+    : cloud && v.useCliCreds
+      ? v.host.trim() !== ""
+      : v.host.trim() !== "" && v.username.trim() !== "" && (editing || (v.password ?? "") !== "");
+  const next = () => setI((n) => Math.min(n + 1, steps.length - 1));
+  const back = () => setI((n) => Math.max(n - 1, 0));
+
+  // Installs one of the tools this server type needs on this machine, logging below.
+  const toolBusy = pluginLog !== null && !pluginLog.at(-1)?.match(/^[✓✗]/);
+  async function installTool(label: string, run: (onLog: (l: string) => void) => Promise<void>) {
+    setToolLabel(label);
+    setPluginLog([`Installing ${label}…`]);
+    try {
+      await run((l) => setPluginLog((x) => [...(x ?? []), l]));
+      setPluginLog((x) => [...(x ?? []), "✓ Installed"]);
+    } catch (e) {
+      setPluginLog((x) => [...(x ?? []), `✗ ${String(e)}`]);
+    } finally {
+      onRefresh();
+    }
+  }
+
+  // What this machine needs to drive the chosen server: ESXi goes through Vagrant, its ESXi
+  // plugin and VMware's OVF Tool; Proxmox through Terraform (installed locally).
+  const vagrantOk = !!report?.vagrant.installed;
+  const esxiPluginOk = !!status?.pluginInstalled;
+  const ovftoolOk = !!report?.ovftool?.installed;
+  const terraformOk = !!report?.terraform.installed;
+  const cloudDep: Dependency = cloudProvider === "aws" ? "awscli" : cloudProvider === "azure" ? "azurecli" : "gcloud";
+  const cloudCliTool = report?.cloudClis[cloudProvider === "gcp" ? "gcloud" : cloudProvider];
+  const cloudCliOk = !!cloudCliTool?.installed;
+  const toolsOk = cloud ? cloudCliOk && terraformOk : v.provider === "vmware_esxi" ? vagrantOk && esxiPluginOk && ovftoolOk : terraformOk;
+
+  async function runTest(id: string) {
+    setTest("testing");
+    try {
+      setTest(await serverTest(id));
+    } catch (e) {
+      setTest({ ok: false, reachable: false, authenticated: null, latencyMs: null, message: String(e) });
+    }
+  }
+
+  // Save, then move to the Test step and test the saved host.
+  async function saveAndTest() {
+    setSaving(true);
+    setError(null);
+    try {
+      const h = await serverSave({ ...v, name: v.name.trim() || v.host.trim() });
+      setSaved(h);
+      onSaved(h);
+      next();
+      runTest(h.id);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function signIn() {
+    setSigningIn(true);
+    setSignInLog([`Signing in to ${CLOUD_META[cloudProvider].label}…`]);
+    try {
+      await cloudLogin(cloudProvider, (l) => setSignInLog((x) => [...(x ?? []), l]));
+      setSignInLog((x) => [...(x ?? []), "✓ Signed in"]);
+    } catch (e) {
+      setSignInLog((x) => [...(x ?? []), `✗ ${String(e)}`]);
+    } finally {
+      setSigningIn(false);
+    }
+  }
+
+  const title = saved ? `${saved.name} connected` : editing ? `Edit ${initial.name}` : cloud ? "Set up cloud provider" : "Connect a host";
+
+  return {
+    initial,
+    report,
+    onRefresh,
+    onSaved,
+    onDone,
+    v,
+    setV,
+    i,
+    setI,
+    saving,
+    setSaving,
+    error,
+    setError,
+    saved,
+    setSaved,
+    test,
+    setTest,
+    pluginLog,
+    setPluginLog,
+    toolLabel,
+    setToolLabel,
+    cloudProvider,
+    setCloudProvider,
+    signingIn,
+    setSigningIn,
+    signInLog,
+    setSignInLog,
+    editing,
+    aws,
+    azure,
+    cloud,
+    profiles,
+    setProfiles,
+    awsIdentity,
+    setAwsIdentity,
+    checkingId,
+    setCheckingId,
+    mtdCost,
+    setMtdCost,
+    awsSignIn,
+    kind,
+    status,
+    pickProvider,
+    steps,
+    key,
+    set,
+    text,
+    connectionOk,
+    next,
+    back,
+    toolBusy,
+    installTool,
+    vagrantOk,
+    esxiPluginOk,
+    ovftoolOk,
+    terraformOk,
+    cloudDep,
+    cloudCliTool,
+    cloudCliOk,
+    toolsOk,
+    runTest,
+    saveAndTest,
+    signIn,
+    title,
+  };
+}
+
+export type HostSetup = ReturnType<typeof useHostSetup>;
