@@ -59,6 +59,8 @@ export const serverSave = (input: ServerHostInput) => invoke<ServerHost>("server
 export const serverRemove = (id: string) => invoke<void>("server_remove", { id });
 export const serverSetDefault = (id: string | null) => invoke<void>("server_set_default", { id });
 export const serverTest = (id: string) => invoke<ServerTest>("server_test", { id });
+/** The launcher's SSH public key; token-auth Proxmox hosts must authorize it for SSH. */
+export const serverPublicKey = () => invoke<string>("server_public_key");
 /** How many installed labs are currently running on each host, keyed by host id. */
 export const serverRunningLabs = () => invoke<Record<string, number>>("server_running_labs");
 /** A host's hardware headroom (Proxmox only; null otherwise or on failure). */

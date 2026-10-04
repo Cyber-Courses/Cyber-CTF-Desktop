@@ -457,6 +457,14 @@ pub async fn server_test(app: AppHandle, id: String) -> Result<TestResult> {
     Ok(test_host(&host, &password).await)
 }
 
+/// The launcher's SSH public key (generated on first use). Token-auth Proxmox hosts must
+/// authorize it for the token's SSH user, so the launcher can upload the cloud-init snippet
+/// over SSH; the setup form shows it for those hosts.
+#[tauri::command]
+pub async fn server_public_key(app: AppHandle) -> Result<String> {
+    Ok(super::ssh::ensure_key(&app).await?.1)
+}
+
 /// How many installed labs are currently running on each host, keyed by host id. A lab
 /// leaves a `.cyberctf-host` marker in its directory while it runs on a host (written on
 /// start, cleared on stop), so this is filesystem-only: no host calls, no credentials.
