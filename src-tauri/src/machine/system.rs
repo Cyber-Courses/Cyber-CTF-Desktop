@@ -184,7 +184,8 @@ pub async fn system_check() -> SystemReport {
         probe("vagrant", &["--version"]),
         run("docker", &["info", "--format", "{{.OperatingSystem}}"], None),
         probe("aws", &["--version"]),
-        probe("az", &["version"]),
+        // `az version` prints JSON (first line is "{"); ask for just the azure-cli version string.
+        probe("az", &["version", "--query", "\"azure-cli\"", "--output", "tsv"]),
         probe("gcloud", &["--version"]),
         probe("terraform", &["version"]),
     );

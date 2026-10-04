@@ -151,10 +151,13 @@ export function CloudScreen() {
     const s = statuses[l.id];
     return l.runtime && s?.running && !!s.host && accountNames.has(s.host);
   });
+  const envChecking = report == null;
   const envReady = !!report?.cloudClis.aws.installed && !!report?.terraform.installed;
   // Only one install/pull/sign-in at a time: brew (and others) can't run two at once.
   const busyOp = cliBusy !== null || pullBusy !== null;
-  const envExpanded = envOpen ?? !envReady;
+  // While the checks are still running, stay collapsed: don't flash open then snap shut once
+  // "Ready" resolves. Auto-expand only after a completed check that found setup is needed.
+  const envExpanded = envOpen ?? (!envChecking && !envReady);
 
   return (
     <div className="space-y-5">
@@ -234,11 +237,11 @@ export function CloudScreen() {
           <span
             className={cn(
               "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
-              envReady ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500",
+              envChecking ? "bg-muted text-muted-foreground" : envReady ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500",
             )}
           >
-            <span className={cn("size-1.5 rounded-full", envReady ? "bg-emerald-500" : "bg-amber-500")} />
-            {envReady ? "Ready" : "Setup needed"}
+            {envChecking ? <Spinner className="size-3" /> : <span className={cn("size-1.5 rounded-full", envReady ? "bg-emerald-500" : "bg-amber-500")} />}
+            {envChecking ? "Checking…" : envReady ? "Ready" : "Setup needed"}
           </span>
           <ChevronDown className={cn("ml-auto size-4 text-muted-foreground transition-transform", envExpanded && "rotate-180")} />
         </button>
