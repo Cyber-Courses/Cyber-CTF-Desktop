@@ -202,6 +202,35 @@ pub(super) async fn test_gcp(h: &HostProfile) -> TestResult {
     }
 }
 
+/// DigitalOcean: the API token is valid when `GET /v2/account` returns 2xx.
+pub(super) async fn test_digitalocean(token: &str) -> TestResult {
+    let started = Instant::now();
+    match reqwest::Client::new().get("https://api.digitalocean.com/v2/account").bearer_auth(token).send().await {
+        Ok(resp) if resp.status().is_success() => TestResult {
+            ok: true,
+            reachable: true,
+            authenticated: Some(true),
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            message: "DigitalOcean token is valid. Labs run as droplets in this account.".into(),
+        },
+        Ok(resp) if resp.status() == reqwest::StatusCode::UNAUTHORIZED => TestResult {
+            ok: false,
+            reachable: true,
+            authenticated: Some(false),
+            latency_ms: None,
+            message: "DigitalOcean rejected this token. Create a new one with read/write scope.".into(),
+        },
+        Ok(resp) => TestResult {
+            ok: false,
+            reachable: true,
+            authenticated: Some(false),
+            latency_ms: None,
+            message: format!("DigitalOcean API returned {}.", resp.status()),
+        },
+        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("Can't reach DigitalOcean: {e}") },
+    }
+}
+
 pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
     if h.provider == Provider::Aws {
         return test_aws(h, password).await;
@@ -211,6 +240,9 @@ pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
     }
     if h.provider == Provider::Gcp {
         return test_gcp(h).await;
+    }
+    if h.provider == Provider::DigitalOcean {
+        return test_digitalocean(password).await;
     }
     let started = Instant::now();
     let connect = tokio::time::timeout(TEST_TIMEOUT, TcpStream::connect((h.host.as_str(), h.port))).await;

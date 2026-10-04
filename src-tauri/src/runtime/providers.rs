@@ -32,6 +32,10 @@ pub enum Provider {
     /// The player's Google Cloud project (Terraform, a lab's deploy/terraform/gcp). Like
     /// AWS and Azure: not a Vagrant provider, never detected locally, not in `ALL`.
     Gcp,
+    /// The player's DigitalOcean account (Terraform, a lab's deploy/terraform/digitalocean).
+    /// Authenticated with an API token; not a Vagrant provider, never detected, not in `ALL`.
+    #[serde(rename = "digitalocean")]
+    DigitalOcean,
 }
 
 impl Provider {
@@ -61,12 +65,13 @@ impl Provider {
             Provider::Aws => "aws",
             Provider::Azure => "azure",
             Provider::Gcp => "gcp",
+            Provider::DigitalOcean => "digitalocean",
         }
     }
 
     /// Remote providers run VMs on another host and need connection settings.
     pub fn is_remote(self) -> bool {
-        matches!(self, Provider::VmwareEsxi | Provider::Proxmox | Provider::Aws | Provider::Azure | Provider::Gcp)
+        matches!(self, Provider::VmwareEsxi | Provider::Proxmox | Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean)
     }
 
     /// Whether this provider can run on the current OS at all. Local hypervisors are
@@ -93,7 +98,7 @@ impl Provider {
             Provider::Utm => Some("vagrant_utm"),
             Provider::VmwareEsxi => Some("vagrant-vmware-esxi"),
             Provider::Proxmox => Some("vagrant-proxmox"),
-            Provider::Aws | Provider::Azure | Provider::Gcp => None,
+            Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean => None,
         }
     }
 
@@ -107,7 +112,14 @@ impl Provider {
             Provider::Qemu => Some((qemu_binary(), &["--version"])),
             // Hyper-V is a Windows feature, UTM is checked by its app bundle, and
             // remote providers have nothing local to probe.
-            Provider::Hyperv | Provider::Utm | Provider::VmwareEsxi | Provider::Proxmox | Provider::Aws | Provider::Azure | Provider::Gcp => None,
+            Provider::Hyperv
+            | Provider::Utm
+            | Provider::VmwareEsxi
+            | Provider::Proxmox
+            | Provider::Aws
+            | Provider::Azure
+            | Provider::Gcp
+            | Provider::DigitalOcean => None,
         }
     }
 }
