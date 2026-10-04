@@ -180,14 +180,18 @@ terraform {
 }
 
 provider "proxmox" {
-  endpoint = var.proxmox_endpoint
-  username = var.proxmox_username
-  password = var.proxmox_password
-  insecure = var.proxmox_insecure
+  endpoint  = var.proxmox_endpoint
+  insecure  = var.proxmox_insecure
+  # Token mode (username is a token id) uses api_token; otherwise username/password.
+  api_token = var.proxmox_api_token != "" ? var.proxmox_api_token : null
+  username  = var.proxmox_api_token != "" ? null : var.proxmox_username
+  password  = var.proxmox_api_token != "" ? null : var.proxmox_password
   ssh {
-    agent    = false
-    username = split("@", var.proxmox_username)[0]
-    password = var.proxmox_password
+    agent       = false
+    username    = coalesce(var.proxmox_ssh_username, split("@", var.proxmox_username)[0])
+    # With a key file (token hosts), authenticate by key; otherwise by password.
+    password    = var.proxmox_ssh_private_key_file != "" ? null : var.proxmox_password
+    private_key = var.proxmox_ssh_private_key_file != "" ? file(var.proxmox_ssh_private_key_file) : null
     dynamic "node" {
       for_each = var.proxmox_ssh_address == "" ? [] : [var.proxmox_ssh_address]
       content {
@@ -278,7 +282,21 @@ variable "proxmox_endpoint" { type = string }
 variable "proxmox_username" { type = string }
 variable "proxmox_password" {
   type      = string
+  default   = ""
   sensitive = true
+}
+variable "proxmox_api_token" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+variable "proxmox_ssh_username" {
+  type    = string
+  default = ""
+}
+variable "proxmox_ssh_private_key_file" {
+  type    = string
+  default = ""
 }
 variable "proxmox_insecure" {
   type    = bool
