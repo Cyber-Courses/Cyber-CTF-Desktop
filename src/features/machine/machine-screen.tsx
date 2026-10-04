@@ -24,7 +24,8 @@ import {
 import { getAttackImage, getLastTest, getVmProvider, type LastTest } from "@/lib/settings";
 import { PROVIDER_LABELS, providerLabel, usableHypervisors } from "@/features/machine/hypervisors";
 import { cn } from "@/lib/utils";
-import { DetailRow, LabKind, LabTypeRow, ListSkeleton, Stat, TypeIcon } from "@/features/machine/machine-parts";
+import { DetailRow, LabKind, LabTypeRow, ListSkeleton, Stat } from "@/features/machine/machine-parts";
+import { TypeIcon } from "@/components/ui/type-icon";
 import { formatAgo, formatBytes, formatUptime } from "@/lib/format";
 
 // ---------- formatting ----------

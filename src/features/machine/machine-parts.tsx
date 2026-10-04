@@ -5,6 +5,7 @@ import { type LucideIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SelfTest } from "@/features/machine/self-test";
 import { cn } from "@/lib/utils";
+import { StatusPill, type Tone } from "@/components/ui/status-pill";
 
 // ---------- small parts ----------
 
@@ -44,19 +45,6 @@ export function Stat({ icon: Icon, label, value, sub, history }: { icon: LucideI
   );
 }
 
-type Tone = "ok" | "warn" | "fail" | "muted";
-
-function StatusPill({ tone, children }: { tone: Tone; children: ReactNode }) {
-  const c = { ok: "text-emerald-500", warn: "text-amber-500", fail: "text-rose-500", muted: "text-muted-foreground" }[tone];
-  const dot = { ok: "bg-emerald-500", warn: "bg-amber-500", fail: "bg-rose-500", muted: "bg-muted-foreground/50" }[tone];
-  return (
-    <span className={cn("inline-flex items-center gap-1.5 text-[12px] font-medium", c)}>
-      <span className={cn("size-1.5 rounded-full", dot)} />
-      {children}
-    </span>
-  );
-}
-
 /** A read-only tool row for the Details section. */
 export function DetailRow({ name, value, bad }: { name: string; value: string; bad?: boolean }) {
   return (
@@ -79,10 +67,6 @@ export function ListSkeleton() {
 // ---------- lab types ----------
 
 export type LabKind = "docker" | "vm";
-
-export function TypeIcon({ children }: { children: ReactNode }) {
-  return <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground">{children}</span>;
-}
 
 /** One lab type: what it runs on, whether it's ready, and the one action that matters. */
 export function LabTypeRow({

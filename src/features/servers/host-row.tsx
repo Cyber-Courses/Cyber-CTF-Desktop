@@ -7,7 +7,8 @@ import { KIND } from "@/features/servers/host-setup";
 import { type HostCapacity, type ServerHost, type ServerTest } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { ServerSelfTest } from "@/features/servers/server-self-test";
-import { StatusPill, Tone, TypeIcon } from "@/features/servers/servers-parts";
+import { StatusPill, type Tone } from "@/components/ui/status-pill";
+import { TypeIcon } from "@/components/ui/type-icon";
 import { formatAgo, formatBytes } from "@/lib/format";
 import { VmTest } from "@/features/servers/vm-tests";
 

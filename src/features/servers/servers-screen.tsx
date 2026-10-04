@@ -24,7 +24,8 @@ import {
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { HostRow } from "@/features/servers/host-row";
-import { EmptyState, Tone } from "@/features/servers/servers-parts";
+import { ServersEmptyState } from "@/features/servers/servers-empty-state";
+import type { Tone } from "@/components/ui/status-pill";
 import { VmTest, loadVmTests, saveVmTest } from "@/features/servers/vm-tests";
 
 type Tab = "setup";
@@ -197,7 +198,7 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
             <Skeleton className="h-4 w-1/2" />
           </div>
         ) : !hasHosts ? (
-          <EmptyState onAdd={() => open(null)} />
+          <ServersEmptyState onAdd={() => open(null)} />
         ) : (
           hosts.map((h) => (
             <HostRow
