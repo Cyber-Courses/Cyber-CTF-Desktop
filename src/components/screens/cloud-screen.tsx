@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
  *  in it. Kept separate from the Server page so each evolves on its own. */
 export function CloudScreen() {
   const [allHosts, setHosts] = useState<ServerHost[] | null>(null);
-  const hosts = allHosts?.filter((h) => h.provider === "aws") ?? null;
+  const hosts = allHosts?.filter((h) => h.provider === "aws" || h.provider === "azure") ?? null;
   const [error, setError] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, ServerTest | "testing">>({});
   const [report, setReport] = useState<SystemReport | null>(null);
@@ -256,7 +256,6 @@ export function CloudScreen() {
 
 /** Providers shown as "coming soon" in the Environment panel (logo = SVG in public/brands). */
 const COMING_SOON: { id: string; label: string; logo: boolean }[] = [
-  { id: "azure", label: "Microsoft Azure", logo: true },
   { id: "gcp", label: "Google Cloud", logo: true },
   { id: "digitalocean", label: "DigitalOcean", logo: true },
   { id: "linode", label: "Linode", logo: true },
@@ -307,7 +306,7 @@ function AccountRow({ host, test, spent, onTest, onEdit, onRemove }: { host: Ser
     <div className="border-b border-border px-3.5 py-3 last:border-b-0">
       <div className="flex items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element -- static export, plain asset */}
-        <img src="/brands/aws.svg" alt="" className="size-6 shrink-0" draggable={false} />
+        <img src={`/brands/${host.provider}.svg`} alt="" className="size-6 shrink-0" draggable={false} />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-[13px] font-medium">
             <span className="truncate">{host.name}</span>

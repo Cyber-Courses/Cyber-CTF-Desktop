@@ -15,7 +15,8 @@ export type Provider =
   | "utm"
   | "vmware_esxi"
   | "proxmox"
-  | "aws";
+  | "aws"
+  | "azure";
 
 export interface Tool {
   installed: boolean;
@@ -212,7 +213,7 @@ export function labLaunch(
 
 // --- Server (the player's own ESXi / Proxmox host) ---
 
-export type RemoteProvider = Extract<Provider, "vmware_esxi" | "proxmox" | "aws">;
+export type RemoteProvider = Extract<Provider, "vmware_esxi" | "proxmox" | "aws" | "azure">;
 
 export interface ServerHost {
   id: string;
