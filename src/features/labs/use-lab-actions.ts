@@ -19,10 +19,11 @@ export function useLabActions(refresh: (lab: Lab) => void) {
 
   /**
    * `host` = a server host id to run a VM lab on, null for this machine. Omitted, VM labs
-   * go to the default server host when the lab supports its hypervisor.
+   * go to the default server host when the lab supports its hypervisor. `vmProvider` runs a
+   * container lab in a VM on this machine (its deploy/vagrant lab host) on that hypervisor.
    */
   const launch = useCallback(
-    async (lab: Lab, host?: string | null) => {
+    async (lab: Lab, host?: string | null, vmProvider?: Provider) => {
       if (!lab.runtime) return;
       setBusy(lab.id);
       setActiveLab(lab.id);
@@ -36,12 +37,22 @@ export function useLabActions(refresh: (lab: Lab) => void) {
         // first provider the lab supports that isn't a remote hypervisor.
         const preferred = getVmProvider();
         const local: Provider[] = lab.runtime.providers.filter((p) => p !== "vmware_esxi" && p !== "proxmox");
-        const provider = vm && !remote ? ((preferred && local.includes(preferred) ? preferred : local[0]) ?? null) : null;
-        // Remotely the lab network isn't reachable from here: start the attack box next to it.
-        await labLaunch(lab.id, provider, remote ? host! : null, remote ? getAttackImage() : null, (line) => setLogs((l) => [...l, line]));
+        const inLocalVm = !vm && !remote && !!vmProvider;
+        const provider = inLocalVm ? vmProvider! : vm && !remote ? ((preferred && local.includes(preferred) ? preferred : local[0]) ?? null) : null;
+        // Remotely, or inside a local VM, the lab network isn't reachable from here: start
+        // the attack box next to the lab.
+        const attackbox = remote || inLocalVm ? getAttackImage() : null;
+        await labLaunch(lab.id, provider, remote ? host! : null, attackbox, (line) => setLogs((l) => [...l, line]));
         setLogs((l) => [...l, "✓ Lab is running"]);
         setLastRun(lab.id);
-        notify("Lab ready", remote ? `${lab.title} is running on your server.` : `${lab.title} is running on this machine.`);
+        notify(
+          "Lab ready",
+          remote
+            ? `${lab.title} is running on your server.`
+            : inLocalVm
+              ? `${lab.title} is running in a VM on this machine.`
+              : `${lab.title} is running on this machine.`,
+        );
       } catch (e) {
         setLogs((l) => [...l, `✗ ${String(e)}`]);
       } finally {

@@ -12,6 +12,7 @@ import { DIFFICULTY_LABEL, useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
 import { setupNeeded } from "@/features/labs/lab-readiness";
 import { serverList, type ServerHost, type SystemReport } from "@/lib/tauri";
+import { getVmProvider } from "@/lib/settings";
 import { Segmented } from "@/components/ui/segmented";
 
 type StatusFilter = "all" | "todo" | "running" | "solved";
@@ -44,6 +45,14 @@ export function Labs({
   const [difficulty, setDifficulty] = useState(0);
   const [servers, setServers] = useState<ServerHost[]>([]);
   const requested = useRequestedLab();
+  // Local hypervisors ready for a lab VM (Vagrant + hypervisor), the Settings default first.
+  const readyVms = useMemo(() => {
+    const ready = (report?.vagrant.installed ? report.vmProviders : [])
+      .filter((p) => !p.remote && p.available && p.hypervisor !== false)
+      .map((p) => p.provider);
+    const preferred = getVmProvider();
+    return preferred && ready.includes(preferred) ? [preferred, ...ready.filter((p) => p !== preferred)] : ready;
+  }, [report]);
 
   // Saved servers count as somewhere a VM lab can run (for the "needs setup" hint).
   useEffect(() => {
@@ -98,7 +107,9 @@ export function Labs({
         loggedIn={loggedIn}
         hostArch={hostArch}
         onBack={() => setDetailSlug(null)}
-        onStart={(host) => launch(detail, host)}
+        readyVms={readyVms}
+        dockerRunning={report ? report.dockerRunning : null}
+        onStart={(t) => launch(detail, t.kind === "host" ? t.id : null, t.kind === "local-vm" ? t.provider : undefined)}
         onStop={() => stop(detail)}
       />
     );

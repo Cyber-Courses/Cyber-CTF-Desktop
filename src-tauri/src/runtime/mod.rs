@@ -66,7 +66,22 @@ pub async fn start(
     let Some(host) = host else {
         server::mark_lab(dir, None)?;
         return match runtime {
-            Runtime::Docker => docker::start(dir, id, env, log).await,
+            // A container lab in a VM on this machine: the lab's deploy/vagrant lab host, with
+            // the attack box next to it inside the VM (the lab network isn't reachable from here).
+            Runtime::Docker if provider.is_some_and(|p| !p.is_remote()) => {
+                let provider = provider.unwrap_or(providers::Provider::Virtualbox);
+                let vagrant = dir.join("deploy").join("vagrant");
+                if !vagrant.join("Vagrantfile").is_file() {
+                    return Err(Error::Invalid("this lab can't run in a VM yet (no deploy/vagrant)".into()));
+                }
+                mark_local_vm(dir, Some(provider))?;
+                log(format!("Running in a {} VM on this machine", provider.id()));
+                vm::start(&vagrant, provider, env, log).await
+            }
+            Runtime::Docker => {
+                mark_local_vm(dir, None)?;
+                docker::start(dir, id, env, log).await
+            }
             Runtime::Vm => {
                 let provider = provider.ok_or_else(|| Error::Invalid("VM labs need a provider".into()))?;
                 if provider.is_remote() {
@@ -102,9 +117,7 @@ pub async fn start(
                         )));
                     }
                     server::BudgetCheck::Unverifiable(why) => {
-                        return Err(Error::Invalid(format!(
-                            "Couldn't check this account against its monthly budget ({why}). Enable Cost Explorer in the AWS Billing console (it can take ~24h to activate), or remove the budget on this account, then try again."
-                        )));
+                        return Err(Error::Invalid(why));
                     }
                     server::BudgetCheck::Ok => {}
                 }
@@ -129,6 +142,36 @@ pub async fn start(
             let env: Vec<(String, String)> = env.iter().cloned().chain(conn.env).collect();
             vm::start(dir, provider, &env, log).await
         }
+    }
+}
+
+/// Marks a container lab as running in a VM on this machine (its deploy/vagrant lab host),
+/// so stop, status and the attack-box shell go to the VM instead of local Docker.
+pub const LOCAL_VM_MARKER: &str = ".cyberctf-local-vm";
+
+fn mark_local_vm(dir: &Path, provider: Option<providers::Provider>) -> Result<()> {
+    match provider {
+        Some(p) => std::fs::write(dir.join(LOCAL_VM_MARKER), p.id())?,
+        None => {
+            let _ = std::fs::remove_file(dir.join(LOCAL_VM_MARKER));
+        }
+    }
+    Ok(())
+}
+
+/// The hypervisor a container lab runs on in a local VM, if it does.
+fn local_vm(dir: &Path) -> Option<String> {
+    std::fs::read_to_string(dir.join(LOCAL_VM_MARKER)).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+fn vm_label(provider: &str) -> &str {
+    match provider {
+        "virtualbox" => "VirtualBox",
+        "vmware_desktop" => "VMware",
+        "parallels" => "Parallels",
+        "hyperv" => "Hyper-V",
+        "libvirt" => "libvirt",
+        other => other,
     }
 }
 
@@ -171,6 +214,7 @@ fn state_dir(app: &AppHandle, id: &str, target: &str) -> Result<PathBuf> {
 async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
     let conn = server::lab_connection(app, dir)?;
     let result = match (runtime, conn) {
+        (Runtime::Docker, None) if local_vm(dir).is_some() => vm::stop(&dir.join("deploy").join("vagrant"), &[], log).await,
         (Runtime::Docker, None) => docker::stop(dir, id, log).await,
         (Runtime::Vm, None) => vm::stop(dir, &[], log).await,
         (Runtime::Docker, Some(c)) if server::terraform_target(c.provider).is_some() => {
@@ -182,6 +226,7 @@ async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl
     };
     if result.is_ok() {
         server::mark_lab(dir, None)?;
+        mark_local_vm(dir, None)?;
     }
     result
 }
@@ -189,6 +234,11 @@ async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl
 async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Result<LabStatus> {
     let Some(c) = server::lab_connection(app, dir)? else {
         return match runtime {
+            // Shown like a remote lab (the attack box lives in the VM, reached over SSH).
+            Runtime::Docker if let Some(p) = local_vm(dir) => {
+                let status = vm::status(&dir.join("deploy").join("vagrant"), &[]).await?;
+                Ok(LabStatus { host: Some(format!("{} VM on this machine", vm_label(&p))), ..status })
+            }
             Runtime::Docker => docker::status(dir, id).await,
             Runtime::Vm => vm::status(dir, &[]).await,
         };
@@ -229,7 +279,7 @@ pub async fn reap_expired_labs(app: &AppHandle) {
 /// VM labs (their address is discovered differently) or when nothing is published.
 pub async fn primary_url(dir: &Path, id: &str, runtime: Runtime) -> Option<String> {
     match runtime {
-        Runtime::Docker if !dir.join(".cyberctf-host").exists() => docker::primary_url(dir, id).await,
+        Runtime::Docker if !dir.join(".cyberctf-host").exists() && local_vm(dir).is_none() => docker::primary_url(dir, id).await,
         _ => None,
     }
 }
@@ -284,6 +334,11 @@ pub async fn lab_check(app: AppHandle, id: String, runtime: Runtime) -> Result<d
 pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> Result<()> {
     let dir = lab_dir(&app, &id)?;
     let Some(conn) = server::lab_connection(&app, &dir)? else {
+        if local_vm(&dir).is_some() && matches!(runtime, Runtime::Docker) {
+            let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&dir.join("deploy").join("vagrant")), &[]).await?;
+            let target = ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab VM's SSH settings".into()))?;
+            return exegol::open_terminal(&target.attack_shell_command(&ssh::known_hosts(&app)?)?);
+        }
         return exegol::shell(&id);
     };
     if !matches!(runtime, Runtime::Docker) {
@@ -346,7 +401,19 @@ pub fn exegol_shell(id: String) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_id;
+    use super::{local_vm, mark_local_vm, providers::Provider, validate_id};
+
+    #[test]
+    fn local_vm_marker_round_trips() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-localvm-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(local_vm(&dir), None);
+        mark_local_vm(&dir, Some(Provider::Virtualbox)).unwrap();
+        assert_eq!(local_vm(&dir).as_deref(), Some("virtualbox"));
+        mark_local_vm(&dir, None).unwrap();
+        assert_eq!(local_vm(&dir), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn rejects_path_traversal_and_shell_characters() {

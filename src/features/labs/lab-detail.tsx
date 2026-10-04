@@ -12,10 +12,10 @@ import { LabBrief } from "@/features/labs/lab-brief";
 import { HealthBanner, useLabCheck } from "@/features/labs/lab-health";
 import { AutoStop, StartTimer } from "@/features/labs/lab-timers";
 import { NetworkDiagram } from "@/features/labs/network-diagram";
-import { RunOnPicker, RunOnPopover } from "@/features/labs/run-on";
+import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
-import { labAttackShell, exegolShell, serverList, type ServerHost, type LabStatus } from "@/lib/tauri";
+import { labAttackShell, exegolShell, serverList, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 export function LabDetail({
@@ -25,6 +25,8 @@ export function LabDetail({
   logs,
   loggedIn,
   hostArch,
+  readyVms = [],
+  dockerRunning = null,
   onBack,
   onStart,
   onStop,
@@ -35,9 +37,12 @@ export function LabDetail({
   logs: string[];
   loggedIn: boolean;
   hostArch: string;
+  /** Local hypervisors ready on this machine (Vagrant + hypervisor), for "in a VM". */
+  readyVms?: Provider[];
+  /** Whether a Docker engine answers on this machine (null = unknown). */
+  dockerRunning?: boolean | null;
   onBack: () => void;
-  /** `host`: server host id for VM labs, null to run on this machine. */
-  onStart: (host: string | null) => Promise<void> | void;
+  onStart: (target: RunTarget) => Promise<void> | void;
   onStop: () => Promise<void> | void;
 }) {
   const [resetting, setResetting] = useState(false);
@@ -55,7 +60,10 @@ export function LabDetail({
   // A lab can run on this machine or on one of the player's server hosts (Docker labs
   // through their deploy/ layer). VM labs default to the default host; Docker labs to here.
   const [hosts, setHosts] = useState<ServerHost[]>([]);
-  const [runOn, setRunOn] = useState<string | null>(null);
+  const [runOn, setRunOn] = useState<RunTarget>({ kind: "local" });
+  // A container lab can also run in a VM here: on the hypervisor chosen in Settings (readyVms
+  // lists it first), else the first ready one its deploy/ supports. One option, not a catalogue.
+  const localVms = isDocker ? readyVms.filter((p) => rt?.providers.includes(p)).slice(0, 1) : [];
   const [choosing, setChoosing] = useState(false);
   const hostOk = useCallback(
     (h: ServerHost) => !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && (h.provider === "proxmox" || h.provider === "aws")),
@@ -66,7 +74,7 @@ export function LabDetail({
       .then((l) => {
         setHosts(l.hosts);
         const def = l.hosts.find((h) => h.id === l.default);
-        setRunOn(!isDocker && def && hostOk(def) ? def.id : null);
+        setRunOn(!isDocker && def && hostOk(def) ? { kind: "host", id: def.id } : { kind: "local" });
       })
       .catch(() => setHosts([]));
   }, [isDocker, hostOk]);
@@ -80,7 +88,10 @@ export function LabDetail({
   // Reset = stop and start again where it ran: a clean lab.
   async function reset() {
     setResetting(true);
-    const where = hosts.find((h) => h.name === status?.host)?.id ?? null;
+    const host = hosts.find((h) => h.name === status?.host);
+    // Not a saved host but still "remote": a VM on this machine (its status names it).
+    const vm = !host && status?.host ? (runOn.kind === "local-vm" ? runOn.provider : localVms[0]) : undefined;
+    const where: RunTarget = host ? { kind: "host", id: host.id } : vm ? { kind: "local-vm", provider: vm } : { kind: "local" };
     try {
       await onStop();
       await onStart(where);
@@ -172,39 +183,46 @@ export function LabDetail({
               <Button
                 variant="learn"
                 // With servers saved, ask where to run first; otherwise start here right away.
-                onClick={() => (hosts.length > 0 ? setChoosing((v) => !v) : onStart(null))}
+                onClick={() => (hosts.length > 0 || localVms.length > 0 ? setChoosing(true) : onStart({ kind: "local" }))}
                 disabled={!loggedIn || !rt}
                 title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}
-                aria-expanded={hosts.length > 0 ? choosing : undefined}
+                aria-haspopup={hosts.length > 0 || localVms.length > 0 ? "dialog" : undefined}
               >
                 <Play className="size-4" /> Start lab
               </Button>
               {choosing && (
-                <RunOnPopover onClose={() => setChoosing(false)}>
+                <RunOnDialog
+                  onClose={() => setChoosing(false)}
+                  footer={
+                    <>
+                      <Button variant="ghost" size="sm" onClick={() => setChoosing(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="learn"
+                        size="sm"
+                        onClick={() => {
+                          setChoosing(false);
+                          void onStart(runOn);
+                        }}
+                      >
+                        <Play className="size-3.5" /> Start
+                      </Button>
+                    </>
+                  }
+                >
                   <RunOnPicker
+                    title={lab.title}
                     hosts={hosts}
                     hostOk={hostOk}
-                    localNote={isDocker ? "Docker" : "Local hypervisor"}
+                    localNote={isDocker ? "Docker, on your system" : "Local hypervisor"}
+                    localVm={localVms[0] ?? null}
+                    dockerRunning={isDocker ? dockerRunning : null}
                     value={runOn}
                     onChange={setRunOn}
                     disabled={busy}
                   />
-                  <div className="mt-3 flex justify-end gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => setChoosing(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="learn"
-                      size="sm"
-                      onClick={() => {
-                        setChoosing(false);
-                        void onStart(runOn);
-                      }}
-                    >
-                      <Play className="size-3.5" /> Start
-                    </Button>
-                  </div>
-                </RunOnPopover>
+                </RunOnDialog>
               )}
             </div>
           )}

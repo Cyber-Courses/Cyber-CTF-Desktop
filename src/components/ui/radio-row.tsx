@@ -15,6 +15,8 @@ export function RadioRow({
   disabled,
   hint,
   compact,
+  leading,
+  trailing,
   children,
 }: {
   selected: boolean;
@@ -25,6 +27,10 @@ export function RadioRow({
   /** Tooltip, e.g. why the option can't be picked. */
   hint?: string;
   compact?: boolean;
+  /** A mark before the text (e.g. a provider logo). */
+  leading?: ReactNode;
+  /** Right-aligned extra (e.g. a status pill). */
+  trailing?: ReactNode;
   children?: ReactNode;
 }) {
   const pick = () => !disabled && onSelect();
@@ -59,11 +65,13 @@ export function RadioRow({
       >
         {selected && <span className={cn("rounded-full bg-learn", compact ? "size-1.5" : "size-2")} />}
       </span>
+      {leading && <span className="-my-0.5 shrink-0">{leading}</span>}
       <div className="min-w-0 flex-1">
         <div className={cn("flex flex-wrap items-center gap-1.5 font-medium text-foreground", compact ? "text-[0.78125rem]" : "text-[0.8125rem]")}>{title}</div>
         <div className={cn("mt-0.5 truncate text-muted-foreground", compact ? "font-mono text-[0.65625rem]" : "text-xs")}>{subtitle}</div>
         {children}
       </div>
+      {trailing && <span className="shrink-0 self-center">{trailing}</span>}
     </div>
   );
 }

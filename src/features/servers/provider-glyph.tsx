@@ -11,6 +11,9 @@ const LOGO: Partial<Record<RemoteProvider, { src: string; alt: string }>> = {
   aws: { src: "/brands/aws.svg", alt: "Amazon Web Services" },
   azure: { src: "/brands/azure.svg", alt: "Microsoft Azure" },
   gcp: { src: "/brands/gcp.svg", alt: "Google Cloud" },
+  digitalocean: { src: "/brands/digitalocean.svg", alt: "DigitalOcean" },
+  linode: { src: "/brands/linode.svg", alt: "Linode" },
+  oci: { src: "/brands/oci.svg", alt: "Oracle Cloud" },
 };
 
 /** The leading mark for a host row: the provider's logo in a tile when we have one, else a

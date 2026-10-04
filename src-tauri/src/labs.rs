@@ -97,9 +97,12 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
     std::fs::write(staging.join(".cyberctf-commit"), commit)?;
     // Terraform targets fetch the lab themselves, from this repository at that commit.
     std::fs::write(staging.join(".cyberctf-repository"), repository)?;
-    // Keep where the lab runs, so a lab still up on a server host can be stopped there.
-    if let Ok(host) = std::fs::read(dir.join(".cyberctf-host")) {
-        std::fs::write(staging.join(".cyberctf-host"), host)?;
+    // Keep where the lab runs, so a lab still up on a server host or in a local VM can be
+    // stopped there.
+    for marker in [".cyberctf-host", runtime::LOCAL_VM_MARKER] {
+        if let Ok(value) = std::fs::read(dir.join(marker)) {
+            std::fs::write(staging.join(marker), value)?;
+        }
     }
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::rename(&staging, &dir)?;
