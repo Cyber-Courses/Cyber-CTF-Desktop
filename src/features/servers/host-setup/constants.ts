@@ -8,6 +8,7 @@ export const KIND: Record<RemoteProvider, { label: string; note: string; port: n
   vmware_esxi: { label: "VMware ESXi", note: "Drives the host over SSH", port: 22, user: "root", plugin: "vagrant-vmware-esxi" },
   aws: { label: "AWS", note: "EC2 in your own account", port: 443, user: "AKIA…", plugin: "" },
   azure: { label: "Azure", note: "VMs in your own subscription", port: 443, user: "subscription id", plugin: "" },
+  gcp: { label: "Google Cloud", note: "VMs in your own project", port: 443, user: "project id", plugin: "" },
 };
 
 /** Server hypervisors, as opposed to cloud accounts. */
@@ -56,13 +57,25 @@ export const AZURE_LOCATIONS: [string, string][] = [
   ["southeastasia", "Southeast Asia (Singapore)"],
 ];
 
+/** Common GCP regions for the cloud setup dropdown (id, human name). The lab host lands in the region's -b zone. */
+export const GCP_REGIONS: [string, string][] = [
+  ["europe-west1", "Belgium"],
+  ["europe-west2", "London"],
+  ["europe-west3", "Frankfurt"],
+  ["europe-west9", "Paris"],
+  ["us-central1", "Iowa"],
+  ["us-east1", "South Carolina"],
+  ["us-west1", "Oregon"],
+  ["asia-southeast1", "Singapore"],
+];
+
 export type StepKey = "provider" | "hypervisor" | "tools" | "connection" | "placement" | "account" | "credentials" | "options" | "connect" | "test";
 /** Cloud providers offered in the cloud setup. AWS is the supported target; Azure and GCP
  *  connect via their CLI's own sign-in (no lab provisioning yet). */
 export const CLOUD_META: Record<CloudProvider, { label: string; cli: string; color: string; ready: boolean }> = {
   aws: { label: "Amazon Web Services", cli: "aws", color: "#ff9900", ready: true },
   azure: { label: "Microsoft Azure", cli: "az", color: "#3b8eea", ready: true },
-  gcp: { label: "Google Cloud", cli: "gcloud", color: "#34a853", ready: false },
+  gcp: { label: "Google Cloud", cli: "gcloud", color: "#34a853", ready: true },
 };
 
 /** The provider picker. Only AWS is a real target today; the rest are coming soon.
@@ -70,7 +83,7 @@ export const CLOUD_META: Record<CloudProvider, { label: string; cli: string; col
 export const CLOUD_PICKER: { id: string; label: string; ready: boolean; logo: boolean }[] = [
   { id: "aws", label: "Amazon Web Services", ready: true, logo: true },
   { id: "azure", label: "Microsoft Azure", ready: true, logo: true },
-  { id: "gcp", label: "Google Cloud", ready: false, logo: true },
+  { id: "gcp", label: "Google Cloud", ready: true, logo: true },
   { id: "digitalocean", label: "DigitalOcean", ready: false, logo: true },
   { id: "linode", label: "Linode", ready: false, logo: true },
   { id: "oracle", label: "Oracle Cloud", ready: false, logo: true },

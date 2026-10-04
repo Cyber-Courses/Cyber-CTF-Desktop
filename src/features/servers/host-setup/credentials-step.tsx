@@ -5,33 +5,35 @@ import { ArrowLeft, CheckCircle2, Cloud, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/ui/log-console";
-import { AWS_REGIONS, AZURE_LOCATIONS } from "@/features/servers/host-setup/constants";
+import { AWS_REGIONS, AZURE_LOCATIONS, GCP_REGIONS } from "@/features/servers/host-setup/constants";
 import { Field, Input, Nav, Select, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
 
 export function CredentialsStep({ s }: { s: HostSetup }) {
-  const { v, error, signingIn, signInLog, editing, azure, profiles, awsIdentity, checkingId, awsSignIn, set, text, connectionOk, next, back, signIn } = s;
+  const { v, error, signingIn, signInLog, editing, azure, gcp, cliAuth, profiles, awsIdentity, checkingId, awsSignIn, set, text, connectionOk, next, back, signIn } = s;
   return (
     <Step
       icon={Cloud}
-      title={azure ? "Azure subscription" : v.useCliCreds ? "AWS CLI" : "Access keys"}
+      title={azure ? "Azure subscription" : gcp ? "Google Cloud project" : v.useCliCreds ? "AWS CLI" : "Access keys"}
       description={
         azure
           ? "Sign in with the Azure CLI, then pick your subscription and location."
-          : v.useCliCreds
-            ? "Pick a profile, or sign in with the browser."
-            : "An IAM user's access keys."
+          : gcp
+            ? "Sign in with the gcloud CLI, then pick your project and region."
+            : v.useCliCreds
+              ? "Pick a profile, or sign in with the browser."
+              : "An IAM user's access keys."
       }
     >
-      {azure ? (
+      {cliAuth ? (
         <div className="space-y-3">
-          <Field label="Subscription ID">
-            <Input {...text("username")} placeholder="00000000-0000-0000-0000-000000000000" />
+          <Field label={gcp ? "Project ID" : "Subscription ID"}>
+            <Input {...text("username")} placeholder={gcp ? "my-lab-project" : "00000000-0000-0000-0000-000000000000"} />
           </Field>
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem]">
-            <span className="text-muted-foreground">Sign in once so Terraform can use the Azure CLI.</span>
+            <span className="text-muted-foreground">Sign in once so Terraform can use the {gcp ? "gcloud" : "Azure"} CLI.</span>
             <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
-              {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (az login)
+              {signingIn ? <Spinner className="size-3.5" /> : null} Sign in ({gcp ? "gcloud" : "az login"})
             </Button>
           </div>
           {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" />}
@@ -99,8 +101,8 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
       <div className="mt-3">
         <Field label={azure ? "Location" : "Region"}>
           <Select value={v.host} onChange={(e) => set("host", e.target.value)}>
-            {v.host && !(azure ? AZURE_LOCATIONS : AWS_REGIONS).some(([code]) => code === v.host) && <option value={v.host}>{v.host}</option>}
-            {(azure ? AZURE_LOCATIONS : AWS_REGIONS).map(([code, name]) => (
+            {v.host && !(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : AWS_REGIONS).some(([code]) => code === v.host) && <option value={v.host}>{v.host}</option>}
+            {(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : AWS_REGIONS).map(([code, name]) => (
               <option key={code} value={code}>
                 {code} — {name}
               </option>

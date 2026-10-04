@@ -48,7 +48,10 @@ export function useHostSetup({
   const editing = initial.id !== null;
   const aws = v.provider === "aws";
   const azure = v.provider === "azure";
-  const cloud = aws || azure;
+  const gcp = v.provider === "gcp";
+  const cloud = aws || azure || gcp;
+  // Azure and GCP authenticate through their CLI (no access keys); the flow is the same shape.
+  const cliAuth = azure || gcp;
   // AWS can connect through the CLI (a profile / browser sign-in) or with access keys.
   const [profiles, setProfiles] = useState<string[]>([]);
   const [awsIdentity, setAwsIdentity] = useState<string | null>(null);
@@ -96,7 +99,7 @@ export function useHostSetup({
     setV((s) => ({
       ...s,
       provider: id as RemoteProvider,
-      host: id === "azure" ? "westeurope" : "eu-west-3",
+      host: id === "azure" ? "westeurope" : id === "gcp" ? "europe-west1" : "eu-west-3",
       username: "",
       password: null,
       useCliCreds: id === "aws",
@@ -105,10 +108,10 @@ export function useHostSetup({
   };
   const steps: StepKey[] = cloud
     ? editing
-      ? azure
+      ? cliAuth
         ? ["credentials", "options", "test"]
         : ["account", "credentials", "options", "test"]
-      : azure
+      : cliAuth
         ? ["provider", "tools", "credentials", "options", "test"]
         : ["provider", "tools", "account", "credentials", "options", "test"]
     : editing
@@ -122,7 +125,7 @@ export function useHostSetup({
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, e.target.value),
   });
 
-  const connectionOk = azure
+  const connectionOk = cliAuth
     ? v.host.trim() !== "" && v.username.trim() !== ""
     : cloud && v.useCliCreds
       ? v.host.trim() !== ""
@@ -228,6 +231,8 @@ export function useHostSetup({
     editing,
     aws,
     azure,
+    gcp,
+    cliAuth,
     cloud,
     profiles,
     setProfiles,
