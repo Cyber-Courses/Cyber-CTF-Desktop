@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronRight, Container, Cpu, HardDrive, MemoryStick, Server, Wrench } from "lucide-react";
+import { ChevronRight, Container, Cpu, HardDrive, MemoryStick, Wrench } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { EngineMark, engineName } from "@/features/machine/setup-steps";
@@ -14,6 +14,7 @@ import { TypeIcon } from "@/components/ui/type-icon";
 import { formatAgo, formatBytes, formatUptime } from "@/lib/format";
 import { DownloadsPanel } from "@/features/machine/downloads-panel";
 import { RunningNowPanel } from "@/features/machine/running-now-panel";
+import { HypervisorLogo } from "@/features/machine/hypervisor-logo";
 
 // ---------- formatting ----------
 
@@ -193,11 +194,7 @@ export function MachineScreen({
         />
         <LabTypeRow
           kind="vm"
-          icon={
-            <TypeIcon>
-              <Server className="size-4" />
-            </TypeIcon>
-          }
+          icon={<HypervisorLogo provider={vmProvider?.provider} />}
           title="VM labs"
           tone={!vmApplicable ? "muted" : vmProvider ? (last.vm?.result === "fail" ? "fail" : "ok") : "warn"}
           status={!vmApplicable ? "Not on this machine" : vmProvider ? (last.vm?.result === "fail" ? "Test failed" : "Ready") : "Needs setup"}

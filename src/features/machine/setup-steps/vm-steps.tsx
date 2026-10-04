@@ -1,7 +1,7 @@
 "use client";
 
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ExternalLink, RefreshCw, Server } from "lucide-react";
+import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { type SystemReport } from "@/lib/tauri";
@@ -10,6 +10,7 @@ import { Log, Requirement } from "@/features/machine/setup-steps/parts";
 import { Choice, ChoiceAction, ChoiceGrid } from "@/components/ui/choice-card";
 import { chosenHypervisor } from "@/features/machine/setup-steps/steps";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
+import { HypervisorLogo } from "@/features/machine/hypervisor-logo";
 
 export function VmStep({ report, setup }: { report: SystemReport; setup: MachineSetupState }) {
   const hypervisors = usableHypervisors(report);
@@ -33,11 +34,7 @@ export function VmStep({ report, setup }: { report: SystemReport; setup: Machine
             key={p.provider}
             selected={p.provider === choice.provider}
             onSelect={() => setup.setHypervisor(p.provider)}
-            mark={
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                <Server className="size-4" />
-              </span>
-            }
+            mark={<HypervisorLogo provider={p.provider} />}
             title={providerLabel(p)}
             note={INSTALLABLE[p.provider] ? "Cyber CTF can install it for you." : "Install it from the vendor's site."}
             badge={p.hypervisor === true ? "installed" : undefined}
@@ -83,6 +80,10 @@ export function VmStep({ report, setup }: { report: SystemReport; setup: Machine
         </ChoiceAction>
       )}
       <Log setup={setup} />
+      <p className="pt-1 text-left text-[0.6875rem] leading-relaxed text-muted-foreground/70">
+        VirtualBox is a trademark of Oracle. QEMU and other hypervisor names belong to their respective owners. Cyber CTF isn&apos;t affiliated with any of
+        them.
+      </p>
     </div>
   );
 }
