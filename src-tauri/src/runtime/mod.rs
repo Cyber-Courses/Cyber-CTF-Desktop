@@ -109,15 +109,19 @@ pub async fn start(
             vars.push(("allowed_cidr".into(), format!("{}/32", public_ip().await?)));
             if provider == providers::Provider::Aws {
                 // Stop before spending if this account is over its monthly budget, or if a budget
-                // is set but the spend can't be verified (fail closed, AWS only).
+                // is set and the spend is over it (AWS only); if the spend can't be read, warn
+                // and launch anyway (below).
                 match server::check_budget(app, host).await {
                     server::BudgetCheck::Over(spent, limit) => {
                         return Err(Error::Invalid(format!(
                             "Monthly budget reached for this account: ${spent:.2} of ${limit:.2} spent this month. Raise the budget in the account settings, or wait until next month."
                         )));
                     }
+                    // Best effort: if the spend can't be read (Cost Explorer off, expired session,
+                    // Docker/CLI missing), note it and launch anyway. The lab still auto-stops, so
+                    // cost is bounded; blocking every launch over this would be too aggressive.
                     server::BudgetCheck::Unverifiable(why) => {
-                        return Err(Error::Invalid(why));
+                        log(format!("Monthly budget not checked: {why} Launching anyway; the lab still auto-stops."));
                     }
                     server::BudgetCheck::Ok => {}
                 }

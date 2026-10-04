@@ -97,8 +97,8 @@ pub(super) async fn month_to_date_cost(h: &HostProfile, password: &str) -> Resul
     out.trim().parse::<f64>().map_err(|_| Error::Invalid(format!("couldn't read the spend figure from Cost Explorer: {:?}", out.trim())))
 }
 
-/// The budget check for a launch. A limit that can't be verified fails closed (`Unverifiable`)
-/// rather than silently letting the launch through.
+/// The budget check for a launch. Blocks only when the spend is readable and over the limit;
+/// when it can't be read (`Unverifiable`) the caller warns and launches anyway (best effort).
 pub enum BudgetCheck {
     /// No budget set, under it, or not an AWS account.
     Ok,
@@ -144,12 +144,11 @@ fn budget_unverifiable_message(err: &str) -> String {
         .iter()
         .any(|m| lower.contains(m));
     if auth {
-        "Your AWS session has expired or you're not signed in. Reauthenticate with `aws login` (or pick a valid profile), then launch again.".into()
+        "the AWS session has expired or isn't signed in.".into()
+    } else if lower.contains("cost explorer") || lower.contains("not enabled") {
+        "Cost Explorer isn't enabled on this account (enable it in the AWS Billing console).".into()
     } else {
-        format!(
-            "Couldn't read this account's spend to check its monthly budget ({}). Enable Cost Explorer in the AWS Billing console (it can take ~24h to activate), or remove the budget on this account, then try again.",
-            err.lines().last().unwrap_or_default()
-        )
+        format!("couldn't read this month's spend ({}).", err.lines().last().unwrap_or_default())
     }
 }
 
