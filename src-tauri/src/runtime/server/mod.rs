@@ -157,7 +157,7 @@ pub const DEFAULT_AUTO_STOP_HOURS: u32 = 4;
 fn default_port(provider: Provider) -> u16 {
     match provider {
         Provider::Proxmox => 8006,
-        Provider::Aws | Provider::Azure => 443,
+        Provider::Aws | Provider::Azure | Provider::Gcp => 443,
         _ => 22,
     }
 }
@@ -182,6 +182,20 @@ fn valid_subscription(s: &str) -> bool {
     p.len() == 5 && [8usize, 4, 4, 4, 12].iter().zip(&p).all(|(n, seg)| seg.len() == *n && seg.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
+/// A GCP region id, e.g. "europe-west1", "us-central1" (lowercase letters/digits with a hyphen).
+fn valid_gcp_region(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 32 && s.contains('-') && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// A GCP project id: 6-30 chars, starts with a lowercase letter, then lowercase letters,
+/// digits or hyphens, and does not end with a hyphen.
+fn valid_gcp_project(s: &str) -> bool {
+    (6..=30).contains(&s.len())
+        && s.starts_with(|c: char| c.is_ascii_lowercase())
+        && !s.ends_with('-')
+        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
 /// An AWS access key id (AKIA... long-term, ASIA... temporary).
 fn valid_access_key_id(id: &str) -> bool {
     (16..=128).contains(&id.len()) && id.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
@@ -193,6 +207,7 @@ pub fn terraform_target(provider: Provider) -> Option<&'static str> {
         Provider::Proxmox => Some("proxmox"),
         Provider::Aws => Some("aws"),
         Provider::Azure => Some("azure"),
+        Provider::Gcp => Some("gcp"),
         _ => None,
     }
 }
@@ -213,7 +228,7 @@ pub fn server_list(app: AppHandle) -> Result<HostList> {
 #[tauri::command]
 pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
     if !input.provider.is_remote() {
-        return Err(Error::Invalid("a host must be ESXi, Proxmox, AWS or Azure".into()));
+        return Err(Error::Invalid("a host must be ESXi, Proxmox, AWS, Azure or GCP".into()));
     }
     let host = clean(&input.host, "host", 253)?;
     // AWS can connect with the AWS CLI's own credentials instead of stored keys.
@@ -232,6 +247,13 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         }
         if !valid_subscription(&username) {
             return Err(Error::Invalid("subscription must be a GUID (see `az account show`)".into()));
+        }
+    } else if input.provider == Provider::Gcp {
+        if !valid_gcp_region(&host) {
+            return Err(Error::Invalid("region must be a GCP region id, e.g. europe-west1".into()));
+        }
+        if !valid_gcp_project(&username) {
+            return Err(Error::Invalid("project must be a GCP project id, e.g. my-lab-project".into()));
         }
     } else if !valid_host(&host) {
         return Err(Error::Invalid("host must be a hostname or IP address, without https:// or a path".into()));
@@ -257,7 +279,7 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         node: if input.provider == Provider::Proxmox { clean_opt(input.node, "node")? } else { None },
         insecure_tls: input.provider == Provider::Proxmox && input.insecure_tls.unwrap_or(false),
         auto_stop_hours: match input.provider {
-            Provider::Aws | Provider::Azure => match input.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS) {
+            Provider::Aws | Provider::Azure | Provider::Gcp => match input.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS) {
                 h if h <= 72 => Some(h),
                 _ => return Err(Error::Invalid("auto-stop must be between 0 and 72 hours".into())),
             },
@@ -270,14 +292,14 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
     match input.password.filter(|p| !p.is_empty()) {
         Some(p) if p.len() <= 1024 && !p.contains('\0') => set_secret(&id, &p)?,
         Some(_) => return Err(Error::Invalid("invalid password".into())),
-        None if !use_cli && input.provider != Provider::Azure && get_secret(&id).is_err() => return Err(Error::Invalid("enter the host's password".into())),
+        None if !use_cli && !matches!(input.provider, Provider::Azure | Provider::Gcp) && get_secret(&id).is_err() => return Err(Error::Invalid("enter the host's password".into())),
         None => {}
     }
     match store.hosts.iter_mut().find(|h| h.id == id) {
         Some(existing) => *existing = profile.clone(),
         None => store.hosts.push(profile.clone()),
     }
-    if store.default.is_none() && !matches!(profile.provider, Provider::Aws | Provider::Azure) {
+    if store.default.is_none() && !matches!(profile.provider, Provider::Aws | Provider::Azure | Provider::Gcp) {
         store.default = Some(id);
     }
     save(&app, &store)?;
@@ -301,7 +323,7 @@ pub fn server_remove(app: AppHandle, id: String) -> Result<()> {
 pub fn server_set_default(app: AppHandle, id: Option<String>) -> Result<()> {
     let mut store = load(&app)?;
     if let Some(id) = &id
-        && matches!(find(&store, id)?.provider, Provider::Aws | Provider::Azure)
+        && matches!(find(&store, id)?.provider, Provider::Aws | Provider::Azure | Provider::Gcp)
     {
         return Err(Error::Invalid("a cloud account can't be the default host".into()));
     }
@@ -344,7 +366,7 @@ pub async fn server_open_setup(app: AppHandle, id: Option<String>, kind: Option<
 pub async fn server_test(app: AppHandle, id: String) -> Result<TestResult> {
     let host = find(&load(&app)?, &id)?;
     // CLI-credential hosts keep no secret; the CLI resolves its own credentials.
-    let password = if host.use_cli_creds || host.provider == Provider::Azure { String::new() } else { get_secret(&id)? };
+    let password = if host.use_cli_creds || matches!(host.provider, Provider::Azure | Provider::Gcp) { String::new() } else { get_secret(&id)? };
     // Token hosts SSH with the launcher's key: make sure it exists before checking it.
     if host.provider == Provider::Proxmox && super::proxmox::is_token(&host.username) {
         super::ssh::ensure_key(&app).await?;

@@ -3,7 +3,7 @@ import type { Provider, SelfTestEvent } from "@/lib/tauri/machine";
 
 // --- Server (the player's own ESXi / Proxmox host) ---
 
-export type RemoteProvider = Extract<Provider, "vmware_esxi" | "proxmox" | "aws" | "azure">;
+export type RemoteProvider = Extract<Provider, "vmware_esxi" | "proxmox" | "aws" | "azure" | "gcp">;
 
 export interface ServerHost {
   id: string;

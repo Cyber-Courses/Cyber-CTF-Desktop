@@ -70,13 +70,15 @@ pub fn terraform_env(h: &HostProfile, password: &str) -> Vec<(String, String)> {
         ],
         // azurerm uses the Azure CLI's auth (az login); it only needs the subscription id.
         Provider::Azure => vec![("ARM_SUBSCRIPTION_ID".to_string(), h.username.clone())],
+        // The google provider uses gcloud's application-default credentials; it only needs the project.
+        Provider::Gcp => vec![("GOOGLE_PROJECT".to_string(), h.username.clone())],
         _ => Vec::new(),
     }
 }
 
 /// Terraform variables for a host (`deploy/terraform/<target>`).
 pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> {
-    if h.provider == Provider::Aws || h.provider == Provider::Azure {
+    if matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp) {
         let mut vars =
             vec![("region".to_string(), h.host.clone()), ("auto_stop_hours".to_string(), h.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS).to_string())];
         if let Some(t) = &h.datastore {
@@ -125,7 +127,7 @@ pub struct Connection {
 pub fn connection(app: &AppHandle, id: &str) -> Result<Connection> {
     let host = find(&load(app)?, id)?;
     // CLI-credential hosts keep no secret; Terraform uses the AWS CLI's default chain.
-    let password = if host.use_cli_creds || host.provider == Provider::Azure { String::new() } else { get_secret(id)? };
+    let password = if host.use_cli_creds || matches!(host.provider, Provider::Azure | Provider::Gcp) { String::new() } else { get_secret(id)? };
     Ok(Connection {
         provider: host.provider,
         name: host.name.clone(),
@@ -150,7 +152,7 @@ pub fn host_name(app: &AppHandle, id: &str) -> Option<String> {
 pub fn default_host(app: &AppHandle) -> Option<String> {
     let store = load(app).ok()?;
     // Only server hosts: a cloud account is never used implicitly (it costs money).
-    store.default.filter(|id| store.hosts.iter().any(|h| &h.id == id && !matches!(h.provider, Provider::Aws | Provider::Azure)))
+    store.default.filter(|id| store.hosts.iter().any(|h| &h.id == id && !matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp)))
 }
 
 /// Records (or clears) which host a VM lab directory runs on.

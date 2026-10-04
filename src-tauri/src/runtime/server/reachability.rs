@@ -142,12 +142,46 @@ pub(super) async fn test_azure(h: &HostProfile) -> TestResult {
     }
 }
 
+/// GCP: `gcloud projects describe <project>` confirms gcloud's application-default login is
+/// in place and the project is reachable. (No cheap VM-create dry-run like AWS.)
+pub(super) async fn test_gcp(h: &HostProfile) -> TestResult {
+    let started = Instant::now();
+    let args = ["projects", "describe", h.username.as_str(), "--format", "value(projectId)"];
+    match crate::exec::run("gcloud", &args, None).await {
+        Ok(id) => TestResult {
+            ok: true,
+            reachable: true,
+            authenticated: Some(true),
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            message: format!("Signed in to Google Cloud, project \"{}\". Labs run here are billed to it.", id.trim()),
+        },
+        Err(Error::CommandFailed { stderr, .. }) => {
+            let not_in = stderr.contains("gcloud auth") || stderr.contains("credentials") || stderr.contains("does not have permission") || stderr.contains("was not found") || stderr.contains("Permission denied");
+            TestResult {
+                ok: false,
+                reachable: true,
+                authenticated: Some(false),
+                latency_ms: None,
+                message: if not_in {
+                    "Not signed in to Google Cloud, or no access to that project. Sign in and check the project id.".into()
+                } else {
+                    format!("GCP check failed: {}", stderr.lines().last().unwrap_or_default())
+                },
+            }
+        }
+        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("GCP check failed: {e}") },
+    }
+}
+
 pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
     if h.provider == Provider::Aws {
         return test_aws(h, password).await;
     }
     if h.provider == Provider::Azure {
         return test_azure(h).await;
+    }
+    if h.provider == Provider::Gcp {
+        return test_gcp(h).await;
     }
     let started = Instant::now();
     let connect = tokio::time::timeout(TEST_TIMEOUT, TcpStream::connect((h.host.as_str(), h.port))).await;
