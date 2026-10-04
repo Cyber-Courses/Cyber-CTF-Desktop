@@ -35,10 +35,21 @@ tf() {
 }
 if [ "${1:-apply}" = destroy ]; then tf destroy; exit; fi
 tf apply
-VMID=$(docker run --rm -v "$RUN:/state" --entrypoint sh "$TERRAFORM_IMAGE" -c "grep -o '\"vm_id\": *[0-9]*' /state/terraform.tfstate | head -1 | grep -o '[0-9]*$'")
+VMID=$(docker run --rm -v "$RUN:/state" --entrypoint sh "$TERRAFORM_IMAGE" -c "grep -o '\"vm_id\": *[0-9][0-9]*' /state/terraform.tfstate | head -1 | grep -o '[0-9]*$'")
 if [ -n "${NO_KVM:-}" ]; then node "qm set $VMID --kvm 0 >/dev/null && qm start $VMID"; fi
 echo "Waiting for cloud-init + Ansible in VM $VMID..."
-until node "qm guest exec $VMID -- test -f /var/lib/cyberctf-lab-ready" 2>/dev/null | grep -q '"exitcode" : 0'; do sleep 20; done
+# The bootstrap's status file: "running: <step>", "ready" or "failed: <step>" (older labs
+# only touch /var/lib/cyberctf-lab-ready).
+last=""
+while :; do
+  out=$(node "qm guest exec $VMID -- sh -c 'cat /var/lib/cyberctf/status 2>/dev/null || { test -f /var/lib/cyberctf-lab-ready && echo ready; }'" 2>/dev/null | grep -o '"out-data" : "[^"]*' | sed 's/.*: "//; s/\\n$//') || true
+  [ "$out" = "$last" ] || { [ -z "$out" ] || echo "   lab host: $out"; last=$out; }
+  case "$out" in
+    ready) break ;;
+    failed:*) node "qm guest exec $VMID -- tail -n 40 /var/log/cyberctf-lab.log" | sed 's/\\n/\n/g'; [ -n "${KEEP:-}" ] || tf destroy; exit 1 ;;
+  esac
+  sleep 20
+done
 IP=$(node "qm guest cmd $VMID network-get-interfaces" 2>/dev/null | grep -o '"ip-address" : "[0-9.]*' | grep -o '[0-9.]*$' | grep -v '^127\.' | grep -v '^172\.1[7-9]\.' | head -1)
 echo "== Open shell (the launcher's ssh command) from the node -> debian@$IP"
 # From the node (lab VMs sit on its bridge), with the test key copied over for the check.

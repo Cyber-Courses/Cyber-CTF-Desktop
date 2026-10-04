@@ -7,6 +7,7 @@
 //! Vagrant targets (ESXi) use Vagrant's own key, read from `vagrant ssh-config`.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use tauri::{AppHandle, Manager};
 
@@ -19,6 +20,14 @@ fn ssh_dir(app: &AppHandle) -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// The launcher's key path once `ensure_key` has run, for code without an AppHandle
+/// (the Terraform driver waiting on a lab host it just installed the key on).
+static LAUNCHER_KEY: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn launcher_key() -> Option<PathBuf> {
+    LAUNCHER_KEY.get().cloned()
+}
+
 /// The launcher's private key, created on first use. Returns (key path, public key line).
 pub async fn ensure_key(app: &AppHandle) -> Result<(PathBuf, String)> {
     let key = ssh_dir(app)?.join("id_ed25519");
@@ -26,6 +35,7 @@ pub async fn ensure_key(app: &AppHandle) -> Result<(PathBuf, String)> {
         let path = key.to_string_lossy().to_string();
         run("ssh-keygen", &["-q", "-t", "ed25519", "-N", "", "-C", "cyberctf-launcher", "-f", &path], None).await?;
     }
+    let _ = LAUNCHER_KEY.set(key.clone());
     let public = std::fs::read_to_string(key.with_extension("pub"))?.trim().to_string();
     Ok((key, public))
 }
@@ -86,6 +96,32 @@ impl Target {
             self.user,
             self.host,
         ))
+    }
+}
+
+impl Target {
+    /// Runs `command` on the lab host, non-interactively (no password prompt, short
+    /// connect timeout). `known_hosts` should be per deployment: a new VM on a reused
+    /// address has a new host key.
+    pub async fn exec(&self, known_hosts: &Path, command: &str) -> Result<String> {
+        if !safe_token(&self.host) || !safe_token(&self.user) {
+            return Err(Error::Invalid("unexpected SSH host or user".into()));
+        }
+        let identity = self.identity.to_string_lossy().to_string();
+        let port = self.port.to_string();
+        let known = format!("UserKnownHostsFile={}", known_hosts.to_string_lossy());
+        let dest = format!("{}@{}", self.user, self.host);
+        run(
+            "ssh",
+            &[
+                "-i", &identity, "-p", &port,
+                "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                "-o", "StrictHostKeyChecking=accept-new", "-o", &known, "-o", "LogLevel=ERROR",
+                &dest, command,
+            ],
+            None,
+        )
+        .await
     }
 }
 
