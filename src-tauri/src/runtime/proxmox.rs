@@ -278,7 +278,7 @@ mod tests {
     }
 
     /// "Test connection" against a real host (opt-in):
-    ///   CYBERCTF_TEST_PVE_HOST=... CYBERCTF_TEST_PVE_PASSWORD=... [CYBERCTF_TEST_PVE_TOKEN_SECRET=...
+    ///   CYBERCTF_TEST_PVE_HOST=... CYBERCTF_TEST_PVE_PASSWORD=... [CYBERCTF_TEST_PVE_TOKEN_ID=user@realm!name CYBERCTF_TEST_PVE_TOKEN_SECRET=...
     ///   CYBERCTF_TEST_SSH_KEY=<key authorized on the node>] cargo test proxmox_live_test -- --ignored --nocapture
     #[tokio::test]
     #[ignore]
@@ -316,10 +316,11 @@ mod tests {
 
         if let (Some(secret), Some(key)) = (var("CYBERCTF_TEST_PVE_TOKEN_SECRET"), var("CYBERCTF_TEST_SSH_KEY")) {
             ssh::set_launcher_key_for_test(key.into());
-            let r = test(&profile("root@pam!cyberctf-test", &bridge), &secret).await;
+            let token = var("CYBERCTF_TEST_PVE_TOKEN_ID").unwrap_or_else(|| "root@pam!cyberctf-live".into());
+            let r = test(&profile(&token, &bridge), &secret).await;
             println!("token: ok={} {}", r.ok, r.message);
             assert!(r.ok);
-            let r = test(&profile("root@pam!cyberctf-test", &bridge), "00000000-0000-0000-0000-000000000000").await;
+            let r = test(&profile(&token, &bridge), "00000000-0000-0000-0000-000000000000").await;
             println!("bad token: {}", r.message);
             assert_eq!(r.authenticated, Some(false));
         }
