@@ -5,33 +5,24 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { ChevronDown, Cloud, Plus, Square } from "lucide-react";
+import { Plus, Square } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useLabs, type Lab } from "@/features/labs/use-labs";
 import {
   awsMonthToDateCost,
-  installDependency,
   labStop,
-  provisioningImages,
-  provisioningPull,
   SERVER_CHANGED,
   serverList,
   serverOpenSetup,
   serverRemove,
   serverTest,
-  systemCheck,
-  type Dependency,
-  type ProvisioningImage,
   type ServerHost,
   type ServerTest,
-  type SystemReport,
 } from "@/lib/tauri";
-import { cn } from "@/lib/utils";
 import { AccountRow } from "@/features/cloud/account-row";
-import { COMING_SOON, FirstRun } from "@/features/cloud/first-run";
-import { CliRow, ImageRow, ToolRow } from "@/features/cloud/tool-rows";
+import { FirstRun } from "@/features/cloud/first-run";
 
 export function CloudScreen() {
   const [allHosts, setHosts] = useState<ServerHost[] | null>(null);
@@ -47,11 +38,6 @@ export function CloudScreen() {
     ) ?? null;
   const [error, setError] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, ServerTest | "testing">>({});
-  const [report, setReport] = useState<SystemReport | null>(null);
-  const [provImages, setProvImages] = useState<ProvisioningImage[] | null>(null);
-  const [cliBusy, setCliBusy] = useState<string | null>(null);
-  const [pullBusy, setPullBusy] = useState<string | null>(null);
-  const [envOpen, setEnvOpen] = useState<boolean | null>(null);
   const [spend, setSpend] = useState<Record<string, number | null>>({});
   const { labs, statuses, refreshStatus } = useLabs();
   const [stopping, setStopping] = useState<string | null>(null);
@@ -65,14 +51,6 @@ export function CloudScreen() {
       .catch((e) => setError(String(e)));
   }, []);
   useEffect(reload, [reload]);
-  useEffect(() => {
-    systemCheck()
-      .then(setReport)
-      .catch(() => {});
-    provisioningImages()
-      .then(setProvImages)
-      .catch(() => {});
-  }, []);
   // The setup window saves accounts; refresh when it says so.
   useEffect(() => {
     const off = listen(SERVER_CHANGED, reload);
@@ -125,31 +103,6 @@ export function CloudScreen() {
     }
   }
 
-  async function installCli(dep: Dependency) {
-    setCliBusy(dep);
-    try {
-      await installDependency(dep, () => {});
-      setReport(await systemCheck());
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setCliBusy(null);
-    }
-  }
-
-  async function pull(image: string) {
-    setPullBusy(image);
-    setError(null);
-    try {
-      await provisioningPull(image, () => {});
-      setProvImages(await provisioningImages());
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setPullBusy(null);
-    }
-  }
-
   const over = (hosts ?? []).filter((h) => {
     const s = spend[h.id];
     return h.monthlyLimit != null && s != null && s >= h.monthlyLimit;
@@ -160,13 +113,6 @@ export function CloudScreen() {
     const s = statuses[l.id];
     return l.runtime && s?.running && !!s.host && accountNames.has(s.host);
   });
-  const envChecking = report == null;
-  const envReady = !!report?.cloudClis.aws.installed && !!report?.terraform.installed;
-  // Only one install/pull/sign-in at a time: brew (and others) can't run two at once.
-  const busyOp = cliBusy !== null || pullBusy !== null;
-  // While the checks are still running, stay collapsed: don't flash open then snap shut once
-  // "Ready" resolves. Auto-expand only after a completed check that found setup is needed.
-  const envExpanded = envOpen ?? (!envChecking && !envReady);
 
   return (
     <div className="space-y-5">
@@ -237,73 +183,6 @@ export function CloudScreen() {
               onRemove={() => remove(h.id)}
             />
           ))
-        )}
-      </Panel>
-
-      <Panel>
-        <button type="button" onClick={() => setEnvOpen(!envExpanded)} className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left">
-          <span className="text-[0.8125rem] font-semibold tracking-tight">Environment</span>
-          <span
-            className={cn(
-              "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
-              envChecking ? "bg-muted text-muted-foreground" : envReady ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500",
-            )}
-          >
-            {envChecking ? <Spinner className="size-3" /> : <span className={cn("size-1.5 rounded-full", envReady ? "bg-emerald-500" : "bg-amber-500")} />}
-            {envChecking ? "Checking…" : envReady ? "Ready" : "Setup needed"}
-          </span>
-          <ChevronDown className={cn("ml-auto size-4 text-muted-foreground transition-transform", envExpanded && "rotate-180")} />
-        </button>
-        {envExpanded && (
-          <div className="border-t border-border">
-            <CliRow
-              name="AWS CLI"
-              provider="aws"
-              tool={report?.cloudClis.aws}
-              busy={cliBusy === "awscli"}
-              locked={busyOp}
-              onInstall={() => installCli("awscli")}
-            />
-            <ToolRow
-              name="Terraform"
-              note="runs locally; simpler state (Docker image is the fallback)"
-              tool={report?.terraform}
-              busy={cliBusy === "terraform"}
-              locked={busyOp}
-              onInstall={() => installCli("terraform")}
-            />
-            {provImages?.map((img) => (
-              <ImageRow
-                key={img.image}
-                image={img}
-                note="runs in Docker (best on Windows)"
-                busy={pullBusy === img.image}
-                locked={busyOp}
-                onPull={() => pull(img.image)}
-              />
-            ))}
-            {COMING_SOON.length > 0 && (
-              <div className="border-t border-border px-3.5 py-2.5">
-                <p className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground/70">More providers · coming soon</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {COMING_SOON.map((p) => (
-                    <span
-                      key={p.id}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[0.6875rem] text-muted-foreground"
-                    >
-                      {p.logo ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- static export, plain asset
-                        <img src={`/brands/${p.id}.svg`} alt="" className="size-3.5" draggable={false} />
-                      ) : (
-                        <Cloud className="size-3.5" />
-                      )}
-                      {p.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         )}
       </Panel>
     </div>
