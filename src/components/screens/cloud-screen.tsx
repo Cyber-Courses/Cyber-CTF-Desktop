@@ -6,6 +6,7 @@ import { CheckCircle2, ChevronDown, Pencil, Plus, Trash2, XCircle, Zap } from "l
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { awsHourly } from "@/lib/aws";
 import {
   cloudLogin,
   installDependency,
@@ -222,11 +223,13 @@ function FirstRun({ onSetup }: { onSetup: () => void }) {
 function AccountRow({ host, test, onTest, onEdit, onRemove }: { host: ServerHost; test: ServerTest | "testing" | undefined; onTest: () => void; onEdit: () => void; onRemove: () => void }) {
   const result = test && test !== "testing" ? test : null;
   const ok = result ? result.ok : null;
+  const price = awsHourly(host.datastore);
   const facts = [
     host.host,
-    host.useCliCreds ? (host.awsProfile ? `CLI · ${host.awsProfile}` : "CLI credentials") : "access keys",
-    host.autoStopHours ? `auto-stop ${host.autoStopHours}h` : "no auto-stop",
-  ];
+    host.datastore ?? "t3.medium",
+    price != null ? `~$${price.toFixed(3)}/hr` : null,
+    host.useCliCreds ? "CLI credentials" : "access keys",
+  ].filter(Boolean) as string[];
   return (
     <div className="border-b border-border px-3.5 py-3 last:border-b-0">
       <div className="flex items-center gap-3">

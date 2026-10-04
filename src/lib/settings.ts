@@ -11,6 +11,7 @@ export const DEFAULT_ATTACK_IMAGE = "kalilinux/kali-rolling";
 
 /** Common attack-box images; the field is free text so any tag/registry still works. */
 export const ATTACK_PRESETS: { image: string; label: string; note: string }[] = [
+  { image: "cyberctf/attack-box", label: "Cyber CTF", note: "Kali with its standard toolset, ready to use (large download)" },
   { image: "kalilinux/kali-rolling", label: "Kali", note: "Official Kali base, add tools as needed" },
   { image: "parrotsec/security", label: "Parrot", note: "Parrot Security toolset" },
   { image: "nwodtuhs/exegol:free", label: "Exegol Free", note: "Needs an Exegol license for pro/commercial use" },
