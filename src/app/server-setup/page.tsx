@@ -37,7 +37,7 @@ function Setup() {
       .close()
       .catch(() => {});
 
-  const cloud = id ? initial?.provider === "aws" : params.get("kind") === "cloud";
+  const cloud = id ? initial?.provider === "aws" || initial?.provider === "azure" || initial?.provider === "gcp" : params.get("kind") === "cloud";
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">

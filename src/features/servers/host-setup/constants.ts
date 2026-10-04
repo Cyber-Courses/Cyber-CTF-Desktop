@@ -69,16 +69,16 @@ export const GCP_REGIONS: [string, string][] = [
   ["asia-southeast1", "Singapore"],
 ];
 
-export type StepKey = "provider" | "hypervisor" | "tools" | "connection" | "placement" | "account" | "credentials" | "options" | "connect" | "test";
-/** Cloud providers offered in the cloud setup. AWS is the supported target; Azure and GCP
- *  connect via their CLI's own sign-in (no lab provisioning yet). */
+export type StepKey = "provider" | "hypervisor" | "tools" | "connection" | "placement" | "account" | "credentials" | "options" | "test";
+/** Cloud providers offered in the cloud setup. AWS, Azure and GCP each provision labs in the
+ *  player's own account; `ready` gates which are selectable. */
 export const CLOUD_META: Record<CloudProvider, { label: string; cli: string; color: string; ready: boolean }> = {
   aws: { label: "Amazon Web Services", cli: "aws", color: "#ff9900", ready: true },
   azure: { label: "Microsoft Azure", cli: "az", color: "#3b8eea", ready: true },
   gcp: { label: "Google Cloud", cli: "gcloud", color: "#34a853", ready: true },
 };
 
-/** The provider picker. Only AWS is a real target today; the rest are coming soon.
+/** The provider picker. AWS, Azure and GCP are live targets; the rest are coming soon.
  *  `logo` marks the ones with an SVG in public/brands (others fall back to a cloud icon). */
 export const CLOUD_PICKER: { id: string; label: string; ready: boolean; logo: boolean }[] = [
   { id: "aws", label: "Amazon Web Services", ready: true, logo: true },

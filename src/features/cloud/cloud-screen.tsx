@@ -1,7 +1,7 @@
 "use client";
 
-/** The Cloud page: connect a cloud account (AWS today) and run labs as throwaway instances
- *  in it. Kept separate from the Server page so each evolves on its own. */
+/** The Cloud page: connect a cloud account (AWS, Azure or GCP) and run labs as throwaway
+ *  instances in it. Kept separate from the Server page so each evolves on its own. */
 
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";

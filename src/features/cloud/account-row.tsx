@@ -27,7 +27,7 @@ export function AccountRow({
   const [confirming, setConfirming] = useState(false);
   const facts = [
     host.host,
-    host.useCliCreds ? (host.awsProfile ? `CLI · ${host.awsProfile}` : "CLI credentials") : "access keys",
+    host.provider !== "aws" ? "CLI sign-in" : host.useCliCreds ? (host.awsProfile ? `CLI · ${host.awsProfile}` : "CLI credentials") : "access keys",
     host.autoStopHours ? `auto-stop ${host.autoStopHours}h` : "no auto-stop",
   ];
   return (

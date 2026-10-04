@@ -41,7 +41,6 @@ export function useHostSetup({
   const [test, setTest] = useState<ServerTest | "testing" | null>(null);
   const [pluginLog, setPluginLog] = useState<string[] | null>(null);
   const [toolLabel, setToolLabel] = useState("Install");
-  const [cloudProvider, setCloudProvider] = useState<CloudProvider>("aws");
   const [signingIn, setSigningIn] = useState(false);
   const [signInLog, setSignInLog] = useState<string[] | null>(null);
 
@@ -52,6 +51,9 @@ export function useHostSetup({
   const cloud = aws || azure || gcp;
   // Azure and GCP authenticate through their CLI (no access keys); the flow is the same shape.
   const cliAuth = azure || gcp;
+  // Derived from the saved provider (not separate state) so it stays correct when editing an
+  // existing account, where the provider step that would set it is skipped.
+  const cloudProvider: CloudProvider = cloud ? (v.provider as CloudProvider) : "aws";
   // AWS can connect through the CLI (a profile / browser sign-in) or with access keys.
   const [profiles, setProfiles] = useState<string[]>([]);
   const [awsIdentity, setAwsIdentity] = useState<string | null>(null);
@@ -64,7 +66,14 @@ export function useHostSetup({
         .catch(() => {});
   }, [aws]);
   useEffect(() => {
-    if (!aws) return;
+    // Only meaningful in CLI-credentials mode, where the signed-in profile *is* the account.
+    // With pasted access keys these would reflect the machine's default AWS chain (a different
+    // account), so don't fetch or show them.
+    if (!aws || !v.useCliCreds) {
+      setAwsIdentity(null);
+      setMtdCost(null);
+      return;
+    }
     setCheckingId(true);
     awsCliIdentity(v.awsProfile ?? undefined)
       .then(setAwsIdentity)
@@ -73,7 +82,7 @@ export function useHostSetup({
     awsMonthToDateCost(v.awsProfile ?? undefined)
       .then(setMtdCost)
       .catch(() => setMtdCost(null));
-  }, [aws, v.awsProfile]);
+  }, [aws, v.useCliCreds, v.awsProfile]);
 
   async function awsSignIn() {
     setSigningIn(true);
@@ -95,7 +104,6 @@ export function useHostSetup({
   // The ordered steps for this setup. Editing skips the hypervisor choice.
   // Azure has no access-keys choice (it's CLI-auth), so it skips the "how to connect" step.
   const pickProvider = (id: CloudProvider) => {
-    setCloudProvider(id);
     setV((s) => ({
       ...s,
       provider: id as RemoteProvider,
@@ -104,6 +112,8 @@ export function useHostSetup({
       password: null,
       useCliCreds: id === "aws",
       awsProfile: null,
+      // Budget is AWS-only; don't carry one typed on AWS over to Azure/GCP.
+      monthlyLimit: id === "aws" ? s.monthlyLimit : null,
     }));
   };
   const steps: StepKey[] = cloud
@@ -223,7 +233,6 @@ export function useHostSetup({
     toolLabel,
     setToolLabel,
     cloudProvider,
-    setCloudProvider,
     signingIn,
     setSigningIn,
     signInLog,

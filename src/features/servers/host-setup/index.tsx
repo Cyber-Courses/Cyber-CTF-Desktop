@@ -9,7 +9,6 @@ import { AccountStep } from "@/features/servers/host-setup/account-step";
 import { CredentialsStep } from "@/features/servers/host-setup/credentials-step";
 import { OptionsStep } from "@/features/servers/host-setup/options-step";
 import { ProviderStep } from "@/features/servers/host-setup/provider-step";
-import { ConnectStep } from "@/features/servers/host-setup/connect-step";
 import { TestStep } from "@/features/servers/host-setup/test-step";
 import { useHostSetup } from "@/features/servers/host-setup/use-host-setup";
 import type { ServerHost, ServerHostInput, SystemReport } from "@/lib/tauri";
@@ -68,8 +67,6 @@ export function HostSetupPage({
         {key === "options" && <OptionsStep s={s} />}
 
         {key === "provider" && <ProviderStep s={s} />}
-
-        {key === "connect" && <ConnectStep s={s} />}
 
         {key === "test" && <TestStep s={s} />}
       </div>

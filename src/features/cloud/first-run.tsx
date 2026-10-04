@@ -29,7 +29,7 @@ export function FirstRun({ onSetup }: { onSetup: () => void }) {
       </div>
       <p className="mt-3 text-[0.8125rem] font-medium">Run labs in your own cloud account</p>
       <p className="mx-auto mt-1 max-w-sm text-[0.75rem] text-muted-foreground">
-        One throwaway instance per lab, destroyed when you stop it. AWS today; Azure and Google Cloud coming.
+        One throwaway instance per lab, destroyed when you stop it. Runs on AWS, Azure or Google Cloud.
       </p>
       <div className="mx-auto mt-5 grid max-w-md gap-2 text-left">
         <Step n={1} title="Connect an account" body="Access keys or your AWS CLI credentials, and a region." />

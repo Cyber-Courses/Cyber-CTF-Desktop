@@ -11,7 +11,11 @@ import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
 export function ProviderStep({ s }: { s: HostSetup }) {
   const { onDone, cloudProvider, pickProvider, next } = s;
   return (
-    <Step icon={Cloud} title="Choose a cloud provider" description="Where labs run as throwaway instances in your own account. AWS today; more coming.">
+    <Step
+      icon={Cloud}
+      title="Choose a cloud provider"
+      description="Where labs run as throwaway instances in your own account. AWS, Azure and Google Cloud; more coming."
+    >
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         {CLOUD_PICKER.map((p) => {
           const selected = p.ready && cloudProvider === p.id;
