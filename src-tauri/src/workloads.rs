@@ -25,11 +25,7 @@ fn labs_dir(app: &AppHandle) -> Result<PathBuf> {
 fn installed_labs(app: &AppHandle) -> Vec<(String, PathBuf)> {
     let Ok(dir) = labs_dir(app) else { return Vec::new() };
     let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
-    entries
-        .flatten()
-        .filter(|e| e.path().is_dir())
-        .map(|e| (e.file_name().to_string_lossy().into_owned(), e.path()))
-        .collect()
+    entries.flatten().filter(|e| e.path().is_dir()).map(|e| (e.file_name().to_string_lossy().into_owned(), e.path())).collect()
 }
 
 // ---------- Workloads ----------
@@ -82,7 +78,9 @@ fn lab_of(name: &str, project: &str) -> Option<String> {
 }
 
 async fn docker_workloads() -> Vec<Workload> {
-    let Ok(ps) = run("docker", &["ps", "--filter", "name=^cyberctf-", "--format", "{{.ID}}\t{{.Names}}\t{{.Label \"com.docker.compose.project\"}}"], None).await else {
+    let Ok(ps) =
+        run("docker", &["ps", "--filter", "name=^cyberctf-", "--format", "{{.ID}}\t{{.Names}}\t{{.Label \"com.docker.compose.project\"}}"], None).await
+    else {
         return Vec::new();
     };
     let mut by_lab: BTreeMap<String, (u32, Vec<String>)> = BTreeMap::new();
@@ -114,7 +112,8 @@ async fn docker_workloads() -> Vec<Workload> {
     by_lab
         .into_iter()
         .map(|(id, (count, cids))| {
-            let mem_bytes = cids.iter().map(|c| mem.iter().find(|(k, _)| c.starts_with(k.as_str()) || k.starts_with(c.as_str())).map(|(_, v)| *v).unwrap_or(0)).sum();
+            let mem_bytes =
+                cids.iter().map(|c| mem.iter().find(|(k, _)| c.starts_with(k.as_str()) || k.starts_with(c.as_str())).map(|(_, v)| *v).unwrap_or(0)).sum();
             Workload { id, kind: "docker", count, mem_bytes, provider: None }
         })
         .collect()

@@ -49,7 +49,13 @@ export function Account({ status, onChange }: { status: AuthStatus | null; onCha
       <div>
         {error && <p className="mb-2 text-xs text-destructive">{error}</p>}
         <Button variant="learn" size="sm" className="w-full" onClick={login} disabled={busy}>
-          {busy ? (<><Spinner className="size-3.5" /> Waiting for the browser…</>) : "Log in"}
+          {busy ? (
+            <>
+              <Spinner className="size-3.5" /> Waiting for the browser…
+            </>
+          ) : (
+            "Log in"
+          )}
         </Button>
       </div>
     );

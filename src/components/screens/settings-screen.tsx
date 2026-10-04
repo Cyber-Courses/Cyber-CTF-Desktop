@@ -49,7 +49,19 @@ function Section({ title, description, saved, children }: { title: string; descr
 }
 
 /** One setting: label + description on the left, its control on the right (or below, when `stacked`). */
-function Row({ title, description, control, stacked, children }: { title: ReactNode; description?: ReactNode; control?: ReactNode; stacked?: boolean; children?: ReactNode }) {
+function Row({
+  title,
+  description,
+  control,
+  stacked,
+  children,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  control?: ReactNode;
+  stacked?: boolean;
+  children?: ReactNode;
+}) {
   return (
     <div className="px-5 py-4">
       <div className={cn("flex gap-6", stacked ? "flex-col gap-3" : "items-center justify-between")}>
@@ -68,7 +80,12 @@ function Row({ title, description, control, stacked, children }: { title: ReactN
 function useSavedFlash(): [boolean, () => void] {
   const [saved, setSaved] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
   return [
     saved,
     () => {
@@ -96,13 +113,20 @@ export function SettingsScreen({
   const [labsSaved, flashLabs] = useSavedFlash();
 
   useEffect(() => {
-    getVersion().then(setVersion).catch(() => setVersion(null));
-    systemCheck().then(setReport).catch(() => setReport(null));
+    getVersion()
+      .then(setVersion)
+      .catch(() => setVersion(null));
+    systemCheck()
+      .then(setReport)
+      .catch(() => setReport(null));
   }, []);
 
   // The agent registers once signed in, so re-read it whenever auth changes.
   useEffect(() => {
-    if (auth?.loggedIn) agentInfo().then(setAgent).catch(() => setAgent(null));
+    if (auth?.loggedIn)
+      agentInfo()
+        .then(setAgent)
+        .catch(() => setAgent(null));
   }, [auth?.loggedIn]);
 
   return (
@@ -127,7 +151,13 @@ function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus | null
   return (
     <Section title="Account" description="Signing in registers this machine, so labs you launch from the website run here.">
       {auth === null ? (
-        <Row title={<span className="flex items-center gap-2 text-muted-foreground"><Spinner className="size-3.5" /> Checking…</span>} />
+        <Row
+          title={
+            <span className="flex items-center gap-2 text-muted-foreground">
+              <Spinner className="size-3.5" /> Checking…
+            </span>
+          }
+        />
       ) : auth.loggedIn ? (
         <>
           <div className="flex items-center gap-3.5 px-5 py-4">
@@ -146,7 +176,9 @@ function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus | null
             title={
               <span className="flex items-center gap-2">
                 This machine
-                <Badge variant="success" dot>Online</Badge>
+                <Badge variant="success" dot>
+                  Online
+                </Badge>
               </span>
             }
             description={
@@ -177,7 +209,13 @@ function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus | null
           description={error ? <span className="text-destructive">{error}</span> : "Sign in with your Cyber account to sync labs and run them from any device."}
           control={
             <Button variant="learn" size="sm" onClick={login} disabled={busy}>
-              {busy ? (<><Spinner className="size-3.5" /> Waiting for the browser…</>) : "Sign in"}
+              {busy ? (
+                <>
+                  <Spinner className="size-3.5" /> Waiting for the browser…
+                </>
+              ) : (
+                "Sign in"
+              )}
             </Button>
           }
         />
@@ -235,12 +273,7 @@ function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
               }
             />
           ))}
-          <OptionRow
-            selected={customOpen}
-            onSelect={() => setCustomOpen(true)}
-            title="Custom image"
-            subtitle="Any Docker image or registry tag."
-          >
+          <OptionRow selected={customOpen} onSelect={() => setCustomOpen(true)} title="Custom image" subtitle="Any Docker image or registry tag.">
             {customOpen && (
               <form
                 className="mt-2.5 flex items-center gap-2"
@@ -286,7 +319,19 @@ function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
   );
 }
 
-function OptionRow({ selected, onSelect, title, subtitle, children }: { selected: boolean; onSelect: () => void; title: ReactNode; subtitle: ReactNode; children?: ReactNode }) {
+function OptionRow({
+  selected,
+  onSelect,
+  title,
+  subtitle,
+  children,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  title: ReactNode;
+  subtitle: ReactNode;
+  children?: ReactNode;
+}) {
   return (
     <div
       role="radio"
@@ -325,9 +370,7 @@ function OptionRow({ selected, onSelect, title, subtitle, children }: { selected
 function HypervisorRow({ report, onSaved, onNavigate }: { report: SystemReport | null; onSaved: () => void; onNavigate: (tab: "machine") => void }) {
   const [provider, setProvider] = useState<Provider | null>(() => getVmProvider());
   // Local hypervisors VM labs can start on right now (hypervisor + Vagrant plugin ready).
-  const ready: ProviderStatus[] | null = report
-    ? report.vmProviders.filter((p) => !p.remote && p.available && p.hypervisor !== false)
-    : null;
+  const ready: ProviderStatus[] | null = report ? report.vmProviders.filter((p) => !p.remote && p.available && p.hypervisor !== false) : null;
   // A saved choice that's no longer installed falls back to automatic.
   const effective = ready?.some((h) => h.provider === provider) ? provider : null;
 
@@ -344,7 +387,16 @@ function HypervisorRow({ report, onSaved, onNavigate }: { report: SystemReport |
   );
 
   if (ready === null) {
-    return <Row title="Hypervisor for VM labs" description={<span className="flex items-center gap-2"><Spinner className="size-3" /> Checking hypervisors…</span>} />;
+    return (
+      <Row
+        title="Hypervisor for VM labs"
+        description={
+          <span className="flex items-center gap-2">
+            <Spinner className="size-3" /> Checking hypervisors…
+          </span>
+        }
+      />
+    );
   }
 
   if (ready.length === 0) {
@@ -367,7 +419,9 @@ function HypervisorRow({ report, onSaved, onNavigate }: { report: SystemReport |
       }
       control={
         ready.length === 1 ? (
-          <Badge variant="success" dot>{providerLabel(ready[0])}</Badge>
+          <Badge variant="success" dot>
+            {providerLabel(ready[0])}
+          </Badge>
         ) : (
           <div role="radiogroup" aria-label="Hypervisor" className="inline-flex rounded-lg border border-border bg-background p-0.5">
             {options.map((p) => {
@@ -431,9 +485,20 @@ function AboutSection({ version, report, agent }: { version: string | null; repo
     const lines = [
       `Cyber CTF ${version ? `v${version}` : "(unknown version)"}`,
       report ? `OS: ${report.os} ${report.arch}` : null,
-      report ? `Docker: ${report.dockerRunning ? `running (${report.dockerEngine ?? "unknown engine"})` : report.docker.installed ? "installed, not running" : "not installed"}` : null,
-      report ? `Vagrant: ${report.vagrant.installed ? "installed" : "not installed"} · Terraform: ${report.terraform.installed ? "installed" : "not installed"}` : null,
-      report ? `Hypervisors ready: ${report.vmProviders.filter((p) => !p.remote && p.available).map((p) => p.provider).join(", ") || "none"}` : null,
+      report
+        ? `Docker: ${report.dockerRunning ? `running (${report.dockerEngine ?? "unknown engine"})` : report.docker.installed ? "installed, not running" : "not installed"}`
+        : null,
+      report
+        ? `Vagrant: ${report.vagrant.installed ? "installed" : "not installed"} · Terraform: ${report.terraform.installed ? "installed" : "not installed"}`
+        : null,
+      report
+        ? `Hypervisors ready: ${
+            report.vmProviders
+              .filter((p) => !p.remote && p.available)
+              .map((p) => p.provider)
+              .join(", ") || "none"
+          }`
+        : null,
       `Attack box: ${getAttackImage()}`,
       `VM provider: ${getVmProvider() ?? "automatic"}`,
       agent ? `Install ID: ${agent.installId}` : "Not signed in",
@@ -488,11 +553,23 @@ function AboutSection({ version, report, agent }: { version: string | null; repo
         control={
           upd.phase === "available" || upd.phase === "installing" ? (
             <Button variant="learn" size="sm" onClick={install} disabled={upd.phase === "installing"}>
-              {upd.phase === "installing" ? (<><Spinner className="size-3.5" /> Installing…</>) : "Install update"}
+              {upd.phase === "installing" ? (
+                <>
+                  <Spinner className="size-3.5" /> Installing…
+                </>
+              ) : (
+                "Install update"
+              )}
             </Button>
           ) : upd.phase === "installed" ? null : (
             <Button variant="outline" size="sm" onClick={checkUpdates} disabled={upd.phase === "checking"}>
-              {upd.phase === "checking" ? (<><Spinner className="size-3.5" /> Checking…</>) : "Check for updates"}
+              {upd.phase === "checking" ? (
+                <>
+                  <Spinner className="size-3.5" /> Checking…
+                </>
+              ) : (
+                "Check for updates"
+              )}
             </Button>
           )
         }
@@ -502,7 +579,15 @@ function AboutSection({ version, report, agent }: { version: string | null; repo
         description="Copies your version, OS and setup status, for a bug report or a support request."
         control={
           <Button variant="outline" size="sm" onClick={copyDiagnostics}>
-            {copied ? (<><Check className="size-3.5 text-emerald-500" /> Copied</>) : (<><Copy className="size-3.5" /> Copy</>)}
+            {copied ? (
+              <>
+                <Check className="size-3.5 text-emerald-500" /> Copied
+              </>
+            ) : (
+              <>
+                <Copy className="size-3.5" /> Copy
+              </>
+            )}
           </Button>
         }
       />

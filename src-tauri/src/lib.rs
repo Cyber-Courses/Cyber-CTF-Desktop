@@ -40,11 +40,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 use tauri::menu::{AboutMetadata, MenuBuilder, PredefinedMenuItem, SubmenuBuilder};
-                let about = AboutMetadata {
-                    name: Some("Cyber CTF".into()),
-                    version: Some(env!("CARGO_PKG_VERSION").into()),
-                    ..Default::default()
-                };
+                let about = AboutMetadata { name: Some("Cyber CTF".into()), version: Some(env!("CARGO_PKG_VERSION").into()), ..Default::default() };
                 let app_menu = SubmenuBuilder::new(handle, "Cyber CTF")
                     .item(&PredefinedMenuItem::about(handle, Some("About Cyber CTF"), Some(about))?)
                     .separator()
@@ -56,20 +52,8 @@ pub fn run() {
                     .separator()
                     .item(&PredefinedMenuItem::quit(handle, Some("Quit Cyber CTF"))?)
                     .build()?;
-                let edit_menu = SubmenuBuilder::new(handle, "Edit")
-                    .undo()
-                    .redo()
-                    .separator()
-                    .cut()
-                    .copy()
-                    .paste()
-                    .select_all()
-                    .build()?;
-                let window_menu = SubmenuBuilder::new(handle, "Window")
-                    .minimize()
-                    .separator()
-                    .close_window()
-                    .build()?;
+                let edit_menu = SubmenuBuilder::new(handle, "Edit").undo().redo().separator().cut().copy().paste().select_all().build()?;
+                let window_menu = SubmenuBuilder::new(handle, "Window").minimize().separator().close_window().build()?;
                 MenuBuilder::new(handle).items(&[&app_menu, &edit_menu, &window_menu]).build()
             }
             #[cfg(not(target_os = "macos"))]
@@ -85,11 +69,7 @@ pub fn run() {
                 let _ = app.deep_link().register_all();
             }
             if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
+                app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
             }
             // Bring your own compute: register this machine and run the player's labs on it.
             agent::spawn(app.handle().clone());

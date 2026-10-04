@@ -22,8 +22,15 @@ fn parse_status(out: &str) -> Vec<Machine> {
         .filter_map(|line| {
             let mut parts = line.splitn(4, ',');
             let (_ts, target, kind, data) = (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
-            (kind == "state" && !target.is_empty())
-                .then(|| Machine { name: target.to_string(), state: data.to_string(), image: String::new(), ip: String::new(), ports: Vec::new(), interfaces: Vec::new(), services: Vec::new() })
+            (kind == "state" && !target.is_empty()).then(|| Machine {
+                name: target.to_string(),
+                state: data.to_string(),
+                image: String::new(),
+                ip: String::new(),
+                ports: Vec::new(),
+                interfaces: Vec::new(),
+                services: Vec::new(),
+            })
         })
         .collect()
 }

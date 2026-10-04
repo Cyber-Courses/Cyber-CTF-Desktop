@@ -14,9 +14,7 @@ use crate::runtime::{Interface, LabStatus, Machine, Network, Port, Service};
 /// must never point a browser at one.
 fn is_datastore(e: &PsEntry) -> bool {
     let s = format!("{} {}", e.service, e.image).to_ascii_lowercase();
-    ["mysql", "mariadb", "postgres", "redis", "mongo", "memcached", "rabbitmq", "elastic", "mssql", "oracle"]
-        .iter()
-        .any(|k| s.contains(k))
+    ["mysql", "mariadb", "postgres", "redis", "mongo", "memcached", "rabbitmq", "elastic", "mssql", "oracle"].iter().any(|k| s.contains(k))
         || matches!(e.service.as_str(), "db" | "database")
 }
 
@@ -57,7 +55,8 @@ async fn inspect_containers(dir: &Path, id: &str, names: &[String]) -> HashMap<S
     if names.is_empty() {
         return HashMap::new();
     }
-    let mut args: Vec<&str> = vec!["inspect", "-f", "{{.Name}}\t{{range $k, $v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}\t{{json .Config.Labels}}"];
+    let mut args: Vec<&str> =
+        vec!["inspect", "-f", "{{.Name}}\t{{range $k, $v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}\t{{json .Config.Labels}}"];
     args.extend(names.iter().map(String::as_str));
     let out = match run("docker", &args, Some(dir)).await {
         Ok(out) => out,
@@ -164,19 +163,12 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     // whose web died is reported degraded, not fine. One-shot init jobs publish nothing, so
     // their normal exit is ignored. Config is only consulted while the lab is up.
     let serving = if running {
-        compose::output(dir, &project, &["config", "--format", "json"])
-            .await
-            .ok()
-            .map(|c| compose::serving_services_from_config(&c))
-            .unwrap_or_default()
+        compose::output(dir, &project, &["config", "--format", "json"]).await.ok().map(|c| compose::serving_services_from_config(&c)).unwrap_or_default()
     } else {
         Vec::new()
     };
-    let down: Vec<(String, String)> = entries
-        .iter()
-        .filter(|e| e.state != "running" && serving.iter().any(|s| s == &e.service))
-        .map(|e| (e.service.clone(), e.state.clone()))
-        .collect();
+    let down: Vec<(String, String)> =
+        entries.iter().filter(|e| e.state != "running" && serving.iter().any(|s| s == &e.service)).map(|e| (e.service.clone(), e.state.clone())).collect();
     let mut machines: Vec<Machine> = entries
         .into_iter()
         .filter(|e| e.state == "running")
@@ -192,7 +184,15 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
         .collect();
     for (service, state) in down {
         if !machines.iter().any(|m| m.name == service) {
-            machines.push(Machine { name: service, state, image: String::new(), ip: String::new(), ports: Vec::new(), interfaces: Vec::new(), services: Vec::new() });
+            machines.push(Machine {
+                name: service,
+                state,
+                image: String::new(),
+                ip: String::new(),
+                ports: Vec::new(),
+                interfaces: Vec::new(),
+                services: Vec::new(),
+            });
         }
     }
     Ok(LabStatus { running, machines, networks, url, host: None, expires_at: None })
@@ -207,8 +207,8 @@ pub async fn primary_url(dir: &Path, id: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{declared_services, first_published_url, parse_inspect, parse_networks, tcp_ports};
     use super::compose::parse_ps;
+    use super::{declared_services, first_published_url, parse_inspect, parse_networks, tcp_ports};
 
     #[test]
     fn finds_the_first_published_tcp_port() {

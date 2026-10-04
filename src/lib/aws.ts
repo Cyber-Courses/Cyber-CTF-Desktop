@@ -7,5 +7,4 @@ export const AWS_INSTANCE_PRICE: Record<string, number> = {
 };
 
 /** The approximate hourly price of an instance type, or null if unknown. */
-export const awsHourly = (instance?: string | null): number | null =>
-  instance ? (AWS_INSTANCE_PRICE[instance] ?? null) : null;
+export const awsHourly = (instance?: string | null): number | null => (instance ? (AWS_INSTANCE_PRICE[instance] ?? null) : null);

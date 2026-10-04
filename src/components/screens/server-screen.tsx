@@ -114,7 +114,9 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
   }, []);
 
   const loadCapacity = useCallback((id: string) => {
-    serverCapacity(id).then((c) => setCaps((m) => ({ ...m, [id]: c }))).catch(() => {});
+    serverCapacity(id)
+      .then((c) => setCaps((m) => ({ ...m, [id]: c })))
+      .catch(() => {});
   }, []);
 
   // Auto-test and probe capacity for every host as it loads, so the row is live without a
@@ -139,12 +141,16 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
   useEffect(reload, [reload]);
 
   useEffect(() => {
-    systemCheck().then(setReport).catch(() => {});
+    systemCheck()
+      .then(setReport)
+      .catch(() => {});
   }, []);
 
   // Running-labs-per-host, refreshed on a slow poll (labs start and stop from other screens).
   const loadRunning = useCallback(() => {
-    serverRunningLabs().then(setRunning).catch(() => {});
+    serverRunningLabs()
+      .then(setRunning)
+      .catch(() => {});
   }, []);
   useEffect(() => {
     loadRunning();
@@ -189,10 +195,27 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
         <span
           className={cn(
             "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium",
-            summaryTone === "ok" ? "border-emerald-500/30 text-emerald-500" : summaryTone === "fail" ? "border-rose-500/30 text-rose-500" : summaryTone === "muted" ? "border-border text-muted-foreground" : "border-amber-500/30 text-amber-500",
+            summaryTone === "ok"
+              ? "border-emerald-500/30 text-emerald-500"
+              : summaryTone === "fail"
+                ? "border-rose-500/30 text-rose-500"
+                : summaryTone === "muted"
+                  ? "border-border text-muted-foreground"
+                  : "border-amber-500/30 text-amber-500",
           )}
         >
-          <span className={cn("size-1.5 rounded-full", summaryTone === "ok" ? "bg-emerald-500" : summaryTone === "fail" ? "bg-rose-500" : summaryTone === "muted" ? "bg-muted-foreground/50" : "bg-amber-500")} />
+          <span
+            className={cn(
+              "size-1.5 rounded-full",
+              summaryTone === "ok"
+                ? "bg-emerald-500"
+                : summaryTone === "fail"
+                  ? "bg-rose-500"
+                  : summaryTone === "muted"
+                    ? "bg-muted-foreground/50"
+                    : "bg-amber-500",
+            )}
+          />
           {summaryText}
         </span>
         <span className="text-[12px] text-muted-foreground">Proxmox or ESXi, over your network</span>
@@ -212,7 +235,16 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
 
       {/* Hosts: the hero. */}
       <Panel>
-        <PanelHeader title="Hosts" action={hasHosts ? <span className="text-[11.5px] tabular-nums text-muted-foreground">{hosts!.length} host{hosts!.length > 1 ? "s" : ""}</span> : undefined} />
+        <PanelHeader
+          title="Hosts"
+          action={
+            hasHosts ? (
+              <span className="text-[11.5px] tabular-nums text-muted-foreground">
+                {hosts!.length} host{hosts!.length > 1 ? "s" : ""}
+              </span>
+            ) : undefined
+          }
+        />
         {hosts === null ? (
           <div className="space-y-2 p-3.5">
             <Skeleton className="h-4 w-2/3" />
@@ -252,8 +284,12 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
       {/* Only worth suggesting when this machine can't already run VM labs itself. */}
       {report && !canRunVmHere && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-border px-4 py-3">
-          <p className="min-w-0 flex-1 text-[12px] text-muted-foreground">No server? If this machine can handle it, install a local hypervisor and run VM labs here.</p>
-          <Button variant="ghost" size="sm" onClick={() => onNavigate("setup")}>Set up this machine</Button>
+          <p className="min-w-0 flex-1 text-[12px] text-muted-foreground">
+            No server? If this machine can handle it, install a local hypervisor and run VM labs here.
+          </p>
+          <Button variant="ghost" size="sm" onClick={() => onNavigate("setup")}>
+            Set up this machine
+          </Button>
         </div>
       )}
     </div>
@@ -267,8 +303,12 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
         <Server className="size-5" />
       </span>
       <p className="mt-4 text-[14px] font-medium">No server connected</p>
-      <p className="mx-auto mt-1 max-w-sm text-[12.5px] text-muted-foreground">Add your Proxmox or ESXi server to run heavier, multi-VM labs on it instead of this machine.</p>
-      <Button variant="learn" size="sm" className="mt-5" onClick={onAdd}><Plus className="size-3.5" /> Add host</Button>
+      <p className="mx-auto mt-1 max-w-sm text-[12.5px] text-muted-foreground">
+        Add your Proxmox or ESXi server to run heavier, multi-VM labs on it instead of this machine.
+      </p>
+      <Button variant="learn" size="sm" className="mt-5" onClick={onAdd}>
+        <Plus className="size-3.5" /> Add host
+      </Button>
     </div>
   );
 }
@@ -311,7 +351,9 @@ function HostRow({
   return (
     <div className="border-b border-border last:border-b-0">
       <div className="flex flex-wrap items-center gap-3 px-3.5 py-3">
-        <TypeIcon><Server className="size-4" /></TypeIcon>
+        <TypeIcon>
+          <Server className="size-4" />
+        </TypeIcon>
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] font-medium">
             {host.name}
@@ -336,8 +378,12 @@ function HostRow({
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
             {capacity && (
               <>
-                <span className="inline-flex items-center gap-1"><Cpu className="size-3" /> {capacity.cores} vCPU</span>
-                <span className="inline-flex items-center gap-1"><MemoryStick className="size-3" /> {fmtGb(capacity.memFree)} free of {fmtGb(capacity.memTotal)}</span>
+                <span className="inline-flex items-center gap-1">
+                  <Cpu className="size-3" /> {capacity.cores} vCPU
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <MemoryStick className="size-3" /> {fmtGb(capacity.memFree)} free of {fmtGb(capacity.memTotal)}
+                </span>
               </>
             )}
             {running > 0 && (
@@ -347,7 +393,8 @@ function HostRow({
             )}
             {lastVm && (
               <span className={cn("inline-flex items-center gap-1", lastVm.result === "ok" ? "text-emerald-500" : "text-rose-500")}>
-                {lastVm.result === "ok" ? <Check className="size-3" /> : <X className="size-3" />} VM test {lastVm.result === "ok" ? "passed" : "failed"} · {ago(lastVm.at, now)}
+                {lastVm.result === "ok" ? <Check className="size-3" /> : <X className="size-3" />} VM test {lastVm.result === "ok" ? "passed" : "failed"} ·{" "}
+                {ago(lastVm.at, now)}
               </span>
             )}
           </p>
@@ -513,7 +560,10 @@ function Menu({ items }: { items: MenuItem[] }) {
       {pos && (
         <>
           <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-40 cursor-default" onClick={() => setPos(null)} />
-          <div style={{ position: "fixed", top: pos.top, right: pos.right }} className="z-50 w-36 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg">
+          <div
+            style={{ position: "fixed", top: pos.top, right: pos.right }}
+            className="z-50 w-36 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg"
+          >
             {items.map((it) => (
               <button
                 key={it.label}
@@ -522,7 +572,10 @@ function Menu({ items }: { items: MenuItem[] }) {
                   setPos(null);
                   it.onClick();
                 }}
-                className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] transition-colors hover:bg-muted", it.danger ? "text-rose-500" : "text-foreground")}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] transition-colors hover:bg-muted",
+                  it.danger ? "text-rose-500" : "text-foreground",
+                )}
               >
                 <it.icon className="size-3.5" /> {it.label}
               </button>

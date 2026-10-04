@@ -103,7 +103,14 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Docker => vec![step("pkexec", &["sh", "-c", "curl -fsSL https://get.docker.com | sh"])],
             Dependency::Vagrant => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y vagrant"])],
             // Terraform via HashiCorp's official apt repo (best effort across Debian/Ubuntu).
-            Dependency::Terraform => vec![step("pkexec", &["sh", "-c", "wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg && echo \"deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main\" > /etc/apt/sources.list.d/hashicorp.list && apt-get update && apt-get install -y terraform"])],
+            Dependency::Terraform => vec![step(
+                "pkexec",
+                &[
+                    "sh",
+                    "-c",
+                    "wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg && echo \"deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main\" > /etc/apt/sources.list.d/hashicorp.list && apt-get update && apt-get install -y terraform",
+                ],
+            )],
             Dependency::Virtualbox => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y virtualbox"])],
             Dependency::Qemu => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y qemu-system qemu-utils"])],
             Dependency::Libvirt => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y libvirt-daemon-system virt-manager"])],
@@ -120,15 +127,12 @@ async fn run_step(step: &Step, on_line: &mut impl FnMut(String)) -> Result<()> {
     if let Some(note) = &step.note {
         on_line(note.clone());
     }
-    let mut child = Command::new(&step.program)
-        .args(&step.args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => Error::Invalid(format!("{} is not available on this machine.", step.program)),
-            _ => Error::Io(e),
+    let mut child =
+        Command::new(&step.program).args(&step.args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| {
+            match e.kind() {
+                std::io::ErrorKind::NotFound => Error::Invalid(format!("{} is not available on this machine.", step.program)),
+                _ => Error::Io(e),
+            }
         })?;
     let mut out = BufReader::new(child.stdout.take().expect("piped stdout")).lines();
     let mut err = BufReader::new(child.stderr.take().expect("piped stderr")).lines();

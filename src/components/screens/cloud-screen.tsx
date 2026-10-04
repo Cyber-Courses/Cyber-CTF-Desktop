@@ -55,8 +55,12 @@ export function CloudScreen() {
   }, []);
   useEffect(reload, [reload]);
   useEffect(() => {
-    systemCheck().then(setReport).catch(() => {});
-    provisioningImages().then(setProvImages).catch(() => {});
+    systemCheck()
+      .then(setReport)
+      .catch(() => {});
+    provisioningImages()
+      .then(setProvImages)
+      .catch(() => {});
   }, []);
   // The setup window saves accounts; refresh when it says so.
   useEffect(() => {
@@ -163,7 +167,8 @@ export function CloudScreen() {
 
       {over.length > 0 && (
         <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12.5px] text-rose-300">
-          {over.length === 1 ? `${over[0].name} is over its monthly budget` : `${over.length} accounts are over their monthly budget`} — new labs there are blocked until you raise the budget or next month.
+          {over.length === 1 ? `${over[0].name} is over its monthly budget` : `${over.length} accounts are over their monthly budget`} — new labs there are
+          blocked until you raise the budget or next month.
         </p>
       )}
 
@@ -194,10 +199,16 @@ export function CloudScreen() {
       <Panel>
         <PanelHeader
           title="Accounts"
-          action={hosts && hosts.length > 0 ? <span className="text-[11.5px] text-muted-foreground">Billed only while a lab runs; idle accounts cost nothing</span> : undefined}
+          action={
+            hosts && hosts.length > 0 ? (
+              <span className="text-[11.5px] text-muted-foreground">Billed only while a lab runs; idle accounts cost nothing</span>
+            ) : undefined
+          }
         />
         {hosts === null ? (
-          <div className="flex items-center gap-2 px-3.5 py-4 text-[12.5px] text-muted-foreground"><Spinner className="size-4" /> Loading…</div>
+          <div className="flex items-center gap-2 px-3.5 py-4 text-[12.5px] text-muted-foreground">
+            <Spinner className="size-4" /> Loading…
+          </div>
         ) : hosts.length === 0 ? (
           <FirstRun onSetup={() => openSetup()} />
         ) : (
@@ -218,7 +229,12 @@ export function CloudScreen() {
       <Panel>
         <button type="button" onClick={() => setEnvOpen(!envExpanded)} className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left">
           <span className="text-[13px] font-semibold tracking-tight">Environment</span>
-          <span className={cn("flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium", envReady ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500")}>
+          <span
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
+              envReady ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500",
+            )}
+          >
             <span className={cn("size-1.5 rounded-full", envReady ? "bg-emerald-500" : "bg-amber-500")} />
             {envReady ? "Ready" : "Setup needed"}
           </span>
@@ -226,10 +242,31 @@ export function CloudScreen() {
         </button>
         {envExpanded && (
           <div className="border-t border-border">
-            <CliRow name="AWS CLI" provider="aws" tool={report?.cloudClis.aws} busy={cliBusy === "awscli"} locked={busyOp} onInstall={() => installCli("awscli")} />
-            <ToolRow name="Terraform" note="runs locally; simpler state (Docker image is the fallback)" tool={report?.terraform} busy={cliBusy === "terraform"} locked={busyOp} onInstall={() => installCli("terraform")} />
+            <CliRow
+              name="AWS CLI"
+              provider="aws"
+              tool={report?.cloudClis.aws}
+              busy={cliBusy === "awscli"}
+              locked={busyOp}
+              onInstall={() => installCli("awscli")}
+            />
+            <ToolRow
+              name="Terraform"
+              note="runs locally; simpler state (Docker image is the fallback)"
+              tool={report?.terraform}
+              busy={cliBusy === "terraform"}
+              locked={busyOp}
+              onInstall={() => installCli("terraform")}
+            />
             {provImages?.map((img) => (
-              <ImageRow key={img.image} image={img} note="runs in Docker (best on Windows)" busy={pullBusy === img.image} locked={busyOp} onPull={() => pull(img.image)} />
+              <ImageRow
+                key={img.image}
+                image={img}
+                note="runs in Docker (best on Windows)"
+                busy={pullBusy === img.image}
+                locked={busyOp}
+                onPull={() => pull(img.image)}
+              />
             ))}
             <div className="border-t border-border px-3.5 py-2.5">
               <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">More providers · coming soon</p>
@@ -293,7 +330,21 @@ function FirstRun({ onSetup }: { onSetup: () => void }) {
   );
 }
 
-function AccountRow({ host, test, spent, onTest, onEdit, onRemove }: { host: ServerHost; test: ServerTest | "testing" | undefined; spent?: number | null; onTest: () => void; onEdit: () => void; onRemove: () => void }) {
+function AccountRow({
+  host,
+  test,
+  spent,
+  onTest,
+  onEdit,
+  onRemove,
+}: {
+  host: ServerHost;
+  test: ServerTest | "testing" | undefined;
+  spent?: number | null;
+  onTest: () => void;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
   const result = test && test !== "testing" ? test : null;
   const ok = result ? result.ok : null;
   const [confirming, setConfirming] = useState(false);
@@ -321,16 +372,24 @@ function AccountRow({ host, test, spent, onTest, onEdit, onRemove }: { host: Ser
           {confirming ? (
             <>
               <span className="mr-1 text-[11.5px] text-muted-foreground">Remove?</span>
-              <Button variant="destructive" size="sm" onClick={onRemove}>Remove</Button>
-              <IconButton label="Cancel" onClick={() => setConfirming(false)}><X className="size-3.5" /></IconButton>
+              <Button variant="destructive" size="sm" onClick={onRemove}>
+                Remove
+              </Button>
+              <IconButton label="Cancel" onClick={() => setConfirming(false)}>
+                <X className="size-3.5" />
+              </IconButton>
             </>
           ) : (
             <>
               <Button variant="outline" size="sm" onClick={onTest} disabled={test === "testing"}>
                 {test === "testing" ? <Spinner className="size-3.5" /> : <Zap className="size-3.5" />} Test
               </Button>
-              <IconButton label="Edit" onClick={onEdit}><Pencil className="size-3.5" /></IconButton>
-              <IconButton label="Remove" onClick={() => setConfirming(true)}><Trash2 className="size-3.5" /></IconButton>
+              <IconButton label="Edit" onClick={onEdit}>
+                <Pencil className="size-3.5" />
+              </IconButton>
+              <IconButton label="Remove" onClick={() => setConfirming(true)}>
+                <Trash2 className="size-3.5" />
+              </IconButton>
             </>
           )}
         </div>
@@ -353,7 +412,13 @@ function AccountRow({ host, test, spent, onTest, onEdit, onRemove }: { host: Ser
 
 function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" title={label} aria-label={label} onClick={onClick} className="grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className="grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+    >
       {children}
     </button>
   );
@@ -374,7 +439,21 @@ function Status({ tool }: { tool?: Tool }) {
   );
 }
 
-function CliRow({ name, provider, tool, busy, locked, onInstall }: { name: string; provider: CloudProvider; tool?: Tool; busy: boolean; locked: boolean; onInstall: () => void }) {
+function CliRow({
+  name,
+  provider,
+  tool,
+  busy,
+  locked,
+  onInstall,
+}: {
+  name: string;
+  provider: CloudProvider;
+  tool?: Tool;
+  busy: boolean;
+  locked: boolean;
+  onInstall: () => void;
+}) {
   const installed = !!tool?.installed;
   return (
     <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px]">
@@ -383,14 +462,30 @@ function CliRow({ name, provider, tool, busy, locked, onInstall }: { name: strin
       <span className="ml-auto flex items-center gap-3">
         <Status tool={tool} />
         {!installed && tool && (
-          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy || locked}>{busy ? "Installing…" : "Install"}</Button>
+          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy || locked}>
+            {busy ? "Installing…" : "Install"}
+          </Button>
         )}
       </span>
     </div>
   );
 }
 
-function ToolRow({ name, note, tool, busy, locked, onInstall }: { name: string; note: string; tool?: Tool; busy: boolean; locked: boolean; onInstall: () => void }) {
+function ToolRow({
+  name,
+  note,
+  tool,
+  busy,
+  locked,
+  onInstall,
+}: {
+  name: string;
+  note: string;
+  tool?: Tool;
+  busy: boolean;
+  locked: boolean;
+  onInstall: () => void;
+}) {
   const installed = !!tool?.installed;
   return (
     <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px]">
@@ -399,7 +494,9 @@ function ToolRow({ name, note, tool, busy, locked, onInstall }: { name: string; 
       <span className="ml-auto flex items-center gap-3">
         <Status tool={tool} />
         {!installed && tool && (
-          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy || locked}>{busy ? "Installing…" : "Install"}</Button>
+          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy || locked}>
+            {busy ? "Installing…" : "Install"}
+          </Button>
         )}
       </span>
     </div>
@@ -416,7 +513,11 @@ function ImageRow({ image, note, busy, locked, onPull }: { image: ProvisioningIm
           {image.present && <span className="size-1.5 rounded-full bg-emerald-500" />}
           {image.present ? "pulled" : "not pulled"}
         </span>
-        {!image.present && <Button variant="learn" size="sm" onClick={onPull} disabled={busy || locked}>{busy ? "Pulling…" : "Pull"}</Button>}
+        {!image.present && (
+          <Button variant="learn" size="sm" onClick={onPull} disabled={busy || locked}>
+            {busy ? "Pulling…" : "Pull"}
+          </Button>
+        )}
       </span>
     </div>
   );

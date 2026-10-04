@@ -21,11 +21,7 @@ export function Badge({
 }: HTMLAttributes<HTMLSpanElement> & { variant?: Variant; dot?: boolean }) {
   return (
     <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.7rem] font-medium whitespace-nowrap",
-        VARIANTS[variant],
-        className,
-      )}
+      className={cn("inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.7rem] font-medium whitespace-nowrap", VARIANTS[variant], className)}
       {...props}
     >
       {dot && <span className="size-1.5 rounded-full bg-current" />}

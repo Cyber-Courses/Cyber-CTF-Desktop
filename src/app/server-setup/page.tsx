@@ -17,7 +17,9 @@ function Setup() {
   const [report, setReport] = useState<SystemReport | null>(null);
 
   const check = () => {
-    systemCheck().then(setReport).catch(() => {});
+    systemCheck()
+      .then(setReport)
+      .catch(() => {});
   };
   useEffect(check, []);
   useEffect(() => {
@@ -30,9 +32,12 @@ function Setup() {
       .catch(() => setInitial({ ...empty }));
   }, [id, empty]);
 
-  const close = () => getCurrentWindow().close().catch(() => {});
+  const close = () =>
+    getCurrentWindow()
+      .close()
+      .catch(() => {});
 
-  const cloud = (id ? initial?.provider === "aws" : params.get("kind") === "cloud");
+  const cloud = id ? initial?.provider === "aws" : params.get("kind") === "cloud";
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -51,13 +56,7 @@ function Setup() {
               top never clips and the window scrolls (unlike justify-center on a flex child). */}
           <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-6 py-6">
             <div className="my-auto w-full">
-              <HostSetupPage
-                initial={initial}
-                report={report}
-                onRefresh={check}
-                onSaved={() => emit(SERVER_CHANGED).catch(() => {})}
-                onDone={close}
-              />
+              <HostSetupPage initial={initial} report={report} onRefresh={check} onSaved={() => emit(SERVER_CHANGED).catch(() => {})} onDone={close} />
             </div>
           </main>
         </div>

@@ -52,10 +52,15 @@ export function AppShell() {
   const [onboarded, setOnboarded] = useState(true);
   const [ready, setReady] = useState(false);
 
-  const check = () => systemCheck().then(setReport).catch(() => setReport(null));
+  const check = () =>
+    systemCheck()
+      .then(setReport)
+      .catch(() => setReport(null));
   useEffect(() => {
     check();
-    authStatus().then(setAuth).catch(() => setAuth({ loggedIn: false, name: null, email: null }));
+    authStatus()
+      .then(setAuth)
+      .catch(() => setAuth({ loggedIn: false, name: null, email: null }));
     try {
       // Reads a per-machine flag once on mount (localStorage isn't available during render).
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -130,7 +135,9 @@ export function AppShell() {
                 >
                   <n.icon className="size-4 shrink-0" />
                   <span className="flex-1 text-left">{n.label}</span>
-                  {n.soon && <span className="rounded border border-border px-1.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground/70">Soon</span>}
+                  {n.soon && (
+                    <span className="rounded border border-border px-1.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground/70">Soon</span>
+                  )}
                 </button>
               </div>
             );
@@ -138,7 +145,10 @@ export function AppShell() {
         </nav>
 
         <div className="space-y-2.5 border-t border-border px-3.5 py-3">
-          <div className="flex items-center gap-2 px-0.5 text-[11.5px] text-muted-foreground" title={auth?.loggedIn ? "Labs launched from the website run on this machine." : "Sign in so website launches run here."}>
+          <div
+            className="flex items-center gap-2 px-0.5 text-[11.5px] text-muted-foreground"
+            title={auth?.loggedIn ? "Labs launched from the website run on this machine." : "Sign in so website launches run here."}
+          >
             <span className={cn("size-1.5 rounded-full", auth?.loggedIn ? "bg-emerald-500" : "bg-muted-foreground/40")} />
             {auth?.loggedIn ? "Launcher online" : "Launcher offline"}
           </div>
@@ -198,6 +208,16 @@ function Screen({
   if (tab === "cloud") return <CloudScreen />;
   if (tab === "hosted") return <HostedScreen onNavigate={onNavigate} />;
   if (tab === "events")
-    return <ComingSoon icon="sparkles" title="Events" description="Join live CTF events where labs are hosted by Cyber CTF: nothing to run on your machine, each participant gets their own lab for the event's duration." />;
-  return report ? <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} report={report} openSlug={openLab} /> : <p className="text-sm text-muted-foreground">Loading…</p>;
+    return (
+      <ComingSoon
+        icon="sparkles"
+        title="Events"
+        description="Join live CTF events where labs are hosted by Cyber CTF: nothing to run on your machine, each participant gets their own lab for the event's duration."
+      />
+    );
+  return report ? (
+    <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} report={report} openSlug={openLab} />
+  ) : (
+    <p className="text-sm text-muted-foreground">Loading…</p>
+  );
 }

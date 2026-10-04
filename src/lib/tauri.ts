@@ -5,18 +5,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 
 export type Runtime = "DOCKER" | "VM";
 
-export type Provider =
-  | "virtualbox"
-  | "vmware_desktop"
-  | "hyperv"
-  | "parallels"
-  | "libvirt"
-  | "qemu"
-  | "utm"
-  | "vmware_esxi"
-  | "proxmox"
-  | "aws"
-  | "azure";
+export type Provider = "virtualbox" | "vmware_desktop" | "hyperv" | "parallels" | "libvirt" | "qemu" | "utm" | "vmware_esxi" | "proxmox" | "aws";
 
 export interface Tool {
   installed: boolean;
@@ -192,20 +181,13 @@ export const authLogin = () => invoke<AuthStatus>("auth_login");
 export const authLogout = () => invoke<void>("auth_logout");
 
 /** GraphQL against CyberBackend; the Rust side attaches the player's token. */
-export const apiQuery = <T>(query: string, variables?: Record<string, unknown>) =>
-  invoke<T>("api_query", { query, variables });
+export const apiQuery = <T>(query: string, variables?: Record<string, unknown>) => invoke<T>("api_query", { query, variables });
 
 /**
  * startLab + download at the pinned commit + run with the launch token. VM labs run on
  * this machine with `provider`, or on the server `host` (a host id) when given.
  */
-export function labLaunch(
-  labId: string,
-  provider: Provider | null,
-  host: string | null,
-  attackboxImage: string | null,
-  onLog: (line: string) => void,
-) {
+export function labLaunch(labId: string, provider: Provider | null, host: string | null, attackboxImage: string | null, onLog: (line: string) => void) {
   const logs = new Channel<string>();
   logs.onmessage = onLog;
   return invoke<void>("lab_launch", { labId, provider, host, attackboxImage, logs });
@@ -213,7 +195,7 @@ export function labLaunch(
 
 // --- Server (the player's own ESXi / Proxmox host) ---
 
-export type RemoteProvider = Extract<Provider, "vmware_esxi" | "proxmox" | "aws" | "azure">;
+export type RemoteProvider = Extract<Provider, "vmware_esxi" | "proxmox" | "aws">;
 
 export interface ServerHost {
   id: string;
@@ -302,8 +284,7 @@ export function serverSelftest(id: string, onEvent: (e: SelfTestEvent) => void) 
   return invoke<void>("server_selftest", { id, events });
 }
 /** Opens (or focuses) the setup window, for a new host or to edit `id`. */
-export const serverOpenSetup = (id: string | null, kind: "server" | "cloud" = "server") =>
-  invoke<void>("server_open_setup", { id, kind });
+export const serverOpenSetup = (id: string | null, kind: "server" | "cloud" = "server") => invoke<void>("server_open_setup", { id, kind });
 /** Emitted by the setup window after a save; the main window reloads its host list. */
 export const SERVER_CHANGED = "server:changed";
 

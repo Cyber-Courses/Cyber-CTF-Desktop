@@ -45,7 +45,17 @@ function Chips<T extends string | number>({ value, onChange, options }: { value:
   );
 }
 
-export function Labs({ loggedIn, hostArch, report, openSlug }: { loggedIn: boolean; hostArch: string; report?: SystemReport | null; openSlug?: string | null }) {
+export function Labs({
+  loggedIn,
+  hostArch,
+  report,
+  openSlug,
+}: {
+  loggedIn: boolean;
+  hostArch: string;
+  report?: SystemReport | null;
+  openSlug?: string | null;
+}) {
   const { labs, error, statuses, completed, refreshStatus } = useLabs(loggedIn);
   const { busy, activeLab, logs, launch, stop } = useLabActions(refreshStatus);
   const [detailSlug, setDetailSlug] = useState<string | null>(null);
@@ -92,9 +102,7 @@ export function Labs({ loggedIn, hostArch, report, openSlug }: { loggedIn: boole
   const running = filtered.filter(isRunning);
   const groups = useMemo(() => {
     const m = new Map<string, Lab[]>();
-    filtered
-      .filter((l) => !statuses[l.id]?.running)
-      .forEach((l) => m.set(groupOf(l), [...(m.get(groupOf(l)) ?? []), l]));
+    filtered.filter((l) => !statuses[l.id]?.running).forEach((l) => m.set(groupOf(l), [...(m.get(groupOf(l)) ?? []), l]));
     return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [filtered, statuses]);
 

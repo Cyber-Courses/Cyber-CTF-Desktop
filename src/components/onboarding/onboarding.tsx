@@ -5,7 +5,16 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Spinner } from "@/components/ui/spinner";
-import { MachineStepBody, SetupOutcome, canContinue, machineSteps, nextLabel, stepMeta, useMachineSetup, type MachineStep } from "@/components/machine/setup-steps";
+import {
+  MachineStepBody,
+  SetupOutcome,
+  canContinue,
+  machineSteps,
+  nextLabel,
+  stepMeta,
+  useMachineSetup,
+  type MachineStep,
+} from "@/components/machine/setup-steps";
 import { authLogin, authStatus, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
@@ -14,9 +23,7 @@ type OnboardingStep = "welcome" | "signin" | MachineStep | "done";
 function StepHeader({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
   return (
     <div className="text-center">
-      <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-border bg-surface">
-        {icon}
-      </div>
+      <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-border bg-surface">{icon}</div>
       <h1 className="mt-6 text-2xl font-semibold tracking-tight">{title}</h1>
       <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">{description}</p>
     </div>
@@ -41,7 +48,9 @@ function SummaryRow({ ok, label, value }: { ok: boolean; label: string; value: s
   return (
     <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-card p-3">
       <div className="flex items-center gap-2.5">
-        <span className={cn("flex size-6 items-center justify-center rounded-full", ok ? "bg-emerald-500/15 text-emerald-500" : "bg-muted text-muted-foreground")}>
+        <span
+          className={cn("flex size-6 items-center justify-center rounded-full", ok ? "bg-emerald-500/15 text-emerald-500" : "bg-muted text-muted-foreground")}
+        >
           <Icon name={ok ? "check" : "arrowRight"} className="size-3.5" />
         </span>
         <span className="text-sm text-foreground">{label}</span>
@@ -58,10 +67,14 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
   const [loggingIn, setLoggingIn] = useState(false);
 
   const refreshReport = () => {
-    systemCheck().then(setReport).catch(() => setReport(null));
+    systemCheck()
+      .then(setReport)
+      .catch(() => setReport(null));
   };
   useEffect(() => {
-    authStatus().then(setAuth).catch(() => setAuth(null));
+    authStatus()
+      .then(setAuth)
+      .catch(() => setAuth(null));
     refreshReport();
     // Poll so an install finished in a native installer is picked up without a re-check.
     const id = setInterval(refreshReport, 5000);
@@ -122,18 +135,40 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                 </p>
               </div>
               <div className="mt-8 space-y-2.5">
-                <Feature icon="container" title="Container & VM labs" description="Docker containers and full virtual machines, each lab on its own isolated network." />
-                <Feature icon="cloud" title="Run it where you want" description="On this machine, your own server (Proxmox, ESXi) or the cloud (AWS), which stops itself when you're done." />
-                <Feature icon="shield" title="Real targets" description="Exploit genuinely vulnerable systems from an attack box plugged into the lab network." />
-                <Feature icon="plug" title="Launch from anywhere" description="Start a lab from the website, even on your phone; it runs on the machine you pick." />
+                <Feature
+                  icon="container"
+                  title="Container & VM labs"
+                  description="Docker containers and full virtual machines, each lab on its own isolated network."
+                />
+                <Feature
+                  icon="cloud"
+                  title="Run it where you want"
+                  description="On this machine, your own server (Proxmox, ESXi) or the cloud (AWS), which stops itself when you're done."
+                />
+                <Feature
+                  icon="shield"
+                  title="Real targets"
+                  description="Exploit genuinely vulnerable systems from an attack box plugged into the lab network."
+                />
+                <Feature
+                  icon="plug"
+                  title="Launch from anywhere"
+                  description="Start a lab from the website, even on your phone; it runs on the machine you pick."
+                />
               </div>
-              <Button variant="learn" size="lg" className="mt-8 w-full" onClick={next}>Get started</Button>
+              <Button variant="learn" size="lg" className="mt-8 w-full" onClick={next}>
+                Get started
+              </Button>
             </div>
           )}
 
           {step === "signin" && (
             <div>
-              <StepHeader icon={<Icon name="user" className="size-6 text-foreground" />} title="Sign in" description="Connect your Cyber CTF account to register this machine and launch labs from any device." />
+              <StepHeader
+                icon={<Icon name="user" className="size-6 text-foreground" />}
+                title="Sign in"
+                description="Connect your Cyber CTF account to register this machine and launch labs from any device."
+              />
               <div className="mt-8">
                 {auth?.loggedIn ? (
                   <div className="flex items-center gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3.5">
@@ -148,15 +183,25 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                 ) : (
                   <>
                     <Button variant="learn" size="lg" className="w-full" onClick={login} disabled={loggingIn}>
-                      {loggingIn ? (<><Spinner className="size-4" /> Waiting for the browser…</>) : "Sign in"}
+                      {loggingIn ? (
+                        <>
+                          <Spinner className="size-4" /> Waiting for the browser…
+                        </>
+                      ) : (
+                        "Sign in"
+                      )}
                     </Button>
                     <p className="mt-2 text-center text-xs text-muted-foreground">Opens cyberauth.co in your browser. You can also do this later.</p>
                   </>
                 )}
               </div>
               <div className="mt-8 flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={back}>Back</Button>
-                <Button className="flex-1" onClick={next}>Continue</Button>
+                <Button variant="outline" className="flex-1" onClick={back}>
+                  Back
+                </Button>
+                <Button className="flex-1" onClick={next}>
+                  Continue
+                </Button>
               </div>
             </div>
           )}
@@ -168,32 +213,50 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
             </div>
           )}
 
-          {step !== "welcome" && step !== "signin" && step !== "done" && report !== null && (() => {
-            const meta = stepMeta(step, report);
-            return (
-              <div>
-                <StepHeader icon={<meta.icon className="size-6 text-foreground" />} title={meta.title} description={meta.description} />
-                <div className="mt-8">
-                  <MachineStepBody step={step} report={report} setup={setup} />
+          {step !== "welcome" &&
+            step !== "signin" &&
+            step !== "done" &&
+            report !== null &&
+            (() => {
+              const meta = stepMeta(step, report);
+              return (
+                <div>
+                  <StepHeader icon={<meta.icon className="size-6 text-foreground" />} title={meta.title} description={meta.description} />
+                  <div className="mt-8">
+                    <MachineStepBody step={step} report={report} setup={setup} />
+                  </div>
+                  <div className="mt-8 flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={back} disabled={setup.busy}>
+                      Back
+                    </Button>
+                    <Button className="flex-1" onClick={next} disabled={setup.busy || !canContinue(step, report, setup)}>
+                      {nextLabel(step, report)}
+                    </Button>
+                  </div>
                 </div>
-                <div className="mt-8 flex gap-2">
-                  <Button variant="outline" className="flex-1" onClick={back} disabled={setup.busy}>Back</Button>
-                  <Button className="flex-1" onClick={next} disabled={setup.busy || !canContinue(step, report, setup)}>{nextLabel(step, report)}</Button>
-                </div>
-              </div>
-            );
-          })()}
+              );
+            })()}
 
           {step === "done" && (
             <div>
-              <StepHeader icon={<Icon name="sparkles" className="size-6 text-foreground" />} title="You’re all set" description="You can change any of this later in Settings or This machine." />
+              <StepHeader
+                icon={<Icon name="sparkles" className="size-6 text-foreground" />}
+                title="You’re all set"
+                description="You can change any of this later in Settings or This machine."
+              />
               <div className="mt-8 space-y-2.5">
-                <SummaryRow ok={!!auth?.loggedIn} label="Account" value={auth?.loggedIn ? `Signed in${auth.name ? ` as ${auth.name}` : ""}` : "Not signed in"} />
+                <SummaryRow
+                  ok={!!auth?.loggedIn}
+                  label="Account"
+                  value={auth?.loggedIn ? `Signed in${auth.name ? ` as ${auth.name}` : ""}` : "Not signed in"}
+                />
               </div>
               <div className="mt-2.5">
                 <SetupOutcome report={report} setup={setup} />
               </div>
-              <Button variant="learn" size="lg" className="mt-8 w-full" onClick={onComplete}>Browse labs</Button>
+              <Button variant="learn" size="lg" className="mt-8 w-full" onClick={onComplete}>
+                Browse labs
+              </Button>
             </div>
           )}
         </div>

@@ -17,8 +17,19 @@ export const ATTACK_PRESETS: { image: string; label: string; note: string; large
   { image: "cyberctf/attack-box", label: "Cyber CTF", note: "Kali with its standard toolset, ready to use", large: true },
   { image: "kalilinux/kali-rolling", label: "Kali", note: "Official Kali base, add tools as needed" },
   { image: "parrotsec/security", label: "Parrot", note: "Parrot Security toolset" },
-  { image: "nwodtuhs/exegol:free", label: "Exegol Free", note: "Exegol Community: full toolkit, updated after Full; for learning and personal use", terms: "Non-commercial use" },
-  { image: "nwodtuhs/exegol:full", label: "Exegol Full", note: "The latest Exegol toolkit; needs an Exegol Pro, Team or Enterprise plan", large: true, terms: "Paid plan" },
+  {
+    image: "nwodtuhs/exegol:free",
+    label: "Exegol Free",
+    note: "Exegol Community: full toolkit, updated after Full; for learning and personal use",
+    terms: "Non-commercial use",
+  },
+  {
+    image: "nwodtuhs/exegol:full",
+    label: "Exegol Full",
+    note: "The latest Exegol toolkit; needs an Exegol Pro, Team or Enterprise plan",
+    large: true,
+    terms: "Paid plan",
+  },
 ];
 
 export function getAttackImage(): string {

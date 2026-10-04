@@ -10,8 +10,8 @@
 //! Progress goes to the UI as one event per step: `running`, then `ok` or `fail`.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -321,7 +321,9 @@ async fn pick_box(p: Provider, arm: bool) -> (&'static str, bool) {
             let mut parts = l.splitn(2, char::is_whitespace);
             let name = parts.next().unwrap_or("");
             let rest = parts.next().unwrap_or("");
-            name == *c && rest.contains(&format!("({},", p.id())) && (!rest.contains("(amd64)") && !rest.contains("(arm64)") || rest.contains(&format!("({arch})")))
+            name == *c
+                && rest.contains(&format!("({},", p.id()))
+                && (!rest.contains("(amd64)") && !rest.contains("(arm64)") || rest.contains(&format!("({arch})")))
         });
         if present {
             return (c, true);
@@ -331,7 +333,9 @@ async fn pick_box(p: Provider, arm: bool) -> (&'static str, bool) {
 }
 
 fn vagrantfile(p: Provider, bx: &str) -> String {
-    let mut v = format!("Vagrant.configure(\"2\") do |config|\n  config.vm.box = \"{bx}\"\n  config.vm.hostname = \"cyberctf-selftest\"\n  config.vm.boot_timeout = 600\n  config.vm.synced_folder \".\", \"/vagrant\", disabled: true\n");
+    let mut v = format!(
+        "Vagrant.configure(\"2\") do |config|\n  config.vm.box = \"{bx}\"\n  config.vm.hostname = \"cyberctf-selftest\"\n  config.vm.boot_timeout = 600\n  config.vm.synced_folder \".\", \"/vagrant\", disabled: true\n"
+    );
     if has_private_network(p) {
         v.push_str(&format!("  config.vm.network \"private_network\", ip: \"{VM_IP}\"\n"));
     }

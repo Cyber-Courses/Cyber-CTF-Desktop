@@ -30,11 +30,7 @@ const SIZES: Record<Size, string> = {
   icon: "size-9",
 };
 
-export function buttonVariants({
-  variant = "default",
-  size = "default",
-  className,
-}: { variant?: Variant; size?: Size; className?: string } = {}) {
+export function buttonVariants({ variant = "default", size = "default", className }: { variant?: Variant; size?: Size; className?: string } = {}) {
   return cn(BASE, VARIANTS[variant], SIZES[size], className);
 }
 

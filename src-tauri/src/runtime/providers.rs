@@ -150,11 +150,7 @@ async fn tool_present(program: &'static str, args: &[&str]) -> bool {
 }
 
 pub async fn detect(vagrant_installed: bool) -> Vec<ProviderStatus> {
-    let plugins = if vagrant_installed {
-        run("vagrant", &["plugin", "list"], None).await.map(|o| parse_plugins(&o)).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
+    let plugins = if vagrant_installed { run("vagrant", &["plugin", "list"], None).await.map(|o| parse_plugins(&o)).unwrap_or_default() } else { Vec::new() };
 
     let mut statuses = Vec::new();
     for provider in Provider::ALL {
@@ -191,15 +187,7 @@ pub async fn detect(vagrant_installed: bool) -> Vec<ProviderStatus> {
             None
         };
 
-        statuses.push(ProviderStatus {
-            provider,
-            remote: provider.is_remote(),
-            available: reason.is_none(),
-            hypervisor,
-            plugin,
-            plugin_installed,
-            reason,
-        });
+        statuses.push(ProviderStatus { provider, remote: provider.is_remote(), available: reason.is_none(), hypervisor, plugin, plugin_installed, reason });
     }
     statuses
 }

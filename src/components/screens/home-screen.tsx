@@ -57,7 +57,10 @@ export function HomeScreen({
 
   useEffect(() => {
     let alive = true;
-    const tick = () => machineMetrics().then((m) => alive && setMetrics(m)).catch(() => {});
+    const tick = () =>
+      machineMetrics()
+        .then((m) => alive && setMetrics(m))
+        .catch(() => {});
     tick();
     const t = setInterval(tick, 3000);
     return () => {
@@ -97,11 +100,17 @@ export function HomeScreen({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {!dockerReady ? (
-            <button onClick={() => machineOpenSetup().catch(() => {})} className="inline-flex items-center gap-1.5 rounded-lg border border-learn bg-learn px-3.5 py-2 text-[13px] font-medium text-[#140b2e] transition-colors hover:bg-learn/90">
+            <button
+              onClick={() => machineOpenSetup().catch(() => {})}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-learn bg-learn px-3.5 py-2 text-[13px] font-medium text-[#140b2e] transition-colors hover:bg-learn/90"
+            >
               <Play className="size-4" /> Set up this machine
             </button>
           ) : (
-            <button onClick={() => onNavigate("labs")} className="inline-flex items-center gap-1.5 rounded-lg border border-learn bg-learn px-3.5 py-2 text-[13px] font-medium text-[#140b2e] transition-colors hover:bg-learn/90">
+            <button
+              onClick={() => onNavigate("labs")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-learn bg-learn px-3.5 py-2 text-[13px] font-medium text-[#140b2e] transition-colors hover:bg-learn/90"
+            >
               Browse labs <ArrowRight className="size-4" />
             </button>
           )}
@@ -112,12 +121,24 @@ export function HomeScreen({
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
           <TriangleAlert className="size-4 shrink-0 text-rose-400" />
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-medium">{capacity.title} <span className="ml-1 font-mono text-[11px] text-muted-foreground">{capacity.totalGB.toFixed(1)} GB</span></p>
+            <p className="text-[13px] font-medium">
+              {capacity.title} <span className="ml-1 font-mono text-[11px] text-muted-foreground">{capacity.totalGB.toFixed(1)} GB</span>
+            </p>
             <p className="mt-0.5 text-[12px] text-muted-foreground">{capacity.detail}</p>
           </div>
           <div className="flex shrink-0 gap-2">
-            <button onClick={() => onNavigate("cloud")} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-ring/60"><Cloud className="size-3.5" /> Cloud</button>
-            <button onClick={() => onNavigate("server")} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-ring/60"><Server className="size-3.5" /> Server</button>
+            <button
+              onClick={() => onNavigate("cloud")}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-ring/60"
+            >
+              <Cloud className="size-3.5" /> Cloud
+            </button>
+            <button
+              onClick={() => onNavigate("server")}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[12px] text-foreground transition-colors hover:border-ring/60"
+            >
+              <Server className="size-3.5" /> Server
+            </button>
           </div>
         </div>
       )}
@@ -126,19 +147,38 @@ export function HomeScreen({
         {/* LEFT RAIL */}
         <div className="space-y-5">
           <div>
-            <RailLabel right={<button onClick={() => onNavigate("machine")} className="text-[11.5px] text-muted-foreground hover:text-foreground">Open</button>}>
+            <RailLabel
+              right={
+                <button onClick={() => onNavigate("machine")} className="text-[11.5px] text-muted-foreground hover:text-foreground">
+                  Open
+                </button>
+              }
+            >
               This machine
             </RailLabel>
             <Panel>
               <MetricRow icon={Cpu} label="CPU" pct={metrics ? metrics.cpu : null} detail={metrics ? `${Math.round(metrics.cpu)}%` : "…"} />
               <MetricRow icon={MemoryStick} label="Memory" pct={memPct} detail={metrics ? `${gb(metrics.memUsed)} / ${gb(metrics.memTotal)} GB` : "…"} />
-              <StatusRow name="Docker engine" value={report ? (report.dockerRunning ? "Running" : "Stopped") : "…"} tone={report?.dockerRunning ? "ok" : "warn"} />
+              <StatusRow
+                name="Docker engine"
+                value={report ? (report.dockerRunning ? "Running" : "Stopped") : "…"}
+                tone={report?.dockerRunning ? "ok" : "warn"}
+              />
               <StatusRow name="Containers" value={metrics ? `${metrics.containers}` : dockerReady ? "0" : "—"} tone="mut" />
             </Panel>
           </div>
 
           <div>
-            <RailLabel right={running.length > 0 ? <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-500"><span className="size-1.5 rounded-full bg-emerald-500" />{running.length}</span> : undefined}>
+            <RailLabel
+              right={
+                running.length > 0 ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-500">
+                    <span className="size-1.5 rounded-full bg-emerald-500" />
+                    {running.length}
+                  </span>
+                ) : undefined
+              }
+            >
               Running now
             </RailLabel>
             <Panel>
@@ -158,9 +198,18 @@ export function HomeScreen({
                       </button>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {url && (
-                          <button onClick={() => openUrl(url).catch(() => {})} className="rounded-md border border-learn bg-learn px-2 py-1 text-[11px] font-medium text-[#140b2e] hover:bg-learn/90">Open</button>
+                          <button
+                            onClick={() => openUrl(url).catch(() => {})}
+                            className="rounded-md border border-learn bg-learn px-2 py-1 text-[11px] font-medium text-[#140b2e] hover:bg-learn/90"
+                          >
+                            Open
+                          </button>
                         )}
-                        <button onClick={() => stop(lab)} disabled={busy === lab.id} className="rounded-md border border-border bg-card px-2 py-1 text-[11px] text-foreground hover:border-ring/60 disabled:opacity-40">
+                        <button
+                          onClick={() => stop(lab)}
+                          disabled={busy === lab.id}
+                          className="rounded-md border border-border bg-card px-2 py-1 text-[11px] text-foreground hover:border-ring/60 disabled:opacity-40"
+                        >
                           {busy === lab.id ? "…" : "Stop"}
                         </button>
                       </div>
@@ -192,7 +241,13 @@ export function HomeScreen({
                       disabled={busy === lab.id || !(auth?.loggedIn ?? false) || !lab.runtime}
                       className="inline-flex shrink-0 items-center gap-1 rounded-md border border-learn bg-learn px-2 py-1 text-[11px] font-medium text-[#140b2e] hover:bg-learn/90 disabled:opacity-40"
                     >
-                      {busy === lab.id ? "…" : <><Play className="size-3" /> Resume</>}
+                      {busy === lab.id ? (
+                        "…"
+                      ) : (
+                        <>
+                          <Play className="size-3" /> Resume
+                        </>
+                      )}
                     </button>
                   </div>
                 ))}
@@ -201,7 +256,13 @@ export function HomeScreen({
           )}
 
           <div>
-            <RailLabel right={<button onClick={() => onNavigate("labs")} className="inline-flex items-center gap-1 text-[11.5px] text-muted-foreground hover:text-foreground">All labs <ArrowRight className="size-3.5" /></button>}>
+            <RailLabel
+              right={
+                <button onClick={() => onNavigate("labs")} className="inline-flex items-center gap-1 text-[11.5px] text-muted-foreground hover:text-foreground">
+                  All labs <ArrowRight className="size-3.5" />
+                </button>
+              }
+            >
               Labs {labs && <span className="font-normal text-muted-foreground">{labs.length}</span>}
             </RailLabel>
             <Panel>

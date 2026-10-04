@@ -231,7 +231,9 @@ export function MachineScreen({
   const [workloads, setWorkloads] = useState<Workload[] | null>(null);
   const [stopping, setStopping] = useState<string | null>(null);
   const loadWorkloads = useCallback(() => {
-    machineWorkloads().then(setWorkloads).catch(() => setWorkloads([]));
+    machineWorkloads()
+      .then(setWorkloads)
+      .catch(() => setWorkloads([]));
   }, []);
   useEffect(() => {
     loadWorkloads();
@@ -305,9 +307,17 @@ export function MachineScreen({
   const memFree = m ? m.memTotal - m.memUsed : null;
   const lowFor = (kind: LabKind) => memFree !== null && memFree < WANT_FREE[kind];
   const freeHint = (kind: LabKind) =>
-    lowFor(kind) ? `${kind === "vm" ? "VM" : "Container"} labs want about ${fmtBytes(WANT_FREE[kind])} of free memory; ${fmtBytes(Math.max(0, memFree!))} free now.` : undefined;
+    lowFor(kind)
+      ? `${kind === "vm" ? "VM" : "Container"} labs want about ${fmtBytes(WANT_FREE[kind])} of free memory; ${fmtBytes(Math.max(0, memFree!))} free now.`
+      : undefined;
   const testLine = (t: LastTest | null) =>
-    !t ? <span>not tested yet</span> : t.result === "ok" ? <span>tested {ago(t.at, now)}</span> : <span className="text-rose-500">last test failed {ago(t.at, now)}</span>;
+    !t ? (
+      <span>not tested yet</span>
+    ) : t.result === "ok" ? (
+      <span>tested {ago(t.at, now)}</span>
+    ) : (
+      <span className="text-rose-500">last test failed {ago(t.at, now)}</span>
+    );
 
   const dockerReady = report.docker.installed && report.dockerRunning;
   const hypervisors = usableHypervisors(report);
@@ -335,7 +345,12 @@ export function MachineScreen({
     <div className="space-y-5">
       {/* Summary */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium", needsSetup ? "border-amber-500/30 text-amber-500" : "border-emerald-500/30 text-emerald-500")}>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium",
+            needsSetup ? "border-amber-500/30 text-amber-500" : "border-emerald-500/30 text-emerald-500",
+          )}
+        >
           <span className={cn("size-1.5 rounded-full", needsSetup ? "bg-amber-500" : "bg-emerald-500")} />
           {needsSetup ? `${needsSetup} lab ${needsSetup === 1 ? "type needs" : "types need"} setup` : "Ready for labs"}
         </span>
@@ -351,8 +366,20 @@ export function MachineScreen({
       {/* Live usage */}
       <Panel className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         <Stat icon={Cpu} label="CPU" value={m ? `${Math.round(m.cpu)}%` : null} sub={m ? `${m.cores} cores` : ""} history={hist.cpu} />
-        <Stat icon={MemoryStick} label="Memory" value={m ? `${Math.round(memPct)}%` : null} sub={m ? `${fmtBytes(m.memUsed)} / ${fmtBytes(m.memTotal)}` : ""} history={hist.mem} />
-        <Stat icon={HardDrive} label="Disk" value={m ? `${Math.round(diskPct)}%` : null} sub={m ? `${fmtBytes(m.diskTotal - m.diskUsed)} free` : ""} history={hist.disk} />
+        <Stat
+          icon={MemoryStick}
+          label="Memory"
+          value={m ? `${Math.round(memPct)}%` : null}
+          sub={m ? `${fmtBytes(m.memUsed)} / ${fmtBytes(m.memTotal)}` : ""}
+          history={hist.mem}
+        />
+        <Stat
+          icon={HardDrive}
+          label="Disk"
+          value={m ? `${Math.round(diskPct)}%` : null}
+          sub={m ? `${fmtBytes(m.diskTotal - m.diskUsed)} free` : ""}
+          history={hist.disk}
+        />
       </Panel>
 
       {/* What can run */}
@@ -360,7 +387,15 @@ export function MachineScreen({
         <PanelHeader title="Labs on this machine" />
         <LabTypeRow
           kind="docker"
-          icon={dockerReady && report.dockerEngine ? <EngineMark id={report.dockerEngine} /> : <TypeIcon><Container className="size-4" /></TypeIcon>}
+          icon={
+            dockerReady && report.dockerEngine ? (
+              <EngineMark id={report.dockerEngine} />
+            ) : (
+              <TypeIcon>
+                <Container className="size-4" />
+              </TypeIcon>
+            )
+          }
           title="Container labs"
           tone={dockerReady ? (last.docker?.result === "fail" ? "fail" : "ok") : "warn"}
           status={dockerReady ? (last.docker?.result === "fail" ? "Test failed" : "Ready") : report.docker.installed ? "Engine stopped" : "Needs setup"}
@@ -376,13 +411,25 @@ export function MachineScreen({
             )
           }
           hint={dockerReady ? freeHint("docker") : undefined}
-          actions={dockerReady ? testBtn("docker") : <Button variant="learn" size="sm" onClick={() => fix("docker")}>Fix</Button>}
+          actions={
+            dockerReady ? (
+              testBtn("docker")
+            ) : (
+              <Button variant="learn" size="sm" onClick={() => fix("docker")}>
+                Fix
+              </Button>
+            )
+          }
           testing={testing === "docker"}
           onTestDone={refreshLast}
         />
         <LabTypeRow
           kind="vm"
-          icon={<TypeIcon><Server className="size-4" /></TypeIcon>}
+          icon={
+            <TypeIcon>
+              <Server className="size-4" />
+            </TypeIcon>
+          }
           title="VM labs"
           tone={!vmApplicable ? "muted" : vmProvider ? (last.vm?.result === "fail" ? "fail" : "ok") : "warn"}
           status={!vmApplicable ? "Not on this machine" : vmProvider ? (last.vm?.result === "fail" ? "Test failed" : "Ready") : "Needs setup"}
@@ -403,14 +450,22 @@ export function MachineScreen({
           hint={vmProvider ? freeHint("vm") : undefined}
           actions={
             !vmApplicable ? (
-              <Button variant="outline" size="sm" onClick={() => onNavigate("server")}>Use a server</Button>
+              <Button variant="outline" size="sm" onClick={() => onNavigate("server")}>
+                Use a server
+              </Button>
             ) : vmProvider ? (
               <>
-                {lowFor("vm") && <Button variant="ghost" size="sm" onClick={() => onNavigate("server")}>Use a server</Button>}
+                {lowFor("vm") && (
+                  <Button variant="ghost" size="sm" onClick={() => onNavigate("server")}>
+                    Use a server
+                  </Button>
+                )}
                 {testBtn("vm")}
               </>
             ) : (
-              <Button variant="learn" size="sm" onClick={() => fix(hasHypervisor ? "vagrant" : "vm")}>Fix</Button>
+              <Button variant="learn" size="sm" onClick={() => fix(hasHypervisor ? "vagrant" : "vm")}>
+                Fix
+              </Button>
             )
           }
           testing={testing === "vm"}
@@ -421,7 +476,10 @@ export function MachineScreen({
       <div className="grid items-start gap-5 lg:grid-cols-2">
         {/* Running now */}
         <Panel>
-          <PanelHeader title="Running now" action={labMem > 0 ? <span className="text-[11.5px] tabular-nums text-muted-foreground">{fmtBytes(labMem)} in use</span> : undefined} />
+          <PanelHeader
+            title="Running now"
+            action={labMem > 0 ? <span className="text-[11.5px] tabular-nums text-muted-foreground">{fmtBytes(labMem)} in use</span> : undefined}
+          />
           {workloads === null ? (
             <ListSkeleton />
           ) : workloads.length === 0 ? (
@@ -436,13 +494,25 @@ export function MachineScreen({
                   : `${w.count} VM${w.count === 1 ? "" : "s"}${w.provider ? ` · ${PROVIDER_LABELS[w.provider] ?? w.provider}` : ""}`;
               return (
                 <div key={key} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
-                  {w.kind === "docker" ? <Container className="size-4 shrink-0 text-muted-foreground" /> : <Server className="size-4 shrink-0 text-muted-foreground" />}
+                  {w.kind === "docker" ? (
+                    <Container className="size-4 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <Server className="size-4 shrink-0 text-muted-foreground" />
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[12.5px] font-medium">{name}</p>
                     <p className="text-[11.5px] tabular-nums text-muted-foreground">{meta}</p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => stop(w)} disabled={stopping !== null}>
-                    {stopping === key ? <><Spinner className="size-3.5" /> Stopping…</> : <><Square className="size-3" /> Stop</>}
+                    {stopping === key ? (
+                      <>
+                        <Spinner className="size-3.5" /> Stopping…
+                      </>
+                    ) : (
+                      <>
+                        <Square className="size-3" /> Stop
+                      </>
+                    )}
                   </Button>
                 </div>
               );
@@ -456,7 +526,9 @@ export function MachineScreen({
             title="Downloads"
             action={
               storage && storeItems.length > 0 && !confirmClean ? (
-                <Button variant="outline" size="sm" onClick={() => setConfirmClean(true)} disabled={cleaning}><Trash2 className="size-3.5" /> Clean up</Button>
+                <Button variant="outline" size="sm" onClick={() => setConfirmClean(true)} disabled={cleaning}>
+                  <Trash2 className="size-3.5" /> Clean up
+                </Button>
               ) : undefined
             }
           />
@@ -469,11 +541,18 @@ export function MachineScreen({
                 disabled={storeItems.length === 0}
                 className="flex w-full items-center gap-3 border-b border-border px-3.5 py-2.5 text-left last:border-b-0 enabled:hover:bg-muted/40"
               >
-                <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", showStorage && "rotate-90", storeItems.length === 0 && "opacity-0")} />
+                <ChevronRight
+                  className={cn(
+                    "size-3.5 shrink-0 text-muted-foreground transition-transform",
+                    showStorage && "rotate-90",
+                    storeItems.length === 0 && "opacity-0",
+                  )}
+                />
                 <div className="min-w-0 flex-1 text-[12.5px]">
                   <p className="font-medium">{storeItems.length ? `${fmtBytes(storeTotal)} of lab downloads` : "No lab downloads yet"}</p>
                   <p className="text-[11.5px] text-muted-foreground">
-                    {storage.images.length} container image{storage.images.length === 1 ? "" : "s"} · {storage.boxes.length} VM image{storage.boxes.length === 1 ? "" : "s"}
+                    {storage.images.length} container image{storage.images.length === 1 ? "" : "s"} · {storage.boxes.length} VM image
+                    {storage.boxes.length === 1 ? "" : "s"}
                   </p>
                 </div>
               </button>
@@ -486,17 +565,29 @@ export function MachineScreen({
                 ))}
               {confirmClean && (
                 <div className="flex flex-wrap items-center gap-3 border-t border-border bg-muted/30 px-3.5 py-3">
-                  <p className="min-w-0 flex-1 text-[12px]">Remove {fmtBytes(storeTotal)}? Labs download what they need again on their next start. Anything in use stays.</p>
+                  <p className="min-w-0 flex-1 text-[12px]">
+                    Remove {fmtBytes(storeTotal)}? Labs download what they need again on their next start. Anything in use stays.
+                  </p>
                   <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => setConfirmClean(false)} disabled={cleaning}>Cancel</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmClean(false)} disabled={cleaning}>
+                      Cancel
+                    </Button>
                     <Button variant="destructive" size="sm" onClick={clean} disabled={cleaning}>
-                      {cleaning ? <><Spinner className="size-3.5" /> Removing…</> : "Remove"}
+                      {cleaning ? (
+                        <>
+                          <Spinner className="size-3.5" /> Removing…
+                        </>
+                      ) : (
+                        "Remove"
+                      )}
                     </Button>
                   </div>
                 </div>
               )}
               {freed !== null && !confirmClean && (
-                <p className="border-t border-border px-3.5 py-2 text-[12px] text-muted-foreground">{freed > 0 ? `Freed ${fmtBytes(freed)}.` : "Nothing could be removed (all in use)."}</p>
+                <p className="border-t border-border px-3.5 py-2 text-[12px] text-muted-foreground">
+                  {freed > 0 ? `Freed ${fmtBytes(freed)}.` : "Nothing could be removed (all in use)."}
+                </p>
               )}
             </>
           )}
@@ -509,7 +600,11 @@ export function MachineScreen({
           <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" /> Details
         </summary>
         <Panel className="mt-2.5">
-          <DetailRow name="Container engine" value={report.dockerEngine ? engineName(report.dockerEngine) : report.dockerRunning ? "running" : "not running"} bad={!report.dockerRunning} />
+          <DetailRow
+            name="Container engine"
+            value={report.dockerEngine ? engineName(report.dockerEngine) : report.dockerRunning ? "running" : "not running"}
+            bad={!report.dockerRunning}
+          />
           <DetailRow name="Docker CLI" value={ver(report.docker)} bad={!report.docker.installed} />
           <DetailRow name="Docker Compose" value={ver(report.dockerCompose)} bad={!report.dockerCompose.installed} />
           <DetailRow name="Vagrant" value={ver(report.vagrant)} bad={hasHypervisor && !report.vagrant.installed} />
@@ -517,7 +612,17 @@ export function MachineScreen({
             <DetailRow
               key={p.provider}
               name={providerLabel(p)}
-              value={p.hypervisor === true ? (p.plugin ? (p.pluginInstalled ? `installed · ${p.plugin}` : `plugin ${p.plugin} missing`) : "installed") : p.hypervisor === false ? "not installed" : "built in"}
+              value={
+                p.hypervisor === true
+                  ? p.plugin
+                    ? p.pluginInstalled
+                      ? `installed · ${p.plugin}`
+                      : `plugin ${p.plugin} missing`
+                    : "installed"
+                  : p.hypervisor === false
+                    ? "not installed"
+                    : "built in"
+              }
               bad={p.hypervisor === true && !p.pluginInstalled}
             />
           ))}

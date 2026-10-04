@@ -28,7 +28,9 @@ export function useRequestedLab(): string | null {
       const found = urls?.map(labSlugFrom).find((s): s is string => s !== null);
       if (found) setSlug(found);
     };
-    getCurrent().then(take).catch(() => {});
+    getCurrent()
+      .then(take)
+      .catch(() => {});
     onOpenUrl(take)
       .then((fn) => (unlisten = fn))
       .catch(() => {});

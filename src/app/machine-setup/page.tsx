@@ -15,7 +15,9 @@ export default function MachineSetupWindow() {
     return step ? { step, nonce: 0 } : null;
   });
   const check = () => {
-    systemCheck().then(setReport).catch(() => {});
+    systemCheck()
+      .then(setReport)
+      .catch(() => {});
   };
   // Poll so an install (incl. one the user finishes in a native installer) is detected as
   // done and the steps update, without a manual re-check.
@@ -30,7 +32,10 @@ export default function MachineSetupWindow() {
       off.then((f) => f()).catch(() => {});
     };
   }, []);
-  const close = () => getCurrentWindow().close().catch(() => {});
+  const close = () =>
+    getCurrentWindow()
+      .close()
+      .catch(() => {});
 
   return <MachineSetup report={report} onRefresh={check} onClose={close} startAt={startAt} />;
 }

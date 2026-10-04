@@ -12,6 +12,6 @@ mod compose;
 mod inspect;
 mod lifecycle;
 
-pub use check::{check, Check};
+pub use check::{Check, check};
 pub use inspect::{primary_url, short_network, status};
 pub use lifecycle::{start, stop};

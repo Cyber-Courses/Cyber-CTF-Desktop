@@ -116,18 +116,33 @@ export function SelfTest({
         </div>
         <span className="ml-auto shrink-0">
           {result === "running" ? (
-            <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground"><Spinner className="size-3.5" /> Testing… <span className="font-mono tabular-nums">{run ? elapsed(now - run.start) : ""}</span></span>
+            <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+              <Spinner className="size-3.5" /> Testing… <span className="font-mono tabular-nums">{run ? elapsed(now - run.start) : ""}</span>
+            </span>
           ) : result === "ok" ? (
             <span className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 text-[12px] text-emerald-500"><span className="size-1.5 rounded-full bg-emerald-500" /> Passed{run?.end ? <span className="font-mono tabular-nums text-muted-foreground">· {elapsed(run.end - run.start)}</span> : null}</span>
-              <Button variant="ghost" size="sm" onClick={runTest} aria-label="Run again"><RefreshCw className="size-3.5" /></Button>
+              <span className="flex items-center gap-1.5 text-[12px] text-emerald-500">
+                <span className="size-1.5 rounded-full bg-emerald-500" /> Passed
+                {run?.end ? <span className="font-mono tabular-nums text-muted-foreground">· {elapsed(run.end - run.start)}</span> : null}
+              </span>
+              <Button variant="ghost" size="sm" onClick={runTest} aria-label="Run again">
+                <RefreshCw className="size-3.5" />
+              </Button>
             </span>
           ) : (
             <span className="flex items-center gap-2">
-            {result === "fail" && run?.end && <span className="font-mono text-[12px] tabular-nums text-muted-foreground">{elapsed(run.end - run.start)}</span>}
-            <Button variant={result === "fail" ? "outline" : "learn"} size="sm" onClick={runTest}>
-              {result === "fail" ? <><RefreshCw className="size-3.5" /> Retry</> : "Run test"}
-            </Button>
+              {result === "fail" && run?.end && (
+                <span className="font-mono text-[12px] tabular-nums text-muted-foreground">{elapsed(run.end - run.start)}</span>
+              )}
+              <Button variant={result === "fail" ? "outline" : "learn"} size="sm" onClick={runTest}>
+                {result === "fail" ? (
+                  <>
+                    <RefreshCw className="size-3.5" /> Retry
+                  </>
+                ) : (
+                  "Run test"
+                )}
+              </Button>
             </span>
           )}
         </span>
@@ -140,20 +155,27 @@ export function SelfTest({
             return (
               <li key={step} className="flex items-start gap-2.5 text-[12.5px]">
                 <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
-                  {state === "running" ? <Spinner className="size-3.5" />
-                    : state === "ok" ? <Check className="size-3.5 text-emerald-500" />
-                    : state === "fail" ? <X className="size-3.5 text-rose-500" />
-                    : <Circle className="size-2 text-muted-foreground/40" />}
+                  {state === "running" ? (
+                    <Spinner className="size-3.5" />
+                  ) : state === "ok" ? (
+                    <Check className="size-3.5 text-emerald-500" />
+                  ) : state === "fail" ? (
+                    <X className="size-3.5 text-rose-500" />
+                  ) : (
+                    <Circle className="size-2 text-muted-foreground/40" />
+                  )}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className={cn(state === "pending" || state === "skip" ? "text-muted-foreground" : "text-foreground")}>{label}</span>
                   {e?.detail && (
-                    <span className={cn("block break-words font-mono text-[11px]", state === "fail" ? "text-rose-400" : "text-muted-foreground")}>{e.detail}</span>
+                    <span className={cn("block break-words font-mono text-[11px]", state === "fail" ? "text-rose-400" : "text-muted-foreground")}>
+                      {e.detail}
+                    </span>
                   )}
                 </span>
                 {times[step] && state !== "skip" && (
                   <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
-                    {elapsed((times[step].end ?? (result === "running" ? now : run?.end ?? now)) - times[step].start)}
+                    {elapsed((times[step].end ?? (result === "running" ? now : (run?.end ?? now))) - times[step].start)}
                   </span>
                 )}
               </li>

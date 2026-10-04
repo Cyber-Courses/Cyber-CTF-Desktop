@@ -128,16 +128,9 @@ fn clear_session() {
 /// over TLS, so its signature is not re-verified here; it is never used for
 /// authorization (the API verifies the access token itself).
 fn id_token_profile(id_token: &str) -> (Option<String>, Option<String>) {
-    let claims = id_token
-        .split('.')
-        .nth(1)
-        .and_then(|p| URL_SAFE_NO_PAD.decode(p).ok())
-        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+    let claims = id_token.split('.').nth(1).and_then(|p| URL_SAFE_NO_PAD.decode(p).ok()).and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
     match claims {
-        Some(c) => (
-            c.get("name").and_then(|v| v.as_str()).map(str::to_string),
-            c.get("email").and_then(|v| v.as_str()).map(str::to_string),
-        ),
+        Some(c) => (c.get("name").and_then(|v| v.as_str()).map(str::to_string), c.get("email").and_then(|v| v.as_str()).map(str::to_string)),
         None => (None, None),
     }
 }
@@ -179,14 +172,9 @@ pub async fn access_token() -> Result<String> {
     }
     let refresh = session.refresh_token.clone().ok_or_else(|| Error::Invalid("session expired, log in again".into()))?;
     let (client_id, api) = (config::client_id(), config::api_url());
-    let tokens = token_request(&[
-        ("grant_type", "refresh_token"),
-        ("refresh_token", &refresh),
-        ("client_id", &client_id),
-        ("resource", &api),
-    ])
-    .await
-    .inspect_err(|_| clear_session())?;
+    let tokens = token_request(&[("grant_type", "refresh_token"), ("refresh_token", &refresh), ("client_id", &client_id), ("resource", &api)])
+        .await
+        .inspect_err(|_| clear_session())?;
     let renewed = session_from(tokens, Some(&session));
     save_session(&renewed)?;
     Ok(renewed.access_token)
@@ -226,7 +214,10 @@ async fn receive_callback(listener: TcpListener) -> Result<(String, String)> {
             "<!doctype html><meta charset=utf-8><title>Cyber CTF</title><body style=\"font-family:system-ui;background:#0a0a0a;color:#e5e5e5;display:grid;place-items:center;height:100vh\"><p>{body}</p>"
         );
         let _ = stream
-            .write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{page}", page.len()).as_bytes())
+            .write_all(
+                format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{page}", page.len())
+                    .as_bytes(),
+            )
             .await;
         if let Some(error) = param("error") {
             return Err(Error::Invalid(format!("login failed: {error}")));
@@ -246,8 +237,7 @@ pub async fn auth_login(app: AppHandle) -> Result<AuthStatus> {
     let state = random_b64(16);
     let (client_id, api) = (config::client_id(), config::api_url());
 
-    let mut authorize = url::Url::parse(&format!("{}/oauth2/authorize", config::auth_base()))
-        .map_err(|e| Error::Invalid(e.to_string()))?;
+    let mut authorize = url::Url::parse(&format!("{}/oauth2/authorize", config::auth_base())).map_err(|e| Error::Invalid(e.to_string()))?;
     authorize
         .query_pairs_mut()
         .append_pair("response_type", "code")
@@ -258,13 +248,10 @@ pub async fn auth_login(app: AppHandle) -> Result<AuthStatus> {
         .append_pair("code_challenge", &code_challenge(&verifier))
         .append_pair("code_challenge_method", "S256")
         .append_pair("resource", &api);
-    app.opener()
-        .open_url(authorize.as_str(), None::<&str>)
-        .map_err(|e| Error::Invalid(format!("could not open the browser: {e}")))?;
+    app.opener().open_url(authorize.as_str(), None::<&str>).map_err(|e| Error::Invalid(format!("could not open the browser: {e}")))?;
 
-    let (code, returned_state) = tokio::time::timeout(LOGIN_TIMEOUT, receive_callback(listener))
-        .await
-        .map_err(|_| Error::Invalid("login timed out".into()))??;
+    let (code, returned_state) =
+        tokio::time::timeout(LOGIN_TIMEOUT, receive_callback(listener)).await.map_err(|_| Error::Invalid("login timed out".into()))??;
     if returned_state != state {
         return Err(Error::Invalid("login state mismatch".into()));
     }
@@ -304,10 +291,7 @@ mod tests {
     fn pkce_challenge_is_base64url_sha256_of_the_verifier() {
         // Cross-checked with:
         // printf '%s' <verifier> | openssl dgst -sha256 -binary | base64 | tr '+/' '-_' | tr -d '='
-        assert_eq!(
-            code_challenge("dBjftJeZ4CVP-mJ0kKTiKjKNRKG8W9lLr1J-HQ8YP4U"),
-            "ryJ-YCh3KzrVMsHxmF-ZbP5xcAvmtebmf63k9UP0L3k"
-        );
+        assert_eq!(code_challenge("dBjftJeZ4CVP-mJ0kKTiKjKNRKG8W9lLr1J-HQ8YP4U"), "ryJ-YCh3KzrVMsHxmF-ZbP5xcAvmtebmf63k9UP0L3k");
     }
 
     #[test]

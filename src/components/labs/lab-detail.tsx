@@ -2,7 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { AlertTriangle, ArrowLeft, Container, Crosshair, ExternalLink, Play, RotateCcw, Server, ShieldAlert, ShieldCheck, Square, Terminal } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Container,
+  Crosshair,
+  ExternalLink,
+  Play,
+  RotateCcw,
+  Server,
+  ShieldAlert,
+  ShieldCheck,
+  Square,
+  Terminal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
@@ -11,7 +24,20 @@ import { Markdown } from "@/components/labs/markdown";
 import { NetworkDiagram } from "@/components/labs/network-diagram";
 import { DeploySteps, duration } from "@/components/labs/deploy-steps";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/lib/use-labs";
-import { apiQuery, labAttackShell, labCheck, exegolShell, exegolStart, exegolStatus, exegolStop, serverList, type ExegolStatus, type LabCheck, type ServerHost, type LabStatus } from "@/lib/tauri";
+import {
+  apiQuery,
+  labAttackShell,
+  labCheck,
+  exegolShell,
+  exegolStart,
+  exegolStatus,
+  exegolStop,
+  serverList,
+  type ExegolStatus,
+  type LabCheck,
+  type ServerHost,
+  type LabStatus,
+} from "@/lib/tauri";
 import { getAttackImage, getAutoAttackBox } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -47,10 +73,7 @@ export function LabDetail({
   const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
-    apiQuery<{ labs: { contentMd: string | null }[] }>(
-      `query($id: ID!) { labs(where: { id: { eq: $id } }) { contentMd } }`,
-      { id: lab.id },
-    )
+    apiQuery<{ labs: { contentMd: string | null }[] }>(`query($id: ID!) { labs(where: { id: { eq: $id } }) { contentMd } }`, { id: lab.id })
       .then((d) => setContent(d.labs[0]?.contentMd ?? null))
       .catch(() => setContent(null));
   }, [lab.id]);
@@ -96,7 +119,9 @@ export function LabDetail({
   // The attack box lives on the lab's Docker network, so it's only relevant while a
   // container lab is up. Poll its status so running/IP stay current.
   const refreshExegol = useCallback(() => {
-    exegolStatus(lab.id, getAttackImage()).then(setExegol).catch(() => setExegol(null));
+    exegolStatus(lab.id, getAttackImage())
+      .then(setExegol)
+      .catch(() => setExegol(null));
   }, [lab.id]);
   useEffect(() => {
     if (!running || !isDocker) return;
@@ -178,35 +203,71 @@ export function LabDetail({
             <h1 className="text-xl font-semibold tracking-tight">{lab.title}</h1>
             {running ? (
               <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-emerald-500">
-                <span className="size-1.5 rounded-full bg-emerald-500" />Running on {status?.host ?? "this machine"}
+                <span className="size-1.5 rounded-full bg-emerald-500" />
+                Running on {status?.host ?? "this machine"}
               </span>
             ) : starting ? (
-              <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-muted-foreground"><Spinner className="size-3" /> Starting</span>
+              <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-muted-foreground">
+                <Spinner className="size-3" /> Starting
+              </span>
             ) : null}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-[0.75rem] text-muted-foreground">
             {lab.difficulty > 0 && (
-              <span className="inline-flex items-center gap-1.5"><span className={cn("size-1.5 rounded-full", DIFFICULTY_DOT[lab.difficulty])} />{DIFFICULTY_LABEL[lab.difficulty]}</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className={cn("size-1.5 rounded-full", DIFFICULTY_DOT[lab.difficulty])} />
+                {DIFFICULTY_LABEL[lab.difficulty]}
+              </span>
             )}
             <span>· {lab.category}</span>
-            {rt && <span className="inline-flex items-center gap-1.5">· <RuntimeIcon className="size-3.5" />{rt.runtime === "VM" ? "VM" : "Container"}</span>}
+            {rt && (
+              <span className="inline-flex items-center gap-1.5">
+                · <RuntimeIcon className="size-3.5" />
+                {rt.runtime === "VM" ? "VM" : "Container"}
+              </span>
+            )}
             {rt && !native && (isDocker || runOn === null) && <span className="text-amber-500">· emulated (slower)</span>}
             {(lab.skills ?? []).map((sk) => (
-              <span key={sk.id} className="rounded border border-border px-1.5 py-px text-[0.6875rem]">{sk.name}</span>
+              <span key={sk.id} className="rounded border border-border px-1.5 py-px text-[0.6875rem]">
+                {sk.name}
+              </span>
             ))}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {running ? (
             <>
-              {url && <Button variant="learn" onClick={() => openUrl(url).catch(() => {})}><ExternalLink className="size-4" /> Open lab</Button>}
-              {attackReady && <Button variant={url ? "outline" : "learn"} onClick={openShell}><Terminal className="size-4" /> Open shell</Button>}
-              <Button variant="destructive" onClick={() => onStop()} disabled={busy}>{busy && !resetting ? "Stopping…" : <><Square className="size-3.5" /> Stop</>}</Button>
+              {url && (
+                <Button variant="learn" onClick={() => openUrl(url).catch(() => {})}>
+                  <ExternalLink className="size-4" /> Open lab
+                </Button>
+              )}
+              {attackReady && (
+                <Button variant={url ? "outline" : "learn"} onClick={openShell}>
+                  <Terminal className="size-4" /> Open shell
+                </Button>
+              )}
+              <Button variant="destructive" onClick={() => onStop()} disabled={busy}>
+                {busy && !resetting ? (
+                  "Stopping…"
+                ) : (
+                  <>
+                    <Square className="size-3.5" /> Stop
+                  </>
+                )}
+              </Button>
             </>
           ) : starting ? (
-            <Button variant="learn" disabled><Spinner className="size-4" /> Starting… <StartTimer /></Button>
+            <Button variant="learn" disabled>
+              <Spinner className="size-4" /> Starting… <StartTimer />
+            </Button>
           ) : (
-            <Button variant="learn" onClick={() => onStart(runOn)} disabled={!loggedIn || !rt} title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}>
+            <Button
+              variant="learn"
+              onClick={() => onStart(runOn)}
+              disabled={!loggedIn || !rt}
+              title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}
+            >
               <Play className="size-4" /> Start lab
             </Button>
           )}
@@ -222,7 +283,11 @@ export function LabDetail({
             <p className="text-foreground">
               {down.map((m) => m.name).join(", ")} {down.length > 1 ? "are" : "is"} down. The lab may not work.
             </p>
-            {check === "checking" && <p className="mt-0.5 flex items-center gap-1.5 text-muted-foreground"><Spinner className="size-3" /> Checking whether it&apos;s still solvable…</p>}
+            {check === "checking" && (
+              <p className="mt-0.5 flex items-center gap-1.5 text-muted-foreground">
+                <Spinner className="size-3" /> Checking whether it&apos;s still solvable…
+              </p>
+            )}
             {check && check !== "checking" && check.available && (
               <p className={cn("mt-0.5 flex items-center gap-1.5", check.ok ? "text-emerald-500" : "text-rose-400")}>
                 {check.ok ? <ShieldCheck className="size-3.5" /> : <ShieldAlert className="size-3.5" />}
@@ -231,7 +296,15 @@ export function LabDetail({
             )}
           </div>
           <Button variant="outline" size="sm" onClick={reset} disabled={busy || resetting}>
-            {resetting ? <><Spinner className="size-3.5" /> Resetting…</> : <><RotateCcw className="size-3.5" /> Reset lab</>}
+            {resetting ? (
+              <>
+                <Spinner className="size-3.5" /> Resetting…
+              </>
+            ) : (
+              <>
+                <RotateCcw className="size-3.5" /> Reset lab
+              </>
+            )}
           </Button>
         </div>
       )}
@@ -252,7 +325,12 @@ export function LabDetail({
           )}
 
           {running && status && status.machines.length > 0 ? (
-            <NetworkDiagram machines={status.machines} networks={status.networks} host={status.host} attacker={exegol ? { running: exegol.running, ip: exegol.ip, labNetwork: exegol.labNetwork } : null} />
+            <NetworkDiagram
+              machines={status.machines}
+              networks={status.networks}
+              host={status.host}
+              attacker={exegol ? { running: exegol.running, ip: exegol.ip, labNetwork: exegol.labNetwork } : null}
+            />
           ) : (
             <Panel>
               <PanelHeader title="Network" />
@@ -264,7 +342,9 @@ export function LabDetail({
             <PanelHeader title="Brief" />
             <div className="p-4">
               {content === undefined ? (
-                <div className="flex items-center gap-2 text-[0.78125rem] text-muted-foreground"><Spinner className="size-4" /> Loading the brief…</div>
+                <div className="flex items-center gap-2 text-[0.78125rem] text-muted-foreground">
+                  <Spinner className="size-4" /> Loading the brief…
+                </div>
               ) : content ? (
                 <Markdown content={content} className="space-y-3 text-[0.8125rem] leading-relaxed text-foreground" />
               ) : (
@@ -279,47 +359,81 @@ export function LabDetail({
             <Panel>
               <PanelHeader title="Run on" />
               <div className="p-3">
-                <RunOnPicker hosts={hosts} hostOk={hostOk} localNote={isDocker ? "Docker" : "Local hypervisor"} value={runOn} onChange={setRunOn} disabled={busy} />
+                <RunOnPicker
+                  hosts={hosts}
+                  hostOk={hostOk}
+                  localNote={isDocker ? "Docker" : "Local hypervisor"}
+                  value={runOn}
+                  onChange={setRunOn}
+                  disabled={busy}
+                />
               </div>
             </Panel>
           )}
 
           {isDocker && (
             <Panel>
-              <PanelHeader title="Attack box" action={<span className="inline-block max-w-[9.5rem] truncate align-bottom font-mono text-[0.6875rem] text-muted-foreground" title={getAttackImage()}>{getAttackImage()}</span>} />
+              <PanelHeader
+                title="Attack box"
+                action={
+                  <span className="inline-block max-w-[9.5rem] truncate align-bottom font-mono text-[0.6875rem] text-muted-foreground" title={getAttackImage()}>
+                    {getAttackImage()}
+                  </span>
+                }
+              />
               <div className="space-y-3 p-4">
                 <div className="flex items-center gap-2 text-[0.8125rem]">
                   <Crosshair className="size-4 text-learn" />
                   {remote && running ? (
                     <span>Running on {status?.host}</span>
                   ) : exegol?.running ? (
-                    <span className="flex items-center gap-1.5">Running <span className="font-mono text-[0.6875rem] text-muted-foreground">{exegol.ip}</span></span>
+                    <span className="flex items-center gap-1.5">
+                      Running <span className="font-mono text-[0.6875rem] text-muted-foreground">{exegol.ip}</span>
+                    </span>
                   ) : exegolBusy ? (
-                    <span className="flex items-center gap-1.5 text-muted-foreground"><Spinner className="size-3.5" /> Starting…</span>
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      <Spinner className="size-3.5" /> Starting…
+                    </span>
                   ) : (
                     <span className="text-muted-foreground">{running ? "Not started" : "Starts with the lab"}</span>
                   )}
                 </div>
                 <p className="text-[0.71875rem] text-muted-foreground">
-                  {remote ? "Runs next to the lab on its host; the shell connects over SSH." : "A toolbox machine on the lab network to attack the targets from."}
+                  {remote
+                    ? "Runs next to the lab on its host; the shell connects over SSH."
+                    : "A toolbox machine on the lab network to attack the targets from."}
                 </p>
                 {!remote && exegol && !exegol.imagePresent && !exegol.running && (
-                  <p className="text-[0.71875rem] text-amber-500">The first start downloads <span className="font-mono">{getAttackImage()}</span> (several GB).</p>
+                  <p className="text-[0.71875rem] text-amber-500">
+                    The first start downloads <span className="font-mono">{getAttackImage()}</span> (several GB).
+                  </p>
                 )}
                 {running && !remote && (
                   <div className="space-y-2">
                     {exegol?.running ? (
-                      <Button variant="outline" className="w-full" onClick={() => runExegol((l) => exegolStop(lab.id, l), "Removing the attack box…")} disabled={exegolBusy}>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => runExegol((l) => exegolStop(lab.id, l), "Removing the attack box…")}
+                        disabled={exegolBusy}
+                      >
                         <Square className="size-3.5" /> {exegolBusy ? "Working…" : "Stop attack box"}
                       </Button>
                     ) : (
-                      <Button variant="outline" className="w-full" onClick={() => runExegol((l) => exegolStart(lab.id, getAttackImage(), l), "Starting the attack box…")} disabled={exegolBusy}>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => runExegol((l) => exegolStart(lab.id, getAttackImage(), l), "Starting the attack box…")}
+                        disabled={exegolBusy}
+                      >
                         {exegolBusy ? <Spinner className="size-4" /> : <Play className="size-4" />} Start attack box
                       </Button>
                     )}
                   </div>
                 )}
-                {(exegolBusy || exegolLog.some((l) => l.startsWith("✗"))) && exegolLog.length > 0 && <LogConsole lines={exegolLog} running={exegolBusy} title="Attack box" />}
+                {(exegolBusy || exegolLog.some((l) => l.startsWith("✗"))) && exegolLog.length > 0 && (
+                  <LogConsole lines={exegolLog} running={exegolBusy} title="Attack box" />
+                )}
               </div>
             </Panel>
           )}
@@ -328,7 +442,9 @@ export function LabDetail({
             <Panel>
               <PanelHeader title="Details" />
               <div className="space-y-2 p-4 text-[0.75rem]">
-                <p className="text-muted-foreground">Runs on <span className="text-foreground">{status?.host ?? "this machine"}</span></p>
+                <p className="text-muted-foreground">
+                  Runs on <span className="text-foreground">{status?.host ?? "this machine"}</span>
+                </p>
                 {status?.expiresAt && <AutoStop at={status.expiresAt} />}
                 {url && <p className="break-all font-mono text-[0.71875rem] text-foreground">{url}</p>}
               </div>
@@ -420,7 +536,8 @@ function AutoStop({ at }: { at: number }) {
   const m = Math.floor((left % 3600) / 60);
   return (
     <p className="text-[11.5px] text-amber-500">
-      Auto-stops at {time} · in {h > 0 ? `${h}h ` : ""}{m}m
+      Auto-stops at {time} · in {h > 0 ? `${h}h ` : ""}
+      {m}m
     </p>
   );
 }

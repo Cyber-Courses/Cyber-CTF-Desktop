@@ -34,13 +34,7 @@ pub async fn run_env(program: &'static str, args: &[&str], cwd: Option<&Path>, e
 
 /// Like `run`, but adds `env` to the process environment and forwards every
 /// stdout/stderr line to `on_line` as it arrives.
-pub async fn stream(
-    program: &'static str,
-    args: &[&str],
-    cwd: Option<&Path>,
-    env: &[(String, String)],
-    mut on_line: impl FnMut(String),
-) -> Result<()> {
+pub async fn stream(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)], mut on_line: impl FnMut(String)) -> Result<()> {
     let mut cmd = Command::new(program);
     cmd.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd.envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
@@ -64,10 +58,7 @@ pub async fn stream(
 
     let status = child.wait().await?;
     if !status.success() {
-        return Err(Error::CommandFailed {
-            command: format!("{program} {}", args.join(" ")),
-            stderr: format!("exited with {status}"),
-        });
+        return Err(Error::CommandFailed { command: format!("{program} {}", args.join(" ")), stderr: format!("exited with {status}") });
     }
     Ok(())
 }

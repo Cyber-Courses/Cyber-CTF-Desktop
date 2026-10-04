@@ -5,10 +5,10 @@
 mod docker;
 mod exegol;
 mod model;
-pub mod server;
-pub mod server_selftest;
 pub mod providers;
 mod proxmox;
+pub mod server;
+pub mod server_selftest;
 mod ssh;
 mod terraform;
 mod vm;
@@ -32,20 +32,13 @@ pub enum Runtime {
 }
 
 fn validate_id(id: &str) -> Result<()> {
-    let ok = !id.is_empty()
-        && id.len() <= 64
-        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    let ok = !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     if ok { Ok(()) } else { Err(Error::Invalid(format!("invalid lab id `{id}`"))) }
 }
 
 fn lab_dir(app: &AppHandle, id: &str) -> Result<PathBuf> {
     validate_id(id)?;
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| Error::Invalid(e.to_string()))?
-        .join("labs")
-        .join(id);
+    let dir = app.path().app_data_dir().map_err(|e| Error::Invalid(e.to_string()))?.join("labs").join(id);
     if !dir.is_dir() {
         return Err(Error::Invalid(format!("lab `{id}` is not installed")));
     }

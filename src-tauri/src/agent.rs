@@ -76,10 +76,7 @@ async fn register(app: &AppHandle) -> Result<String> {
         true,
     )
     .await?;
-    data["registerLauncher"]["id"]
-        .as_str()
-        .map(String::from)
-        .ok_or_else(|| Error::Invalid("registerLauncher returned no id".into()))
+    data["registerLauncher"]["id"].as_str().map(String::from).ok_or_else(|| Error::Invalid("registerLauncher returned no id".into()))
 }
 
 /// Keep-alive, re-reporting the targets so hosts added since registering show on the website.
@@ -135,7 +132,9 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
     // Where to run it: the target picked on the website (one of this launcher's hosts or
     // cloud accounts); else VM labs go to the default server host and Docker labs run here.
     let host = match data["claimLaunch"]["target"].as_str() {
-        Some(target) => Some(server::host_name(app, target).map(|_| target.to_string()).ok_or_else(|| Error::Invalid("that host is no longer set up in the launcher".into()))?),
+        Some(target) => Some(
+            server::host_name(app, target).map(|_| target.to_string()).ok_or_else(|| Error::Invalid("that host is no longer set up in the launcher".into()))?,
+        ),
         None => (data["claimLaunch"]["runtime"] == "VM").then(|| server::default_host(app)).flatten(),
     };
     let image = host.as_ref().map(|_| DEFAULT_ATTACK_IMAGE);
@@ -157,12 +156,7 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
     )
     .await?;
     // A lab launched from the website just started here: let the player know on this machine.
-    let _ = app
-        .notification()
-        .builder()
-        .title("Lab running")
-        .body("A lab launched from the website is now running on this machine.")
-        .show();
+    let _ = app.notification().builder().title("Lab running").body("A lab launched from the website is now running on this machine.").show();
     Ok(())
 }
 

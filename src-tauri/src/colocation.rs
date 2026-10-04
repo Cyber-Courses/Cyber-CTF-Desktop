@@ -13,12 +13,7 @@ use tokio::net::TcpListener;
 use crate::error::{Error, Result};
 
 /// Site origins allowed to read the probe. Loopback origins (dev) are allowed too.
-const ALLOWED_ORIGINS: [&str; 4] = [
-    "https://www.cybercourses.com",
-    "https://cybercourses.com",
-    "https://www.cyberctf.org",
-    "https://cyberctf.org",
-];
+const ALLOWED_ORIGINS: [&str; 4] = ["https://www.cybercourses.com", "https://cybercourses.com", "https://www.cyberctf.org", "https://cyberctf.org"];
 
 fn origin_allowed(origin: &str) -> bool {
     ALLOWED_ORIGINS.contains(&origin)
@@ -44,11 +39,7 @@ fn build_response(req: &str, token: &str, nonce: &str) -> String {
     let origin = header(req, "origin").unwrap_or("");
 
     let reply = |status: &str, body: &str| -> String {
-        let cors = if origin_allowed(origin) && !origin.is_empty() {
-            format!("Access-Control-Allow-Origin: {origin}\r\n")
-        } else {
-            String::new()
-        };
+        let cors = if origin_allowed(origin) && !origin.is_empty() { format!("Access-Control-Allow-Origin: {origin}\r\n") } else { String::new() };
         format!(
             "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nCache-Control: no-store\r\n{cors}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()

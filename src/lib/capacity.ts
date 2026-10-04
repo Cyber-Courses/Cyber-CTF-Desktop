@@ -18,9 +18,13 @@ export interface Capacity {
  */
 export function assessRam(memTotalBytes: number): Capacity {
   const totalGB = memTotalBytes / 1e9;
-  if (totalGB >= 16)
-    return { level: "ok", totalGB, title: "Ready for labs", detail: "Plenty of RAM for container labs and most VM labs." };
+  if (totalGB >= 16) return { level: "ok", totalGB, title: "Ready for labs", detail: "Plenty of RAM for container labs and most VM labs." };
   if (totalGB >= 8)
     return { level: "tight", totalGB, title: "Enough for container labs", detail: "Heavy multi-VM labs or the full Exegol image may run slowly here." };
-  return { level: "low", totalGB, title: "Low on RAM for labs", detail: "Labs may struggle on this machine. For heavier labs, run them in the cloud or on a server." };
+  return {
+    level: "low",
+    totalGB,
+    title: "Low on RAM for labs",
+    detail: "Labs may struggle on this machine. For heavier labs, run them in the cloud or on a server.",
+  };
 }

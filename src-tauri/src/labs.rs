@@ -32,9 +32,9 @@ struct EnvVar {
 /// Only CyberCTF repositories at a full commit SHA are downloaded; the API
 /// enforces the same rule when labs are published.
 fn validate_source(repository: &str, commit: &str) -> Result<()> {
-    let repo_ok = repository
-        .strip_prefix("CyberCTF/")
-        .is_some_and(|name| !name.is_empty() && name.len() <= 100 && !name.contains("..") && name.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)));
+    let repo_ok = repository.strip_prefix("CyberCTF/").is_some_and(|name| {
+        !name.is_empty() && name.len() <= 100 && !name.contains("..") && name.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+    });
     let commit_ok = commit.len() == 40 && commit.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase());
     if repo_ok && commit_ok { Ok(()) } else { Err(Error::Invalid(format!("refusing to download {repository}@{commit}"))) }
 }
@@ -153,12 +153,9 @@ pub async fn lab_launch(
     let log = move |line: String| {
         let _ = logs.send(line);
     };
-    let data = api::graphql(
-        "mutation ($id: ID!) { startLab(labId: $id) { labId runtime repository commit env { name value } } }",
-        json!({ "id": lab_id }),
-        true,
-    )
-    .await?;
+    let data =
+        api::graphql("mutation ($id: ID!) { startLab(labId: $id) { labId runtime repository commit env { name value } } }", json!({ "id": lab_id }), true)
+            .await?;
     run(&app, data["startLab"].clone(), provider, host.as_deref(), attackbox_image.as_deref(), log).await?;
     Ok(())
 }

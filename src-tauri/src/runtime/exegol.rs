@@ -140,9 +140,8 @@ pub fn open_terminal(command: &str) -> Result<()> {
         // do script types the line into a new window; escape it for the AppleScript string.
         // The leading space keeps it out of shell history where HIST_IGNORE_SPACE is on.
         let line = applescript_string(&format!(" clear; DOCKER_CLI_HINTS=false exec {command}"));
-        let script = format!(
-            "tell application \"Terminal\"\nactivate\ndo script \"{line}\"\nset custom title of front window to \"Cyber CTF attack box\"\nend tell"
-        );
+        let script =
+            format!("tell application \"Terminal\"\nactivate\ndo script \"{line}\"\nset custom title of front window to \"Cyber CTF attack box\"\nend tell");
         std::process::Command::new("osascript").arg("-e").arg(script).spawn()?;
         Ok(())
     }
@@ -178,7 +177,10 @@ mod tests {
     #[test]
     fn main_lab_network_comes_first() {
         let nets = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert_eq!(main_first(nets(&["cyberctf-a_internal", "cyberctf-a_default", "cyberctf-a_dmz"])), nets(&["cyberctf-a_default", "cyberctf-a_dmz", "cyberctf-a_internal"]));
+        assert_eq!(
+            main_first(nets(&["cyberctf-a_internal", "cyberctf-a_default", "cyberctf-a_dmz"])),
+            nets(&["cyberctf-a_default", "cyberctf-a_dmz", "cyberctf-a_internal"])
+        );
         assert_eq!(main_first(nets(&["cyberctf-a_lan", "cyberctf-a_dmz"])), nets(&["cyberctf-a_dmz", "cyberctf-a_lan"]));
         assert!(main_first(Vec::new()).is_empty());
     }

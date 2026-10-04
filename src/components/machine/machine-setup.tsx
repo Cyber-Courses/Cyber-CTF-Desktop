@@ -38,7 +38,10 @@ export function MachineSetup({
   const back = () => setI(Math.max(at - 1, 0));
 
   const osName = report?.os === "windows" ? "Windows" : report?.os === "macos" ? "macOS" : "Linux";
-  const meta = key === "ready" ? { icon: Sparkles, title: "You’re set up", description: "You can run this guide again anytime from the Machine page." } : stepMeta(key, report);
+  const meta =
+    key === "ready"
+      ? { icon: Sparkles, title: "You’re set up", description: "You can run this guide again anytime from the Machine page." }
+      : stepMeta(key, report);
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -52,23 +55,25 @@ export function MachineSetup({
           <Spinner className="size-4" /> Checking this machine…
         </div>
       ) : (
-      /* Scrolls when a step is long; centered in the window when it's short. */
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-6 pt-2 pb-10">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Set up this machine</h1>
-            <p className="mt-1 text-[13px] text-muted-foreground">Get {osName} ready to run labs, one step at a time.</p>
-          </div>
+        /* Scrolls when a step is long; centered in the window when it's short. */
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-6 pt-2 pb-10">
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">Set up this machine</h1>
+              <p className="mt-1 text-[13px] text-muted-foreground">Get {osName} ready to run labs, one step at a time.</p>
+            </div>
 
-          <div className="mt-5 flex gap-1.5">
-            {steps.map((_, n) => (
-              <div key={n} className={cn("h-1 flex-1 rounded-full transition-colors", n <= at ? "bg-learn" : "bg-muted")} />
-            ))}
-          </div>
+            <div className="mt-5 flex gap-1.5">
+              {steps.map((_, n) => (
+                <div key={n} className={cn("h-1 flex-1 rounded-full transition-colors", n <= at ? "bg-learn" : "bg-muted")} />
+              ))}
+            </div>
 
-          <div key={key} className="mt-7 animate-rise-in">
+            <div key={key} className="mt-7 animate-rise-in">
               <>
-                <p className="text-[11.5px] font-medium tabular-nums text-muted-foreground">Step {at + 1} of {steps.length}</p>
+                <p className="text-[11.5px] font-medium tabular-nums text-muted-foreground">
+                  Step {at + 1} of {steps.length}
+                </p>
                 <div className="mt-2 flex items-start gap-3.5">
                   <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface">
                     <meta.icon className="size-5 text-foreground" />
@@ -82,17 +87,27 @@ export function MachineSetup({
                   {key === "ready" ? <SetupOutcome report={report} setup={setup} /> : <MachineStepBody step={key} report={report} setup={setup} />}
                 </div>
                 <div className="mt-6 flex items-center justify-between gap-2 border-t border-border pt-4">
-                  <div>{at > 0 && <Button variant="outline" onClick={back} disabled={setup.busy}><ArrowLeft className="size-4" /> Back</Button>}</div>
+                  <div>
+                    {at > 0 && (
+                      <Button variant="outline" onClick={back} disabled={setup.busy}>
+                        <ArrowLeft className="size-4" /> Back
+                      </Button>
+                    )}
+                  </div>
                   {key === "ready" ? (
-                    <Button variant="learn" onClick={onClose}><Play className="size-4" /> Done</Button>
+                    <Button variant="learn" onClick={onClose}>
+                      <Play className="size-4" /> Done
+                    </Button>
                   ) : (
-                    <Button variant="learn" onClick={next} disabled={setup.busy || !canContinue(key, report, setup)}>{nextLabel(key, report)}</Button>
+                    <Button variant="learn" onClick={next} disabled={setup.busy || !canContinue(key, report, setup)}>
+                      {nextLabel(key, report)}
+                    </Button>
                   )}
                 </div>
               </>
-          </div>
-        </main>
-      </div>
+            </div>
+          </main>
+        </div>
       )}
     </div>
   );

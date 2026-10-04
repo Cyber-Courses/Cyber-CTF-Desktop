@@ -21,9 +21,17 @@ function inline(text: string, k: string): ReactNode[] {
     if (m.index > last) out.push(text.slice(last, m.index));
     const t = m[0];
     if (t.startsWith("`")) {
-      out.push(<code key={`${k}-${i}`} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">{t.slice(1, -1)}</code>);
+      out.push(
+        <code key={`${k}-${i}`} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">
+          {t.slice(1, -1)}
+        </code>,
+      );
     } else if (t.startsWith("**")) {
-      out.push(<strong key={`${k}-${i}`} className="font-semibold text-foreground">{t.slice(2, -2)}</strong>);
+      out.push(
+        <strong key={`${k}-${i}`} className="font-semibold text-foreground">
+          {t.slice(2, -2)}
+        </strong>,
+      );
     } else if (t.startsWith("*")) {
       out.push(<em key={`${k}-${i}`}>{t.slice(1, -1)}</em>);
     } else {
@@ -76,9 +84,18 @@ export function Markdown({ content, className }: { content: string; className?: 
     const h = /^(#{1,3})\s+(.*)$/.exec(line);
     if (h) {
       const lvl = h[1].length;
-      const cls = lvl === 1 ? "mt-6 text-lg font-semibold tracking-tight first:mt-0" : lvl === 2 ? "mt-5 text-base font-semibold tracking-tight" : "mt-4 text-sm font-semibold";
+      const cls =
+        lvl === 1
+          ? "mt-6 text-lg font-semibold tracking-tight first:mt-0"
+          : lvl === 2
+            ? "mt-5 text-base font-semibold tracking-tight"
+            : "mt-4 text-sm font-semibold";
       const Tag = `h${lvl + 1}` as keyof JSX.IntrinsicElements;
-      blocks.push(<Tag key={key()} className={cls}>{inline(h[2], key())}</Tag>);
+      blocks.push(
+        <Tag key={key()} className={cls}>
+          {inline(h[2], key())}
+        </Tag>,
+      );
       i++;
       continue;
     }
@@ -90,7 +107,11 @@ export function Markdown({ content, className }: { content: string; className?: 
     if (line.startsWith(">")) {
       const buf: string[] = [];
       while (i < lines.length && lines[i].startsWith(">")) buf.push(lines[i++].replace(/^>\s?/, ""));
-      blocks.push(<blockquote key={key()} className="border-l-2 border-border pl-3 text-muted-foreground">{inline(buf.join(" "), key())}</blockquote>);
+      blocks.push(
+        <blockquote key={key()} className="border-l-2 border-border pl-3 text-muted-foreground">
+          {inline(buf.join(" "), key())}
+        </blockquote>,
+      );
       continue;
     }
     if (/^\s*[-*]\s+/.test(line)) {
@@ -98,7 +119,9 @@ export function Markdown({ content, className }: { content: string; className?: 
       while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*[-*]\s+/, ""));
       blocks.push(
         <ul key={key()} className="list-disc space-y-1 pl-5">
-          {items.map((it, j) => <li key={j}>{inline(it, `${key()}-${j}`)}</li>)}
+          {items.map((it, j) => (
+            <li key={j}>{inline(it, `${key()}-${j}`)}</li>
+          ))}
         </ul>,
       );
       continue;
@@ -108,7 +131,9 @@ export function Markdown({ content, className }: { content: string; className?: 
       while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+\.\s+/, ""));
       blocks.push(
         <ol key={key()} className="list-decimal space-y-1 pl-5">
-          {items.map((it, j) => <li key={j}>{inline(it, `${key()}-${j}`)}</li>)}
+          {items.map((it, j) => (
+            <li key={j}>{inline(it, `${key()}-${j}`)}</li>
+          ))}
         </ol>,
       );
       continue;
@@ -125,7 +150,11 @@ export function Markdown({ content, className }: { content: string; className?: 
     ) {
       buf.push(lines[i++]);
     }
-    blocks.push(<p key={key()} className="leading-relaxed">{inline(buf.join(" "), key())}</p>);
+    blocks.push(
+      <p key={key()} className="leading-relaxed">
+        {inline(buf.join(" "), key())}
+      </p>,
+    );
   }
 
   return <div className={className}>{blocks}</div>;

@@ -11,10 +11,9 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use super::{ssh, LabStatus, Machine};
+use super::{LabStatus, Machine, ssh};
 use crate::error::{Error, Result};
 use crate::exec::{run, stream};
-
 
 /// Non-secret run parameters, kept next to the state so `destroy` can be replayed.
 const RUN_FILE: &str = "run.json";
@@ -23,8 +22,6 @@ const EXPIRES_AT: &str = "expires_at";
 fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
-
-
 
 async fn terraform(deploy: &Path, state: &Path, target: &str, env: &[(String, String)], command: &str, log: impl FnMut(String)) -> Result<()> {
     if !deploy.join("terraform").join(target).is_dir() {
@@ -144,7 +141,11 @@ async fn wait_ready(state: &Path, log: &mut impl FnMut(String)) -> Result<()> {
             Err(_) => {}
         }
         if started.elapsed() >= READY_TIMEOUT {
-            return Err(Error::Invalid(format!("the lab host didn't finish starting the lab within {} minutes (last step: {})", READY_TIMEOUT.as_secs() / 60, if last_step.is_empty() { "booting" } else { &last_step })));
+            return Err(Error::Invalid(format!(
+                "the lab host didn't finish starting the lab within {} minutes (last step: {})",
+                READY_TIMEOUT.as_secs() / 60,
+                if last_step.is_empty() { "booting" } else { &last_step }
+            )));
         }
         tokio::time::sleep(POLL).await;
     }
@@ -211,16 +212,22 @@ pub fn status(state: &Path) -> LabStatus {
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
         .map(|v| v["outputs"].clone())
         .unwrap_or(Value::Null);
-    let expires_at = std::fs::read_to_string(state.join(RUN_FILE))
-        .ok()
-        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-        .and_then(|v| v[EXPIRES_AT].as_u64());
+    let expires_at =
+        std::fs::read_to_string(state.join(RUN_FILE)).ok().and_then(|raw| serde_json::from_str::<Value>(&raw).ok()).and_then(|v| v[EXPIRES_AT].as_u64());
     // Past its auto-stop, the cloud instance has terminated itself.
     let expired = expires_at.is_some_and(|t| now() >= t);
     let created = (!outputs["vm_id"]["value"].is_null() || !outputs["instance_id"]["value"].is_null()) && !expired;
     let ip = outputs["ip"]["value"].as_str().unwrap_or_default().to_string();
     let machines = if created {
-        vec![Machine { name: "labhost".into(), state: "running".into(), image: String::new(), ip, ports: Vec::new(), interfaces: Vec::new(), services: Vec::new() }]
+        vec![Machine {
+            name: "labhost".into(),
+            state: "running".into(),
+            image: String::new(),
+            ip,
+            ports: Vec::new(),
+            interfaces: Vec::new(),
+            services: Vec::new(),
+        }]
     } else {
         Vec::new()
     };

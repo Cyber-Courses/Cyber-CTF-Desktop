@@ -23,7 +23,8 @@ function MiniButton({
 }) {
   const tones = {
     default: "border-border bg-card text-foreground hover:border-ring/60",
-    learn: "border-white/10 bg-learn-solid text-white font-medium shadow-[inset_0_1px_0_rgb(255_255_255/0.16)] hover:bg-learn-solid-hover active:bg-learn-solid-active",
+    learn:
+      "border-white/10 bg-learn-solid text-white font-medium shadow-[inset_0_1px_0_rgb(255_255_255/0.16)] hover:bg-learn-solid-hover active:bg-learn-solid-active",
     danger: "border-transparent bg-destructive/12 text-destructive hover:bg-destructive/20",
   };
   return (
@@ -34,10 +35,7 @@ function MiniButton({
       }}
       disabled={disabled}
       title={title}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11.5px] transition-colors disabled:opacity-40",
-        tones[tone],
-      )}
+      className={cn("inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11.5px] transition-colors disabled:opacity-40", tones[tone])}
     >
       {children}
     </button>
@@ -106,9 +104,7 @@ export function LabRow({
         </div>
       </div>
 
-      {showDescription && lab.description && (
-        <p className="hidden flex-1 truncate text-[12.5px] text-muted-foreground lg:block">{lab.description}</p>
-      )}
+      {showDescription && lab.description && <p className="hidden flex-1 truncate text-[12.5px] text-muted-foreground lg:block">{lab.description}</p>}
 
       <div className="ml-auto flex shrink-0 items-center gap-3">
         {rt && (

@@ -133,129 +133,690 @@ body {
  * fixed height rather than the full viewport.
  * ------------------------------------------------------------------ */
 /* "Your machine" is the wrapping card; the diagram lives in its body. */
-.hostcard { border: 1px solid var(--border); border-radius: 12px; background: #0a0a0a; }
-.hostcard-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); border-radius: 12px 12px 0 0; background: #111; }
-.hostcard-icon { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: #0c0c0c; color: #b5b5b5; }
-.hostcard-title { font-size: 13px; font-weight: 600; }
-.hostcard-sub { font-size: 10.5px; color: #777; }
-.hostcard-online { margin-left: auto; display: flex; align-items: center; gap: 6px; color: #70c988; font-size: 10.5px; }
-.hostcard-online i { width: 6px; height: 6px; border-radius: 50%; background: #54c171; box-shadow: 0 0 0 3px rgba(84,193,113,.1); }
-.topology-shell { position: relative; width: 100%; height: 430px; background: #070707; border-radius: 0 0 11px 11px; }
-.topology-shell > .react-flow { border-radius: 0 0 11px 11px; overflow: hidden; }
-.react-flow { background: radial-gradient(ellipse at 70% 40%, rgba(240,97,109,.05), transparent 42%); }
-.netpill { position: absolute; top: 12px; left: 14px; z-index: 5; display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8f8f8f; background: rgba(10,10,10,.82); border: 1px solid var(--border); border-radius: 20px; padding: 4px 11px; }
-.netpill .mono { font-weight: 500; letter-spacing: 0; text-transform: none; color: #6a6a6a; }
+.hostcard {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #0a0a0a;
+}
+.hostcard-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 12px 12px 0 0;
+  background: #111;
+}
+.hostcard-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0c0c0c;
+  color: #b5b5b5;
+}
+.hostcard-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.hostcard-sub {
+  font-size: 10.5px;
+  color: #777;
+}
+.hostcard-online {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #70c988;
+  font-size: 10.5px;
+}
+.hostcard-online i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #54c171;
+  box-shadow: 0 0 0 3px rgba(84, 193, 113, 0.1);
+}
+.topology-shell {
+  position: relative;
+  width: 100%;
+  height: 430px;
+  background: #070707;
+  border-radius: 0 0 11px 11px;
+}
+.topology-shell > .react-flow {
+  border-radius: 0 0 11px 11px;
+  overflow: hidden;
+}
+.react-flow {
+  background: radial-gradient(ellipse at 70% 40%, rgba(240, 97, 109, 0.05), transparent 42%);
+}
+.netpill {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8f8f8f;
+  background: rgba(10, 10, 10, 0.82);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 11px;
+}
+.netpill .mono {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #6a6a6a;
+}
 /* Network zones (areas) + click-to-copy for the lab diagram. */
-.react-flow__node-zone { z-index: -1 !important; }
-.zone { position: relative; width: 100%; height: 100%; border: 1px dashed #2e2e2e; border-radius: 12px; background: rgba(255,255,255,.012); pointer-events: none; }
-.zone-attack { border-color: rgba(240,97,109,.35); background: rgba(240,97,109,.035); }
-.zone-label { position: absolute; top: -8px; left: 14px; padding: 1px 9px; background: #0a0a0a; border: 1px solid var(--border); border-radius: 20px; font-size: 9px; font-weight: 650; letter-spacing: .09em; color: #8f8f8f; white-space: nowrap; }
-.zone-attack .zone-label { color: #d9a1a5; border-color: rgba(240,97,109,.32); }
-.copy-chip { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.copy-ico { opacity: 0; transition: opacity .12s; color: #8f8f8f; }
-.copy-chip:hover .copy-ico { opacity: .7; }
-.copy-ok { color: #54c171; }
+.react-flow__node-zone {
+  z-index: -1 !important;
+}
+.zone {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 1px dashed #2e2e2e;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.012);
+  pointer-events: none;
+}
+.zone-attack {
+  border-color: rgba(240, 97, 109, 0.35);
+  background: rgba(240, 97, 109, 0.035);
+}
+.zone-label {
+  position: absolute;
+  top: -8px;
+  left: 14px;
+  padding: 1px 9px;
+  background: #0a0a0a;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  color: #8f8f8f;
+  white-space: nowrap;
+}
+.zone-attack .zone-label {
+  color: #d9a1a5;
+  border-color: rgba(240, 97, 109, 0.32);
+}
+.copy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.copy-ico {
+  opacity: 0;
+  transition: opacity 0.12s;
+  color: #8f8f8f;
+}
+.copy-chip:hover .copy-ico {
+  opacity: 0.7;
+}
+.copy-ok {
+  color: #54c171;
+}
 /* Network bridge (switch) node. */
-.bridge { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 1px solid #2e2e2e; border-radius: 10px; background: linear-gradient(180deg, #161616, #101010); color: #9a9a9a; }
-.bridge > svg { color: #8a8a8a; }
-.bridge-label { font-size: 9px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; color: #7a7a7a; }
-.bridge-attack { border-color: rgba(240,97,109,.3); }
-.bridge-attack > svg { color: #f0616d; }
-.bridge-attack .bridge-label { color: #c98f93; }
+.bridge {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #2e2e2e;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #161616, #101010);
+  color: #9a9a9a;
+}
+.bridge > svg {
+  color: #8a8a8a;
+}
+.bridge-label {
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #7a7a7a;
+}
+.bridge-attack {
+  border-color: rgba(240, 97, 109, 0.3);
+}
+.bridge-attack > svg {
+  color: #f0616d;
+}
+.bridge-attack .bridge-label {
+  color: #c98f93;
+}
 /* Open ports shown as doors on a machine. */
-.doors { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
-.door { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border: 1px solid #2f2f2f; border-radius: 7px; background: #1b1b1b; font-size: 10.5px; color: #b0b0b0; }
-.door > svg { color: #8a8a8a; }
-.door-pub { border-color: rgba(84,193,113,.32); background: rgba(84,193,113,.09); color: #8fd3a0; }
-.door-pub > svg { color: #54c171; }
-.door-host { color: #54c171; }
-.door-none { font-size: 10.5px; color: #707070; }
+.doors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 11px;
+}
+.door {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 1px solid #2f2f2f;
+  border-radius: 7px;
+  background: #1b1b1b;
+  font-size: 10.5px;
+  color: #b0b0b0;
+}
+.door > svg {
+  color: #8a8a8a;
+}
+.door-pub {
+  border-color: rgba(84, 193, 113, 0.32);
+  background: rgba(84, 193, 113, 0.09);
+  color: #8fd3a0;
+}
+.door-pub > svg {
+  color: #54c171;
+}
+.door-host {
+  color: #54c171;
+}
+.door-none {
+  font-size: 10.5px;
+  color: #707070;
+}
 /* Localhost port-binding node on the host-card edge. */
-.react-flow__pane { cursor: grab; }
-.react-flow__pane:active { cursor: grabbing; }
-.react-flow__background pattern circle { fill: #292929; }
-.react-flow__controls { left: 16px; bottom: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.35); border: 1px solid #232323; border-radius: 9px; overflow: hidden; }
-.react-flow__controls-button { width: 28px; height: 28px; border: 0; border-bottom: 1px solid #232323; background: #111; color: #8f8f8f; fill: #8f8f8f; }
-.react-flow__controls-button:hover { background: #1b1b1b; color: #ededed; fill: #ededed; }
-.react-flow__controls-button:last-child { border-bottom: 0; }
+.react-flow__pane {
+  cursor: grab;
+}
+.react-flow__pane:active {
+  cursor: grabbing;
+}
+.react-flow__background pattern circle {
+  fill: #292929;
+}
+.react-flow__controls {
+  left: 16px;
+  bottom: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  border: 1px solid #232323;
+  border-radius: 9px;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-bottom: 1px solid #232323;
+  background: #111;
+  color: #8f8f8f;
+  fill: #8f8f8f;
+}
+.react-flow__controls-button:hover {
+  background: #1b1b1b;
+  color: #ededed;
+  fill: #ededed;
+}
+.react-flow__controls-button:last-child {
+  border-bottom: 0;
+}
 
-.topology-node { position: relative; color: #ededed; border: 1px solid #292929; border-radius: 12px; background: linear-gradient(145deg, #1a1a1a, #141414); box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 10px 28px rgba(0,0,0,.24); user-select: none; }
-.group-frame { position: relative; width: 100%; height: 100%; border-radius: 12px; color: #ededed; pointer-events: none; }
-.host-group { border: 1px solid #292929; background: rgba(18,18,18,.42); box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 18px 50px rgba(0,0,0,.18); }
-.host-group::after { content: ''; position: absolute; inset: 56px 0 0; border-top: 1px solid rgba(255,255,255,.035); border-radius: 0 0 12px 12px; pointer-events: none; }
-.group-header { position: absolute; inset: 0 0 auto; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 17px; border-radius: 12px 12px 0 0; background: rgba(24,24,24,.62); }
-.group-header > svg { color: #a0a0a0; }
-.group-title { font-size: 13px; font-weight: 560; }
-.group-subtitle { margin-top: 3px; color: #777; font-size: 10px; }
-.group-online { display: flex; align-items: center; gap: 6px; margin-left: auto; color: #70c988; font-size: 10px; }
-.group-online i { width: 6px; height: 6px; border-radius: 50%; background: #54c171; box-shadow: 0 0 0 3px rgba(84,193,113,.1); }
-.lab-group { border: 1px dashed #292929; border-radius: 9px; background: rgba(10,10,10,.2); }
-.lab-header { position: absolute; inset: 0 0 auto; height: 45px; display: flex; align-items: center; padding: 0 15px; border-bottom: 1px solid rgba(41,41,41,.55); }
-.group-kicker { color: #777; font-size: 9px; font-weight: 650; letter-spacing: .13em; }
-.lab-count { margin-left: auto; color: #666; font-family: var(--font-mono), monospace; font-size: 9px; }
-.topology-node::before { content: ''; position: absolute; inset: 0 12px auto; height: 1px; background: rgba(255,255,255,.07); }
-.node-copy { min-width: 0; }
-.attacker-kicker { font-size: 9px; letter-spacing: .13em; color: #777; font-weight: 650; }
-.node-title { margin-top: 4px; font-size: 14px; font-weight: 560; letter-spacing: -.01em; }
-.node-subtitle { margin-top: 5px; color: #8f8f8f; font-size: 11px; }
-.mono { font-family: var(--font-mono), monospace; }
-.attacker-node { width: 190px; min-height: 104px; display: flex; align-items: center; gap: 12px; padding: 17px 15px; border-color: rgba(240,97,109,.5); background: linear-gradient(145deg, #2b1d1f, #1d1416); box-shadow: inset 0 1px 0 rgba(255,255,255,.055), 0 0 32px rgba(240,97,109,.12), 0 10px 28px rgba(0,0,0,.28); }
-.attacker-glow { position: absolute; inset: -1px; border-radius: 12px; pointer-events: none; box-shadow: inset 0 0 18px rgba(240,97,109,.07); }
-.attacker-icon { width: 34px; height: 34px; display: grid; place-items: center; color: #f6a3a9; border: 1px solid rgba(240,97,109,.45); border-radius: 9px; background: rgba(240,97,109,.1); }
-.attacker-kicker { color: #d6a2a6; display: flex; align-items: center; gap: 6px; }
-.you-chip { padding: 2px 5px; border-radius: 4px; color: #ffe3e5; background: rgba(240,97,109,.18); font-size: 8px; letter-spacing: .08em; }
-.attacker-node .node-subtitle { color: #d8a9ac; }
-.attacker-shield { position: absolute; right: 13px; top: 12px; color: #f0616d; opacity: .85; }
-.computer-node { width: 236px; min-height: 150px; padding: 15px; }
-.computer-header { display: flex; justify-content: space-between; align-items: center; }
-.computer-name { display: flex; gap: 7px; align-items: center; color: #bcbcbc; font-size: 13px; }
-.computer-name svg { color: #777; }
-.running { display: flex; align-items: center; gap: 5px; color: #70c988; font-size: 10px; }
-.running i { width: 6px; height: 6px; border-radius: 50%; background: #54c171; box-shadow: 0 0 0 3px rgba(84,193,113,.1); }
-.computer-ip { margin-top: 7px; color: #858585; font-size: 10px; }
-.service-chip { display: flex; align-items: center; gap: 9px; min-height: 45px; margin-top: 13px; padding: 7px 9px; border: 1px solid #303030; border-radius: 8px; background: #202020; }
-.service-icon { color: var(--service-color); }
-.service-main { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
-.service-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #d6d6d6; }
-.service-main small { color: #777; font-size: 9px; }
-.service-port { color: var(--service-color); font-size: 11px; }
-.exposed-line, .internal-line { display: flex; align-items: center; gap: 5px; margin-top: 11px; font-size: 10px; }
-.exposed-line { color: #54c171; }
-.exposed-line em { margin-left: auto; color: #639b70; font-style: normal; font-size: 9px; }
-.internal-line { color: #707070; }
-.internal-line .mono { color: #848484; }
-.topology-handle { width: 9px; height: 9px; border: 2px solid #070707; border-radius: 50%; background: #777; box-shadow: 0 0 0 1px var(--handle-accent, #777); }
-.topology-handle:hover { background: #ededed; }
-.edge-label { position: absolute; padding: 3px 7px; border: 1px solid #292929; border-radius: 5px; background: #111; color: #858585; font-family: var(--font-mono), monospace; font-size: 9px; pointer-events: all; }
+.topology-node {
+  position: relative;
+  color: #ededed;
+  border: 1px solid #292929;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #1a1a1a, #141414);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 10px 28px rgba(0, 0, 0, 0.24);
+  user-select: none;
+}
+.group-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  color: #ededed;
+  pointer-events: none;
+}
+.host-group {
+  border: 1px solid #292929;
+  background: rgba(18, 18, 18, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.025),
+    0 18px 50px rgba(0, 0, 0, 0.18);
+}
+.host-group::after {
+  content: "";
+  position: absolute;
+  inset: 56px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.035);
+  border-radius: 0 0 12px 12px;
+  pointer-events: none;
+}
+.group-header {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 17px;
+  border-radius: 12px 12px 0 0;
+  background: rgba(24, 24, 24, 0.62);
+}
+.group-header > svg {
+  color: #a0a0a0;
+}
+.group-title {
+  font-size: 13px;
+  font-weight: 560;
+}
+.group-subtitle {
+  margin-top: 3px;
+  color: #777;
+  font-size: 10px;
+}
+.group-online {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: #70c988;
+  font-size: 10px;
+}
+.group-online i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #54c171;
+  box-shadow: 0 0 0 3px rgba(84, 193, 113, 0.1);
+}
+.lab-group {
+  border: 1px dashed #292929;
+  border-radius: 9px;
+  background: rgba(10, 10, 10, 0.2);
+}
+.lab-header {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 45px;
+  display: flex;
+  align-items: center;
+  padding: 0 15px;
+  border-bottom: 1px solid rgba(41, 41, 41, 0.55);
+}
+.group-kicker {
+  color: #777;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.13em;
+}
+.lab-count {
+  margin-left: auto;
+  color: #666;
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+}
+.topology-node::before {
+  content: "";
+  position: absolute;
+  inset: 0 12px auto;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.node-copy {
+  min-width: 0;
+}
+.attacker-kicker {
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  color: #777;
+  font-weight: 650;
+}
+.node-title {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+}
+.node-subtitle {
+  margin-top: 5px;
+  color: #8f8f8f;
+  font-size: 11px;
+}
+.mono {
+  font-family: var(--font-mono), monospace;
+}
+.attacker-node {
+  width: 190px;
+  min-height: 104px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 17px 15px;
+  border-color: rgba(240, 97, 109, 0.5);
+  background: linear-gradient(145deg, #2b1d1f, #1d1416);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 0 32px rgba(240, 97, 109, 0.12),
+    0 10px 28px rgba(0, 0, 0, 0.28);
+}
+.attacker-glow {
+  position: absolute;
+  inset: -1px;
+  border-radius: 12px;
+  pointer-events: none;
+  box-shadow: inset 0 0 18px rgba(240, 97, 109, 0.07);
+}
+.attacker-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: #f6a3a9;
+  border: 1px solid rgba(240, 97, 109, 0.45);
+  border-radius: 9px;
+  background: rgba(240, 97, 109, 0.1);
+}
+.attacker-kicker {
+  color: #d6a2a6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.you-chip {
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: #ffe3e5;
+  background: rgba(240, 97, 109, 0.18);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+.attacker-node .node-subtitle {
+  color: #d8a9ac;
+}
+.attacker-shield {
+  position: absolute;
+  right: 13px;
+  top: 12px;
+  color: #f0616d;
+  opacity: 0.85;
+}
+.computer-node {
+  width: 236px;
+  min-height: 150px;
+  padding: 15px;
+}
+.computer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.computer-name {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  color: #bcbcbc;
+  font-size: 13px;
+}
+.computer-name svg {
+  color: #777;
+}
+.running {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #70c988;
+  font-size: 10px;
+}
+.running i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #54c171;
+  box-shadow: 0 0 0 3px rgba(84, 193, 113, 0.1);
+}
+.computer-ip {
+  margin-top: 7px;
+  color: #858585;
+  font-size: 10px;
+}
+.service-chip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 45px;
+  margin-top: 13px;
+  padding: 7px 9px;
+  border: 1px solid #303030;
+  border-radius: 8px;
+  background: #202020;
+}
+.service-icon {
+  color: var(--service-color);
+}
+.service-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.service-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #d6d6d6;
+}
+.service-main small {
+  color: #777;
+  font-size: 9px;
+}
+.service-port {
+  color: var(--service-color);
+  font-size: 11px;
+}
+.exposed-line,
+.internal-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 11px;
+  font-size: 10px;
+}
+.exposed-line {
+  color: #54c171;
+}
+.exposed-line em {
+  margin-left: auto;
+  color: #639b70;
+  font-style: normal;
+  font-size: 9px;
+}
+.internal-line {
+  color: #707070;
+}
+.internal-line .mono {
+  color: #848484;
+}
+.topology-handle {
+  width: 9px;
+  height: 9px;
+  border: 2px solid #070707;
+  border-radius: 50%;
+  background: #777;
+  box-shadow: 0 0 0 1px var(--handle-accent, #777);
+}
+.topology-handle:hover {
+  background: #ededed;
+}
+.edge-label {
+  position: absolute;
+  padding: 3px 7px;
+  border: 1px solid #292929;
+  border-radius: 5px;
+  background: #111;
+  color: #858585;
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  pointer-events: all;
+}
 /* Network diagram: per-network interfaces on a pivot, isolated (internal) networks. */
-.ifaces { display: flex; flex-direction: column; gap: 3px; margin-top: 7px; }
-.iface { display: flex; align-items: center; gap: 7px; color: #858585; font-size: 10px; }
-.iface-net { min-width: 52px; padding: 1px 6px; border: 1px solid #2c2c2c; border-radius: 4px; background: #181818; color: #a39bc2; font-size: 9px; font-weight: 600; letter-spacing: .04em; text-align: center; }
+.ifaces {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 7px;
+}
+.iface {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #858585;
+  font-size: 10px;
+}
+.iface-net {
+  min-width: 52px;
+  padding: 1px 6px;
+  border: 1px solid #2c2c2c;
+  border-radius: 4px;
+  background: #181818;
+  color: #a39bc2;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
 /* Two-line label straddling the segment's top edge: name, then subnet and counts. */
-.zone .zone-label { top: -15px; display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 4px 11px 5px; border-radius: 9px; }
-.zone-title { display: inline-flex; align-items: center; gap: 7px; }
-.zone-detail { font-size: 9.5px; font-weight: 400; letter-spacing: 0; color: #6f6f6f; }
-.zone-isolated { display: inline-flex; align-items: center; gap: 3px; padding-left: 7px; border-left: 1px solid #2a2a2a; color: #c9a85a; letter-spacing: .06em; }
+.zone .zone-label {
+  top: -15px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 4px 11px 5px;
+  border-radius: 9px;
+}
+.zone-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.zone-detail {
+  font-size: 9.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #6f6f6f;
+}
+.zone-isolated {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding-left: 7px;
+  border-left: 1px solid #2a2a2a;
+  color: #c9a85a;
+  letter-spacing: 0.06em;
+}
 /* A segment's side ports are anchors for pivot links only, never drawn. */
-.zone .zone-handle { pointer-events: none; opacity: 0; }
+.zone .zone-handle {
+  pointer-events: none;
+  opacity: 0;
+}
 /* A service's ports sit on its row, at the right: the port belongs to the service. */
-.service-ports { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 50%; }
-.service-ports .door { border-color: color-mix(in srgb, var(--service-color) 35%, #2f2f2f); background: color-mix(in srgb, var(--service-color) 8%, #1b1b1b); }
-.service-ports .door > svg { color: var(--service-color); }
+.service-ports {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 50%;
+}
+.service-ports .door {
+  border-color: color-mix(in srgb, var(--service-color) 35%, #2f2f2f);
+  background: color-mix(in srgb, var(--service-color) 8%, #1b1b1b);
+}
+.service-ports .door > svg {
+  color: var(--service-color);
+}
 /* Several services in one container: one row each, stacked. */
-.service-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 13px; }
-.service-rows .service-chip { margin-top: 0; }
-.computer-image { margin-top: 3px; color: #6f6f6f; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.service-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 13px;
+}
+.service-rows .service-chip {
+  margin-top: 0;
+}
+.computer-image {
+  margin-top: 3px;
+  color: #6f6f6f;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* The host the published ports land on (your machine, or the server). */
-.zone-host { border-style: solid; border-color: rgba(84,193,113,.28); background: rgba(84,193,113,.03); }
-.zone-host .zone-label { color: #8fd3a0; border-color: rgba(84,193,113,.3); }
+.zone-host {
+  border-style: solid;
+  border-color: rgba(84, 193, 113, 0.28);
+  background: rgba(84, 193, 113, 0.03);
+}
+.zone-host .zone-label {
+  color: #8fd3a0;
+  border-color: rgba(84, 193, 113, 0.3);
+}
 /* A published port: a tab straddling the card's bottom edge (an opening in the machine's wall). */
 /* The tabs hang below the card: keep a full section gap (space-y-5 = 1.25rem) under them. */
-.hostcard-docked { margin-bottom: 2.25rem; }
-.hostport-anchor { width: 100%; height: 100%; }
-.hostport-handle { opacity: 0; }
-.port-tab { position: absolute; bottom: 0; z-index: 6; transform: translate(-50%, 50%); padding: 4px 9px; border: 1px solid rgba(84,193,113,.4); border-radius: 7px; background: #0d1a11; color: #8fd3a0; font-size: 10.5px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
-.port-tab svg { color: #54c171; }
-.port-tab .copy-chip { gap: 5px; }
-.react-flow__pane { cursor: default; }
-.react-flow__pane:active { cursor: default; }
+.hostcard-docked {
+  margin-bottom: 2.25rem;
+}
+.hostport-anchor {
+  width: 100%;
+  height: 100%;
+}
+.hostport-handle {
+  opacity: 0;
+}
+.port-tab {
+  position: absolute;
+  bottom: 0;
+  z-index: 6;
+  transform: translate(-50%, 50%);
+  padding: 4px 9px;
+  border: 1px solid rgba(84, 193, 113, 0.4);
+  border-radius: 7px;
+  background: #0d1a11;
+  color: #8fd3a0;
+  font-size: 10.5px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.port-tab svg {
+  color: #54c171;
+}
+.port-tab .copy-chip {
+  gap: 5px;
+}
+.react-flow__pane {
+  cursor: default;
+}
+.react-flow__pane:active {
+  cursor: default;
+}

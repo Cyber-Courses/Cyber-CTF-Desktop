@@ -79,11 +79,17 @@ export function DeploySteps({ lines, busy, ready }: { lines: string[]; busy: boo
         <h3 className="text-[0.8125rem] font-medium">Deployment</h3>
         <span className="ml-auto flex items-center gap-2 text-[0.75rem]">
           {failed ? (
-            <span className="flex items-center gap-1.5 text-rose-400"><X className="size-3.5" /> Failed</span>
+            <span className="flex items-center gap-1.5 text-rose-400">
+              <X className="size-3.5" /> Failed
+            </span>
           ) : busy ? (
-            <span className="flex items-center gap-1.5 text-muted-foreground"><Spinner className="size-3.5" /> Building</span>
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Spinner className="size-3.5" /> Building
+            </span>
           ) : ready || done ? (
-            <span className="flex items-center gap-1.5 text-emerald-500"><span className="size-1.5 rounded-full bg-emerald-500" /> Ready</span>
+            <span className="flex items-center gap-1.5 text-emerald-500">
+              <span className="size-1.5 rounded-full bg-emerald-500" /> Ready
+            </span>
           ) : null}
           {start && end && <span className="font-mono tabular-nums text-muted-foreground">{duration(end - start)}</span>}
         </span>
@@ -106,7 +112,13 @@ export function DeploySteps({ lines, busy, ready }: { lines: string[]; busy: boo
                 className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.78125rem] transition-colors hover:bg-foreground/[0.03]"
               >
                 <span className="flex size-4 shrink-0 items-center justify-center">
-                  {state === "running" ? <Spinner className="size-3.5" /> : state === "fail" ? <X className="size-3.5 text-rose-400" /> : <Check className="size-3.5 text-emerald-500" />}
+                  {state === "running" ? (
+                    <Spinner className="size-3.5" />
+                  ) : state === "fail" ? (
+                    <X className="size-3.5 text-rose-400" />
+                  ) : (
+                    <Check className="size-3.5 text-emerald-500" />
+                  )}
                 </span>
                 <span className={cn("flex-1", state === "fail" ? "text-rose-300" : "text-foreground")}>{p.label}</span>
                 <span className="font-mono text-[0.6875rem] tabular-nums text-muted-foreground">{duration(to - from)}</span>
@@ -122,13 +134,17 @@ export function DeploySteps({ lines, busy, ready }: { lines: string[]; busy: boo
         })}
         {done && (
           <li className="flex items-center gap-2.5 px-3.5 py-2 text-[0.78125rem]">
-            <span className="flex size-4 shrink-0 items-center justify-center"><Check className="size-3.5 text-emerald-500" /></span>
+            <span className="flex size-4 shrink-0 items-center justify-center">
+              <Check className="size-3.5 text-emerald-500" />
+            </span>
             <span className="flex-1 text-foreground">Ready</span>
           </li>
         )}
         {busy && seen.length === 0 && (
           <li className="flex items-center gap-2.5 px-3.5 py-2 text-[0.78125rem] text-muted-foreground">
-            <span className="flex size-4 shrink-0 items-center justify-center"><Circle className="size-2" /></span>
+            <span className="flex size-4 shrink-0 items-center justify-center">
+              <Circle className="size-2" />
+            </span>
             Preparing…
           </li>
         )}
@@ -138,7 +154,11 @@ export function DeploySteps({ lines, busy, ready }: { lines: string[]; busy: boo
 
       {timed.length > 0 && (
         <div className="border-t border-border px-3.5 py-2">
-          <button type="button" onClick={() => setShowLog((v) => !v)} className="flex items-center gap-1.5 text-[0.71875rem] text-muted-foreground transition-colors hover:text-foreground">
+          <button
+            type="button"
+            onClick={() => setShowLog((v) => !v)}
+            className="flex items-center gap-1.5 text-[0.71875rem] text-muted-foreground transition-colors hover:text-foreground"
+          >
             <ChevronRight className={cn("size-3.5 transition-transform", showLog && "rotate-90")} /> {showLog ? "Hide" : "Show"} full log
           </button>
           {showLog && (

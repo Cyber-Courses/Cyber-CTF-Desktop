@@ -77,8 +77,18 @@ pub(crate) fn month_period() -> String {
 pub async fn aws_month_to_date_cost(profile: Option<String>) -> Option<f64> {
     let period = month_period();
     let mut args = vec![
-        "ce", "get-cost-and-usage", "--time-period", &period, "--granularity", "MONTHLY",
-        "--metrics", "UnblendedCost", "--query", "ResultsByTime[0].Total.UnblendedCost.Amount", "--output", "text",
+        "ce",
+        "get-cost-and-usage",
+        "--time-period",
+        &period,
+        "--granularity",
+        "MONTHLY",
+        "--metrics",
+        "UnblendedCost",
+        "--query",
+        "ResultsByTime[0].Total.UnblendedCost.Amount",
+        "--output",
+        "text",
     ];
     if let Some(p) = profile.as_deref() {
         args.push("--profile");

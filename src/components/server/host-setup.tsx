@@ -142,7 +142,10 @@ export function HostSetupPage({
   const [checkingId, setCheckingId] = useState(false);
   const [mtdCost, setMtdCost] = useState<number | null>(null);
   useEffect(() => {
-    if (cloud) awsProfiles().then(setProfiles).catch(() => {});
+    if (cloud)
+      awsProfiles()
+        .then(setProfiles)
+        .catch(() => {});
   }, [cloud]);
   useEffect(() => {
     if (!cloud) return;
@@ -151,7 +154,9 @@ export function HostSetupPage({
       .then(setAwsIdentity)
       .catch(() => setAwsIdentity(null))
       .finally(() => setCheckingId(false));
-    awsMonthToDateCost(v.awsProfile ?? undefined).then(setMtdCost).catch(() => setMtdCost(null));
+    awsMonthToDateCost(v.awsProfile ?? undefined)
+      .then(setMtdCost)
+      .catch(() => setMtdCost(null));
   }, [cloud, v.awsProfile]);
 
   async function awsSignIn() {
@@ -188,9 +193,7 @@ export function HostSetupPage({
   });
 
   const connectionOk =
-    cloud && v.useCliCreds
-      ? v.host.trim() !== ""
-      : v.host.trim() !== "" && v.username.trim() !== "" && (editing || (v.password ?? "") !== "");
+    cloud && v.useCliCreds ? v.host.trim() !== "" : v.host.trim() !== "" && v.username.trim() !== "" && (editing || (v.password ?? "") !== "");
   const next = () => setI((n) => Math.min(n + 1, steps.length - 1));
   const back = () => setI((n) => Math.max(n - 1, 0));
 
@@ -280,7 +283,9 @@ export function HostSetupPage({
       </div>
 
       <div key={key} className="mt-7 animate-rise-in">
-        <p className="text-[11.5px] font-medium tabular-nums text-muted-foreground">Step {i + 1} of {steps.length}</p>
+        <p className="text-[11.5px] font-medium tabular-nums text-muted-foreground">
+          Step {i + 1} of {steps.length}
+        </p>
         {key === "hypervisor" && (
           <Step icon={Server} title="Choose your hypervisor" description="Where the launcher will create and run VM labs.">
             <div className="grid grid-cols-2 gap-2.5">
@@ -296,7 +301,12 @@ export function HostSetupPage({
                       selected ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60",
                     )}
                   >
-                    <span className={cn("absolute right-3 top-3 grid size-4 place-items-center rounded-full border transition-colors", selected ? "border-learn bg-learn text-white" : "border-muted-foreground/30")}>
+                    <span
+                      className={cn(
+                        "absolute right-3 top-3 grid size-4 place-items-center rounded-full border transition-colors",
+                        selected ? "border-learn bg-learn text-white" : "border-muted-foreground/30",
+                      )}
+                    >
                       {selected && <CheckCircle2 className="size-3" />}
                     </span>
                     <HypervisorMark provider={p} />
@@ -305,7 +315,13 @@ export function HostSetupPage({
                 );
               })}
             </div>
-            <Nav right={<Button variant="learn" onClick={next}>Continue</Button>} />
+            <Nav
+              right={
+                <Button variant="learn" onClick={next}>
+                  Continue
+                </Button>
+              }
+            />
           </Step>
         )}
 
@@ -313,24 +329,52 @@ export function HostSetupPage({
           <Step
             icon={HardDrive}
             title={cloud ? "Command-line tool" : "Tools on this machine"}
-            description={cloud ? `The ${CLOUD_META[cloudProvider].label} CLI, used to connect and provision.` : `What the launcher needs here to run labs on ${KIND[v.provider].label}.`}
+            description={
+              cloud
+                ? `The ${CLOUD_META[cloudProvider].label} CLI, used to connect and provision.`
+                : `What the launcher needs here to run labs on ${KIND[v.provider].label}.`
+            }
           >
             <div className="overflow-hidden rounded-lg border border-border">
               {!report ? (
-                <div className="flex items-center gap-2 px-3.5 py-3 text-[12.5px] text-muted-foreground"><Spinner className="size-4" /> Checking this machine…</div>
+                <div className="flex items-center gap-2 px-3.5 py-3 text-[12.5px] text-muted-foreground">
+                  <Spinner className="size-4" /> Checking this machine…
+                </div>
               ) : cloud ? (
                 <>
                   <Requirement
                     ok={cloudCliOk}
                     title={`${CLOUD_META[cloudProvider].label} CLI`}
                     detail={cloudCliOk ? (cloudCliTool?.version ?? "Installed") : `The ${CLOUD_META[cloudProvider].cli} CLI, needed to connect and provision.`}
-                    action={<Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool(`${CLOUD_META[cloudProvider].cli} CLI`, (log) => installDependency(cloudDep, log))}>Install {CLOUD_META[cloudProvider].cli}</Button>}
+                    action={
+                      <Button
+                        variant="learn"
+                        size="sm"
+                        disabled={toolBusy}
+                        onClick={() => installTool(`${CLOUD_META[cloudProvider].cli} CLI`, (log) => installDependency(cloudDep, log))}
+                      >
+                        Install {CLOUD_META[cloudProvider].cli}
+                      </Button>
+                    }
                   />
                   <Requirement
                     ok={terraformOk}
                     title="Terraform"
-                    detail={terraformOk ? (report?.terraform.version ?? "Installed") : "Creates and destroys the cloud lab. Its provider plugins are fetched automatically on first run."}
-                    action={<Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool("Terraform", (log) => installDependency("terraform", log))}>Install Terraform</Button>}
+                    detail={
+                      terraformOk
+                        ? (report?.terraform.version ?? "Installed")
+                        : "Creates and destroys the cloud lab. Its provider plugins are fetched automatically on first run."
+                    }
+                    action={
+                      <Button
+                        variant="learn"
+                        size="sm"
+                        disabled={toolBusy}
+                        onClick={() => installTool("Terraform", (log) => installDependency("terraform", log))}
+                      >
+                        Install Terraform
+                      </Button>
+                    }
                   />
                 </>
               ) : v.provider === "vmware_esxi" ? (
@@ -339,20 +383,41 @@ export function HostSetupPage({
                     ok={vagrantOk}
                     title="Vagrant"
                     detail={vagrantOk ? (report?.vagrant.version ?? "Installed") : "Builds and runs the lab VMs on the host."}
-                    action={<Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool("Vagrant", (log) => installDependency("vagrant", log))}>Install Vagrant</Button>}
+                    action={
+                      <Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool("Vagrant", (log) => installDependency("vagrant", log))}>
+                        Install Vagrant
+                      </Button>
+                    }
                   />
                   <Requirement
                     ok={esxiPluginOk}
                     title="Vagrant plugin for ESXi"
                     detail={vagrantOk || esxiPluginOk ? kind.plugin : `${kind.plugin}, once Vagrant is installed.`}
-                    action={<Button variant="learn" size="sm" disabled={toolBusy || !vagrantOk} onClick={() => installTool(kind.plugin, (log) => installVagrantPlugin(kind.plugin, log))}>Install plugin</Button>}
+                    action={
+                      <Button
+                        variant="learn"
+                        size="sm"
+                        disabled={toolBusy || !vagrantOk}
+                        onClick={() => installTool(kind.plugin, (log) => installVagrantPlugin(kind.plugin, log))}
+                      >
+                        Install plugin
+                      </Button>
+                    }
                   />
                   <Requirement
                     ok={ovftoolOk}
                     title="VMware OVF Tool"
-                    detail={ovftoolOk ? (report?.ovftool.version ?? "Installed") : "Uploads the lab VMs to ESXi. Comes with VMware Fusion / Workstation, or standalone from Broadcom (free account)."}
+                    detail={
+                      ovftoolOk
+                        ? (report?.ovftool.version ?? "Installed")
+                        : "Uploads the lab VMs to ESXi. Comes with VMware Fusion / Workstation, or standalone from Broadcom (free account)."
+                    }
                     action={
-                      <Button variant="outline" size="sm" onClick={() => openUrl("https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest").catch(() => {})}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openUrl("https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest").catch(() => {})}
+                      >
                         <ExternalLink className="size-3.5" /> Get
                       </Button>
                     }
@@ -363,17 +428,40 @@ export function HostSetupPage({
                   ok={terraformOk}
                   title="Terraform"
                   detail={report?.terraform.installed ? (report.terraform.version ?? "Installed") : "Drives the Proxmox API. Install it to run Proxmox labs."}
-                  action={<Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool("Terraform", (log) => installDependency("terraform", log))}>Install Terraform</Button>}
+                  action={
+                    <Button
+                      variant="learn"
+                      size="sm"
+                      disabled={toolBusy}
+                      onClick={() => installTool("Terraform", (log) => installDependency("terraform", log))}
+                    >
+                      Install Terraform
+                    </Button>
+                  }
                 />
               )}
             </div>
-            {pluginLog && <div className="mt-3"><LogConsole lines={pluginLog} running={toolBusy} title={`Install ${toolLabel}`} /></div>}
+            {pluginLog && (
+              <div className="mt-3">
+                <LogConsole lines={pluginLog} running={toolBusy} title={`Install ${toolLabel}`} />
+              </div>
+            )}
             <Nav
-              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
+              left={
+                <Button variant="outline" onClick={back}>
+                  <ArrowLeft className="size-4" /> Back
+                </Button>
+              }
               right={
                 <span className="flex gap-2">
-                  {!toolsOk && <Button variant="outline" onClick={() => onRefresh()}>Re-check</Button>}
-                  <Button variant="learn" onClick={next} disabled={!toolsOk}>Continue</Button>
+                  {!toolsOk && (
+                    <Button variant="outline" onClick={() => onRefresh()}>
+                      Re-check
+                    </Button>
+                  )}
+                  <Button variant="learn" onClick={next} disabled={!toolsOk}>
+                    Continue
+                  </Button>
                 </span>
               }
             />
@@ -387,10 +475,21 @@ export function HostSetupPage({
             description={v.provider === "proxmox" ? "The launcher signs in to the Proxmox API." : "The launcher drives the host over SSH."}
           >
             <div className="grid gap-3 sm:grid-cols-[1fr_1fr_110px]">
-              <Field label="Name"><Input {...text("name")} placeholder={v.provider === "proxmox" ? "Garage Proxmox" : "ESXi box"} /></Field>
-              <Field label="Host"><Input {...text("host")} placeholder="192.168.1.20 or pve.lan" /></Field>
+              <Field label="Name">
+                <Input {...text("name")} placeholder={v.provider === "proxmox" ? "Garage Proxmox" : "ESXi box"} />
+              </Field>
+              <Field label="Host">
+                <Input {...text("host")} placeholder="192.168.1.20 or pve.lan" />
+              </Field>
               <Field label={v.provider === "proxmox" ? "API port" : "SSH port"}>
-                <Input type="number" min={1} max={65535} value={v.port ?? ""} onChange={(e) => set("port", e.target.value ? Number(e.target.value) : null)} placeholder={String(kind.port)} />
+                <Input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={v.port ?? ""}
+                  onChange={(e) => set("port", e.target.value ? Number(e.target.value) : null)}
+                  placeholder={String(kind.port)}
+                />
               </Field>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -398,12 +497,26 @@ export function HostSetupPage({
                 <Input {...text("username")} placeholder={kind.user} />
               </Field>
               <Field label="Password" hint="Stored in your OS keychain">
-                <Input type="password" value={v.password ?? ""} onChange={(e) => set("password", e.target.value || null)} placeholder={editing ? "Unchanged" : ""} autoComplete="off" />
+                <Input
+                  type="password"
+                  value={v.password ?? ""}
+                  onChange={(e) => set("password", e.target.value || null)}
+                  placeholder={editing ? "Unchanged" : ""}
+                  autoComplete="off"
+                />
               </Field>
             </div>
             <Nav
-              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
-              right={<Button variant="learn" onClick={next} disabled={!connectionOk}>Continue</Button>}
+              left={
+                <Button variant="outline" onClick={back}>
+                  <ArrowLeft className="size-4" /> Back
+                </Button>
+              }
+              right={
+                <Button variant="learn" onClick={next} disabled={!connectionOk}>
+                  Continue
+                </Button>
+              }
             />
           </Step>
         )}
@@ -411,23 +524,46 @@ export function HostSetupPage({
         {key === "placement" && (
           <Step icon={HardDrive} title="Placement" description="Where labs are placed on the host. Leave blank for the host's defaults.">
             <div className={cn("grid gap-3", v.provider === "proxmox" ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
-              {v.provider === "proxmox" && <Field label="Node" hint="Optional"><Input {...text("node")} placeholder="pve" /></Field>}
-              <Field label={v.provider === "proxmox" ? "Storage" : "Datastore"} hint="Optional"><Input {...text("datastore")} placeholder={v.provider === "proxmox" ? "local-lvm" : "datastore1"} /></Field>
-              <Field label={v.provider === "proxmox" ? "Bridge" : "Port group"} hint="Optional"><Input {...text("network")} placeholder={v.provider === "proxmox" ? "vmbr0" : "VM Network"} /></Field>
+              {v.provider === "proxmox" && (
+                <Field label="Node" hint="Optional">
+                  <Input {...text("node")} placeholder="pve" />
+                </Field>
+              )}
+              <Field label={v.provider === "proxmox" ? "Storage" : "Datastore"} hint="Optional">
+                <Input {...text("datastore")} placeholder={v.provider === "proxmox" ? "local-lvm" : "datastore1"} />
+              </Field>
+              <Field label={v.provider === "proxmox" ? "Bridge" : "Port group"} hint="Optional">
+                <Input {...text("network")} placeholder={v.provider === "proxmox" ? "vmbr0" : "VM Network"} />
+              </Field>
             </div>
             {v.provider === "proxmox" && (
               <label className="mt-4 flex cursor-pointer items-start gap-2.5">
-                <input type="checkbox" checked={v.insecureTls} onChange={(e) => set("insecureTls", e.target.checked)} className="mt-0.5 size-3.5 accent-[var(--learn)]" />
+                <input
+                  type="checkbox"
+                  checked={v.insecureTls}
+                  onChange={(e) => set("insecureTls", e.target.checked)}
+                  className="mt-0.5 size-3.5 accent-[var(--learn)]"
+                />
                 <span>
                   <span className="block text-[12.5px]">Self-signed certificate</span>
-                  <span className="block text-[11.5px] text-muted-foreground">Proxmox uses one by default. Turn off if your host has a trusted certificate.</span>
+                  <span className="block text-[11.5px] text-muted-foreground">
+                    Proxmox uses one by default. Turn off if your host has a trusted certificate.
+                  </span>
                 </span>
               </label>
             )}
             {error && <p className="mt-3 text-[12px] text-destructive">{error}</p>}
             <Nav
-              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
-              right={<Button variant="learn" onClick={saveAndTest} disabled={saving}>{saving && <Spinner className="size-4" />} Save and test</Button>}
+              left={
+                <Button variant="outline" onClick={back}>
+                  <ArrowLeft className="size-4" /> Back
+                </Button>
+              }
+              right={
+                <Button variant="learn" onClick={saveAndTest} disabled={saving}>
+                  {saving && <Spinner className="size-4" />} Save and test
+                </Button>
+              }
             />
           </Step>
         )}
@@ -435,42 +571,83 @@ export function HostSetupPage({
         {key === "account" && (
           <Step icon={Cloud} title="How to connect" description="Choose how the launcher signs in to AWS.">
             <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[12px] text-amber-500">
-              Labs run in your account and are billed while they run; the cost depends on each lab&apos;s size. Stopping a lab, or its auto-stop, destroys what it created.
+              Labs run in your account and are billed while they run; the cost depends on each lab&apos;s size. Stopping a lab, or its auto-stop, destroys what
+              it created.
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
-              <button type="button" onClick={() => set("useCliCreds", true)} className={cn("rounded-lg border p-3 text-left transition-colors", v.useCliCreds ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60")}>
+              <button
+                type="button"
+                onClick={() => set("useCliCreds", true)}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition-colors",
+                  v.useCliCreds ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60",
+                )}
+              >
                 <span className="block text-[12.5px] font-medium">Use the AWS CLI</span>
                 <span className="mt-0.5 block text-[11px] text-muted-foreground">A profile or browser sign-in. No secret stored.</span>
               </button>
-              <button type="button" onClick={() => set("useCliCreds", false)} className={cn("rounded-lg border p-3 text-left transition-colors", !v.useCliCreds ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60")}>
+              <button
+                type="button"
+                onClick={() => set("useCliCreds", false)}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition-colors",
+                  !v.useCliCreds ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60",
+                )}
+              >
                 <span className="block text-[12.5px] font-medium">Access keys</span>
                 <span className="mt-0.5 block text-[11px] text-muted-foreground">An IAM user&apos;s key and secret.</span>
               </button>
             </div>
             <Nav
-              left={i > 0 ? <Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button> : <Button variant="ghost" onClick={onDone}>Cancel</Button>}
-              right={<Button variant="learn" onClick={next}>Continue</Button>}
+              left={
+                i > 0 ? (
+                  <Button variant="outline" onClick={back}>
+                    <ArrowLeft className="size-4" /> Back
+                  </Button>
+                ) : (
+                  <Button variant="ghost" onClick={onDone}>
+                    Cancel
+                  </Button>
+                )
+              }
+              right={
+                <Button variant="learn" onClick={next}>
+                  Continue
+                </Button>
+              }
             />
           </Step>
         )}
 
         {key === "credentials" && (
-          <Step icon={Cloud} title={v.useCliCreds ? "AWS CLI" : "Access keys"} description={v.useCliCreds ? "Pick a profile, or sign in with the browser." : "An IAM user's access keys."}>
+          <Step
+            icon={Cloud}
+            title={v.useCliCreds ? "AWS CLI" : "Access keys"}
+            description={v.useCliCreds ? "Pick a profile, or sign in with the browser." : "An IAM user's access keys."}
+          >
             {v.useCliCreds ? (
               <div className="space-y-3">
                 {profiles.length > 0 && (
                   <Field label="Profile">
                     <Select value={v.awsProfile ?? ""} onChange={(e) => set("awsProfile", e.target.value || null)}>
                       <option value="">default</option>
-                      {profiles.map((p) => <option key={p} value={p}>{p}</option>)}
+                      {profiles.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
                     </Select>
                   </Field>
                 )}
                 <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[12px]">
                   {checkingId ? (
-                    <span className="flex items-center gap-1.5 text-muted-foreground"><Spinner className="size-3.5" /> Checking…</span>
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      <Spinner className="size-3.5" /> Checking…
+                    </span>
                   ) : awsIdentity ? (
-                    <span className="flex items-center gap-1.5 text-emerald-500"><CheckCircle2 className="size-3.5" /> Signed in as {awsIdentity}</span>
+                    <span className="flex items-center gap-1.5 text-emerald-500">
+                      <CheckCircle2 className="size-3.5" /> Signed in as {awsIdentity}
+                    </span>
                   ) : (
                     <span className="text-muted-foreground">Not signed in on this profile.</span>
                   )}
@@ -483,14 +660,26 @@ export function HostSetupPage({
             ) : (
               <>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Access key ID" hint="An IAM user with EC2 access"><Input {...text("username")} placeholder="AKIA…" /></Field>
+                  <Field label="Access key ID" hint="An IAM user with EC2 access">
+                    <Input {...text("username")} placeholder="AKIA…" />
+                  </Field>
                   <Field label="Secret access key" hint="Stored in your OS keychain">
-                    <Input type="password" value={v.password ?? ""} onChange={(e) => set("password", e.target.value || null)} placeholder={editing ? "Unchanged" : ""} autoComplete="off" />
+                    <Input
+                      type="password"
+                      value={v.password ?? ""}
+                      onChange={(e) => set("password", e.target.value || null)}
+                      placeholder={editing ? "Unchanged" : ""}
+                      autoComplete="off"
+                    />
                   </Field>
                 </div>
                 <p className="mt-1.5 text-[11px] text-muted-foreground">
                   No keys yet?{" "}
-                  <button type="button" onClick={() => openUrl("https://console.aws.amazon.com/iam/home#/security_credentials").catch(() => {})} className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline">
+                  <button
+                    type="button"
+                    onClick={() => openUrl("https://console.aws.amazon.com/iam/home#/security_credentials").catch(() => {})}
+                    className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+                  >
                     Create them in the AWS console <ExternalLink className="size-3" />
                   </button>
                 </p>
@@ -500,14 +689,26 @@ export function HostSetupPage({
               <Field label="Region">
                 <Select value={v.host} onChange={(e) => set("host", e.target.value)}>
                   {v.host && !AWS_REGIONS.some(([code]) => code === v.host) && <option value={v.host}>{v.host}</option>}
-                  {AWS_REGIONS.map(([code, name]) => <option key={code} value={code}>{code} — {name}</option>)}
+                  {AWS_REGIONS.map(([code, name]) => (
+                    <option key={code} value={code}>
+                      {code} — {name}
+                    </option>
+                  ))}
                 </Select>
               </Field>
             </div>
             {error && <p className="mt-3 text-[12px] text-destructive">{error}</p>}
             <Nav
-              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
-              right={<Button variant="learn" onClick={next} disabled={!connectionOk}>Continue</Button>}
+              left={
+                <Button variant="outline" onClick={back}>
+                  <ArrowLeft className="size-4" /> Back
+                </Button>
+              }
+              right={
+                <Button variant="learn" onClick={next} disabled={!connectionOk}>
+                  Continue
+                </Button>
+              }
             />
           </Step>
         )}
@@ -515,31 +716,54 @@ export function HostSetupPage({
         {key === "options" && (
           <Step icon={Cloud} title="Lab settings" description="Name this account and choose when idle labs stop.">
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Name"><Input {...text("name")} placeholder="My AWS" /></Field>
+              <Field label="Name">
+                <Input {...text("name")} placeholder="My AWS" />
+              </Field>
               <Field label="Auto-stop">
                 <Select value={String(v.autoStopHours ?? 4)} onChange={(e) => set("autoStopHours", Number(e.target.value))}>
-                  {[1, 2, 4, 8, 12, 24].map((h) => <option key={h} value={h}>{h} hour{h > 1 ? "s" : ""}</option>)}
+                  {[1, 2, 4, 8, 12, 24].map((h) => (
+                    <option key={h} value={h}>
+                      {h} hour{h > 1 ? "s" : ""}
+                    </option>
+                  ))}
                   <option value={0}>Never</option>
                 </Select>
               </Field>
             </div>
             <p className="mt-2 text-[11.5px] text-muted-foreground">
-              An auto-stopped lab terminates itself when the time is up, even if this machine is off. Each lab picks its own instance size, so the cost depends on the lab.
+              An auto-stopped lab terminates itself when the time is up, even if this machine is off. Each lab picks its own instance size, so the cost depends
+              on the lab.
             </p>
             <div className="mt-3">
               <Field label="Monthly budget (USD)" hint="optional">
-                <Input type="number" min={0} step={5} value={v.monthlyLimit ?? ""} onChange={(e) => set("monthlyLimit", e.target.value === "" ? null : Number(e.target.value))} placeholder="no limit" />
+                <Input
+                  type="number"
+                  min={0}
+                  step={5}
+                  value={v.monthlyLimit ?? ""}
+                  onChange={(e) => set("monthlyLimit", e.target.value === "" ? null : Number(e.target.value))}
+                  placeholder="no limit"
+                />
               </Field>
               {mtdCost != null && (
                 <p className={cn("mt-1.5 text-[11.5px]", v.monthlyLimit && mtdCost >= v.monthlyLimit ? "text-rose-400" : "text-muted-foreground")}>
-                  Spent this month: ${mtdCost.toFixed(2)}{v.monthlyLimit ? ` of $${v.monthlyLimit.toFixed(2)}` : ""}.
+                  Spent this month: ${mtdCost.toFixed(2)}
+                  {v.monthlyLimit ? ` of $${v.monthlyLimit.toFixed(2)}` : ""}.
                 </p>
               )}
             </div>
             {error && <p className="mt-3 text-[12px] text-destructive">{error}</p>}
             <Nav
-              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
-              right={<Button variant="learn" onClick={saveAndTest} disabled={saving || !connectionOk}>{saving && <Spinner className="size-4" />} Save and test</Button>}
+              left={
+                <Button variant="outline" onClick={back}>
+                  <ArrowLeft className="size-4" /> Back
+                </Button>
+              }
+              right={
+                <Button variant="learn" onClick={saveAndTest} disabled={saving || !connectionOk}>
+                  {saving && <Spinner className="size-4" />} Save and test
+                </Button>
+              }
             />
           </Step>
         )}
@@ -565,7 +789,12 @@ export function HostSetupPage({
                     )}
                   >
                     {p.ready && (
-                      <span className={cn("absolute right-3 top-3 grid size-4 place-items-center rounded-full border transition-colors", selected ? "border-learn bg-learn text-white" : "border-muted-foreground/30")}>
+                      <span
+                        className={cn(
+                          "absolute right-3 top-3 grid size-4 place-items-center rounded-full border transition-colors",
+                          selected ? "border-learn bg-learn text-white" : "border-muted-foreground/30",
+                        )}
+                      >
                         {selected && <CheckCircle2 className="size-3" />}
                       </span>
                     )}
@@ -581,12 +810,27 @@ export function HostSetupPage({
                 );
               })}
             </div>
-            <Nav left={<Button variant="ghost" onClick={onDone}>Cancel</Button>} right={<Button variant="learn" onClick={next} disabled={!CLOUD_META[cloudProvider]?.ready}>Continue</Button>} />
+            <Nav
+              left={
+                <Button variant="ghost" onClick={onDone}>
+                  Cancel
+                </Button>
+              }
+              right={
+                <Button variant="learn" onClick={next} disabled={!CLOUD_META[cloudProvider]?.ready}>
+                  Continue
+                </Button>
+              }
+            />
           </Step>
         )}
 
         {key === "connect" && (
-          <Step icon={Cloud} title={`Connect ${CLOUD_META[cloudProvider].label}`} description="Sign in with the provider's CLI. Nothing is stored by Cyber CTF; Terraform uses the CLI's credentials.">
+          <Step
+            icon={Cloud}
+            title={`Connect ${CLOUD_META[cloudProvider].label}`}
+            description="Sign in with the provider's CLI. Nothing is stored by Cyber CTF; Terraform uses the CLI's credentials."
+          >
             <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[12px] text-amber-500">
               Lab provisioning for {CLOUD_META[cloudProvider].label} is coming. Sign in now so the CLI is ready; AWS is the supported target today.
             </p>
@@ -595,14 +839,28 @@ export function HostSetupPage({
                 <Button variant="learn" onClick={signIn} disabled={signingIn}>
                   {signingIn && <Spinner className="size-4" />} Sign in with {CLOUD_META[cloudProvider].cli}
                 </Button>
-                {signInLog && <div className="mt-3"><LogConsole lines={signInLog} running={signingIn} title="Sign in" /></div>}
+                {signInLog && (
+                  <div className="mt-3">
+                    <LogConsole lines={signInLog} running={signingIn} title="Sign in" />
+                  </div>
+                )}
               </>
             ) : (
-              <p className="text-[12.5px] text-muted-foreground">The {CLOUD_META[cloudProvider].cli} CLI isn&apos;t installed. Install it from the Cloud page first, then come back.</p>
+              <p className="text-[12.5px] text-muted-foreground">
+                The {CLOUD_META[cloudProvider].cli} CLI isn&apos;t installed. Install it from the Cloud page first, then come back.
+              </p>
             )}
             <Nav
-              left={<Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button>}
-              right={<Button variant="learn" onClick={onDone}>Done</Button>}
+              left={
+                <Button variant="outline" onClick={back}>
+                  <ArrowLeft className="size-4" /> Back
+                </Button>
+              }
+              right={
+                <Button variant="learn" onClick={onDone}>
+                  Done
+                </Button>
+              }
             />
           </Step>
         )}
@@ -610,9 +868,16 @@ export function HostSetupPage({
         {key === "test" && (
           <Step icon={CheckCircle2} title="Connection test" description="Saved. Here's what the launcher could check from this machine.">
             {test === null || test === "testing" ? (
-              <p className="flex items-center gap-2 text-[13px] text-muted-foreground"><Spinner className="size-4" /> Testing the connection…</p>
+              <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
+                <Spinner className="size-4" /> Testing the connection…
+              </p>
             ) : (
-              <div className={cn("flex items-start gap-3 rounded-lg border p-3.5", test.ok ? "border-emerald-500/25 bg-emerald-500/10" : "border-rose-500/25 bg-rose-500/10")}>
+              <div
+                className={cn(
+                  "flex items-start gap-3 rounded-lg border p-3.5",
+                  test.ok ? "border-emerald-500/25 bg-emerald-500/10" : "border-rose-500/25 bg-rose-500/10",
+                )}
+              >
                 {test.ok ? <CheckCircle2 className="mt-px size-5 shrink-0 text-emerald-500" /> : <XCircle className="mt-px size-5 shrink-0 text-rose-400" />}
                 <p className={cn("text-[13px]", test.ok ? "text-foreground" : "text-rose-300")}>
                   {test.message}
@@ -621,8 +886,16 @@ export function HostSetupPage({
               </div>
             )}
             <Nav
-              left={<Button variant="outline" onClick={() => saved && runTest(saved.id)} disabled={test === "testing"}>Test again</Button>}
-              right={<Button variant="learn" onClick={onDone}><Play className="size-4" /> Done</Button>}
+              left={
+                <Button variant="outline" onClick={() => saved && runTest(saved.id)} disabled={test === "testing"}>
+                  Test again
+                </Button>
+              }
+              right={
+                <Button variant="learn" onClick={onDone}>
+                  <Play className="size-4" /> Done
+                </Button>
+              }
             />
           </Step>
         )}
@@ -636,14 +909,18 @@ export function SetupTrademarks({ cloud = false }: { cloud?: boolean }) {
   if (cloud) {
     return (
       <p className="text-[11px] leading-relaxed text-muted-foreground/70">
-        Amazon Web Services and AWS are trademarks of Amazon.com, Inc. Microsoft Azure and Google Cloud are trademarks of their respective owners. Cyber CTF isn&apos;t affiliated with any of them.
+        Amazon Web Services and AWS are trademarks of Amazon.com, Inc. Microsoft Azure and Google Cloud are trademarks of their respective owners. Cyber CTF
+        isn&apos;t affiliated with any of them.
       </p>
     );
   }
   return (
     <p className="text-[11px] leading-relaxed text-muted-foreground/70">
       Proxmox® is a registered trademark of Proxmox Server Solutions GmbH.{" "}
-      <button onClick={() => openUrl("https://www.proxmox.com").catch(() => {})} className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline">
+      <button
+        onClick={() => openUrl("https://www.proxmox.com").catch(() => {})}
+        className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
+      >
         proxmox.com <ExternalLink className="size-3" />
       </button>{" "}
       VMware and ESXi are trademarks of Broadcom. Cyber CTF isn&apos;t affiliated with any of them.

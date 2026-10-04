@@ -44,7 +44,9 @@ async fn package_manager() -> PkgManager {
         {
             let brew = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].into_iter().find(|p| std::path::Path::new(p).exists());
             match brew {
-                Some(b) => Some(tokio::process::Command::new(b).arg("--version").output().await.ok().and_then(|o| String::from_utf8(o.stdout).ok()).unwrap_or_default()),
+                Some(b) => Some(
+                    tokio::process::Command::new(b).arg("--version").output().await.ok().and_then(|o| String::from_utf8(o.stdout).ok()).unwrap_or_default(),
+                ),
                 None => None,
             }
         }
@@ -136,10 +138,7 @@ fn context_engine(name: &str, os: &str) -> Option<&'static str> {
 /// The Docker CLI contexts, each with the engine behind it (unknown contexts are left out).
 async fn engine_contexts() -> Vec<(String, &'static str)> {
     let out = run("docker", &["context", "ls", "--format", "{{.Name}}"], None).await.unwrap_or_default();
-    out.lines()
-        .map(|l| l.trim().trim_end_matches(" *").to_string())
-        .filter_map(|name| context_engine(&name, std::env::consts::OS).map(|e| (name, e)))
-        .collect()
+    out.lines().map(|l| l.trim().trim_end_matches(" *").to_string()).filter_map(|name| context_engine(&name, std::env::consts::OS).map(|e| (name, e))).collect()
 }
 
 /// Engines whose context answers, probed one by one (a stopped engine fails fast; the
@@ -189,7 +188,8 @@ pub async fn system_check() -> SystemReport {
         probe("gcloud", &["--version"]),
         probe("terraform", &["version"]),
     );
-    let (vm_providers, docker_engines_running, ovftool) = tokio::join!(providers::detect(vagrant.installed), running_engines(), probe("ovftool", &["--version"]));
+    let (vm_providers, docker_engines_running, ovftool) =
+        tokio::join!(providers::detect(vagrant.installed), running_engines(), probe("ovftool", &["--version"]));
     let docker_engine = match &daemon {
         Ok(os) => Some(docker_engine(os.trim()).await),
         Err(_) => None,
@@ -254,22 +254,10 @@ pub async fn machine_metrics() -> MachineMetrics {
         .unwrap_or((0, 0));
     let disk_used = disk_total.saturating_sub(disk_avail);
 
-    let containers = run("docker", &["ps", "--format", "{{.ID}}"], None)
-        .await
-        .ok()
-        .map(|o| o.lines().filter(|l| !l.trim().is_empty()).count() as u32)
-        .unwrap_or(0);
+    let containers =
+        run("docker", &["ps", "--format", "{{.ID}}"], None).await.ok().map(|o| o.lines().filter(|l| !l.trim().is_empty()).count() as u32).unwrap_or(0);
 
-    MachineMetrics {
-        cpu,
-        mem_used,
-        mem_total,
-        disk_used,
-        disk_total,
-        uptime_secs: System::uptime(),
-        cores,
-        containers,
-    }
+    MachineMetrics { cpu, mem_used, mem_total, disk_used, disk_total, uptime_secs: System::uptime(), cores, containers }
 }
 
 /// Opens the guided "set up this machine" flow in its own window (label `machine-setup`),

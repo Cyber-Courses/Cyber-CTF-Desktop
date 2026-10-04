@@ -22,7 +22,25 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import ELK, { type ElkExtendedEdge, type ElkNode } from "elkjs/lib/elk.bundled.js";
-import { Box, Check, Copy, Database, DoorOpen, Globe2, Laptop, Lock, Monitor, Network, Plug, Server, ShieldCheck, Terminal, Workflow, Zap, type LucideIcon } from "lucide-react";
+import {
+  Box,
+  Check,
+  Copy,
+  Database,
+  DoorOpen,
+  Globe2,
+  Laptop,
+  Lock,
+  Monitor,
+  Network,
+  Plug,
+  Server,
+  ShieldCheck,
+  Terminal,
+  Workflow,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
 import type { LabInterface, LabMachine, LabNetwork } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
@@ -120,8 +138,20 @@ function ZoneNode({ data }: NodeProps<Node<ZoneData>>) {
   return (
     <div className={cn("zone", data.tone === "attack" && "zone-attack")}>
       {/* The segment's own ports: pivots plug into the network here. */}
-      <Handle id="w" type="target" position={Position.Left} className="topology-handle zone-handle" style={data.portW !== undefined ? { top: data.portW } : undefined} />
-      <Handle id="e" type="source" position={Position.Right} className="topology-handle zone-handle" style={data.portE !== undefined ? { top: data.portE } : undefined} />
+      <Handle
+        id="w"
+        type="target"
+        position={Position.Left}
+        className="topology-handle zone-handle"
+        style={data.portW !== undefined ? { top: data.portW } : undefined}
+      />
+      <Handle
+        id="e"
+        type="source"
+        position={Position.Right}
+        className="topology-handle zone-handle"
+        style={data.portE !== undefined ? { top: data.portE } : undefined}
+      />
       <span className="zone-label" style={data.labelLeft !== undefined ? { left: data.labelLeft } : undefined}>
         <span className="zone-title">
           {data.label}
@@ -368,7 +398,13 @@ const edgeTypes = { link: LinkEdge };
 const GREY = "#4f4f4f";
 const GREEN = "#54c171";
 const PIVOT = "#8b7cc4"; // a pivot's link on into a deeper network
-function link(id: string, source: string, target: string, color: string, opts: { animated?: boolean; dashed?: boolean; label?: string; sideways?: boolean } = {}): Edge<LinkData> {
+function link(
+  id: string,
+  source: string,
+  target: string,
+  color: string,
+  opts: { animated?: boolean; dashed?: boolean; label?: string; sideways?: boolean } = {},
+): Edge<LinkData> {
   return {
     id,
     source,
@@ -413,7 +449,7 @@ function topology(machines: Machine[], networks: LabNetwork[], attacker: Attacke
   // tree reads top-down in attack order: attack box → entry network → pivot → deeper network.
   const entry = (attacker?.labNetwork && nets.has(attacker.labNetwork) && attacker.labNetwork) || (nets.has("default") ? "default" : [...nets.keys()][0]);
   const dist = new Map<string, number>([[entry, 0]]);
-  for (let frontier = [entry]; frontier.length; ) {
+  for (let frontier = [entry]; frontier.length;) {
     const next: string[] = [];
     for (const net of frontier) {
       for (const m of machines) {
@@ -437,7 +473,14 @@ function topology(machines: Machine[], networks: LabNetwork[], attacker: Attacke
   const ordered = [...nets.values()].sort((a, b) => d(a.name) - d(b.name) || a.name.localeCompare(b.name));
   const members = new Map<string, string[]>(ordered.map((n) => [n.name, [`bridge-${n.name}`]]));
   ordered.forEach((n) =>
-    nodes.push({ id: `bridge-${n.name}`, type: "bridge", position: { x: 0, y: 0 }, style: { width: BRIDGE.w, height: BRIDGE.h }, data: { label: `${netLabel(n.name)} bridge` }, draggable: false }),
+    nodes.push({
+      id: `bridge-${n.name}`,
+      type: "bridge",
+      position: { x: 0, y: 0 },
+      style: { width: BRIDGE.w, height: BRIDGE.h },
+      data: { label: `${netLabel(n.name)} bridge` },
+      draggable: false,
+    }),
   );
 
   // A network with a route out (not compose `internal`) is wired up to the host: its bridge's
@@ -445,7 +488,15 @@ function topology(machines: Machine[], networks: LabNetwork[], attacker: Attacke
   ordered
     .filter((n) => !n.internal)
     .forEach((n) => {
-      nodes.push({ id: `up-${n.name}`, type: "uplink", position: { x: 0, y: 0 }, style: { width: ANCHOR, height: ANCHOR }, data: {}, draggable: false, selectable: false });
+      nodes.push({
+        id: `up-${n.name}`,
+        type: "uplink",
+        position: { x: 0, y: 0 },
+        style: { width: ANCHOR, height: ANCHOR },
+        data: {},
+        draggable: false,
+        selectable: false,
+      });
       edges.push({ ...link(`e-up-${n.name}`, `up-${n.name}`, `bridge-${n.name}`, GREY), targetHandle: "up" });
     });
 
@@ -453,7 +504,12 @@ function topology(machines: Machine[], networks: LabNetwork[], attacker: Attacke
   // attached to several running labs at once), first in its zone so it reads leftmost.
   // No attack box at all (VM labs) draws none.
   if (attacker) {
-    nodes.push({ id: "__attacker", type: "attacker", position: { x: 0, y: 0 }, data: { label: "Attack box", subtitle: atkOn ? attacker.ip || "attached" : "not attached", running: atkOn } });
+    nodes.push({
+      id: "__attacker",
+      type: "attacker",
+      position: { x: 0, y: 0 },
+      data: { label: "Attack box", subtitle: atkOn ? attacker.ip || "attached" : "not attached", running: atkOn },
+    });
     members.get(entry)!.push("__attacker");
     edges.push(link("e-attach", `bridge-${entry}`, "__attacker", atkOn ? attack : "#5a5a5a", { animated: atkOn }));
   }
@@ -466,7 +522,15 @@ function topology(machines: Machine[], networks: LabNetwork[], attacker: Attacke
       id,
       type: "computer",
       position: { x: 0, y: 0 },
-      data: { hostname: m.name, image: m.image || serviceMeta[type].label, type, ifaces, running: m.state === "running", ports: uniquePorts(m.ports), rows: serviceRows(m, uniquePorts(m.ports), type) } satisfies ComputerData,
+      data: {
+        hostname: m.name,
+        image: m.image || serviceMeta[type].label,
+        type,
+        ifaces,
+        running: m.state === "running",
+        ports: uniquePorts(m.ports),
+        rows: serviceRows(m, uniquePorts(m.ports), type),
+      } satisfies ComputerData,
     });
     if (ifaces.length === 1) {
       members.get(ifaces[0].network)!.push(id);
@@ -488,7 +552,15 @@ function topology(machines: Machine[], networks: LabNetwork[], attacker: Attacke
       .filter((p) => p.published > 0)
       .forEach((p) => {
         const hp = `hp-${m.name}-${p.published}`;
-        nodes.push({ id: hp, type: "hostport", position: { x: 0, y: 0 }, style: { width: ANCHOR, height: ANCHOR }, data: { port: p.published }, draggable: false, selectable: false });
+        nodes.push({
+          id: hp,
+          type: "hostport",
+          position: { x: 0, y: 0 },
+          style: { width: ANCHOR, height: ANCHOR },
+          data: { port: p.published },
+          draggable: false,
+          selectable: false,
+        });
         edges.push(link(`e-${hp}`, id, hp, GREEN, { dashed: true, label: "published" }));
       });
   });
@@ -497,7 +569,6 @@ function topology(machines: Machine[], networks: LabNetwork[], attacker: Attacke
     const ids = members.get(n.name)!;
     zones.push({ id: `zone-${n.name}`, members: ids, data: { label: `${netLabel(n.name).toUpperCase()} NETWORK`, detail: n.subnet, isolated: n.internal } });
   });
-
 
   return { nodes, edges, zones };
 }
@@ -761,45 +832,60 @@ function Flow({ topo, onSize, width: shellW, height: shellH }: { topo: Topology;
 
   return (
     <>
-    <ReactFlow
-      className={cn("transition-opacity duration-200", ready ? "opacity-100" : "opacity-0")}
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      minZoom={0.25}
-      maxZoom={1.5}
-      // A fitted picture, not a canvas: panning or zooming would slide the ports off the edge.
-      panOnDrag={false}
-      zoomOnScroll={false}
-      zoomOnPinch={false}
-      zoomOnDoubleClick={false}
-      panOnScroll={false}
-      preventScrolling={false}
-      nodesConnectable={false}
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#242424" />
-    </ReactFlow>
-    {ready &&
-      tabs.map((t) => (
-        <span key={t.id} className="port-tab" style={{ left: t.left }} title={`Published to 127.0.0.1:${t.port}`}>
-          <CopyText text={`127.0.0.1:${t.port}`}>
-            <Plug size={11} />
-            <span className="mono">:{t.port}</span>
-          </CopyText>
-        </span>
-      ))}
+      <ReactFlow
+        className={cn("transition-opacity duration-200", ready ? "opacity-100" : "opacity-0")}
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        minZoom={0.25}
+        maxZoom={1.5}
+        // A fitted picture, not a canvas: panning or zooming would slide the ports off the edge.
+        panOnDrag={false}
+        zoomOnScroll={false}
+        zoomOnPinch={false}
+        zoomOnDoubleClick={false}
+        panOnScroll={false}
+        preventScrolling={false}
+        nodesConnectable={false}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#242424" />
+      </ReactFlow>
+      {ready &&
+        tabs.map((t) => (
+          <span key={t.id} className="port-tab" style={{ left: t.left }} title={`Published to 127.0.0.1:${t.port}`}>
+            <CopyText text={`127.0.0.1:${t.port}`}>
+              <Plug size={11} />
+              <span className="mono">:{t.port}</span>
+            </CopyText>
+          </span>
+        ))}
     </>
   );
 }
 
-export function NetworkDiagram({ machines, networks = [], attacker = null, host = null }: { machines: Machine[]; networks?: LabNetwork[]; attacker?: Attacker; host?: string | null }) {
+export function NetworkDiagram({
+  machines,
+  networks = [],
+  attacker = null,
+  host = null,
+}: {
+  machines: Machine[];
+  networks?: LabNetwork[];
+  attacker?: Attacker;
+  host?: string | null;
+}) {
   // Re-layout only when the topology changes (not on every status poll).
   const sig =
-    machines.map((m) => `${m.name}:${m.state}:${m.ip}:${(m.interfaces ?? []).map((i) => `${i.network}=${i.ip}`).join(",")}:${(m.services ?? []).map((v) => `${v.name}=${v.kind}/${v.ports.join("+")}`).join(",")}:${m.ports.map((p) => `${p.published}-${p.target}`).join(",")}`).join("|") +
+    machines
+      .map(
+        (m) =>
+          `${m.name}:${m.state}:${m.ip}:${(m.interfaces ?? []).map((i) => `${i.network}=${i.ip}`).join(",")}:${(m.services ?? []).map((v) => `${v.name}=${v.kind}/${v.ports.join("+")}`).join(",")}:${m.ports.map((p) => `${p.published}-${p.target}`).join(",")}`,
+      )
+      .join("|") +
     `#${networks.map((n) => `${n.name}=${n.subnet}${n.internal ? "!" : ""}`).join(",")}` +
     `#${attacker?.running ? `${attacker.ip}@${attacker.labNetwork ?? ""}` : "off"}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps -- sig captures everything drawn

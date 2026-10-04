@@ -61,9 +61,13 @@ export function HostedScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
 function Step({ n, icon: Icon, title, body }: { n: number; icon: typeof Globe; title: string; body: string }) {
   return (
     <div className="flex items-start gap-3 border-b border-border px-3.5 py-3 last:border-b-0">
-      <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-card text-[11px] font-medium text-muted-foreground">{n}</span>
+      <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-card text-[11px] font-medium text-muted-foreground">
+        {n}
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1.5 text-[13px] font-medium"><Icon className="size-3.5 text-muted-foreground" /> {title}</p>
+        <p className="flex items-center gap-1.5 text-[13px] font-medium">
+          <Icon className="size-3.5 text-muted-foreground" /> {title}
+        </p>
         <p className="mt-0.5 text-[12px] text-muted-foreground">{body}</p>
       </div>
     </div>
