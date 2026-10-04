@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { ArrowRight, Check, Copy, LogOut, RotateCcw } from "lucide-react";
-import { initials, useAuthActions } from "@/components/Account";
+import { initials, useAuthActions } from "@/features/account/account";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -21,7 +21,7 @@ import {
   setAutoAttackBox,
   setVmProvider,
 } from "@/lib/settings";
-import { providerLabel } from "@/lib/hypervisors";
+import { providerLabel } from "@/features/machine/hypervisors";
 import { cn } from "@/lib/utils";
 
 const ONBOARDED_KEY = "cyberctf.onboarded";

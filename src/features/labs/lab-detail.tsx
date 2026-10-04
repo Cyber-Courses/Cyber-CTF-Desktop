@@ -19,11 +19,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
-import { LogConsole } from "@/components/labs/log-console";
-import { Markdown } from "@/components/labs/markdown";
-import { NetworkDiagram } from "@/components/labs/network-diagram";
-import { DeploySteps, duration } from "@/components/labs/deploy-steps";
-import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/lib/use-labs";
+import { LogConsole } from "@/components/ui/log-console";
+import { Markdown } from "@/components/ui/markdown";
+import { NetworkDiagram } from "@/features/labs/network-diagram";
+import { DeploySteps, duration } from "@/features/labs/deploy-steps";
+import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import {
   apiQuery,
   labAttackShell,

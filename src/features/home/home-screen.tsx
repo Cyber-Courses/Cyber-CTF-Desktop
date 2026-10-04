@@ -5,11 +5,11 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowRight, Cloud, Container, Cpu, ExternalLink, MemoryStick, Play, RotateCcw, Server, TriangleAlert } from "lucide-react";
 import { Panel, RailLabel } from "@/components/ui/panel";
 import { Meter } from "@/components/ui/meter";
-import { LabRow } from "@/components/labs/lab-row";
-import { useLabs, type Lab } from "@/lib/use-labs";
-import { useLabActions } from "@/lib/use-lab-actions";
-import { getLastRun, formatAgo } from "@/lib/last-run";
-import { assessRam } from "@/lib/capacity";
+import { LabRow } from "@/features/labs/lab-row";
+import { useLabs, type Lab } from "@/features/labs/use-labs";
+import { useLabActions } from "@/features/labs/use-lab-actions";
+import { getLastRun, formatAgo } from "@/features/home/last-run";
+import { assessRam } from "@/features/home/capacity";
 import { machineMetrics, machineOpenSetup, type AuthStatus, type MachineMetrics, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ArrowLeft, Play, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { MachineStepBody, SetupOutcome, canContinue, machineSteps, nextLabel, stepMeta, useMachineSetup } from "@/components/machine/setup-steps";
+import { MachineStepBody, SetupOutcome, canContinue, machineSteps, nextLabel, stepMeta, useMachineSetup } from "@/features/machine/setup-steps";
 import type { SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 

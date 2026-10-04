@@ -1,4 +1,4 @@
-import type { Lab } from "@/lib/use-labs";
+import type { Lab } from "@/features/labs/use-labs";
 import type { ServerHost, SystemReport } from "@/lib/tauri";
 
 /**

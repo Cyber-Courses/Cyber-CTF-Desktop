@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, ChevronRight, Circle, X } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
-import { LogConsole } from "@/components/labs/log-console";
+import { LogConsole } from "@/components/ui/log-console";
 import { cn } from "@/lib/utils";
 
 /**

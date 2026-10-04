@@ -3,7 +3,7 @@
 import { CheckCircle2, ChevronRight, Container, ExternalLink, Play, Server, Wrench } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Spinner } from "@/components/ui/spinner";
-import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/lib/use-labs";
+import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import { machineOpenSetup, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 

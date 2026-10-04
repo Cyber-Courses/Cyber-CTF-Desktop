@@ -6,7 +6,7 @@ import { CheckCircle2, ChevronDown, Cloud, Pencil, Plus, Square, Trash2, X, XCir
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { useLabs, type Lab } from "@/lib/use-labs";
+import { useLabs, type Lab } from "@/features/labs/use-labs";
 import {
   awsMonthToDateCost,
   installDependency,

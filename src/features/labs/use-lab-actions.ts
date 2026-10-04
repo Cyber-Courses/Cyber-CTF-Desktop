@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { serverList, labLaunch, labStop, type Provider } from "@/lib/tauri";
 import { getAttackImage, getVmProvider } from "@/lib/settings";
 import { notify } from "@/lib/notify";
-import type { Lab } from "@/lib/use-labs";
+import type { Lab } from "@/features/labs/use-labs";
 
 /**
  * Start/stop actions for labs, shared across screens. Tracks which lab is busy, the

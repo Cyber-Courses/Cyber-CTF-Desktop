@@ -7,7 +7,7 @@ import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { KIND } from "@/components/server/host-setup";
+import { KIND } from "@/features/servers/host-setup";
 import {
   SERVER_CHANGED,
   serverCapacity,

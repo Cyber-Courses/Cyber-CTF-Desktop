@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { SelfTest, type SelfTestResult } from "@/components/machine/self-test";
+import { SelfTest, type SelfTestResult } from "@/features/machine/self-test";
 import { ATTACK_PRESETS, DEFAULT_ATTACK_IMAGE, getAttackImage, getAutoAttackBox, getVmProvider, setAttackImage, setAutoAttackBox } from "@/lib/settings";
 import {
   dockerUseEngine,
@@ -36,7 +36,7 @@ import {
   type DockerEngine,
   type SystemReport,
 } from "@/lib/tauri";
-import { DOWNLOAD, INSTALLABLE, providerLabel, usableHypervisors } from "@/lib/hypervisors";
+import { DOWNLOAD, INSTALLABLE, providerLabel, usableHypervisors } from "@/features/machine/hypervisors";
 import { cn } from "@/lib/utils";
 
 export type MachineStep = "pkgmgr" | "virtualization" | "docker" | "docker-test" | "attack" | "vm" | "vagrant" | "vm-test";

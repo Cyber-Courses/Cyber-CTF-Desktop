@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { MachineSetup } from "@/components/machine/machine-setup";
+import { MachineSetup } from "@/features/machine/machine-setup";
 import { systemCheck, type SystemReport } from "@/lib/tauri";
 
 /** The guided machine-setup window (opened by `machine_open_setup`, optionally `?step=`). */

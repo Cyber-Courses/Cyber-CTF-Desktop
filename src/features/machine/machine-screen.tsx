@@ -6,8 +6,8 @@ import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { SelfTest } from "@/components/machine/self-test";
-import { EngineMark, engineName } from "@/components/machine/setup-steps";
+import { SelfTest } from "@/features/machine/self-test";
+import { EngineMark, engineName } from "@/features/machine/setup-steps";
 import {
   apiQuery,
   machineMetrics,
@@ -24,7 +24,7 @@ import {
   type Workload,
 } from "@/lib/tauri";
 import { getAttackImage, getLastTest, getVmProvider, type LastTest } from "@/lib/settings";
-import { PROVIDER_LABELS, providerLabel, usableHypervisors } from "@/lib/hypervisors";
+import { PROVIDER_LABELS, providerLabel, usableHypervisors } from "@/features/machine/hypervisors";
 import { cn } from "@/lib/utils";
 
 // ---------- formatting ----------

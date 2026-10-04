@@ -6,11 +6,11 @@ import { useRequestedLab } from "@/lib/deep-link";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, RailLabel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LabRow } from "@/components/labs/lab-row";
-import { LabDetail } from "@/components/labs/lab-detail";
-import { DIFFICULTY_LABEL, useLabs, type Lab } from "@/lib/use-labs";
-import { useLabActions } from "@/lib/use-lab-actions";
-import { setupNeeded } from "@/lib/lab-readiness";
+import { LabRow } from "@/features/labs/lab-row";
+import { LabDetail } from "@/features/labs/lab-detail";
+import { DIFFICULTY_LABEL, useLabs, type Lab } from "@/features/labs/use-labs";
+import { useLabActions } from "@/features/labs/use-lab-actions";
+import { setupNeeded } from "@/features/labs/lab-readiness";
 import { serverList, type ServerHost, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 

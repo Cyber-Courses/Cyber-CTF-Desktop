@@ -14,7 +14,7 @@ import {
   stepMeta,
   useMachineSetup,
   type MachineStep,
-} from "@/components/machine/setup-steps";
+} from "@/features/machine/setup-steps";
 import { authLogin, authStatus, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 

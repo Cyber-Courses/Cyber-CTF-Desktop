@@ -5,8 +5,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, CheckCircle2, ChevronDown, Cloud, ExternalLink, HardDrive, Network, Play, Server, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { LogConsole } from "@/components/labs/log-console";
-import { Requirement } from "@/components/machine/setup-steps";
+import { LogConsole } from "@/components/ui/log-console";
+import { Requirement } from "@/features/machine/setup-steps";
 import {
   awsCliIdentity,
   awsLogin,
