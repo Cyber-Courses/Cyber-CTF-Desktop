@@ -271,7 +271,7 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
         <Disclosure summary="Requirements">
           <Panel className="mt-2.5">
             <PanelHeader title="Command-line tools" action={<span className="text-[11.5px] text-muted-foreground">AWS is used today; Azure / GCP coming</span>} />
-            <CliRow name="AWS CLI" provider="aws" tool={report?.cloudClis.aws} busy={cliBusy === "awscli"} loginBusy={loginBusy === "aws"} onInstall={() => installCli("awscli")} onLogin={() => login("aws")} />
+            <CliRow name="AWS CLI" provider="aws" ready tool={report?.cloudClis.aws} busy={cliBusy === "awscli"} loginBusy={loginBusy === "aws"} onInstall={() => installCli("awscli")} onLogin={() => login("aws")} />
             <CliRow name="Azure CLI" provider="azure" tool={report?.cloudClis.azure} busy={cliBusy === "azurecli"} loginBusy={loginBusy === "azure"} onInstall={() => installCli("azurecli")} onLogin={() => login("azure")} />
             <CliRow name="Google Cloud CLI" provider="gcp" tool={report?.cloudClis.gcloud} busy={cliBusy === "gcloud"} loginBusy={loginBusy === "gcp"} onInstall={() => installCli("gcloud")} onLogin={() => login("gcp")} />
           </Panel>
@@ -453,25 +453,33 @@ function CloudMark({ provider }: { provider: CloudProvider }) {
   return <img src={`/brands/${provider}.svg`} alt="" className="size-5 shrink-0" draggable={false} />;
 }
 
-function CliRow({ name, provider, tool, busy, loginBusy, onInstall, onLogin }: { name: string; provider: CloudProvider; tool?: Tool; busy: boolean; loginBusy: boolean; onInstall: () => void; onLogin: () => void }) {
+function CliRow({ name, provider, ready = false, tool, busy, loginBusy, onInstall, onLogin }: { name: string; provider: CloudProvider; ready?: boolean; tool?: Tool; busy: boolean; loginBusy: boolean; onInstall: () => void; onLogin: () => void }) {
   const installed = !!tool?.installed;
   return (
     <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
       <CloudMark provider={provider} />
-      <span className="text-foreground">{name}</span>
+      <span className={cn(ready ? "text-foreground" : "text-muted-foreground")}>{name}</span>
       <span className="ml-auto flex items-center gap-3">
-        <StatusPill tone={installed ? "ok" : "muted"}>{tool ? (installed ? (tool.version ?? "installed") : "not installed") : "…"}</StatusPill>
-        {installed ? (
-          provider === "aws" ? null : (
-            <Button variant="outline" size="sm" onClick={onLogin} disabled={loginBusy}>
-              {loginBusy ? "Signing in…" : "Sign in"}
-            </Button>
-          )
-        ) : tool ? (
-          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy}>
-            {busy ? "Installing…" : "Install"}
-          </Button>
-        ) : null}
+        {/* Azure and GCP can't run labs yet, so don't offer their installs: azure-cli's brew
+            formula alone compiles llvm + rust, a long build for a provider that does nothing. */}
+        {!ready ? (
+          <StatusPill tone="muted">coming soon</StatusPill>
+        ) : (
+          <>
+            <StatusPill tone={installed ? "ok" : "muted"}>{tool ? (installed ? (tool.version ?? "installed") : "not installed") : "…"}</StatusPill>
+            {installed ? (
+              provider === "aws" ? null : (
+                <Button variant="outline" size="sm" onClick={onLogin} disabled={loginBusy}>
+                  {loginBusy ? "Signing in…" : "Sign in"}
+                </Button>
+              )
+            ) : tool ? (
+              <Button variant="learn" size="sm" onClick={onInstall} disabled={busy}>
+                {busy ? "Installing…" : "Install"}
+              </Button>
+            ) : null}
+          </>
+        )}
       </span>
     </div>
   );
