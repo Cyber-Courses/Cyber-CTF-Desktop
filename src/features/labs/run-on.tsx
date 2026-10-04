@@ -10,7 +10,7 @@ import { ProviderGlyph } from "@/features/servers/provider-glyph";
 import { HypervisorLogo } from "@/features/machine/hypervisor-logo";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 
-const CLOUDS = new Set(["aws", "azure", "gcp", "digitalocean", "linode", "oci"]);
+export const CLOUDS = new Set(["aws", "azure", "gcp", "digitalocean", "linode", "oci"]);
 
 /** Where a lab starts: this machine (Docker, or a VM on a local hypervisor) or a saved host. */
 export type RunTarget = { kind: "local" } | { kind: "local-vm"; provider: Provider } | { kind: "host"; id: string } | { kind: "hosted" };

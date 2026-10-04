@@ -1,13 +1,28 @@
 "use client";
 
-import { CheckCircle2, ChevronRight, Container, ExternalLink, Play, Server, Wrench } from "lucide-react";
+import { CheckCircle2, ChevronRight, Cloud, Container, ExternalLink, Globe, Monitor, Play, Server, Wrench, type LucideIcon } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Spinner } from "@/components/ui/spinner";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
+import { CLOUDS } from "@/features/labs/run-on";
 import { machineOpenSetup, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import type { ButtonHTMLAttributes } from "react";
 import { Button } from "@/components/ui/button";
+
+const SERVERS = new Set(["vmware_esxi", "proxmox"]);
+
+/** Every place a lab could run besides its default runtime here, and whether this one can (from its providers). */
+function runPlaces(rt: NonNullable<Lab["runtime"]>): { icon: LucideIcon; label: string; available: boolean }[] {
+  // providers also carries "hosted" (not a launcher Provider), so compare as strings.
+  const local = rt.providers.some((p: string) => !SERVERS.has(p) && !CLOUDS.has(p) && p !== "hosted");
+  return [
+    { icon: Monitor, label: "VM on this machine", available: rt.runtime === "DOCKER" && local },
+    { icon: Server, label: "Your server", available: rt.providers.some((p) => SERVERS.has(p)) },
+    { icon: Cloud, label: "Your cloud account", available: rt.providers.some((p) => CLOUDS.has(p)) },
+    { icon: Globe, label: "Hosted by Cyber CTF", available: rt.hosted ?? false },
+  ];
+}
 
 /** A row action: compact, and it doesn't open the row when clicked. */
 function RowButton({
@@ -99,6 +114,16 @@ export function LabRow({
             <RuntimeIcon className="size-3" />
             {rt.runtime === "VM" ? "VM" : "Container"}
             {!native && <span className="text-amber-500">· emulated</span>}
+            <span className="ml-0.5 inline-flex items-center gap-1">
+              {runPlaces(rt).map(({ icon: Icon, label, available }) => {
+                const hint = available ? `Runs on: ${label}` : `Not available: ${label}`;
+                return (
+                  <span key={label} title={hint} aria-label={hint} className="inline-flex">
+                    <Icon className={cn("size-3", available ? "text-foreground/80" : "text-muted-foreground/25")} />
+                  </span>
+                );
+              })}
+            </span>
           </span>
         )}
 
