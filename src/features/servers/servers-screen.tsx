@@ -34,7 +34,8 @@ type Tab = "setup";
 
 export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const [allHosts, setHosts] = useState<ServerHost[] | null>(null);
-  const hosts = allHosts?.filter((h) => h.provider !== "aws") ?? null;
+  // Cloud accounts (AWS/Azure/GCP) live on the Cloud page; the Servers page is on-prem hosts only.
+  const hosts = allHosts?.filter((h) => h.provider !== "aws" && h.provider !== "azure" && h.provider !== "gcp") ?? null;
   const [defaultId, setDefaultId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, ServerTest | "testing">>({});

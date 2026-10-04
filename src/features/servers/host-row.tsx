@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Cpu, FlaskConical, MemoryStick, MoreHorizontal, Pencil, Server, Star, Trash2, X } from "lucide-react";
+import { Check, Cpu, FlaskConical, MemoryStick, MoreHorizontal, Pencil, Star, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { KIND } from "@/features/servers/host-setup";
 import { type HostCapacity, type ServerHost, type ServerTest } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { ServerSelfTest } from "@/features/servers/server-self-test";
 import { StatusPill, type Tone } from "@/components/ui/status-pill";
-import { TypeIcon } from "@/components/ui/type-icon";
+import { ProviderGlyph } from "@/features/servers/provider-glyph";
 import { formatAgo, formatBytes } from "@/lib/format";
 import { VmTest } from "@/features/servers/vm-tests";
 
@@ -50,9 +50,7 @@ export function HostRow({
   return (
     <div className="border-b border-border last:border-b-0">
       <div className="flex flex-wrap items-center gap-3 px-3.5 py-3">
-        <TypeIcon>
-          <Server className="size-4" />
-        </TypeIcon>
+        <ProviderGlyph provider={host.provider} />
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[0.8125rem] font-medium">
             {host.name}

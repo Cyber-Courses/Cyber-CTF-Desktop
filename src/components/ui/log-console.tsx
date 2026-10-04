@@ -23,13 +23,16 @@ export function LogConsole({
   title?: string;
   className?: string;
 }) {
-  const end = useRef<HTMLDivElement>(null);
+  const pre = useRef<HTMLPreElement>(null);
   const [open, setOpen] = useState(true);
   const [now, setNow] = useState<number>(() => Date.now());
   const [startAt, setStartAt] = useState<number | null>(null);
 
+  // Keep the newest line in view: scroll the log body itself to the bottom (not the page) on
+  // every new line, so it reads like a tail -f and never needs manual scrolling.
   useEffect(() => {
-    if (open) end.current?.scrollIntoView({ block: "end" });
+    const el = pre.current;
+    if (open && el) el.scrollTop = el.scrollHeight;
   }, [lines, open]);
 
   // Tick only while running; setState happens in the async interval callback (not in the
@@ -67,9 +70,8 @@ export function LogConsole({
         {open ? <ChevronDown className="size-3.5 text-muted-foreground" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
       </button>
       {open && (
-        <pre className="max-h-64 overflow-auto p-3 font-mono text-xs leading-relaxed text-muted-foreground">
+        <pre ref={pre} className="max-h-40 overflow-auto p-3 font-mono text-xs leading-relaxed text-muted-foreground">
           {lines.join("\n")}
-          <div ref={end} />
         </pre>
       )}
     </div>
