@@ -132,6 +132,10 @@ export function CloudScreen() {
     }
   }
 
+  const over = (hosts ?? []).filter((h) => {
+    const s = spend[h.id];
+    return h.monthlyLimit != null && s != null && s >= h.monthlyLimit;
+  });
   const envReady = !!report?.cloudClis.aws.installed && !!report?.terraform.installed;
   // Only one install/pull/sign-in at a time: brew (and others) can't run two at once.
   const busyOp = cliBusy !== null || pullBusy !== null || loginBusy !== null;
@@ -147,6 +151,12 @@ export function CloudScreen() {
       </div>
 
       {error && <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">{error}</p>}
+
+      {over.length > 0 && (
+        <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12.5px] text-rose-300">
+          {over.length === 1 ? `${over[0].name} is over its monthly budget` : `${over.length} accounts are over their monthly budget`} — new labs there are blocked until you raise the budget or next month.
+        </p>
+      )}
 
       <Panel>
         <PanelHeader
