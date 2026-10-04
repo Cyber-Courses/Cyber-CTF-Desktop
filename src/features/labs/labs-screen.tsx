@@ -19,12 +19,6 @@ type StatusFilter = "all" | "todo" | "running" | "solved";
 /** CLOUD = labs that can run in the player's cloud account (AWS is a supported target). */
 type RuntimeFilter = "all" | "DOCKER" | "VM" | "CLOUD";
 
-/** The skill a lab is listed under: its first skill by name, else its category. */
-function groupOf(lab: Lab): string {
-  const skill = [...(lab.skills ?? [])].sort((a, b) => a.name.localeCompare(b.name))[0];
-  return skill?.name ?? lab.category.charAt(0) + lab.category.slice(1).toLowerCase();
-}
-
 export function Labs({
   loggedIn,
   hostArch,
@@ -86,13 +80,12 @@ export function Labs({
     });
   }, [labs, query, runtime, difficulty, status, statuses, completed]);
 
-  // Running labs are pinned on top; the rest are grouped by skill.
+  // Running labs are pinned on top; the rest follow in one list, by title.
   const running = filtered.filter(isRunning);
-  const groups = useMemo(() => {
-    const m = new Map<string, Lab[]>();
-    filtered.filter((l) => !statuses[l.id]?.running).forEach((l) => m.set(groupOf(l), [...(m.get(groupOf(l)) ?? []), l]));
-    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [filtered, statuses]);
+  const rest = useMemo(
+    () => filtered.filter((l) => !statuses[l.id]?.running).sort((a, b) => a.title.localeCompare(b.title)),
+    [filtered, statuses],
+  );
 
   if (error) return <EmptyState icon="alert" title="Can’t reach the lab catalogue" description="Check your connection or sign in, then try again." />;
 
@@ -205,12 +198,12 @@ export function Labs({
               <Panel>{running.map(row)}</Panel>
             </section>
           )}
-          {groups.map(([group, list]) => (
-            <section key={group}>
-              <RailLabel right={<span className="text-[0.75rem] tabular-nums text-muted-foreground">{list.length}</span>}>{group}</RailLabel>
-              <Panel>{list.map(row)}</Panel>
+          {rest.length > 0 && (
+            <section>
+              {running.length > 0 && <RailLabel>All labs</RailLabel>}
+              <Panel>{rest.map(row)}</Panel>
             </section>
-          ))}
+          )}
         </>
       )}
     </div>
