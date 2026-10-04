@@ -137,9 +137,10 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
   }, [reload, loadRunning]);
 
   useEffect(() => {
-    if (!cloud) return;
+    // The report tells us whether this machine can already run VM labs (so the server
+    // page can hide the "set up this machine" hint), and feeds the cloud requirements.
     systemCheck().then(setReport).catch(() => {});
-    provisioningImages().then(setProvImages).catch(() => {});
+    if (cloud) provisioningImages().then(setProvImages).catch(() => {});
   }, [cloud]);
 
   const open = (id: string | null) => serverOpenSetup(id, kind).catch((e) => setError(String(e)));
@@ -286,7 +287,8 @@ export function ServerScreen({ onNavigate, kind = "server" }: { onNavigate: (tab
         </Disclosure>
       )}
 
-      {!cloud && (
+      {/* Only worth suggesting when this machine can't already run VM labs itself. */}
+      {!cloud && report && !report.vmProviders.some((p) => !p.remote && p.available && p.hypervisor !== false) && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-border px-4 py-3">
           <p className="min-w-0 flex-1 text-[12px] text-muted-foreground">No server? If this machine can handle it, install a local hypervisor and run VM labs here.</p>
           <Button variant="ghost" size="sm" onClick={() => onNavigate("setup")}>Set up this machine</Button>
