@@ -258,8 +258,9 @@ export function CloudScreen() {
 const COMING_SOON: { id: string; label: string; logo: boolean }[] = [
   { id: "azure", label: "Microsoft Azure", logo: true },
   { id: "gcp", label: "Google Cloud", logo: true },
-  { id: "digitalocean", label: "DigitalOcean", logo: false },
-  { id: "hetzner", label: "Hetzner", logo: false },
+  { id: "digitalocean", label: "DigitalOcean", logo: true },
+  { id: "linode", label: "Linode", logo: true },
+  { id: "oracle", label: "Oracle Cloud", logo: true },
 ];
 
 const PROVIDERS: { id: CloudProvider; label: string }[] = [
