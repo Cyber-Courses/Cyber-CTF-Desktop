@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { CheckCircle2, ChevronDown, Pencil, Plus, Trash2, XCircle, Zap } from "lucide-react";
+import { CheckCircle2, ChevronDown, Pencil, Plus, Trash2, X, XCircle, Zap } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -74,8 +74,7 @@ export function CloudScreen() {
     }
   }, []);
 
-  async function remove(id: string, name: string) {
-    if (!confirm(`Remove ${name}? Its secret key is deleted from the keychain.`)) return;
+  async function remove(id: string) {
     try {
       await serverRemove(id);
       reload();
@@ -152,7 +151,7 @@ export function CloudScreen() {
               test={tests[h.id]}
               onTest={() => test(h.id)}
               onEdit={() => openSetup(h.id)}
-              onRemove={() => remove(h.id, h.name)}
+              onRemove={() => remove(h.id)}
             />
           ))
         )}
@@ -222,6 +221,7 @@ function FirstRun({ onSetup }: { onSetup: () => void }) {
 function AccountRow({ host, test, onTest, onEdit, onRemove }: { host: ServerHost; test: ServerTest | "testing" | undefined; onTest: () => void; onEdit: () => void; onRemove: () => void }) {
   const result = test && test !== "testing" ? test : null;
   const ok = result ? result.ok : null;
+  const [confirming, setConfirming] = useState(false);
   const facts = [
     host.host,
     host.useCliCreds ? (host.awsProfile ? `CLI · ${host.awsProfile}` : "CLI credentials") : "access keys",
@@ -243,11 +243,21 @@ function AccountRow({ host, test, onTest, onEdit, onRemove }: { host: ServerHost
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button variant="outline" size="sm" onClick={onTest} disabled={test === "testing"}>
-            {test === "testing" ? <Spinner className="size-3.5" /> : <Zap className="size-3.5" />} Test
-          </Button>
-          <IconButton label="Edit" onClick={onEdit}><Pencil className="size-3.5" /></IconButton>
-          <IconButton label="Remove" onClick={onRemove}><Trash2 className="size-3.5" /></IconButton>
+          {confirming ? (
+            <>
+              <span className="mr-1 text-[11.5px] text-muted-foreground">Remove?</span>
+              <Button variant="destructive" size="sm" onClick={onRemove}>Remove</Button>
+              <IconButton label="Cancel" onClick={() => setConfirming(false)}><X className="size-3.5" /></IconButton>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={onTest} disabled={test === "testing"}>
+                {test === "testing" ? <Spinner className="size-3.5" /> : <Zap className="size-3.5" />} Test
+              </Button>
+              <IconButton label="Edit" onClick={onEdit}><Pencil className="size-3.5" /></IconButton>
+              <IconButton label="Remove" onClick={() => setConfirming(true)}><Trash2 className="size-3.5" /></IconButton>
+            </>
+          )}
         </div>
       </div>
       {result && (
