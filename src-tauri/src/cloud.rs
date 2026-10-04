@@ -1,11 +1,29 @@
 //! Cloud account connection via each provider's own CLI auth (browser flow), so we don't
 //! store long-lived cloud secrets. Terraform then uses the CLI's credential chain.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use serde::Deserialize;
 use tauri::ipc::Channel;
 
 use crate::error::Result;
 use crate::exec::{run, stream};
+
+/// Civil (year, month, day) for a Unix timestamp, UTC (Howard Hinnant's algorithm). Used to
+/// build Cost Explorer date ranges without a date-crate dependency.
+fn ymd_from_secs(secs: i64) -> (i64, u32, u32) {
+    let z = secs.div_euclid(86400) + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32;
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -42,6 +60,25 @@ pub async fn aws_cli_identity(profile: Option<String>) -> Option<String> {
         args.push(p);
     }
     run("aws", &args, None).await.ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+/// This month's AWS spend so far in USD, from Cost Explorer, for the budget check. None
+/// when the CLI or Cost Explorer isn't available (CE must be enabled on the account).
+#[tauri::command]
+pub async fn aws_month_to_date_cost(profile: Option<String>) -> Option<f64> {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
+    let (y, m, _) = ymd_from_secs(now);
+    let (ey, em, ed) = ymd_from_secs(now + 86400); // end is exclusive; tomorrow includes today
+    let period = format!("Start={y:04}-{m:02}-01,End={ey:04}-{em:02}-{ed:02}");
+    let mut args = vec![
+        "ce", "get-cost-and-usage", "--time-period", &period, "--granularity", "MONTHLY",
+        "--metrics", "UnblendedCost", "--query", "ResultsByTime[0].Total.UnblendedCost.Amount", "--output", "text",
+    ];
+    if let Some(p) = profile.as_deref() {
+        args.push("--profile");
+        args.push(p);
+    }
+    run("aws", &args, None).await.ok().and_then(|s| s.trim().parse::<f64>().ok())
 }
 
 /// The AWS CLI profiles configured on this machine (`aws configure list-profiles`), so the
