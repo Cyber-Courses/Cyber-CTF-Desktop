@@ -7,8 +7,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { type Provider, type ProviderStatus, type SystemReport } from "@/lib/tauri";
 import { getVmProvider, setVmProvider } from "@/lib/settings";
 import { providerLabel } from "@/features/machine/hypervisors";
-import { cn } from "@/lib/utils";
 import { Row } from "@/features/settings/settings-layout";
+import { Segmented } from "@/components/ui/segmented";
 
 export function HypervisorRow({ report, onSaved, onNavigate }: { report: SystemReport | null; onSaved: () => void; onNavigate: (tab: "machine") => void }) {
   const [provider, setProvider] = useState<Provider | null>(() => getVmProvider());
@@ -66,26 +66,15 @@ export function HypervisorRow({ report, onSaved, onNavigate }: { report: SystemR
             {providerLabel(ready[0])}
           </Badge>
         ) : (
-          <div role="radiogroup" aria-label="Hypervisor" className="inline-flex rounded-lg border border-border bg-background p-0.5">
-            {options.map((p) => {
-              const active = effective === p;
+          <Segmented
+            label="Hypervisor"
+            value={effective}
+            onChange={choose}
+            options={options.map((p) => {
               const status = ready.find((h) => h.provider === p);
-              return (
-                <button
-                  key={p ?? "auto"}
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => choose(p)}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                    active ? "bg-muted text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {p === null ? "Automatic" : status ? providerLabel(status) : p}
-                </button>
-              );
+              return { value: p, label: p === null ? "Automatic" : status ? providerLabel(status) : p };
             })}
-          </div>
+          />
         )
       }
     />

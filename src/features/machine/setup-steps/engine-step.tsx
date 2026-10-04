@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { dockerUseEngine, type DockerEngine, type SystemReport } from "@/lib/tauri";
 import { ENGINES, Engine } from "@/features/machine/setup-steps/engines";
-import { Choice, ChoiceAction, ChoiceGrid, CmdRow, Log } from "@/features/machine/setup-steps/parts";
+import { CmdRow, Log } from "@/features/machine/setup-steps/parts";
+import { Choice, ChoiceAction, ChoiceGrid } from "@/components/ui/choice-card";
 import { chosenEngine, isDockerReady } from "@/features/machine/setup-steps/steps";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
 

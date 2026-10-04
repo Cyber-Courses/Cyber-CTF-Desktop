@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Terminal } from "lucide-react";
 import { ATTACK_PRESETS, DEFAULT_ATTACK_IMAGE, getAttackImage, getAutoAttackBox, setAttackImage, setAutoAttackBox } from "@/lib/settings";
 import { type SystemReport } from "@/lib/tauri";
-import { Choice, ChoiceGrid } from "@/features/machine/setup-steps/parts";
+import { Choice, ChoiceGrid } from "@/components/ui/choice-card";
 import { isDockerReady } from "@/features/machine/setup-steps/steps";
 
 // ---------- Virtual machines ----------

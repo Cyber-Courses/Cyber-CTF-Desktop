@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { type SystemReport } from "@/lib/tauri";
 import { DOWNLOAD, INSTALLABLE, providerLabel, usableHypervisors } from "@/features/machine/hypervisors";
-import { Choice, ChoiceAction, ChoiceGrid, Log, Requirement } from "@/features/machine/setup-steps/parts";
+import { Log, Requirement } from "@/features/machine/setup-steps/parts";
+import { Choice, ChoiceAction, ChoiceGrid } from "@/components/ui/choice-card";
 import { chosenHypervisor } from "@/features/machine/setup-steps/steps";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
 

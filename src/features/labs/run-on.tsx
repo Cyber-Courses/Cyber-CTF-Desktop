@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { type ServerHost } from "@/lib/tauri";
-import { cn } from "@/lib/utils";
+import type { ServerHost } from "@/lib/tauri";
+import { RadioList, RadioRow } from "@/components/ui/radio-row";
 
 const HYPERVISOR: Record<string, string> = { vmware_esxi: "ESXi", proxmox: "Proxmox", aws: "AWS, billed to you" };
 
@@ -56,32 +56,20 @@ export function RunOnPicker({
   return (
     <div className="space-y-1.5">
       <p className="text-[0.75rem] font-medium text-foreground">Where should it run?</p>
-      <div className="overflow-hidden rounded-lg border border-border">
-        {options.map((o) => {
-          const selected = value === o.id;
-          return (
-            <button
-              key={o.id ?? "local"}
-              type="button"
-              disabled={disabled || !o.ok}
-              onClick={() => onChange(o.id)}
-              title={o.ok ? undefined : `This lab doesn't support ${o.note.split(" · ")[0]}`}
-              className={cn(
-                "flex w-full items-center gap-2.5 border-b border-border px-3 py-2 text-left last:border-b-0 transition-colors disabled:cursor-not-allowed disabled:opacity-45",
-                selected ? "bg-muted" : "hover:bg-muted/50",
-              )}
-            >
-              <span className={cn("grid size-3.5 shrink-0 place-items-center rounded-full border", selected ? "border-learn" : "border-muted-foreground/40")}>
-                {selected && <span className="size-1.5 rounded-full bg-learn" />}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12.5px] font-medium">{o.label}</span>
-                <span className="block truncate font-mono text-[10.5px] text-muted-foreground">{o.ok ? o.note : "Not supported by this lab"}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <RadioList label="Run on">
+        {options.map((o) => (
+          <RadioRow
+            key={o.id ?? "local"}
+            compact
+            selected={value === o.id}
+            onSelect={() => onChange(o.id)}
+            disabled={disabled || !o.ok}
+            hint={o.ok ? undefined : `This lab doesn't support ${o.note.split(" · ")[0]}`}
+            title={o.label}
+            subtitle={o.ok ? o.note : "Not supported by this lab"}
+          />
+        ))}
+      </RadioList>
     </div>
   );
 }

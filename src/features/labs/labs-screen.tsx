@@ -12,7 +12,7 @@ import { DIFFICULTY_LABEL, useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
 import { setupNeeded } from "@/features/labs/lab-readiness";
 import { serverList, type ServerHost, type SystemReport } from "@/lib/tauri";
-import { cn } from "@/lib/utils";
+import { Segmented } from "@/components/ui/segmented";
 
 type StatusFilter = "all" | "todo" | "running" | "solved";
 /** CLOUD = labs that can run in the player's cloud account (AWS is a supported target). */
@@ -22,27 +22,6 @@ type RuntimeFilter = "all" | "DOCKER" | "VM" | "CLOUD";
 function groupOf(lab: Lab): string {
   const skill = [...(lab.skills ?? [])].sort((a, b) => a.name.localeCompare(b.name))[0];
   return skill?.name ?? lab.category.charAt(0) + lab.category.slice(1).toLowerCase();
-}
-
-/** A row of mutually exclusive filter chips. */
-function Chips<T extends string | number>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[] }) {
-  return (
-    <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-0.5">
-      {options.map((o) => (
-        <button
-          key={String(o.value)}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={cn(
-            "rounded-md px-2.5 py-1 text-[0.75rem] transition-colors",
-            value === o.value ? "bg-foreground/10 text-foreground" : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 export function Labs({
@@ -154,7 +133,8 @@ export function Labs({
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Chips<StatusFilter>
+          <Segmented<StatusFilter>
+            label="Status"
             value={status}
             onChange={setStatus}
             options={[
@@ -164,7 +144,8 @@ export function Labs({
               { value: "solved", label: "Solved" },
             ]}
           />
-          <Chips<RuntimeFilter>
+          <Segmented<RuntimeFilter>
+            label="Runtime"
             value={runtime}
             onChange={setRuntime}
             options={[
@@ -174,7 +155,8 @@ export function Labs({
               { value: "CLOUD", label: "Cloud" },
             ]}
           />
-          <Chips<number>
+          <Segmented<number>
+            label="Level"
             value={difficulty}
             onChange={setDifficulty}
             options={[{ value: 0, label: "Any level" }, ...[1, 2, 3].map((d) => ({ value: d, label: DIFFICULTY_LABEL[d] }))]}

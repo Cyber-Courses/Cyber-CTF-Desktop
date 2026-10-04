@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ATTACK_PRESETS, DEFAULT_ATTACK_IMAGE, getAttackImage, getAutoAttackBox, setAttackImage, setAutoAttackBox } from "@/lib/settings";
-import { OptionRow, Row } from "@/features/settings/settings-layout";
+import { Row } from "@/features/settings/settings-layout";
+import { RadioList, RadioRow } from "@/components/ui/radio-row";
 
 /* ------------------------------------------------------------------ labs */
 
@@ -32,9 +33,9 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
         title="Attack box image"
         description="Runs on each lab’s network as your toolbox. The first launch of an image downloads it, which can take a while."
       >
-        <div role="radiogroup" aria-label="Attack box image" className="mt-3 overflow-hidden rounded-lg border border-border">
+        <RadioList label="Attack box image" className="mt-3">
           {ATTACK_PRESETS.map((p) => (
-            <OptionRow
+            <RadioRow
               key={p.image}
               selected={!customOpen && image === p.image}
               onSelect={() => {
@@ -56,7 +57,7 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
               }
             />
           ))}
-          <OptionRow selected={customOpen} onSelect={() => setCustomOpen(true)} title="Custom image" subtitle="Any Docker image or registry tag.">
+          <RadioRow selected={customOpen} onSelect={() => setCustomOpen(true)} title="Custom image" subtitle="Any Docker image or registry tag.">
             {customOpen && (
               <form
                 className="mt-2.5 flex items-center gap-2"
@@ -79,8 +80,8 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
                 </Button>
               </form>
             )}
-          </OptionRow>
-        </div>
+          </RadioRow>
+        </RadioList>
       </Row>
 
       <Row
