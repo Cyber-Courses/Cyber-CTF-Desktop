@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, Container, ExternalLink, Play, Server, Square, Terminal } from "lucide-react";
+import { ArrowLeft, ExternalLink, Play, Square, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
@@ -17,6 +17,7 @@ import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
+import { runPlaces } from "@/features/labs/lab-row";
 import { labAttackShell, exegolShell, serverList, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
@@ -55,7 +56,6 @@ export function LabDetail({
   const starting = busy && !running;
   const url = status?.url;
   const down = (status?.machines ?? []).filter((m) => m.state !== "running");
-  const RuntimeIcon = rt?.runtime === "VM" ? Server : Container;
   const isDocker = rt?.runtime !== "VM";
   const remote = !!status?.host;
 
@@ -157,8 +157,10 @@ export function LabDetail({
             <span>· {lab.category}</span>
             {rt && (
               <span className="inline-flex items-center gap-1.5">
-                · <RuntimeIcon className="size-3.5" />
-                {rt.runtime === "VM" ? "VM" : "Container"}
+                ·
+                {runPlaces(rt).map(({ key, icon: Icon, label, available }) => (
+                  <Icon key={key} className={cn("size-3.5", available ? "text-learn" : "text-muted-foreground/25")} aria-label={label} />
+                ))}
               </span>
             )}
             {rt && !native && (isDocker || runOn === null) && <span className="text-amber-500">· emulated (slower)</span>}

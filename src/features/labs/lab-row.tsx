@@ -15,7 +15,7 @@ const SERVERS = new Set(["vmware_esxi", "proxmox"]);
 type PlaceKey = NonNullable<LabStatus["place"]> | "hosted";
 
 /** Every place a lab could run, and whether this one can (its runtime here, then its providers). */
-function runPlaces(rt: NonNullable<Lab["runtime"]>): { key: PlaceKey; icon: LucideIcon; label: string; available: boolean }[] {
+export function runPlaces(rt: NonNullable<Lab["runtime"]>): { key: PlaceKey; icon: LucideIcon; label: string; available: boolean }[] {
   // providers also carries "hosted" (not a launcher Provider), so compare as strings.
   const local = rt.providers.some((p: string) => !SERVERS.has(p) && !CLOUDS.has(p) && p !== "hosted");
   const vm = rt.runtime === "VM";
