@@ -13,6 +13,15 @@ export type AzureSubscription = { name: string; id: string; isDefault: boolean }
 /** Subscriptions the signed-in Azure account can see (`az account list`). Empty if not signed in. */
 export const azureSubscriptions = () => invoke<AzureSubscription[]>("azure_subscriptions");
 
+/** A GCP project the signed-in account can use. */
+export type GcpProject = { id: string; name: string };
+
+/** The active gcloud account email, or null if the CLI isn't signed in. */
+export const gcpAccount = () => invoke<string | null>("gcp_account");
+
+/** Projects the signed-in GCP account can see (`gcloud projects list`). Empty if not signed in. */
+export const gcpProjects = () => invoke<GcpProject[]>("gcp_projects");
+
 /** This month's AWS spend so far (USD) from Cost Explorer, or null if unavailable. */
 export const awsMonthToDateCost = (profile?: string) => invoke<number | null>("aws_month_to_date_cost", { profile: profile ?? null });
 

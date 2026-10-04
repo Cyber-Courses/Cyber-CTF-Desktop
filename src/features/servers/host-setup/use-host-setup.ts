@@ -6,10 +6,13 @@ import {
   awsProfiles,
   azureSubscriptions,
   cloudLogin,
+  gcpAccount,
+  gcpProjects,
   serverSave,
   serverTest,
   type AzureSubscription,
   type CloudProvider,
+  type GcpProject,
   type ServerHost,
   type ServerHostInput,
   type ServerTest,
@@ -61,9 +64,13 @@ export function useHostSetup({
   const [awsIdentity, setAwsIdentity] = useState<string | null>(null);
   const [checkingId, setCheckingId] = useState(false);
   const [mtdCost, setMtdCost] = useState<number | null>(null);
-  // Azure: the subscriptions the signed-in account can see, so you pick one instead of pasting a GUID.
+  // Azure/GCP: the subscriptions/projects the signed-in account can see, so you pick one
+  // instead of typing an id.
   const [azureSubs, setAzureSubs] = useState<AzureSubscription[]>([]);
   const [azureChecking, setAzureChecking] = useState(false);
+  const [gcpProjs, setGcpProjs] = useState<GcpProject[]>([]);
+  const [gcpEmail, setGcpEmail] = useState<string | null>(null);
+  const [gcpChecking, setGcpChecking] = useState(false);
   useEffect(() => {
     if (aws)
       awsProfiles()
@@ -85,6 +92,24 @@ export function useHostSetup({
     if (azure) loadAzureSubs();
     else setAzureSubs([]);
   }, [azure, loadAzureSubs]);
+  const loadGcpProjects = useCallback(() => {
+    setGcpChecking(true);
+    Promise.all([gcpAccount(), gcpProjects()])
+      .then(([email, projs]) => {
+        setGcpEmail(email);
+        setGcpProjs(projs);
+        setV((s) => (s.provider === "gcp" && !s.username && projs.length > 0 ? { ...s, username: projs[0].id } : s));
+      })
+      .catch(() => {
+        setGcpEmail(null);
+        setGcpProjs([]);
+      })
+      .finally(() => setGcpChecking(false));
+  }, []);
+  useEffect(() => {
+    if (gcp) loadGcpProjects();
+    else setGcpProjs([]);
+  }, [gcp, loadGcpProjects]);
   useEffect(() => {
     // Only meaningful in CLI-credentials mode, where the signed-in profile *is* the account.
     // With pasted access keys these would reflect the machine's default AWS chain (a different
@@ -221,8 +246,9 @@ export function useHostSetup({
     try {
       await cloudLogin(cloudProvider, (l) => setSignInLog((x) => [...(x ?? []), l]));
       setSignInLog((x) => [...(x ?? []), "✓ Signed in"]);
-      // Pull the now-available subscriptions so the user can pick one.
+      // Pull the now-available subscriptions / projects so the user can pick one.
       if (cloudProvider === "azure") loadAzureSubs();
+      if (cloudProvider === "gcp") loadGcpProjects();
     } catch (e) {
       setSignInLog((x) => [...(x ?? []), `✗ ${String(e)}`]);
     } finally {
@@ -275,6 +301,9 @@ export function useHostSetup({
     setMtdCost,
     azureSubs,
     azureChecking,
+    gcpProjs,
+    gcpEmail,
+    gcpChecking,
     awsSignIn,
     kind,
     status,

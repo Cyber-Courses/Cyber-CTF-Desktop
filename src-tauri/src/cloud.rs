@@ -43,7 +43,10 @@ pub async fn cloud_login(provider: Cloud, logs: Channel<String>) -> Result<()> {
     let (program, args): (&'static str, &[&str]) = match provider {
         Cloud::Aws => ("aws", &["sso", "login"]),
         Cloud::Azure => ("az", &["login"]),
-        Cloud::Gcp => ("gcloud", &["auth", "application-default", "login"]),
+        // One browser flow that authenticates the gcloud CLI (so `gcloud projects list` works)
+        // AND writes Application Default Credentials (what Terraform's google provider reads).
+        // Plain `auth application-default login` only does the latter, leaving the CLI unauthed.
+        Cloud::Gcp => ("gcloud", &["auth", "login", "--update-adc"]),
     };
     on_line(format!("$ {program} {}", args.join(" ")));
     stream(program, args, None, &[], on_line).await
@@ -126,6 +129,42 @@ pub async fn azure_subscriptions() -> Vec<AzureSubscription> {
         .await
         .ok()
         .and_then(|out| serde_json::from_str::<Vec<AzureSubscription>>(&out).ok())
+        .unwrap_or_default()
+}
+
+/// A GCP project the signed-in account can use.
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GcpProject {
+    pub id: String,
+    pub name: String,
+}
+
+/// The active gcloud account email, or None if the CLI isn't signed in. Reliable even when
+/// `projects list` is empty or the Resource Manager API is off, so the UI can show "signed in".
+#[tauri::command]
+pub async fn gcp_account() -> Option<String> {
+    run("gcloud", &["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"], None)
+        .await
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// The GCP projects the signed-in account can see (`gcloud projects list`), so the user can
+/// pick one instead of typing the id. Empty when the CLI is missing or not signed in.
+#[tauri::command]
+pub async fn gcp_projects() -> Vec<GcpProject> {
+    run("gcloud", &["projects", "list", "--format", "json(projectId,name)"], None)
+        .await
+        .ok()
+        .and_then(|out| serde_json::from_str::<Vec<serde_json::Value>>(&out).ok())
+        .map(|arr| {
+            arr.into_iter()
+                .map(|v| GcpProject { id: v["projectId"].as_str().unwrap_or_default().to_string(), name: v["name"].as_str().unwrap_or_default().to_string() })
+                .filter(|p| !p.id.is_empty())
+                .collect()
+        })
         .unwrap_or_default()
 }
 

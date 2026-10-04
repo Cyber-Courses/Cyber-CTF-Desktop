@@ -23,6 +23,9 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
     checkingId,
     azureSubs,
     azureChecking,
+    gcpProjs,
+    gcpEmail,
+    gcpChecking,
     awsSignIn,
     set,
     text,
@@ -89,15 +92,49 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
         </div>
       ) : gcp ? (
         <div className="space-y-3">
-          <Field label="Project ID">
-            <Input {...text("username")} placeholder="my-lab-project" />
-          </Field>
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem]">
-            <span className="text-muted-foreground">Sign in once so Terraform can use the gcloud CLI.</span>
-            <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
-              {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (gcloud)
-            </Button>
-          </div>
+          {gcpChecking ? (
+            <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem] text-muted-foreground">
+              <Spinner className="size-3.5" /> Checking the gcloud CLI…
+            </div>
+          ) : gcpEmail ? (
+            <>
+              {gcpProjs.length > 0 ? (
+                <Field label="Project">
+                  <Select value={v.username} onChange={(e) => set("username", e.target.value)}>
+                    {!v.username && <option value="">Choose a project…</option>}
+                    {gcpProjs.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name ? `${p.name} (${p.id})` : p.id}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : (
+                <Field label="Project ID" hint="no projects listed; type one">
+                  <Input {...text("username")} placeholder="my-lab-project" />
+                </Field>
+              )}
+              <div className="flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
+                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+                <span className="truncate text-emerald-500">Signed in as {gcpEmail}.</span>
+                <button type="button" onClick={signIn} disabled={signingIn} className="ml-auto shrink-0 underline-offset-2 hover:underline disabled:opacity-50">
+                  {signingIn ? "Signing in…" : "Switch account"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem]">
+                <span className="text-muted-foreground">Sign in with the gcloud CLI to list your projects.</span>
+                <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
+                  {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (gcloud)
+                </Button>
+              </div>
+              <Field label="Project ID" hint="or type it">
+                <Input {...text("username")} placeholder="my-lab-project" />
+              </Field>
+            </>
+          )}
           {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" />}
         </div>
       ) : v.useCliCreds ? (
