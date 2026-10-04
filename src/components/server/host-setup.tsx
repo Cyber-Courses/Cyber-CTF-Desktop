@@ -49,7 +49,28 @@ export const EMPTY_HOST: ServerHostInput = {
 };
 
 /** A new AWS account: region + access keys. */
-export const EMPTY_CLOUD: ServerHostInput = { ...EMPTY_HOST, provider: "aws", insecureTls: false, autoStopHours: 4 };
+export const EMPTY_CLOUD: ServerHostInput = { ...EMPTY_HOST, provider: "aws", host: "eu-west-3", datastore: "t3.medium", insecureTls: false, autoStopHours: 4 };
+
+/** Common AWS regions for the cloud setup dropdown (code, human name). */
+const AWS_REGIONS: [string, string][] = [
+  ["us-east-1", "US East (N. Virginia)"],
+  ["us-east-2", "US East (Ohio)"],
+  ["us-west-2", "US West (Oregon)"],
+  ["eu-west-1", "Europe (Ireland)"],
+  ["eu-west-3", "Europe (Paris)"],
+  ["eu-central-1", "Europe (Frankfurt)"],
+  ["ap-southeast-1", "Asia Pacific (Singapore)"],
+  ["ap-northeast-1", "Asia Pacific (Tokyo)"],
+];
+
+/** Instance types offered, with spec and approximate us-east-1 on-demand Linux $/hour. */
+const AWS_INSTANCE_TYPES: { type: string; spec: string; usdPerHour: number }[] = [
+  { type: "t3.small", spec: "2 vCPU · 2 GiB", usdPerHour: 0.0208 },
+  { type: "t3.medium", spec: "2 vCPU · 4 GiB", usdPerHour: 0.0416 },
+  { type: "t3.large", spec: "2 vCPU · 8 GiB", usdPerHour: 0.0832 },
+  { type: "t3.xlarge", spec: "4 vCPU · 16 GiB", usdPerHour: 0.1664 },
+];
+const DEFAULT_INSTANCE = "t3.medium";
 
 /** Proxmox's own logo (official media kit, unaltered), or a neutral mark for ESXi / AWS. */
 export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
@@ -117,6 +138,8 @@ export function HostSetupPage({
 
   const editing = initial.id !== null;
   const cloud = v.provider === "aws";
+  const awsType = v.datastore || DEFAULT_INSTANCE;
+  const awsPrice = AWS_INSTANCE_TYPES.find((t) => t.type === awsType)?.usdPerHour ?? null;
   const kind = KIND[v.provider];
   const status = report?.vmProviders.find((p) => p.provider === v.provider);
 
@@ -317,11 +340,16 @@ export function HostSetupPage({
         {key === "account" && (
           <Step icon={Cloud} title="AWS account" description="An IAM user's access keys and a region. Labs run as EC2 instances in your account.">
             <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[12px] text-amber-500">
-              Labs on AWS run in your account and are billed there (about $0.05/hour for the default t3.medium) until you stop them. Stop destroys everything the lab created.
+              Labs run in your account and are billed there{awsPrice != null ? ` (about $${awsPrice.toFixed(3)}/hour for ${awsType})` : ""} until they stop. Stop, and the lab's auto-stop, destroy everything the lab created.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Name"><Input {...text("name")} placeholder="My AWS" /></Field>
-              <Field label="Region"><Input {...text("host")} placeholder="eu-west-3" /></Field>
+              <Field label="Region">
+                <Select value={v.host} onChange={(e) => set("host", e.target.value)}>
+                  {v.host && !AWS_REGIONS.some(([code]) => code === v.host) && <option value={v.host}>{v.host}</option>}
+                  {AWS_REGIONS.map(([code, name]) => <option key={code} value={code}>{code} — {name}</option>)}
+                </Select>
+              </Field>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Field label="Access key ID" hint="An IAM user with EC2 access"><Input {...text("username")} placeholder="AKIA…" /></Field>
@@ -330,12 +358,21 @@ export function HostSetupPage({
               </Field>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Field label="Instance type" hint="Optional"><Input {...text("datastore")} placeholder="t3.medium" /></Field>
+              <Field label="Instance type">
+                <Select value={awsType} onChange={(e) => set("datastore", e.target.value)}>
+                  {AWS_INSTANCE_TYPES.map((t) => <option key={t.type} value={t.type}>{t.type} ({t.spec})</option>)}
+                </Select>
+              </Field>
               <Field label="Auto-stop after (hours)" hint="0 = never">
                 <Input type="number" min={0} max={72} value={v.autoStopHours ?? 4} onChange={(e) => set("autoStopHours", e.target.value === "" ? null : Number(e.target.value))} />
               </Field>
             </div>
-            <p className="mt-2 text-[11.5px] text-muted-foreground">The instance terminates itself when the time is up, even if this machine is off.</p>
+            <p className="mt-2 text-[11.5px] text-muted-foreground">
+              {awsPrice != null && (v.autoStopHours ?? 0) > 0
+                ? `About $${(awsPrice * (v.autoStopHours ?? 0)).toFixed(2)} for a ${v.autoStopHours}-hour session. `
+                : ""}
+              The instance terminates itself when the time is up, even if this machine is off. Prices are approximate (us-east-1 on-demand Linux).
+            </p>
             {error && <p className="mt-3 text-[12px] text-destructive">{error}</p>}
             <Nav
               left={i > 0 ? <Button variant="outline" onClick={back}><ArrowLeft className="size-4" /> Back</Button> : <Button variant="ghost" onClick={onDone}>Cancel</Button>}
@@ -480,5 +517,16 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
       {...props}
       className="w-full rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring"
     />
+  );
+}
+
+function Select({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      {...props}
+      className="w-full cursor-pointer rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-foreground outline-none focus:border-ring"
+    >
+      {children}
+    </select>
   );
 }
