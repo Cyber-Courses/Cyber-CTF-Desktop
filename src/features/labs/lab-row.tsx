@@ -6,39 +6,26 @@ import { Spinner } from "@/components/ui/spinner";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import { machineOpenSetup, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+import type { ButtonHTMLAttributes } from "react";
+import { Button } from "@/components/ui/button";
 
-/** A compact, Vercel-style action button used inside dense rows. */
-function MiniButton({
-  children,
-  onClick,
-  disabled,
+/** A row action: compact, and it doesn't open the row when clicked. */
+function RowButton({
   tone = "default",
-  title,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  tone?: "default" | "learn" | "danger";
-  title?: string;
-}) {
-  const tones = {
-    default: "border-border bg-card text-foreground hover:border-ring/60",
-    learn:
-      "border-white/10 bg-learn-solid text-white font-medium shadow-[inset_0_1px_0_rgb(255_255_255/0.16)] hover:bg-learn-solid-hover active:bg-learn-solid-active",
-    danger: "border-transparent bg-destructive/12 text-destructive hover:bg-destructive/20",
-  };
+  onClick,
+  ...props
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & { tone?: "default" | "learn" | "danger"; onClick: () => void }) {
+  const variant = tone === "learn" ? "learn" : tone === "danger" ? "destructive" : "outline";
   return (
-    <button
+    <Button
+      size="xs"
+      variant={variant}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
       }}
-      disabled={disabled}
-      title={title}
-      className={cn("inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11.5px] transition-colors disabled:opacity-40", tones[tone])}
-    >
-      {children}
-    </button>
+      {...props}
+    />
   );
 }
 
@@ -121,27 +108,27 @@ export function LabRow({
               <span className="size-1.5 rounded-full bg-emerald-500" /> on {status?.host ?? "this machine"}
             </span>
             {status?.url && (
-              <MiniButton tone="learn" onClick={() => openUrl(status.url!).catch(() => {})}>
+              <RowButton tone="learn" onClick={() => openUrl(status.url!).catch(() => {})}>
                 <ExternalLink className="size-3" /> Open
-              </MiniButton>
+              </RowButton>
             )}
-            <MiniButton tone="danger" onClick={onStop} disabled={busy}>
+            <RowButton tone="danger" onClick={onStop} disabled={busy}>
               {busy ? "Stopping…" : "Stop"}
-            </MiniButton>
+            </RowButton>
           </>
         ) : setup ? (
-          <MiniButton onClick={() => machineOpenSetup().catch(() => {})} title="Open machine setup">
+          <RowButton onClick={() => machineOpenSetup().catch(() => {})} title="Open machine setup">
             <Wrench className="size-3" /> {setup}
-          </MiniButton>
+          </RowButton>
         ) : (
-          <MiniButton
+          <RowButton
             tone="learn"
             onClick={onStart}
             disabled={!loggedIn || !rt || busy}
             title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}
           >
             {busy ? <Spinner className="size-3" /> : <Play className="size-3" />} Start
-          </MiniButton>
+          </RowButton>
         )}
 
         <ChevronRight className="size-4 text-muted-foreground/50 transition-colors group-hover:text-foreground" />

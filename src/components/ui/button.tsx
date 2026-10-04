@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
  * the Cyber apps. Dependency-free (no cva/base-ui) to keep the launcher light.
  */
 type Variant = "default" | "learn" | "outline" | "secondary" | "ghost" | "destructive" | "link";
-type Size = "default" | "sm" | "lg" | "icon";
+type Size = "default" | "sm" | "xs" | "lg" | "icon";
 
 const BASE =
   "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg text-sm font-medium leading-none whitespace-nowrap transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
@@ -26,6 +26,8 @@ const VARIANTS: Record<Variant, string> = {
 const SIZES: Record<Size, string> = {
   default: "h-9 px-4",
   sm: "h-8 px-3 text-[0.8rem]",
+  // Compact, for actions inside dense list rows.
+  xs: "h-7 rounded-md px-2.5 text-[0.71875rem] font-normal [&_svg:not([class*='size-'])]:size-3",
   lg: "h-10 px-5",
   icon: "size-9",
 };
