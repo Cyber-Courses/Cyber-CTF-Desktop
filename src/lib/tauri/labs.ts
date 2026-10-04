@@ -51,12 +51,6 @@ export interface LabStatus {
   expiresAt: number | null;
 }
 
-export function labStart(id: string, runtime: Runtime, provider: Provider | null, host: string | null, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("lab_start", { id, runtime, provider, host, logs });
-}
-
 export function labStop(id: string, runtime: Runtime, onLog: (line: string) => void) {
   const logs = new Channel<string>();
   logs.onmessage = onLog;
