@@ -6,12 +6,13 @@ use tokio::process::Command;
 
 use crate::error::{Error, Result};
 
-/// Tools that ship as a `.cmd`/`.bat` wrapper on Windows (not a real `.exe`). `CreateProcessW`
+/// Tools that may ship as a `.cmd`/`.bat` wrapper on Windows (not a real `.exe`). `CreateProcessW`
 /// only appends `.exe` and does not consult `PATHEXT`, so `Command::new("az")` can't find
-/// `az.cmd`; these must be launched through `cmd.exe`. `aws`/`terraform`/`docker`/`vagrant`
-/// are real `.exe` and resolve directly.
+/// `az.cmd`; these go through `cmd.exe` (which also resolves a plain `.exe`, so it's safe for a
+/// tool whose Windows form varies, like `oci`). `aws`/`terraform`/`docker`/`vagrant` are real
+/// `.exe` and resolve directly.
 #[cfg(windows)]
-const WINDOWS_CMD_SHIM: &[&str] = &["az", "gcloud"];
+const WINDOWS_CMD_SHIM: &[&str] = &["az", "gcloud", "oci"];
 
 /// Builds the Command, routing Windows batch-wrapper tools through `cmd /C` so they resolve.
 fn build(program: &str, args: &[&str]) -> Command {
