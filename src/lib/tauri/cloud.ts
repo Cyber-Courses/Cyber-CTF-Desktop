@@ -7,6 +7,12 @@ export const awsCliIdentity = (profile?: string) => invoke<string | null>("aws_c
 /** AWS CLI profiles configured on this machine. */
 export const awsProfiles = () => invoke<string[]>("aws_profiles");
 
+/** An Azure subscription the signed-in account can use. */
+export type AzureSubscription = { name: string; id: string; isDefault: boolean };
+
+/** Subscriptions the signed-in Azure account can see (`az account list`). Empty if not signed in. */
+export const azureSubscriptions = () => invoke<AzureSubscription[]>("azure_subscriptions");
+
 /** This month's AWS spend so far (USD) from Cost Explorer, or null if unavailable. */
 export const awsMonthToDateCost = (profile?: string) => invoke<number | null>("aws_month_to_date_cost", { profile: profile ?? null });
 

@@ -18,10 +18,11 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
     editing,
     azure,
     gcp,
-    cliAuth,
     profiles,
     awsIdentity,
     checkingId,
+    azureSubs,
+    azureChecking,
     awsSignIn,
     set,
     text,
@@ -44,15 +45,57 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
               : "An IAM user's access keys."
       }
     >
-      {cliAuth ? (
+      {azure ? (
         <div className="space-y-3">
-          <Field label={gcp ? "Project ID" : "Subscription ID"}>
-            <Input {...text("username")} placeholder={gcp ? "my-lab-project" : "00000000-0000-0000-0000-000000000000"} />
+          {azureChecking ? (
+            <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem] text-muted-foreground">
+              <Spinner className="size-3.5" /> Checking the Azure CLI…
+            </div>
+          ) : azureSubs.length > 0 ? (
+            <>
+              <Field label="Subscription">
+                <Select value={v.username} onChange={(e) => set("username", e.target.value)}>
+                  {!v.username && <option value="">Choose a subscription…</option>}
+                  {azureSubs.map((sub) => (
+                    <option key={sub.id} value={sub.id}>
+                      {sub.name}
+                      {sub.isDefault ? " (default)" : ""}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <div className="flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
+                <CheckCircle2 className="size-3.5 text-emerald-500" />
+                <span className="text-emerald-500">Signed in to the Azure CLI.</span>
+                <button type="button" onClick={signIn} disabled={signingIn} className="ml-auto underline-offset-2 hover:underline disabled:opacity-50">
+                  {signingIn ? "Signing in…" : "Switch account"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem]">
+                <span className="text-muted-foreground">Sign in with the Azure CLI to list your subscriptions.</span>
+                <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
+                  {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (az login)
+                </Button>
+              </div>
+              <Field label="Subscription ID" hint="or paste it">
+                <Input {...text("username")} placeholder="00000000-0000-0000-0000-000000000000" />
+              </Field>
+            </>
+          )}
+          {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" />}
+        </div>
+      ) : gcp ? (
+        <div className="space-y-3">
+          <Field label="Project ID">
+            <Input {...text("username")} placeholder="my-lab-project" />
           </Field>
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem]">
-            <span className="text-muted-foreground">Sign in once so Terraform can use the {gcp ? "gcloud" : "Azure"} CLI.</span>
+            <span className="text-muted-foreground">Sign in once so Terraform can use the gcloud CLI.</span>
             <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
-              {signingIn ? <Spinner className="size-3.5" /> : null} Sign in ({gcp ? "gcloud" : "az login"})
+              {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (gcloud)
             </Button>
           </div>
           {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" />}

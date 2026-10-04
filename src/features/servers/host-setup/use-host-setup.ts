@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   awsCliIdentity,
   awsLogin,
   awsMonthToDateCost,
   awsProfiles,
+  azureSubscriptions,
   cloudLogin,
   serverSave,
   serverTest,
+  type AzureSubscription,
   type CloudProvider,
   type ServerHost,
   type ServerHostInput,
@@ -59,12 +61,30 @@ export function useHostSetup({
   const [awsIdentity, setAwsIdentity] = useState<string | null>(null);
   const [checkingId, setCheckingId] = useState(false);
   const [mtdCost, setMtdCost] = useState<number | null>(null);
+  // Azure: the subscriptions the signed-in account can see, so you pick one instead of pasting a GUID.
+  const [azureSubs, setAzureSubs] = useState<AzureSubscription[]>([]);
+  const [azureChecking, setAzureChecking] = useState(false);
   useEffect(() => {
     if (aws)
       awsProfiles()
         .then(setProfiles)
         .catch(() => {});
   }, [aws]);
+  const loadAzureSubs = useCallback(() => {
+    setAzureChecking(true);
+    azureSubscriptions()
+      .then((subs) => {
+        setAzureSubs(subs);
+        // Default to the account's default subscription if none chosen yet.
+        setV((s) => (s.provider === "azure" && !s.username && subs.length > 0 ? { ...s, username: (subs.find((x) => x.isDefault) ?? subs[0]).id } : s));
+      })
+      .catch(() => setAzureSubs([]))
+      .finally(() => setAzureChecking(false));
+  }, []);
+  useEffect(() => {
+    if (azure) loadAzureSubs();
+    else setAzureSubs([]);
+  }, [azure, loadAzureSubs]);
   useEffect(() => {
     // Only meaningful in CLI-credentials mode, where the signed-in profile *is* the account.
     // With pasted access keys these would reflect the machine's default AWS chain (a different
@@ -201,6 +221,8 @@ export function useHostSetup({
     try {
       await cloudLogin(cloudProvider, (l) => setSignInLog((x) => [...(x ?? []), l]));
       setSignInLog((x) => [...(x ?? []), "✓ Signed in"]);
+      // Pull the now-available subscriptions so the user can pick one.
+      if (cloudProvider === "azure") loadAzureSubs();
     } catch (e) {
       setSignInLog((x) => [...(x ?? []), `✗ ${String(e)}`]);
     } finally {
@@ -251,6 +273,8 @@ export function useHostSetup({
     setCheckingId,
     mtdCost,
     setMtdCost,
+    azureSubs,
+    azureChecking,
     awsSignIn,
     kind,
     status,

@@ -3,7 +3,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 
 use crate::error::Result;
@@ -105,6 +105,27 @@ pub async fn aws_profiles() -> Vec<String> {
         .await
         .ok()
         .map(|s| s.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+        .unwrap_or_default()
+}
+
+/// An Azure subscription the signed-in account can use.
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AzureSubscription {
+    pub name: String,
+    pub id: String,
+    #[serde(default)]
+    pub is_default: bool,
+}
+
+/// The Azure subscriptions the signed-in account can see (`az account list`), so the user can
+/// pick one instead of pasting a GUID. Empty when the CLI is missing or not signed in.
+#[tauri::command]
+pub async fn azure_subscriptions() -> Vec<AzureSubscription> {
+    run("az", &["account", "list", "--query", "[].{name:name,id:id,isDefault:isDefault}", "--output", "json"], None)
+        .await
+        .ok()
+        .and_then(|out| serde_json::from_str::<Vec<AzureSubscription>>(&out).ok())
         .unwrap_or_default()
 }
 

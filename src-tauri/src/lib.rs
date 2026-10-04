@@ -100,6 +100,7 @@ pub fn run() {
             cloud::aws_profiles,
             cloud::aws_login,
             cloud::aws_month_to_date_cost,
+            cloud::azure_subscriptions,
             provisioning::provisioning_images,
             provisioning::provisioning_pull,
             platform::install::install_vagrant_plugin,

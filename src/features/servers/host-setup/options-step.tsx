@@ -13,7 +13,7 @@ export function OptionsStep({ s }: { s: HostSetup }) {
     <Step icon={Cloud} title="Lab settings" description="Name this account and choose when idle labs stop.">
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name">
-          <Input {...text("name")} placeholder="My AWS" />
+          <Input {...text("name")} placeholder={v.provider === "azure" ? "My Azure" : v.provider === "gcp" ? "My Google Cloud" : "My AWS"} />
         </Field>
         <Field label="Auto-stop">
           <Select value={String(v.autoStopHours ?? 4)} onChange={(e) => set("autoStopHours", Number(e.target.value))}>
