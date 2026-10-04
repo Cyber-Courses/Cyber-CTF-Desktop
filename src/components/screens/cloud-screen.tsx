@@ -121,6 +121,8 @@ export function CloudScreen() {
   }
 
   const envReady = !!report?.cloudClis.aws.installed && !!report?.terraform.installed;
+  // Only one install/pull/sign-in at a time: brew (and others) can't run two at once.
+  const busyOp = cliBusy !== null || pullBusy !== null || loginBusy !== null;
   const envExpanded = envOpen ?? !envReady;
 
   return (
@@ -168,16 +170,16 @@ export function CloudScreen() {
         </button>
         {envExpanded && (
           <div className="border-t border-border">
-            <CliRow name="AWS CLI" provider="aws" tool={report?.cloudClis.aws} busy={cliBusy === "awscli"} onInstall={() => installCli("awscli")} />
-            <ToolRow name="Terraform" note="runs locally; simpler state (Docker image is the fallback)" tool={report?.terraform} busy={cliBusy === "terraform"} onInstall={() => installCli("terraform")} />
+            <CliRow name="AWS CLI" provider="aws" tool={report?.cloudClis.aws} busy={cliBusy === "awscli"} locked={busyOp} onInstall={() => installCli("awscli")} />
+            <ToolRow name="Terraform" note="runs locally; simpler state (Docker image is the fallback)" tool={report?.terraform} busy={cliBusy === "terraform"} locked={busyOp} onInstall={() => installCli("terraform")} />
             {provImages?.map((img) => (
-              <ImageRow key={img.image} image={img} note="runs in Docker (best on Windows)" busy={pullBusy === img.image} onPull={() => pull(img.image)} />
+              <ImageRow key={img.image} image={img} note="runs in Docker (best on Windows)" busy={pullBusy === img.image} locked={busyOp} onPull={() => pull(img.image)} />
             ))}
             <div className="border-t border-border px-3.5 py-2.5">
               <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">Other providers · provisioning coming</p>
               <div className="mt-2 space-y-1.5">
-                <OtherCli name="Azure CLI" provider="azure" tool={report?.cloudClis.azure} busy={cliBusy === "azurecli"} loginBusy={loginBusy === "azure"} onInstall={() => installCli("azurecli")} onLogin={() => login("azure")} />
-                <OtherCli name="Google Cloud CLI" provider="gcp" tool={report?.cloudClis.gcloud} busy={cliBusy === "gcloud"} loginBusy={loginBusy === "gcp"} onInstall={() => installCli("gcloud")} onLogin={() => login("gcp")} />
+                <OtherCli name="Azure CLI" provider="azure" tool={report?.cloudClis.azure} busy={cliBusy === "azurecli"} loginBusy={loginBusy === "azure"} locked={busyOp} onInstall={() => installCli("azurecli")} onLogin={() => login("azure")} />
+                <OtherCli name="Google Cloud CLI" provider="gcp" tool={report?.cloudClis.gcloud} busy={cliBusy === "gcloud"} loginBusy={loginBusy === "gcp"} locked={busyOp} onInstall={() => installCli("gcloud")} onLogin={() => login("gcp")} />
               </div>
             </div>
           </div>
@@ -293,7 +295,7 @@ function Status({ tool }: { tool?: Tool }) {
   );
 }
 
-function CliRow({ name, provider, tool, busy, onInstall }: { name: string; provider: CloudProvider; tool?: Tool; busy: boolean; onInstall: () => void }) {
+function CliRow({ name, provider, tool, busy, locked, onInstall }: { name: string; provider: CloudProvider; tool?: Tool; busy: boolean; locked: boolean; onInstall: () => void }) {
   const installed = !!tool?.installed;
   return (
     <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px]">
@@ -302,14 +304,14 @@ function CliRow({ name, provider, tool, busy, onInstall }: { name: string; provi
       <span className="ml-auto flex items-center gap-3">
         <Status tool={tool} />
         {!installed && tool && (
-          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy}>{busy ? "Installing…" : "Install"}</Button>
+          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy || locked}>{busy ? "Installing…" : "Install"}</Button>
         )}
       </span>
     </div>
   );
 }
 
-function ToolRow({ name, note, tool, busy, onInstall }: { name: string; note: string; tool?: Tool; busy: boolean; onInstall: () => void }) {
+function ToolRow({ name, note, tool, busy, locked, onInstall }: { name: string; note: string; tool?: Tool; busy: boolean; locked: boolean; onInstall: () => void }) {
   const installed = !!tool?.installed;
   return (
     <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px]">
@@ -318,14 +320,14 @@ function ToolRow({ name, note, tool, busy, onInstall }: { name: string; note: st
       <span className="ml-auto flex items-center gap-3">
         <Status tool={tool} />
         {!installed && tool && (
-          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy}>{busy ? "Installing…" : "Install"}</Button>
+          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy || locked}>{busy ? "Installing…" : "Install"}</Button>
         )}
       </span>
     </div>
   );
 }
 
-function ImageRow({ image, note, busy, onPull }: { image: ProvisioningImage; note: string; busy: boolean; onPull: () => void }) {
+function ImageRow({ image, note, busy, locked, onPull }: { image: ProvisioningImage; note: string; busy: boolean; locked: boolean; onPull: () => void }) {
   return (
     <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px]">
       <span className="font-medium text-foreground">{image.name}</span>
@@ -335,13 +337,13 @@ function ImageRow({ image, note, busy, onPull }: { image: ProvisioningImage; not
           {image.present && <span className="size-1.5 rounded-full bg-emerald-500" />}
           {image.present ? "pulled" : "not pulled"}
         </span>
-        {!image.present && <Button variant="learn" size="sm" onClick={onPull} disabled={busy}>{busy ? "Pulling…" : "Pull"}</Button>}
+        {!image.present && <Button variant="learn" size="sm" onClick={onPull} disabled={busy || locked}>{busy ? "Pulling…" : "Pull"}</Button>}
       </span>
     </div>
   );
 }
 
-function OtherCli({ name, provider, tool, busy, loginBusy, onInstall, onLogin }: { name: string; provider: CloudProvider; tool?: Tool; busy: boolean; loginBusy: boolean; onInstall: () => void; onLogin: () => void }) {
+function OtherCli({ name, provider, tool, busy, loginBusy, locked, onInstall, onLogin }: { name: string; provider: CloudProvider; tool?: Tool; busy: boolean; loginBusy: boolean; locked: boolean; onInstall: () => void; onLogin: () => void }) {
   const installed = !!tool?.installed;
   return (
     <div className="flex items-center gap-2 text-[12px]">
@@ -349,9 +351,9 @@ function OtherCli({ name, provider, tool, busy, loginBusy, onInstall, onLogin }:
       <span className="text-muted-foreground">{name}</span>
       <span className="ml-auto flex items-center gap-2">
         {installed ? (
-          <Button variant="ghost" size="sm" onClick={onLogin} disabled={loginBusy}>{loginBusy ? "Signing in…" : "Sign in"}</Button>
+          <Button variant="ghost" size="sm" onClick={onLogin} disabled={loginBusy || locked}>{loginBusy ? "Signing in…" : "Sign in"}</Button>
         ) : tool ? (
-          <Button variant="ghost" size="sm" onClick={onInstall} disabled={busy}>{busy ? "Installing…" : "Install"}</Button>
+          <Button variant="ghost" size="sm" onClick={onInstall} disabled={busy || locked}>{busy ? "Installing…" : "Install"}</Button>
         ) : null}
       </span>
     </div>
