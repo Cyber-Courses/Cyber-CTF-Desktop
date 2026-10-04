@@ -149,6 +149,46 @@ pub struct GcpOrganization {
     pub name: String,
 }
 
+/// What the launcher found in ~/.oci/config (DEFAULT profile), to prefill the OCI setup.
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OciConfig {
+    pub configured: bool,
+    pub tenancy: String,
+    pub region: String,
+}
+
+/// Reads the OCI config (OCI_CLI_CONFIG_FILE, else ~/.oci/config) DEFAULT profile, so the setup
+/// can show whether it's configured and prefill the tenancy (as the compartment) and region.
+#[tauri::command]
+pub async fn oci_config() -> OciConfig {
+    let path = std::env::var_os("OCI_CLI_CONFIG_FILE")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(|h| std::path::PathBuf::from(h).join(".oci").join("config")));
+    let Some(path) = path else { return OciConfig::default() };
+    let Ok(text) = std::fs::read_to_string(&path) else { return OciConfig::default() };
+    let (mut tenancy, mut region) = (String::new(), String::new());
+    let mut in_default = false;
+    for line in text.lines() {
+        let l = line.trim();
+        if l.starts_with('[') {
+            in_default = l.eq_ignore_ascii_case("[DEFAULT]");
+            continue;
+        }
+        if !in_default {
+            continue;
+        }
+        if let Some((k, val)) = l.split_once('=') {
+            match k.trim() {
+                "tenancy" => tenancy = val.trim().to_string(),
+                "region" => region = val.trim().to_string(),
+                _ => {}
+            }
+        }
+    }
+    OciConfig { configured: true, tenancy, region }
+}
+
 /// The active gcloud account email, or None if the CLI isn't signed in. Reliable even when
 /// `projects list` is empty or the Resource Manager API is off, so the UI can show "signed in".
 #[tauri::command]

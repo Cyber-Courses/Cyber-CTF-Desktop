@@ -157,7 +157,7 @@ pub const DEFAULT_AUTO_STOP_HOURS: u32 = 4;
 fn default_port(provider: Provider) -> u16 {
     match provider {
         Provider::Proxmox => 8006,
-        Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode => 443,
+        Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode | Provider::Oci => 443,
         _ => 22,
     }
 }
@@ -215,6 +215,18 @@ fn valid_linode_region(s: &str) -> bool {
         && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
+/// An OCI region id, e.g. "eu-frankfurt-1", "us-ashburn-1" (lowercase letters/digits/hyphens).
+fn valid_oci_region(s: &str) -> bool {
+    (5..=24).contains(&s.len())
+        && s.starts_with(|c: char| c.is_ascii_lowercase())
+        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// An OCID (tenancy / compartment / ...): starts with "ocid1." then dot/hyphen-separated alnum.
+fn valid_ocid(s: &str) -> bool {
+    s.starts_with("ocid1.") && (20..=255).contains(&s.len()) && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+}
+
 /// A long-term AWS access key id (AKIA...). Temporary ASIA... keys are handled separately at
 /// the call site: they need a session token and expire, so the launcher steers them to CLI mode.
 fn valid_access_key_id(id: &str) -> bool {
@@ -230,6 +242,7 @@ pub fn terraform_target(provider: Provider) -> Option<&'static str> {
         Provider::Gcp => Some("gcp"),
         Provider::DigitalOcean => Some("digitalocean"),
         Provider::Linode => Some("linode"),
+        Provider::Oci => Some("oci"),
         _ => None,
     }
 }
@@ -250,7 +263,7 @@ pub fn server_list(app: AppHandle) -> Result<HostList> {
 #[tauri::command]
 pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
     if !input.provider.is_remote() {
-        return Err(Error::Invalid("a host must be ESXi, Proxmox, AWS, Azure, GCP, DigitalOcean or Linode".into()));
+        return Err(Error::Invalid("a host must be ESXi, Proxmox, AWS, Azure, GCP, DigitalOcean, Linode or OCI".into()));
     }
     let host = clean(&input.host, "host", 253)?;
     // AWS can connect with the AWS CLI's own credentials instead of stored keys.
@@ -303,6 +316,13 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         if input.password.as_deref().filter(|p| !p.is_empty()).is_some_and(|t| !valid_do_token(t)) {
             return Err(Error::Invalid("that doesn't look like a Linode API token".into()));
         }
+    } else if input.provider == Provider::Oci {
+        if !valid_oci_region(&host) {
+            return Err(Error::Invalid("region must be an OCI region id, e.g. eu-frankfurt-1".into()));
+        }
+        if !valid_ocid(&username) {
+            return Err(Error::Invalid("compartment must be an OCID (ocid1.compartment... or the tenancy OCID)".into()));
+        }
     } else if !valid_host(&host) {
         return Err(Error::Invalid("host must be a hostname or IP address, without https:// or a path".into()));
     }
@@ -328,7 +348,7 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         node: if matches!(input.provider, Provider::Proxmox | Provider::Gcp) { clean_opt(input.node, "node")? } else { None },
         insecure_tls: input.provider == Provider::Proxmox && input.insecure_tls.unwrap_or(false),
         auto_stop_hours: match input.provider {
-            Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode => {
+            Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode | Provider::Oci => {
                 match input.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS) {
                     h if h <= 72 => Some(h),
                     _ => return Err(Error::Invalid("auto-stop must be between 0 and 72 hours".into())),
@@ -345,7 +365,7 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
     match input.password.filter(|p| !p.is_empty()) {
         Some(p) if p.len() <= 1024 && !p.contains('\0') => set_secret(&id, &p)?,
         Some(_) => return Err(Error::Invalid("invalid password".into())),
-        None if !use_cli && !matches!(input.provider, Provider::Azure | Provider::Gcp) && get_secret(&id).is_err() => {
+        None if !use_cli && !matches!(input.provider, Provider::Azure | Provider::Gcp | Provider::Oci) && get_secret(&id).is_err() => {
             return Err(Error::Invalid("enter the host's password".into()));
         }
         None => {}
@@ -354,7 +374,9 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         Some(existing) => *existing = profile.clone(),
         None => store.hosts.push(profile.clone()),
     }
-    if store.default.is_none() && !matches!(profile.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode) {
+    if store.default.is_none()
+        && !matches!(profile.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode | Provider::Oci)
+    {
         store.default = Some(id);
     }
     save(&app, &store)?;
@@ -370,7 +392,7 @@ pub fn server_remove(app: AppHandle, id: String) -> Result<()> {
         store.default = store
             .hosts
             .iter()
-            .find(|h| !matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode))
+            .find(|h| !matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode | Provider::Oci))
             .map(|h| h.id.clone());
     }
     save(&app, &store)?;
@@ -383,7 +405,7 @@ pub fn server_remove(app: AppHandle, id: String) -> Result<()> {
 pub fn server_set_default(app: AppHandle, id: Option<String>) -> Result<()> {
     let mut store = load(&app)?;
     if let Some(id) = &id
-        && matches!(find(&store, id)?.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode)
+        && matches!(find(&store, id)?.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode | Provider::Oci)
     {
         return Err(Error::Invalid("a cloud account can't be the default host".into()));
     }
@@ -426,7 +448,8 @@ pub async fn server_open_setup(app: AppHandle, id: Option<String>, kind: Option<
 pub async fn server_test(app: AppHandle, id: String) -> Result<TestResult> {
     let host = find(&load(&app)?, &id)?;
     // CLI-credential hosts keep no secret; the CLI resolves its own credentials.
-    let password = if host.use_cli_creds || matches!(host.provider, Provider::Azure | Provider::Gcp) { String::new() } else { get_secret(&id)? };
+    let password =
+        if host.use_cli_creds || matches!(host.provider, Provider::Azure | Provider::Gcp | Provider::Oci) { String::new() } else { get_secret(&id)? };
     // Token hosts SSH with the launcher's key: make sure it exists before checking it.
     if host.provider == Provider::Proxmox && super::proxmox::is_token(&host.username) {
         super::ssh::ensure_key(&app).await?;

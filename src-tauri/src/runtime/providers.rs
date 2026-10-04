@@ -39,6 +39,9 @@ pub enum Provider {
     /// The player's Linode account (Terraform, a lab's deploy/terraform/linode). Like
     /// DigitalOcean: API-token auth, not a Vagrant provider, never detected, not in `ALL`.
     Linode,
+    /// The player's Oracle Cloud tenancy (Terraform, a lab's deploy/terraform/oci). Authenticated
+    /// with an API signing key in ~/.oci/config; not a Vagrant provider, never detected, not in `ALL`.
+    Oci,
 }
 
 impl Provider {
@@ -70,12 +73,23 @@ impl Provider {
             Provider::Gcp => "gcp",
             Provider::DigitalOcean => "digitalocean",
             Provider::Linode => "linode",
+            Provider::Oci => "oci",
         }
     }
 
     /// Remote providers run VMs on another host and need connection settings.
     pub fn is_remote(self) -> bool {
-        matches!(self, Provider::VmwareEsxi | Provider::Proxmox | Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode)
+        matches!(
+            self,
+            Provider::VmwareEsxi
+                | Provider::Proxmox
+                | Provider::Aws
+                | Provider::Azure
+                | Provider::Gcp
+                | Provider::DigitalOcean
+                | Provider::Linode
+                | Provider::Oci
+        )
     }
 
     /// Whether this provider can run on the current OS at all. Local hypervisors are
@@ -102,7 +116,7 @@ impl Provider {
             Provider::Utm => Some("vagrant_utm"),
             Provider::VmwareEsxi => Some("vagrant-vmware-esxi"),
             Provider::Proxmox => Some("vagrant-proxmox"),
-            Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode => None,
+            Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode | Provider::Oci => None,
         }
     }
 
@@ -124,7 +138,8 @@ impl Provider {
             | Provider::Azure
             | Provider::Gcp
             | Provider::DigitalOcean
-            | Provider::Linode => None,
+            | Provider::Linode
+            | Provider::Oci => None,
         }
     }
 }

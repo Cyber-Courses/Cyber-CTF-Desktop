@@ -83,7 +83,7 @@ pub fn terraform_env(h: &HostProfile, password: &str) -> Vec<(String, String)> {
 
 /// Terraform variables for a host (`deploy/terraform/<target>`).
 pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> {
-    if matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode) {
+    if matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode | Provider::Oci) {
         let mut vars =
             vec![("region".to_string(), h.host.clone()), ("auto_stop_hours".to_string(), h.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS).to_string())];
         if let Some(t) = &h.datastore {
@@ -95,6 +95,10 @@ pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> 
             if let Some(org) = &h.node {
                 vars.push(("org_id".into(), org.clone()));
             }
+        }
+        // OCI deploys into a compartment (the tenancy root works).
+        if h.provider == Provider::Oci {
+            vars.push(("compartment_ocid".into(), h.username.clone()));
         }
         return vars;
     }
@@ -139,7 +143,7 @@ pub struct Connection {
 pub fn connection(app: &AppHandle, id: &str) -> Result<Connection> {
     let host = find(&load(app)?, id)?;
     // CLI-credential hosts keep no secret; Terraform uses the AWS CLI's default chain.
-    let password = if host.use_cli_creds || matches!(host.provider, Provider::Azure | Provider::Gcp) { String::new() } else { get_secret(id)? };
+    let password = if host.use_cli_creds || matches!(host.provider, Provider::Azure | Provider::Gcp | Provider::Oci) { String::new() } else { get_secret(id)? };
     Ok(Connection {
         provider: host.provider,
         name: host.name.clone(),
@@ -165,10 +169,9 @@ pub fn default_host(app: &AppHandle) -> Option<String> {
     let store = load(app).ok()?;
     // Only server hosts: a cloud account is never used implicitly (it costs money).
     store.default.filter(|id| {
-        store
-            .hosts
-            .iter()
-            .any(|h| &h.id == id && !matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode))
+        store.hosts.iter().any(|h| {
+            &h.id == id && !matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode | Provider::Oci)
+        })
     })
 }
 

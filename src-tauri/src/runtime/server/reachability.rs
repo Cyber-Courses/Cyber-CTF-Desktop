@@ -256,12 +256,56 @@ pub(super) async fn test_linode(token: &str) -> TestResult {
     }
 }
 
+/// OCI: if the OCI CLI is installed, a signed `iam compartment get` confirms ~/.oci/config +
+/// the compartment. Terraform itself only needs ~/.oci/config, so a missing CLI isn't fatal.
+pub(super) async fn test_oci(h: &HostProfile) -> TestResult {
+    let started = Instant::now();
+    match crate::exec::run("oci", &["iam", "compartment", "get", "--compartment-id", h.username.as_str(), "--query", "data.name", "--raw-output"], None).await {
+        Ok(name) => TestResult {
+            ok: true,
+            reachable: true,
+            authenticated: Some(true),
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            message: format!("Reached OCI compartment \"{}\". Labs run in your tenancy.", name.trim()),
+        },
+        Err(Error::ToolMissing { .. }) => TestResult {
+            ok: true,
+            reachable: true,
+            authenticated: None,
+            latency_ms: None,
+            message: "Couldn't verify here (the OCI CLI isn't installed), but Terraform will use ~/.oci/config when you launch a lab.".into(),
+        },
+        Err(Error::CommandFailed { stderr, .. }) => {
+            let bad = stderr.contains("NotAuthenticated")
+                || stderr.contains("NotAuthorizedOrNotFound")
+                || stderr.contains("config")
+                || stderr.contains("private key")
+                || stderr.contains("401");
+            TestResult {
+                ok: false,
+                reachable: true,
+                authenticated: Some(false),
+                latency_ms: None,
+                message: if bad {
+                    "OCI rejected the request. Check ~/.oci/config (API key) and the compartment OCID.".into()
+                } else {
+                    format!("OCI check failed: {}", stderr.lines().last().unwrap_or_default())
+                },
+            }
+        }
+        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("OCI check failed: {e}") },
+    }
+}
+
 pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
     if h.provider == Provider::Aws {
         return test_aws(h, password).await;
     }
     if h.provider == Provider::Linode {
         return test_linode(password).await;
+    }
+    if h.provider == Provider::Oci {
+        return test_oci(h).await;
     }
     if h.provider == Provider::Azure {
         return test_azure(h).await;

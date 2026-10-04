@@ -105,6 +105,7 @@ pub fn run() {
             cloud::gcp_account,
             cloud::gcp_billing_accounts,
             cloud::gcp_organizations,
+            cloud::oci_config,
             provisioning::provisioning_images,
             provisioning::provisioning_pull,
             platform::install::install_vagrant_plugin,
