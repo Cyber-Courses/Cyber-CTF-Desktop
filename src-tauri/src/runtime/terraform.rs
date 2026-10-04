@@ -233,7 +233,7 @@ pub fn status(state: &Path) -> LabStatus {
     } else {
         Vec::new()
     };
-    LabStatus { running: created, machines, networks: Vec::new(), url: None, host: None, expires_at: expires_at.filter(|_| created) }
+    LabStatus { running: created, machines, networks: Vec::new(), url: None, host: None, expires_at: expires_at.filter(|_| created), place: None }
 }
 
 /// True when the state still holds a cloud instance whose auto-stop time has passed, so it

@@ -195,7 +195,7 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
             });
         }
     }
-    Ok(LabStatus { running, machines, networks, url, host: None, expires_at: None })
+    Ok(LabStatus { running, machines, networks, url, host: None, expires_at: None, place: None })
 }
 
 /// Where the lab is reachable on this machine (its first published port), once running.

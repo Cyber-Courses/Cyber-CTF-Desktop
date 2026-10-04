@@ -72,6 +72,16 @@ pub struct Network {
     pub internal: bool,
 }
 
+/// Where a lab runs, for the UI: its own runtime here, a VM here, a server, or a cloud account.
+#[derive(Serialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum Place {
+    Container,
+    LocalVm,
+    Server,
+    Cloud,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabStatus {
@@ -86,4 +96,6 @@ pub struct LabStatus {
     pub host: Option<String>,
     /// Unix time a cloud lab stops itself (auto-stop), if it does.
     pub expires_at: Option<u64>,
+    /// Where it runs; set by the runtime dispatcher (None from the per-runtime probes).
+    pub place: Option<Place>,
 }

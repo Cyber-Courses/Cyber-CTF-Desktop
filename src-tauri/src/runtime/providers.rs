@@ -92,6 +92,11 @@ impl Provider {
         )
     }
 
+    /// Cloud accounts (billed to the player), as opposed to the player's own servers.
+    pub fn is_cloud(self) -> bool {
+        self.is_remote() && !matches!(self, Provider::VmwareEsxi | Provider::Proxmox)
+    }
+
     /// Whether this provider can run on the current OS at all. Local hypervisors are
     /// platform-specific; remote ones (ESXi, Proxmox) apply anywhere. We only surface
     /// providers that are possible on this machine, not the whole catalogue.

@@ -21,7 +21,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::{Error, Result};
 
-pub use model::{Interface, LabStatus, Machine, Network, Port, Service};
+pub use model::{Interface, LabStatus, Machine, Network, Place, Port, Service};
 
 /// Mirrors `LabRuntime` in CyberBackend.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -237,10 +237,10 @@ async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Resu
             // Shown like a remote lab (the attack box lives in the VM, reached over SSH).
             Runtime::Docker if let Some(p) = local_vm(dir) => {
                 let status = vm::status(&dir.join("deploy").join("vagrant"), &[]).await?;
-                Ok(LabStatus { host: Some(format!("{} VM on this machine", vm_label(&p))), ..status })
+                Ok(LabStatus { host: Some(format!("{} VM on this machine", vm_label(&p))), place: Some(Place::LocalVm), ..status })
             }
-            Runtime::Docker => docker::status(dir, id).await,
-            Runtime::Vm => vm::status(dir, &[]).await,
+            Runtime::Docker => Ok(LabStatus { place: Some(Place::Container), ..docker::status(dir, id).await? }),
+            Runtime::Vm => Ok(LabStatus { place: Some(Place::LocalVm), ..vm::status(dir, &[]).await? }),
         };
     };
     let status = match runtime {
@@ -250,7 +250,8 @@ async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Resu
         Runtime::Docker => vm::status(&dir.join("deploy").join("vagrant"), &c.env).await?,
         Runtime::Vm => vm::status(dir, &c.env).await?,
     };
-    Ok(LabStatus { host: Some(c.name), ..status })
+    let place = if c.provider.is_cloud() { Place::Cloud } else { Place::Server };
+    Ok(LabStatus { host: Some(c.name), place: Some(place), ..status })
 }
 
 /// Destroys cloud labs whose auto-stop time has passed, to end billing: on Azure an OS

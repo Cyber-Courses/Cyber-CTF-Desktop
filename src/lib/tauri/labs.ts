@@ -49,6 +49,8 @@ export interface LabStatus {
   host: string | null;
   /** Unix seconds a cloud lab stops itself (auto-stop); null if it doesn't. */
   expiresAt: number | null;
+  /** Where it runs: its container here, a VM here, a server or a cloud account. */
+  place: "container" | "local_vm" | "server" | "cloud" | null;
 }
 
 export function labStop(id: string, runtime: Runtime, onLog: (line: string) => void) {
