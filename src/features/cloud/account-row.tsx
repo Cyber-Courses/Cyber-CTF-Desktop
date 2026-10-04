@@ -34,7 +34,7 @@ export function AccountRow({
     <div className="border-b border-border px-3.5 py-3 last:border-b-0">
       <div className="flex items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element -- static export, plain asset */}
-        <img src="/brands/aws.svg" alt="" className="size-6 shrink-0" draggable={false} />
+        <img src={`/brands/${host.provider}.svg`} alt="" className="size-6 shrink-0" draggable={false} />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-[0.8125rem] font-medium">
             <span className="truncate">{host.name}</span>

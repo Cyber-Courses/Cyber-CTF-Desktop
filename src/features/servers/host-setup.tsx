@@ -33,6 +33,7 @@ export const KIND: Record<RemoteProvider, { label: string; note: string; port: n
   proxmox: { label: "Proxmox VE", note: "Signs in to the Proxmox API", port: 8006, user: "root@pam", plugin: "vagrant-proxmox" },
   vmware_esxi: { label: "VMware ESXi", note: "Drives the host over SSH", port: 22, user: "root", plugin: "vagrant-vmware-esxi" },
   aws: { label: "AWS", note: "EC2 in your own account", port: 443, user: "AKIA…", plugin: "" },
+  azure: { label: "Azure", note: "VMs in your own subscription", port: 443, user: "subscription id", plugin: "" },
 };
 
 /** Server hypervisors, as opposed to cloud accounts. */
@@ -69,6 +70,18 @@ const AWS_REGIONS: [string, string][] = [
   ["ap-northeast-1", "Asia Pacific (Tokyo)"],
 ];
 
+/** Common Azure locations for the cloud setup dropdown (id, human name). */
+const AZURE_LOCATIONS: [string, string][] = [
+  ["westeurope", "West Europe (Netherlands)"],
+  ["northeurope", "North Europe (Ireland)"],
+  ["francecentral", "France Central (Paris)"],
+  ["uksouth", "UK South (London)"],
+  ["germanywestcentral", "Germany West Central"],
+  ["eastus", "East US (Virginia)"],
+  ["westus2", "West US 2 (Washington)"],
+  ["southeastasia", "Southeast Asia (Singapore)"],
+];
+
 /** Proxmox's own logo (official media kit, unaltered), or a neutral mark for ESXi / AWS. */
 export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
   if (provider === "aws")
@@ -93,7 +106,7 @@ type StepKey = "provider" | "hypervisor" | "tools" | "connection" | "placement" 
  *  connect via their CLI's own sign-in (no lab provisioning yet). */
 const CLOUD_META: Record<CloudProvider, { label: string; cli: string; color: string; ready: boolean }> = {
   aws: { label: "Amazon Web Services", cli: "aws", color: "#ff9900", ready: true },
-  azure: { label: "Microsoft Azure", cli: "az", color: "#3b8eea", ready: false },
+  azure: { label: "Microsoft Azure", cli: "az", color: "#3b8eea", ready: true },
   gcp: { label: "Google Cloud", cli: "gcloud", color: "#34a853", ready: false },
 };
 
@@ -101,10 +114,11 @@ const CLOUD_META: Record<CloudProvider, { label: string; cli: string; color: str
  *  `logo` marks the ones with an SVG in public/brands (others fall back to a cloud icon). */
 const CLOUD_PICKER: { id: string; label: string; ready: boolean; logo: boolean }[] = [
   { id: "aws", label: "Amazon Web Services", ready: true, logo: true },
-  { id: "azure", label: "Microsoft Azure", ready: false, logo: true },
+  { id: "azure", label: "Microsoft Azure", ready: true, logo: true },
   { id: "gcp", label: "Google Cloud", ready: false, logo: true },
-  { id: "digitalocean", label: "DigitalOcean", ready: false, logo: false },
-  { id: "hetzner", label: "Hetzner", ready: false, logo: false },
+  { id: "digitalocean", label: "DigitalOcean", ready: false, logo: true },
+  { id: "linode", label: "Linode", ready: false, logo: true },
+  { id: "oracle", label: "Oracle Cloud", ready: false, logo: true },
 ];
 
 export function HostSetupPage({
@@ -135,20 +149,22 @@ export function HostSetupPage({
   const [signInLog, setSignInLog] = useState<string[] | null>(null);
 
   const editing = initial.id !== null;
-  const cloud = v.provider === "aws";
+  const aws = v.provider === "aws";
+  const azure = v.provider === "azure";
+  const cloud = aws || azure;
   // AWS can connect through the CLI (a profile / browser sign-in) or with access keys.
   const [profiles, setProfiles] = useState<string[]>([]);
   const [awsIdentity, setAwsIdentity] = useState<string | null>(null);
   const [checkingId, setCheckingId] = useState(false);
   const [mtdCost, setMtdCost] = useState<number | null>(null);
   useEffect(() => {
-    if (cloud)
+    if (aws)
       awsProfiles()
         .then(setProfiles)
         .catch(() => {});
-  }, [cloud]);
+  }, [aws]);
   useEffect(() => {
-    if (!cloud) return;
+    if (!aws) return;
     setCheckingId(true);
     awsCliIdentity(v.awsProfile ?? undefined)
       .then(setAwsIdentity)
@@ -157,7 +173,7 @@ export function HostSetupPage({
     awsMonthToDateCost(v.awsProfile ?? undefined)
       .then(setMtdCost)
       .catch(() => setMtdCost(null));
-  }, [cloud, v.awsProfile]);
+  }, [aws, v.awsProfile]);
 
   async function awsSignIn() {
     setSigningIn(true);
@@ -177,10 +193,27 @@ export function HostSetupPage({
   const status = report?.vmProviders.find((p) => p.provider === v.provider);
 
   // The ordered steps for this setup. Editing skips the hypervisor choice.
+  // Azure has no access-keys choice (it's CLI-auth), so it skips the "how to connect" step.
+  const pickProvider = (id: CloudProvider) => {
+    setCloudProvider(id);
+    setV((s) => ({
+      ...s,
+      provider: id as RemoteProvider,
+      host: id === "azure" ? "westeurope" : "eu-west-3",
+      username: "",
+      password: null,
+      useCliCreds: id === "aws",
+      awsProfile: null,
+    }));
+  };
   const steps: StepKey[] = cloud
     ? editing
-      ? ["account", "credentials", "options", "test"]
-      : ["provider", "tools", "account", "credentials", "options", "test"]
+      ? azure
+        ? ["credentials", "options", "test"]
+        : ["account", "credentials", "options", "test"]
+      : azure
+        ? ["provider", "tools", "credentials", "options", "test"]
+        : ["provider", "tools", "account", "credentials", "options", "test"]
     : editing
       ? ["connection", "placement", "test"]
       : ["hypervisor", "tools", "connection", "placement", "test"];
@@ -192,8 +225,11 @@ export function HostSetupPage({
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, e.target.value),
   });
 
-  const connectionOk =
-    cloud && v.useCliCreds ? v.host.trim() !== "" : v.host.trim() !== "" && v.username.trim() !== "" && (editing || (v.password ?? "") !== "");
+  const connectionOk = azure
+    ? v.host.trim() !== "" && v.username.trim() !== ""
+    : cloud && v.useCliCreds
+      ? v.host.trim() !== ""
+      : v.host.trim() !== "" && v.username.trim() !== "" && (editing || (v.password ?? "") !== "");
   const next = () => setI((n) => Math.min(n + 1, steps.length - 1));
   const back = () => setI((n) => Math.max(n - 1, 0));
 
@@ -622,10 +658,29 @@ export function HostSetupPage({
         {key === "credentials" && (
           <Step
             icon={Cloud}
-            title={v.useCliCreds ? "AWS CLI" : "Access keys"}
-            description={v.useCliCreds ? "Pick a profile, or sign in with the browser." : "An IAM user's access keys."}
+            title={azure ? "Azure subscription" : v.useCliCreds ? "AWS CLI" : "Access keys"}
+            description={
+              azure
+                ? "Sign in with the Azure CLI, then pick your subscription and location."
+                : v.useCliCreds
+                  ? "Pick a profile, or sign in with the browser."
+                  : "An IAM user's access keys."
+            }
           >
-            {v.useCliCreds ? (
+            {azure ? (
+              <div className="space-y-3">
+                <Field label="Subscription ID">
+                  <Input {...text("username")} placeholder="00000000-0000-0000-0000-000000000000" />
+                </Field>
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[12px]">
+                  <span className="text-muted-foreground">Sign in once so Terraform can use the Azure CLI.</span>
+                  <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
+                    {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (az login)
+                  </Button>
+                </div>
+                {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" />}
+              </div>
+            ) : v.useCliCreds ? (
               <div className="space-y-3">
                 {profiles.length > 0 && (
                   <Field label="Profile">
@@ -686,10 +741,10 @@ export function HostSetupPage({
               </>
             )}
             <div className="mt-3">
-              <Field label="Region">
+              <Field label={azure ? "Location" : "Region"}>
                 <Select value={v.host} onChange={(e) => set("host", e.target.value)}>
-                  {v.host && !AWS_REGIONS.some(([code]) => code === v.host) && <option value={v.host}>{v.host}</option>}
-                  {AWS_REGIONS.map(([code, name]) => (
+                  {v.host && !(azure ? AZURE_LOCATIONS : AWS_REGIONS).some(([code]) => code === v.host) && <option value={v.host}>{v.host}</option>}
+                  {(azure ? AZURE_LOCATIONS : AWS_REGIONS).map(([code, name]) => (
                     <option key={code} value={code}>
                       {code} — {name}
                     </option>
@@ -778,7 +833,7 @@ export function HostSetupPage({
                     key={p.id}
                     type="button"
                     disabled={!p.ready}
-                    onClick={() => p.ready && setCloudProvider(p.id as CloudProvider)}
+                    onClick={() => p.ready && pickProvider(p.id as CloudProvider)}
                     className={cn(
                       "relative rounded-xl border p-4 text-left transition-colors",
                       !p.ready
