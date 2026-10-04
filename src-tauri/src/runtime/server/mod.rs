@@ -287,7 +287,9 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         },
         use_cli_creds: use_cli,
         aws_profile: if use_cli { clean_opt(input.aws_profile, "profile")? } else { None },
-        monthly_limit: input.monthly_limit.filter(|v| *v > 0.0),
+        // Budget enforcement is AWS-only (the other clouds have no cost read yet), so don't
+        // persist a limit that would silently do nothing on Azure/GCP.
+        monthly_limit: if input.provider == Provider::Aws { input.monthly_limit.filter(|v| *v > 0.0) } else { None },
     };
     match input.password.filter(|p| !p.is_empty()) {
         Some(p) if p.len() <= 1024 && !p.contains('\0') => set_secret(&id, &p)?,
@@ -313,7 +315,8 @@ pub fn server_remove(app: AppHandle, id: String) -> Result<()> {
     let mut store = load(&app)?;
     store.hosts.retain(|h| h.id != id);
     if store.default.as_deref() == Some(id.as_str()) {
-        store.default = store.hosts.first().map(|h| h.id.clone());
+        // The default is a *server* to run VM labs on; a cloud account must never become it.
+        store.default = store.hosts.iter().find(|h| !matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp)).map(|h| h.id.clone());
     }
     save(&app, &store)?;
     delete_secret(&id);

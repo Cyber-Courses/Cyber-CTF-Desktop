@@ -93,12 +93,20 @@ pub async fn start(
             // unreachable (while still billing).
             vars.push(("allowed_cidr".into(), format!("{}/32", public_ip().await?)));
             if provider == providers::Provider::Aws {
-                // Stop before spending if this account is over its monthly budget (AWS only; the
-                // other clouds have no cost read yet).
-                if let Some((spent, limit)) = server::budget_exceeded(app, host).await {
-                    return Err(Error::Invalid(format!(
-                        "Monthly budget reached for this account: ${spent:.2} of ${limit:.2} spent this month. Raise the budget in the account settings, or wait until next month."
-                    )));
+                // Stop before spending if this account is over its monthly budget, or if a budget
+                // is set but the spend can't be verified (fail closed, AWS only).
+                match server::check_budget(app, host).await {
+                    server::BudgetCheck::Over(spent, limit) => {
+                        return Err(Error::Invalid(format!(
+                            "Monthly budget reached for this account: ${spent:.2} of ${limit:.2} spent this month. Raise the budget in the account settings, or wait until next month."
+                        )));
+                    }
+                    server::BudgetCheck::Unverifiable(why) => {
+                        return Err(Error::Invalid(format!(
+                            "Couldn't check this account against its monthly budget ({why}). Enable Cost Explorer in the AWS Billing console (it can take ~24h to activate), or remove the budget on this account, then try again."
+                        )));
+                    }
+                    server::BudgetCheck::Ok => {}
                 }
             }
             log(format!("This lab runs in your {} account and is billed there until you stop it.", conn.provider.id().to_uppercase()));

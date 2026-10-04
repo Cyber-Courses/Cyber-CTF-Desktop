@@ -71,8 +71,8 @@ pub(super) async fn test_aws(h: &HostProfile, password: &str) -> TestResult {
     }
 }
 
-/// This month's AWS spend so far (USD) for a host, via Cost Explorer. None if unreadable.
-pub(super) async fn month_to_date_cost(h: &HostProfile, password: &str) -> Option<f64> {
+/// This month's AWS spend so far (USD) for a host, via Cost Explorer.
+pub(super) async fn month_to_date_cost(h: &HostProfile, password: &str) -> Result<f64> {
     let env = terraform_env(h, password);
     let period = crate::cloud::month_period();
     let out = aws_cmd(
@@ -93,22 +93,44 @@ pub(super) async fn month_to_date_cost(h: &HostProfile, password: &str) -> Optio
             "text",
         ],
     )
-    .await
-    .ok()?;
-    out.trim().parse::<f64>().ok()
+    .await?;
+    out.trim().parse::<f64>().map_err(|_| Error::Invalid(format!("couldn't read the spend figure from Cost Explorer: {:?}", out.trim())))
 }
 
-/// `(spent, limit)` when an AWS account is at or over its monthly budget; None otherwise
-/// (no budget, under it, not AWS, or the spend couldn't be read). Used to block a launch.
-pub async fn budget_exceeded(app: &AppHandle, id: &str) -> Option<(f64, f64)> {
-    let host = find(&load(app).ok()?, id).ok()?;
+/// The budget check for a launch. A limit that can't be verified fails closed (`Unverifiable`)
+/// rather than silently letting the launch through.
+pub enum BudgetCheck {
+    /// No budget set, under it, or not an AWS account.
+    Ok,
+    /// At or over the monthly budget: (spent, limit) in USD.
+    Over(f64, f64),
+    /// A budget is set but this month's spend couldn't be read (Cost Explorer off, no
+    /// `ce:GetCostAndUsage`, Docker/CLI missing, transient error). Carries why.
+    Unverifiable(String),
+}
+
+/// Checks an account against its monthly budget before a launch. AWS-only (the other clouds
+/// have no cost read yet, and never persist a limit).
+pub async fn check_budget(app: &AppHandle, id: &str) -> BudgetCheck {
+    let Some(store) = load(app).ok() else { return BudgetCheck::Ok };
+    let Ok(host) = find(&store, id) else { return BudgetCheck::Ok };
     if host.provider != Provider::Aws {
-        return None;
+        return BudgetCheck::Ok;
     }
-    let limit = host.monthly_limit.filter(|v| *v > 0.0)?;
-    let password = if host.use_cli_creds { String::new() } else { get_secret(id).ok()? };
-    let spent = month_to_date_cost(&host, &password).await?;
-    (spent >= limit).then_some((spent, limit))
+    let Some(limit) = host.monthly_limit.filter(|v| *v > 0.0) else { return BudgetCheck::Ok };
+    let password = if host.use_cli_creds {
+        String::new()
+    } else {
+        match get_secret(id) {
+            Ok(p) => p,
+            Err(_) => return BudgetCheck::Unverifiable("no stored credentials for this account".into()),
+        }
+    };
+    match month_to_date_cost(&host, &password).await {
+        Ok(spent) if spent >= limit => BudgetCheck::Over(spent, limit),
+        Ok(_) => BudgetCheck::Ok,
+        Err(e) => BudgetCheck::Unverifiable(e.to_string()),
+    }
 }
 
 /// Azure: `az account show` for the subscription confirms the CLI is signed in and the
