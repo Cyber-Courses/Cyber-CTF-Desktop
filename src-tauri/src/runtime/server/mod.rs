@@ -196,7 +196,8 @@ fn valid_gcp_project(s: &str) -> bool {
         && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// An AWS access key id (AKIA... long-term, ASIA... temporary).
+/// A long-term AWS access key id (AKIA...). Temporary ASIA... keys are handled separately at
+/// the call site: they need a session token and expire, so the launcher steers them to CLI mode.
 fn valid_access_key_id(id: &str) -> bool {
     (16..=128).contains(&id.len()) && id.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
 }
@@ -238,8 +239,15 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         if !valid_region(&host) {
             return Err(Error::Invalid("region must be an AWS region id, e.g. eu-west-3".into()));
         }
-        if !use_cli && !valid_access_key_id(&username) {
-            return Err(Error::Invalid("access key id looks wrong (AKIA... or ASIA...)".into()));
+        if !use_cli {
+            if username.starts_with("ASIA") {
+                return Err(Error::Invalid(
+                    "those are temporary credentials (ASIA...), which expire and need a session token. Switch to \"Connect with the AWS CLI\" and sign in with `aws login` / `aws sso login` so the launcher always has fresh credentials.".into(),
+                ));
+            }
+            if !valid_access_key_id(&username) {
+                return Err(Error::Invalid("access key id looks wrong; an IAM user's key starts with AKIA...".into()));
+            }
         }
     } else if input.provider == Provider::Azure {
         if !valid_azure_location(&host) {

@@ -148,12 +148,15 @@ pub fn open_terminal(command: &str) -> Result<()> {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        // cls hides the command; /c closes the window when the player leaves the box. The
-        // new window inherits DOCKER_CLI_HINTS. Passed raw: cmd parses its own quoting
-        // (POSIX single quotes become double quotes).
+        // cmd.exe's quote-stripping with nested quotes and `&` is unreliable (it breaks when the
+        // identity/known_hosts path contains a space, e.g. C:\Users\First Last\...), so write the
+        // command to a temp .cmd and run that: the ssh line lives in the file with normal
+        // double-quoted paths, and the only thing cmd parses is the balanced-quoted .cmd path.
         let command = command.replace('\'', "\"");
+        let bat = std::env::temp_dir().join(format!("cyberctf-shell-{}.cmd", std::process::id()));
+        std::fs::write(&bat, format!("@echo off\r\ncls\r\n{command}\r\n"))?;
         std::process::Command::new("cmd")
-            .raw_arg(format!("/c start \"Cyber CTF attack box\" cmd /c \"cls & {command}\""))
+            .raw_arg(format!("/c start \"Cyber CTF attack box\" cmd /c \"{}\"", bat.display()))
             .env("DOCKER_CLI_HINTS", "false")
             .spawn()?;
         Ok(())
