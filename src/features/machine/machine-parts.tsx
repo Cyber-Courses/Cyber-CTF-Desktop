@@ -24,7 +24,7 @@ function Sparkline({ values, className }: { values: number[]; className?: string
 export function Stat({ icon: Icon, label, value, sub, history }: { icon: LucideIcon; label: string; value: string | null; sub: string; history: number[] }) {
   return (
     <div className="min-w-0 px-4 py-3.5">
-      <div className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-[0.71875rem] text-muted-foreground">
         <Icon className="size-3.5" /> {label}
       </div>
       {value === null ? (
@@ -36,7 +36,7 @@ export function Stat({ icon: Icon, label, value, sub, history }: { icon: LucideI
         <>
           <div className="mt-1.5 flex items-baseline justify-between gap-2">
             <span className="text-xl font-semibold tracking-tight tabular-nums">{value}</span>
-            <span className="truncate text-[11.5px] tabular-nums text-muted-foreground">{sub}</span>
+            <span className="truncate text-[0.71875rem] tabular-nums text-muted-foreground">{sub}</span>
           </div>
           <Sparkline values={history} className="mt-1.5" />
         </>
@@ -48,9 +48,9 @@ export function Stat({ icon: Icon, label, value, sub, history }: { icon: LucideI
 /** A read-only tool row for the Details section. */
 export function DetailRow({ name, value, bad }: { name: string; value: string; bad?: boolean }) {
   return (
-    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2 text-[12.5px] last:border-b-0">
+    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2 text-[0.78125rem] last:border-b-0">
       <span className="text-muted-foreground">{name}</span>
-      <span className={cn("ml-auto font-mono text-[11.5px]", bad ? "text-amber-500" : "text-foreground")}>{value}</span>
+      <span className={cn("ml-auto font-mono text-[0.71875rem]", bad ? "text-amber-500" : "text-foreground")}>{value}</span>
     </div>
   );
 }
@@ -97,12 +97,12 @@ export function LabTypeRow({
       <div className="flex flex-wrap items-center gap-3 px-3.5 py-3">
         {icon}
         <div className="min-w-0 flex-1">
-          <p className="flex flex-wrap items-center gap-x-2.5 text-[13px] font-medium">
+          <p className="flex flex-wrap items-center gap-x-2.5 text-[0.8125rem] font-medium">
             {title}
             <StatusPill tone={tone}>{status}</StatusPill>
           </p>
-          <p className="mt-0.5 text-[12px] text-muted-foreground">{detail}</p>
-          {hint && <p className="mt-1 text-[12px] text-amber-500">{hint}</p>}
+          <p className="mt-0.5 text-[0.75rem] text-muted-foreground">{detail}</p>
+          {hint && <p className="mt-1 text-[0.75rem] text-amber-500">{hint}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">{actions}</div>
       </div>

@@ -35,11 +35,11 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
       <>
         {isMac && (
           <div className="space-y-2">
-            <p className="text-[12.5px] text-muted-foreground">Run this in Terminal, then come back, it’s detected automatically:</p>
+            <p className="text-[0.78125rem] text-muted-foreground">Run this in Terminal, then come back, it’s detected automatically:</p>
             <CmdRow cmd={'/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'} />
             <button
               onClick={() => openUrl("https://brew.sh").catch(() => {})}
-              className="inline-flex items-center gap-1.5 text-[12px] text-learn hover:underline"
+              className="inline-flex items-center gap-1.5 text-[0.75rem] text-learn hover:underline"
             >
               <ExternalLink className="size-3.5" /> brew.sh
             </button>
@@ -48,8 +48,8 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
         {isWin && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-[#0f0f0f] p-3.5">
             <div>
-              <p className="text-[13px] font-medium">App Installer (winget)</p>
-              <p className="text-[12px] text-muted-foreground">Install it from the Microsoft Store, then come back.</p>
+              <p className="text-[0.8125rem] font-medium">App Installer (winget)</p>
+              <p className="text-[0.75rem] text-muted-foreground">Install it from the Microsoft Store, then come back.</p>
             </div>
             <Button variant="learn" onClick={() => openUrl("https://apps.microsoft.com/detail/9nblggh4nns1").catch(() => {})}>
               <ExternalLink className="size-3.5" /> Get
@@ -57,7 +57,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
           </div>
         )}
         {!isMac && !isWin && (
-          <p className="text-[12.5px] text-muted-foreground">Install your distribution’s package manager (apt) to use the one-click installs.</p>
+          <p className="text-[0.78125rem] text-muted-foreground">Install your distribution’s package manager (apt) to use the one-click installs.</p>
         )}
       </>
     );
@@ -83,7 +83,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
         </ol>
         <button
           onClick={() => openUrl("https://learn.microsoft.com/windows/wsl/install").catch(() => {})}
-          className="mt-4 inline-flex items-center gap-1.5 text-[12px] text-learn hover:underline"
+          className="mt-4 inline-flex items-center gap-1.5 text-[0.75rem] text-learn hover:underline"
         >
           <ExternalLink className="size-3.5" /> Microsoft’s WSL install guide
         </button>

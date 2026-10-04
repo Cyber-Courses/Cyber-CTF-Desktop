@@ -141,7 +141,7 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium",
+            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.75rem] font-medium",
             summaryTone === "ok"
               ? "border-emerald-500/30 text-emerald-500"
               : summaryTone === "fail"
@@ -165,7 +165,7 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
           />
           {summaryText}
         </span>
-        <span className="text-[12px] text-muted-foreground">Proxmox or ESXi, over your network</span>
+        <span className="text-[0.75rem] text-muted-foreground">Proxmox or ESXi, over your network</span>
         <div className="ml-auto flex items-center gap-2">
           {hasHosts && (
             <Button variant="outline" size="sm" onClick={testAll} disabled={anyTesting}>
@@ -178,7 +178,7 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
         </div>
       </div>
 
-      {error && <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">{error}</p>}
+      {error && <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.78125rem] text-destructive">{error}</p>}
 
       {/* Hosts: the hero. */}
       <Panel>
@@ -186,7 +186,7 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
           title="Hosts"
           action={
             hasHosts ? (
-              <span className="text-[11.5px] tabular-nums text-muted-foreground">
+              <span className="text-[0.71875rem] tabular-nums text-muted-foreground">
                 {hosts!.length} host{hosts!.length > 1 ? "s" : ""}
               </span>
             ) : undefined
@@ -231,7 +231,7 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
       {/* Only worth suggesting when this machine can't already run VM labs itself. */}
       {report && !canRunVmHere && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-border px-4 py-3">
-          <p className="min-w-0 flex-1 text-[12px] text-muted-foreground">
+          <p className="min-w-0 flex-1 text-[0.75rem] text-muted-foreground">
             No server? If this machine can handle it, install a local hypervisor and run VM labs here.
           </p>
           <Button variant="ghost" size="sm" onClick={() => onNavigate("setup")}>

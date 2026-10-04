@@ -29,8 +29,8 @@ export function FirstRun({ onSetup }: { onSetup: () => void }) {
           <img key={p.id} src={`/brands/${p.id}.svg`} alt={p.label} className="size-7" draggable={false} />
         ))}
       </div>
-      <p className="mt-3 text-[13px] font-medium">Run labs in your own cloud account</p>
-      <p className="mx-auto mt-1 max-w-sm text-[12px] text-muted-foreground">
+      <p className="mt-3 text-[0.8125rem] font-medium">Run labs in your own cloud account</p>
+      <p className="mx-auto mt-1 max-w-sm text-[0.75rem] text-muted-foreground">
         One throwaway instance per lab, destroyed when you stop it. AWS today; Azure and Google Cloud coming.
       </p>
       <div className="mx-auto mt-5 grid max-w-md gap-2 text-left">

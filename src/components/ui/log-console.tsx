@@ -62,8 +62,8 @@ export function LogConsole({
         ) : (
           <Check className="size-3.5 text-emerald-500" />
         )}
-        <span className="text-[11.5px] font-medium text-foreground">{running ? `${title}…` : failed ? `${title} failed` : `${title} · done`}</span>
-        <span className="ml-auto font-mono text-[11px] tabular-nums text-muted-foreground">{formatElapsed(elapsed)}</span>
+        <span className="text-[0.71875rem] font-medium text-foreground">{running ? `${title}…` : failed ? `${title} failed` : `${title} · done`}</span>
+        <span className="ml-auto font-mono text-[0.6875rem] tabular-nums text-muted-foreground">{formatElapsed(elapsed)}</span>
         {open ? <ChevronDown className="size-3.5 text-muted-foreground" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
       </button>
       {open && (

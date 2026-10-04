@@ -9,7 +9,7 @@ export function Panel({ children, className }: { children: ReactNode; className?
 export function PanelHeader({ title, action }: { title: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
-      <h3 className="text-[13px] font-medium text-foreground">{title}</h3>
+      <h3 className="text-[0.8125rem] font-medium text-foreground">{title}</h3>
       {action && <div className="ml-auto">{action}</div>}
     </div>
   );
@@ -19,7 +19,7 @@ export function PanelHeader({ title, action }: { title: ReactNode; action?: Reac
 export function RailLabel({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
     <div className="mb-2.5 flex items-center gap-2">
-      <span className="text-[12.5px] font-medium text-foreground">{children}</span>
+      <span className="text-[0.78125rem] font-medium text-foreground">{children}</span>
       {right && <span className="ml-auto">{right}</span>}
     </div>
   );

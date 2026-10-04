@@ -71,7 +71,7 @@ export function LabRow({
       onClick={onOpen}
       className="group flex cursor-pointer items-center gap-3 border-t border-border px-4 py-3 transition-colors first:border-t-0 hover:bg-[#0e0e0e]"
     >
-      <span className="grid size-[30px] shrink-0 place-items-center rounded-lg border border-border bg-[#121212] text-muted-foreground">
+      <span className="grid size-[1.875rem] shrink-0 place-items-center rounded-lg border border-border bg-[#121212] text-muted-foreground">
         <RuntimeIcon className="size-4" />
       </span>
 
@@ -80,7 +80,7 @@ export function LabRow({
           {solved && <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" aria-label="Solved" />}
           <span className="truncate">{lab.title}</span>
         </p>
-        <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+        <div className="mt-0.5 flex items-center gap-1.5 text-[0.71875rem] text-muted-foreground">
           {lab.difficulty > 0 && (
             <span className="inline-flex items-center gap-1">
               <span className={cn("size-1.5 rounded-full", DIFFICULTY_DOT[lab.difficulty])} />
@@ -91,11 +91,11 @@ export function LabRow({
         </div>
       </div>
 
-      {showDescription && lab.description && <p className="hidden flex-1 truncate text-[12.5px] text-muted-foreground lg:block">{lab.description}</p>}
+      {showDescription && lab.description && <p className="hidden flex-1 truncate text-[0.78125rem] text-muted-foreground lg:block">{lab.description}</p>}
 
       <div className="ml-auto flex shrink-0 items-center gap-3">
         {rt && (
-          <span className="hidden items-center gap-1.5 text-[11px] text-muted-foreground xl:inline-flex">
+          <span className="hidden items-center gap-1.5 text-[0.6875rem] text-muted-foreground xl:inline-flex">
             <RuntimeIcon className="size-3" />
             {rt.runtime === "VM" ? "VM" : "Container"}
             {!native && <span className="text-amber-500">· emulated</span>}

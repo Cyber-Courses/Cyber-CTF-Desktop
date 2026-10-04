@@ -36,11 +36,11 @@ export function AccountRow({
         {/* eslint-disable-next-line @next/next/no-img-element -- static export, plain asset */}
         <img src="/brands/aws.svg" alt="" className="size-6 shrink-0" draggable={false} />
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 text-[13px] font-medium">
+          <p className="flex items-center gap-2 text-[0.8125rem] font-medium">
             <span className="truncate">{host.name}</span>
             <span className={cn("size-1.5 shrink-0 rounded-full", ok === null ? "bg-muted-foreground/40" : ok ? "bg-emerald-500" : "bg-rose-500")} />
           </p>
-          <p className="truncate font-mono text-[11px] text-muted-foreground">
+          <p className="truncate font-mono text-[0.6875rem] text-muted-foreground">
             {facts.join(" · ")}
             {result?.latencyMs != null ? ` · ${result.latencyMs} ms` : ""}
           </p>
@@ -48,7 +48,7 @@ export function AccountRow({
         <div className="flex shrink-0 items-center gap-1">
           {confirming ? (
             <>
-              <span className="mr-1 text-[11.5px] text-muted-foreground">Remove?</span>
+              <span className="mr-1 text-[0.71875rem] text-muted-foreground">Remove?</span>
               <Button variant="destructive" size="sm" onClick={onRemove}>
                 Remove
               </Button>
@@ -72,13 +72,13 @@ export function AccountRow({
         </div>
       </div>
       {result && (
-        <p className={cn("mt-2 flex items-start gap-1.5 pl-9 text-[12px]", ok ? "text-emerald-500" : "text-rose-400")}>
+        <p className={cn("mt-2 flex items-start gap-1.5 pl-9 text-[0.75rem]", ok ? "text-emerald-500" : "text-rose-400")}>
           {ok ? <CheckCircle2 className="mt-px size-3.5 shrink-0" /> : <XCircle className="mt-px size-3.5 shrink-0" />}
           <span>{result.message}</span>
         </p>
       )}
       {host.monthlyLimit != null && (
-        <p className={cn("mt-1.5 pl-9 text-[11.5px]", spent != null && spent >= host.monthlyLimit ? "text-rose-400" : "text-muted-foreground")}>
+        <p className={cn("mt-1.5 pl-9 text-[0.71875rem]", spent != null && spent >= host.monthlyLimit ? "text-rose-400" : "text-muted-foreground")}>
           Budget ${host.monthlyLimit.toFixed(0)}/mo{spent != null ? ` · $${spent.toFixed(2)} this month` : ""}
           {spent != null && spent >= host.monthlyLimit ? " — over budget" : ""}
         </p>
@@ -104,7 +104,7 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
 export function Status({ tool }: { tool?: Tool }) {
   const installed = !!tool?.installed;
   return (
-    <span className={cn("flex items-center gap-1.5 text-[12px]", installed ? "text-emerald-500" : "text-muted-foreground")}>
+    <span className={cn("flex items-center gap-1.5 text-[0.75rem]", installed ? "text-emerald-500" : "text-muted-foreground")}>
       {installed && <span className="size-1.5 rounded-full bg-emerald-500" />}
       {tool ? (installed ? (tool.version ?? "installed") : "not installed") : "…"}
     </span>

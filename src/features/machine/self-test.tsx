@@ -106,17 +106,17 @@ export function SelfTest({
     <div className="overflow-hidden rounded-lg border border-border">
       <div className="flex items-center gap-3 border-b border-border px-3.5 py-2.5">
         <div className="min-w-0">
-          <p className="text-[13px] font-medium">{title}</p>
-          <p className="text-[12px] text-muted-foreground">{description}</p>
+          <p className="text-[0.8125rem] font-medium">{title}</p>
+          <p className="text-[0.75rem] text-muted-foreground">{description}</p>
         </div>
         <span className="ml-auto shrink-0">
           {result === "running" ? (
-            <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+            <span className="flex items-center gap-1.5 text-[0.75rem] text-muted-foreground">
               <Spinner className="size-3.5" /> Testing… <span className="font-mono tabular-nums">{run ? formatElapsed(now - run.start) : ""}</span>
             </span>
           ) : result === "ok" ? (
             <span className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 text-[12px] text-emerald-500">
+              <span className="flex items-center gap-1.5 text-[0.75rem] text-emerald-500">
                 <span className="size-1.5 rounded-full bg-emerald-500" /> Passed
                 {run?.end ? <span className="font-mono tabular-nums text-muted-foreground">· {formatElapsed(run.end - run.start)}</span> : null}
               </span>
@@ -127,7 +127,7 @@ export function SelfTest({
           ) : (
             <span className="flex items-center gap-2">
               {result === "fail" && run?.end && (
-                <span className="font-mono text-[12px] tabular-nums text-muted-foreground">{formatElapsed(run.end - run.start)}</span>
+                <span className="font-mono text-[0.75rem] tabular-nums text-muted-foreground">{formatElapsed(run.end - run.start)}</span>
               )}
               <Button variant={result === "fail" ? "outline" : "learn"} size="sm" onClick={runTest}>
                 {result === "fail" ? (
@@ -148,7 +148,7 @@ export function SelfTest({
             const e: SelfTestEvent | undefined = events[step];
             const state: SelfTestEvent["state"] | "pending" = e ? e.state : "pending";
             return (
-              <li key={step} className="flex items-start gap-2.5 text-[12.5px]">
+              <li key={step} className="flex items-start gap-2.5 text-[0.78125rem]">
                 <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
                   {state === "running" ? (
                     <Spinner className="size-3.5" />
@@ -163,13 +163,13 @@ export function SelfTest({
                 <span className="min-w-0 flex-1">
                   <span className={cn(state === "pending" || state === "skip" ? "text-muted-foreground" : "text-foreground")}>{label}</span>
                   {e?.detail && (
-                    <span className={cn("block break-words font-mono text-[11px]", state === "fail" ? "text-rose-400" : "text-muted-foreground")}>
+                    <span className={cn("block break-words font-mono text-[0.6875rem]", state === "fail" ? "text-rose-400" : "text-muted-foreground")}>
                       {e.detail}
                     </span>
                   )}
                 </span>
                 {times[step] && state !== "skip" && (
-                  <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                  <span className="shrink-0 font-mono text-[0.6875rem] tabular-nums text-muted-foreground">
                     {formatElapsed((times[step].end ?? (result === "running" ? now : (run?.end ?? now))) - times[step].start)}
                   </span>
                 )}

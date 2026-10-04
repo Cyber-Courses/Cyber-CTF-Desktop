@@ -104,7 +104,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
       {/* Draggable title bar (Overlay style has no native bar); room for traffic lights. */}
       <div data-tauri-drag-region className="flex h-11 shrink-0 items-center justify-between pr-4 pl-20">
         <div className="pointer-events-none flex items-center gap-2">
-          <Image src="/logo-mark.svg" alt="" width={18} height={18} className="size-[18px]" priority />
+          <Image src="/logo-mark.svg" alt="" width={18} height={18} className="size-[1.125rem]" priority />
           <span className="text-xs font-medium tracking-tight text-muted-foreground">Cyber CTF</span>
         </div>
         {step !== "done" && (

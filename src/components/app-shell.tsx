@@ -101,21 +101,21 @@ export function AppShell() {
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       {/* ---- Sidebar ---- */}
-      <aside className="flex w-[232px] shrink-0 flex-col border-r border-border">
+      <aside className="flex w-[14.5rem] shrink-0 flex-col border-r border-border">
         {/* macOS titlebar band inside the column, so the sidebar divider runs to the top of the window */}
         <div data-tauri-drag-region className="h-9 shrink-0" />
         <div data-tauri-drag-region className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border px-4">
           <Image src="/logo-mark.svg" alt="" width={20} height={20} className="size-5 pointer-events-none" priority />
-          <span className="text-[13px] font-semibold tracking-tight">Cyber CTF</span>
+          <span className="text-[0.8125rem] font-semibold tracking-tight">Cyber CTF</span>
         </div>
 
         <button
           onClick={() => navigate("labs")}
-          className="mx-3 mb-2 mt-3 flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-[12.5px] text-muted-foreground transition-colors hover:border-ring/60 hover:text-foreground"
+          className="mx-3 mb-2 mt-3 flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-[0.78125rem] text-muted-foreground transition-colors hover:border-ring/60 hover:text-foreground"
         >
           <Search className="size-3.5" />
           <span>Find a lab…</span>
-          <kbd className="ml-auto rounded border border-border px-1.5 text-[11px] text-muted-foreground/70">/</kbd>
+          <kbd className="ml-auto rounded border border-border px-1.5 text-[0.6875rem] text-muted-foreground/70">/</kbd>
         </button>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
@@ -128,7 +128,7 @@ export function AppShell() {
                 <button
                   onClick={() => navigate(n.id)}
                   className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] transition-colors",
+                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[0.4375rem] text-[0.8125rem] transition-colors",
                     tab === n.id ? "bg-[#1a1a1a] text-foreground" : "text-muted-foreground hover:bg-[#141414] hover:text-foreground",
                     n.soon && tab !== n.id && "opacity-55",
                   )}
@@ -136,7 +136,9 @@ export function AppShell() {
                   <n.icon className="size-4 shrink-0" />
                   <span className="flex-1 text-left">{n.label}</span>
                   {n.soon && (
-                    <span className="rounded border border-border px-1.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground/70">Soon</span>
+                    <span className="rounded border border-border px-1.5 text-[0.5625rem] font-medium uppercase tracking-wide text-muted-foreground/70">
+                      Soon
+                    </span>
                   )}
                 </button>
               </div>
@@ -146,7 +148,7 @@ export function AppShell() {
 
         <div className="space-y-2.5 border-t border-border px-3.5 py-3">
           <div
-            className="flex items-center gap-2 px-0.5 text-[11.5px] text-muted-foreground"
+            className="flex items-center gap-2 px-0.5 text-[0.71875rem] text-muted-foreground"
             title={auth?.loggedIn ? "Labs launched from the website run on this machine." : "Sign in so website launches run here."}
           >
             <span className={cn("size-1.5 rounded-full", auth?.loggedIn ? "bg-emerald-500" : "bg-muted-foreground/40")} />
@@ -161,12 +163,12 @@ export function AppShell() {
         <div data-tauri-drag-region className="h-9 shrink-0" />
         <div data-tauri-drag-region className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
           <CurrentIcon className="size-4 text-muted-foreground" />
-          <span className="text-[13px] font-medium text-foreground">{TITLES[tab]}</span>
+          <span className="text-[0.8125rem] font-medium text-foreground">{TITLES[tab]}</span>
         </div>
 
         <div className="flex-1 overflow-y-auto">
           <UpdateBanner />
-          <div className="mx-auto w-full max-w-[1120px] px-5 py-5">
+          <div className="mx-auto w-full max-w-[70rem] px-5 py-5">
             <Screen tab={tab} report={report} auth={auth} openLab={openLab} onRefresh={check} onNavigate={navigate} onAuthChange={setAuth} />
           </div>
         </div>

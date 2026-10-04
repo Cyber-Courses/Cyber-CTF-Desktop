@@ -45,7 +45,7 @@ export function SettingsScreen({
   }, [auth?.loggedIn]);
 
   return (
-    <div className="mx-auto max-w-[760px] space-y-9 pb-10">
+    <div className="mx-auto max-w-[47.5rem] space-y-9 pb-10">
       <AccountSection auth={auth} agent={auth?.loggedIn ? agent : null} onAuthChange={onAuthChange} />
 
       <Section title="Labs" description="How labs start on this machine. Saved on this computer only." saved={labsSaved}>

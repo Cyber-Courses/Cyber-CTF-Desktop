@@ -60,7 +60,7 @@ export function MachineSetup({
           <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-6 pt-2 pb-10">
             <div>
               <h1 className="text-xl font-semibold tracking-tight">Set up this machine</h1>
-              <p className="mt-1 text-[13px] text-muted-foreground">Get {osName} ready to run labs, one step at a time.</p>
+              <p className="mt-1 text-[0.8125rem] text-muted-foreground">Get {osName} ready to run labs, one step at a time.</p>
             </div>
 
             <div className="mt-5 flex gap-1.5">
@@ -71,7 +71,7 @@ export function MachineSetup({
 
             <div key={key} className="mt-7 animate-rise-in">
               <>
-                <p className="text-[11.5px] font-medium tabular-nums text-muted-foreground">
+                <p className="text-[0.71875rem] font-medium tabular-nums text-muted-foreground">
                   Step {at + 1} of {steps.length}
                 </p>
                 <div className="mt-2 flex items-start gap-3.5">
@@ -80,7 +80,7 @@ export function MachineSetup({
                   </span>
                   <div className="min-w-0 pt-0.5">
                     <h2 className="text-lg font-semibold tracking-tight">{meta.title}</h2>
-                    <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">{meta.description}</p>
+                    <p className="mt-1 text-[0.78125rem] leading-relaxed text-muted-foreground">{meta.description}</p>
                   </div>
                 </div>
                 <div className="mt-6">

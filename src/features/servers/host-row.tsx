@@ -54,27 +54,27 @@ export function HostRow({
           <Server className="size-4" />
         </TypeIcon>
         <div className="min-w-0 flex-1">
-          <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] font-medium">
+          <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[0.8125rem] font-medium">
             {host.name}
             <StatusPill tone={tone}>
               {status}
-              {result?.latencyMs != null && <span className="ml-1 font-mono text-[10.5px] tabular-nums text-muted-foreground">{result.latencyMs} ms</span>}
+              {result?.latencyMs != null && <span className="ml-1 font-mono text-[0.65625rem] tabular-nums text-muted-foreground">{result.latencyMs} ms</span>}
             </StatusPill>
             <button
               type="button"
               onClick={onDefault}
               title={isDefault ? "The default host for website launches. Click to unset." : "Make this the default host for website launches."}
               className={cn(
-                "inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[9.5px] font-medium uppercase tracking-wide transition-colors",
+                "inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[0.59375rem] font-medium uppercase tracking-wide transition-colors",
                 isDefault ? "border-learn/50 bg-learn/10 text-learn" : "border-border text-muted-foreground/70 hover:border-ring/60 hover:text-foreground",
               )}
             >
               <Star className={cn("size-2.5", isDefault && "fill-current")} /> Default
             </button>
           </p>
-          <p className="mt-0.5 truncate font-mono text-[11.5px] text-muted-foreground">{endpoint}</p>
+          <p className="mt-0.5 truncate font-mono text-[0.71875rem] text-muted-foreground">{endpoint}</p>
           {/* Capacity, running labs and the last VM test: only the ones we actually know. */}
-          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[0.6875rem] text-muted-foreground">
             {capacity && (
               <>
                 <span className="inline-flex items-center gap-1">
@@ -97,7 +97,7 @@ export function HostRow({
               </span>
             )}
           </p>
-          {result && !result.ok && <p className="mt-1 text-[12px] text-rose-500">{result.message}</p>}
+          {result && !result.ok && <p className="mt-1 text-[0.75rem] text-rose-500">{result.message}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <Button variant="outline" size="sm" onClick={onTest} disabled={test === "testing"}>
@@ -172,7 +172,7 @@ function Menu({ items }: { items: MenuItem[] }) {
                   it.onClick();
                 }}
                 className={cn(
-                  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] transition-colors hover:bg-muted",
+                  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[0.78125rem] transition-colors hover:bg-muted",
                   it.danger ? "text-rose-500" : "text-foreground",
                 )}
               >

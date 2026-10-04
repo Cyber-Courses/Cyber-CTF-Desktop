@@ -16,9 +16,11 @@ export function HostedScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold tracking-tight">Hosted labs</h1>
-            <span className="rounded border border-border px-1.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground/70">Early access</span>
+            <span className="rounded border border-border px-1.5 text-[0.5625rem] font-medium uppercase tracking-wide text-muted-foreground/70">
+              Early access
+            </span>
           </div>
-          <p className="mt-1 max-w-xl text-[13px] text-muted-foreground">
+          <p className="mt-1 max-w-xl text-[0.8125rem] text-muted-foreground">
             Web labs we run on Cyber CTF&rsquo;s own infrastructure. Open them straight in your browser, nothing to install, download, or run on your machine.
           </p>
         </div>
@@ -46,8 +48,8 @@ export function HostedScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
       <Panel>
         <div className="flex flex-wrap items-center gap-3 p-4">
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-medium">No hosted labs published yet</p>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">Hosted web labs are coming. For now, run labs on this machine or your own server.</p>
+            <p className="text-[0.8125rem] font-medium">No hosted labs published yet</p>
+            <p className="mt-0.5 text-[0.75rem] text-muted-foreground">Hosted web labs are coming. For now, run labs on this machine or your own server.</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => onNavigate("labs")}>
             Browse labs <ArrowRight className="size-3.5" />
@@ -61,14 +63,14 @@ export function HostedScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
 function Step({ n, icon: Icon, title, body }: { n: number; icon: typeof Globe; title: string; body: string }) {
   return (
     <div className="flex items-start gap-3 border-b border-border px-3.5 py-3 last:border-b-0">
-      <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-card text-[11px] font-medium text-muted-foreground">
+      <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-card text-[0.6875rem] font-medium text-muted-foreground">
         {n}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1.5 text-[13px] font-medium">
+        <p className="flex items-center gap-1.5 text-[0.8125rem] font-medium">
           <Icon className="size-3.5 text-muted-foreground" /> {title}
         </p>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">{body}</p>
+        <p className="mt-0.5 text-[0.75rem] text-muted-foreground">{body}</p>
       </div>
     </div>
   );
@@ -77,10 +79,10 @@ function Step({ n, icon: Icon, title, body }: { n: number; icon: typeof Globe; t
 function Fit({ icon: Icon, title, body, active }: { icon: typeof Globe; title: string; body: string; active?: boolean }) {
   return (
     <div className="bg-card p-4">
-      <p className={`flex items-center gap-1.5 text-[12.5px] font-medium ${active ? "text-learn" : "text-foreground"}`}>
+      <p className={`flex items-center gap-1.5 text-[0.78125rem] font-medium ${active ? "text-learn" : "text-foreground"}`}>
         <Icon className="size-3.5" /> {title}
       </p>
-      <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">{body}</p>
+      <p className="mt-1 text-[0.71875rem] leading-relaxed text-muted-foreground">{body}</p>
     </div>
   );
 }

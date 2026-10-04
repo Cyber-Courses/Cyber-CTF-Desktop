@@ -115,20 +115,20 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
       )}
       {!ready && report.docker.installed && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3.5 text-left">
-          <p className="text-[12.5px] text-foreground">An engine is installed but not running. Start it, then re-check.</p>
+          <p className="text-[0.78125rem] text-foreground">An engine is installed but not running. Start it, then re-check.</p>
           <Button variant="outline" size="sm" onClick={() => onRefresh()}>
             <RefreshCw className="size-3.5" /> Re-check
           </Button>
         </div>
       )}
       {!ready && installerOpened && (
-        <p className="text-[12px] text-muted-foreground">Finish in Docker’s installer, launch Docker Desktop, then press Re-check.</p>
+        <p className="text-[0.75rem] text-muted-foreground">Finish in Docker’s installer, launch Docker Desktop, then press Re-check.</p>
       )}
       {!ready && isWin && (
-        <p className="text-[12px] text-muted-foreground">A reboot may be needed after enabling WSL. If Docker says virtualization is off, go back a step.</p>
+        <p className="text-[0.75rem] text-muted-foreground">A reboot may be needed after enabling WSL. If Docker says virtualization is off, go back a step.</p>
       )}
       {!ready && !isMac && !isWin && choice.id === "docker-engine" && (
-        <div className="space-y-2 rounded-lg border border-border bg-[#0f0f0f] p-3 text-left text-[12px] text-muted-foreground">
+        <div className="space-y-2 rounded-lg border border-border bg-[#0f0f0f] p-3 text-left text-[0.75rem] text-muted-foreground">
           <p>After Docker Engine installs, let your user run it and start the service:</p>
           <CmdRow cmd="sudo usermod -aG docker $USER" />
           <CmdRow cmd="sudo systemctl enable --now docker" />
@@ -162,7 +162,7 @@ function EngineLogo({ engine }: { engine: Engine }) {
 
 function EngineTrademarks() {
   return (
-    <p className="pt-1 text-left text-[11px] leading-relaxed text-muted-foreground/70">
+    <p className="pt-1 text-left text-[0.6875rem] leading-relaxed text-muted-foreground/70">
       Docker and the Docker logo are trademarks of Docker, Inc. OrbStack and Colima marks belong to their respective owners. Cyber CTF isn&apos;t affiliated
       with any of them.
     </p>

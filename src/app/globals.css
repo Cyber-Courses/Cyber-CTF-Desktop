@@ -90,7 +90,7 @@ body {
 @keyframes rise-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(0.375rem);
   }
   to {
     opacity: 1;
@@ -115,14 +115,14 @@ body {
 /* Flowing dot down the diagram connector. */
 @keyframes drip {
   0% {
-    transform: translateY(-8px);
+    transform: translateY(-0.5rem);
     opacity: 0;
   }
   25% {
     opacity: 1;
   }
   100% {
-    transform: translateY(28px);
+    transform: translateY(1.75rem);
     opacity: 0;
   }
 }
@@ -135,60 +135,60 @@ body {
 /* "Your machine" is the wrapping card; the diagram lives in its body. */
 .hostcard {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0.75rem;
   background: #0a0a0a;
 }
 .hostcard-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 0.625rem;
+  padding: 0.625rem 0.875rem;
   border-bottom: 1px solid var(--border);
-  border-radius: 12px 12px 0 0;
+  border-radius: 0.75rem 0.75rem 0 0;
   background: #111;
 }
 .hostcard-icon {
-  width: 30px;
-  height: 30px;
+  width: 1.875rem;
+  height: 1.875rem;
   display: grid;
   place-items: center;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 0.5rem;
   background: #0c0c0c;
   color: #b5b5b5;
 }
 .hostcard-title {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 .hostcard-sub {
-  font-size: 10.5px;
+  font-size: 0.65625rem;
   color: #777;
 }
 .hostcard-online {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.375rem;
   color: #70c988;
-  font-size: 10.5px;
+  font-size: 0.65625rem;
 }
 .hostcard-online i {
-  width: 6px;
-  height: 6px;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 50%;
   background: #54c171;
-  box-shadow: 0 0 0 3px rgba(84, 193, 113, 0.1);
+  box-shadow: 0 0 0 0.1875rem rgba(84, 193, 113, 0.1);
 }
 .topology-shell {
   position: relative;
   width: 100%;
-  height: 430px;
+  height: 26.875rem;
   background: #070707;
-  border-radius: 0 0 11px 11px;
+  border-radius: 0 0 0.6875rem 0.6875rem;
 }
 .topology-shell > .react-flow {
-  border-radius: 0 0 11px 11px;
+  border-radius: 0 0 0.6875rem 0.6875rem;
   overflow: hidden;
 }
 .react-flow {
@@ -196,21 +196,21 @@ body {
 }
 .netpill {
   position: absolute;
-  top: 12px;
-  left: 14px;
+  top: 0.75rem;
+  left: 0.875rem;
   z-index: 5;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 10px;
+  gap: 0.375rem;
+  font-size: 0.625rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #8f8f8f;
   background: rgba(10, 10, 10, 0.82);
   border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 4px 11px;
+  border-radius: 1.25rem;
+  padding: 0.25rem 0.6875rem;
 }
 .netpill .mono {
   font-weight: 500;
@@ -227,7 +227,7 @@ body {
   width: 100%;
   height: 100%;
   border: 1px dashed #2e2e2e;
-  border-radius: 12px;
+  border-radius: 0.75rem;
   background: rgba(255, 255, 255, 0.012);
   pointer-events: none;
 }
@@ -237,13 +237,13 @@ body {
 }
 .zone-label {
   position: absolute;
-  top: -8px;
-  left: 14px;
-  padding: 1px 9px;
+  top: -0.5rem;
+  left: 0.875rem;
+  padding: 1px 0.5625rem;
   background: #0a0a0a;
   border: 1px solid var(--border);
-  border-radius: 20px;
-  font-size: 9px;
+  border-radius: 1.25rem;
+  font-size: 0.5625rem;
   font-weight: 650;
   letter-spacing: 0.09em;
   color: #8f8f8f;
@@ -256,7 +256,7 @@ body {
 .copy-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.25rem;
   cursor: pointer;
 }
 .copy-ico {
@@ -279,9 +279,9 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 0.3125rem;
   border: 1px solid #2e2e2e;
-  border-radius: 10px;
+  border-radius: 0.625rem;
   background: linear-gradient(180deg, #161616, #101010);
   color: #9a9a9a;
 }
@@ -289,7 +289,7 @@ body {
   color: #8a8a8a;
 }
 .bridge-label {
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 650;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -308,18 +308,18 @@ body {
 .doors {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 11px;
+  gap: 0.375rem;
+  margin-top: 0.6875rem;
 }
 .door {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 7px;
+  gap: 0.25rem;
+  padding: 0.1875rem 0.4375rem;
   border: 1px solid #2f2f2f;
-  border-radius: 7px;
+  border-radius: 0.4375rem;
   background: #1b1b1b;
-  font-size: 10.5px;
+  font-size: 0.65625rem;
   color: #b0b0b0;
 }
 .door > svg {
@@ -337,7 +337,7 @@ body {
   color: #54c171;
 }
 .door-none {
-  font-size: 10.5px;
+  font-size: 0.65625rem;
   color: #707070;
 }
 /* Localhost port-binding node on the host-card edge. */
@@ -351,16 +351,16 @@ body {
   fill: #292929;
 }
 .react-flow__controls {
-  left: 16px;
-  bottom: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  left: 1rem;
+  bottom: 1rem;
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.35);
   border: 1px solid #232323;
-  border-radius: 9px;
+  border-radius: 0.5625rem;
   overflow: hidden;
 }
 .react-flow__controls-button {
-  width: 28px;
-  height: 28px;
+  width: 1.75rem;
+  height: 1.75rem;
   border: 0;
   border-bottom: 1px solid #232323;
   background: #111;
@@ -380,18 +380,18 @@ body {
   position: relative;
   color: #ededed;
   border: 1px solid #292929;
-  border-radius: 12px;
+  border-radius: 0.75rem;
   background: linear-gradient(145deg, #1a1a1a, #141414);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.035),
-    0 10px 28px rgba(0, 0, 0, 0.24);
+    0 0.625rem 1.75rem rgba(0, 0, 0, 0.24);
   user-select: none;
 }
 .group-frame {
   position: relative;
   width: 100%;
   height: 100%;
-  border-radius: 12px;
+  border-radius: 0.75rem;
   color: #ededed;
   pointer-events: none;
 }
@@ -400,71 +400,71 @@ body {
   background: rgba(18, 18, 18, 0.42);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.025),
-    0 18px 50px rgba(0, 0, 0, 0.18);
+    0 1.125rem 3.125rem rgba(0, 0, 0, 0.18);
 }
 .host-group::after {
   content: "";
   position: absolute;
-  inset: 56px 0 0;
+  inset: 3.5rem 0 0;
   border-top: 1px solid rgba(255, 255, 255, 0.035);
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 0.75rem 0.75rem;
   pointer-events: none;
 }
 .group-header {
   position: absolute;
   inset: 0 0 auto;
-  height: 56px;
+  height: 3.5rem;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 17px;
-  border-radius: 12px 12px 0 0;
+  gap: 0.625rem;
+  padding: 0 1.0625rem;
+  border-radius: 0.75rem 0.75rem 0 0;
   background: rgba(24, 24, 24, 0.62);
 }
 .group-header > svg {
   color: #a0a0a0;
 }
 .group-title {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 560;
 }
 .group-subtitle {
-  margin-top: 3px;
+  margin-top: 0.1875rem;
   color: #777;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .group-online {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.375rem;
   margin-left: auto;
   color: #70c988;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .group-online i {
-  width: 6px;
-  height: 6px;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 50%;
   background: #54c171;
-  box-shadow: 0 0 0 3px rgba(84, 193, 113, 0.1);
+  box-shadow: 0 0 0 0.1875rem rgba(84, 193, 113, 0.1);
 }
 .lab-group {
   border: 1px dashed #292929;
-  border-radius: 9px;
+  border-radius: 0.5625rem;
   background: rgba(10, 10, 10, 0.2);
 }
 .lab-header {
   position: absolute;
   inset: 0 0 auto;
-  height: 45px;
+  height: 2.8125rem;
   display: flex;
   align-items: center;
-  padding: 0 15px;
+  padding: 0 0.9375rem;
   border-bottom: 1px solid rgba(41, 41, 41, 0.55);
 }
 .group-kicker {
   color: #777;
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 650;
   letter-spacing: 0.13em;
 }
@@ -472,12 +472,12 @@ body {
   margin-left: auto;
   color: #666;
   font-family: var(--font-mono), monospace;
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 .topology-node::before {
   content: "";
   position: absolute;
-  inset: 0 12px auto;
+  inset: 0 0.75rem auto;
   height: 1px;
   background: rgba(255, 255, 255, 0.07);
 }
@@ -485,68 +485,68 @@ body {
   min-width: 0;
 }
 .attacker-kicker {
-  font-size: 9px;
+  font-size: 0.5625rem;
   letter-spacing: 0.13em;
   color: #777;
   font-weight: 650;
 }
 .node-title {
-  margin-top: 4px;
-  font-size: 14px;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
   font-weight: 560;
   letter-spacing: -0.01em;
 }
 .node-subtitle {
-  margin-top: 5px;
+  margin-top: 0.3125rem;
   color: #8f8f8f;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .mono {
   font-family: var(--font-mono), monospace;
 }
 .attacker-node {
-  width: 190px;
-  min-height: 104px;
+  width: 11.875rem;
+  min-height: 6.5rem;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 17px 15px;
+  gap: 0.75rem;
+  padding: 1.0625rem 0.9375rem;
   border-color: rgba(240, 97, 109, 0.5);
   background: linear-gradient(145deg, #2b1d1f, #1d1416);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.055),
-    0 0 32px rgba(240, 97, 109, 0.12),
-    0 10px 28px rgba(0, 0, 0, 0.28);
+    0 0 2rem rgba(240, 97, 109, 0.12),
+    0 0.625rem 1.75rem rgba(0, 0, 0, 0.28);
 }
 .attacker-glow {
   position: absolute;
   inset: -1px;
-  border-radius: 12px;
+  border-radius: 0.75rem;
   pointer-events: none;
-  box-shadow: inset 0 0 18px rgba(240, 97, 109, 0.07);
+  box-shadow: inset 0 0 1.125rem rgba(240, 97, 109, 0.07);
 }
 .attacker-icon {
-  width: 34px;
-  height: 34px;
+  width: 2.125rem;
+  height: 2.125rem;
   display: grid;
   place-items: center;
   color: #f6a3a9;
   border: 1px solid rgba(240, 97, 109, 0.45);
-  border-radius: 9px;
+  border-radius: 0.5625rem;
   background: rgba(240, 97, 109, 0.1);
 }
 .attacker-kicker {
   color: #d6a2a6;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.375rem;
 }
 .you-chip {
-  padding: 2px 5px;
-  border-radius: 4px;
+  padding: 2px 0.3125rem;
+  border-radius: 0.25rem;
   color: #ffe3e5;
   background: rgba(240, 97, 109, 0.18);
-  font-size: 8px;
+  font-size: 0.5rem;
   letter-spacing: 0.08em;
 }
 .attacker-node .node-subtitle {
@@ -554,15 +554,15 @@ body {
 }
 .attacker-shield {
   position: absolute;
-  right: 13px;
-  top: 12px;
+  right: 0.8125rem;
+  top: 0.75rem;
   color: #f0616d;
   opacity: 0.85;
 }
 .computer-node {
-  width: 236px;
-  min-height: 150px;
-  padding: 15px;
+  width: 14.75rem;
+  min-height: 9.375rem;
+  padding: 0.9375rem;
 }
 .computer-header {
   display: flex;
@@ -571,10 +571,10 @@ body {
 }
 .computer-name {
   display: flex;
-  gap: 7px;
+  gap: 0.4375rem;
   align-items: center;
   color: #bcbcbc;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .computer-name svg {
   color: #777;
@@ -582,31 +582,31 @@ body {
 .running {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 0.3125rem;
   color: #70c988;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .running i {
-  width: 6px;
-  height: 6px;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 50%;
   background: #54c171;
-  box-shadow: 0 0 0 3px rgba(84, 193, 113, 0.1);
+  box-shadow: 0 0 0 0.1875rem rgba(84, 193, 113, 0.1);
 }
 .computer-ip {
-  margin-top: 7px;
+  margin-top: 0.4375rem;
   color: #858585;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .service-chip {
   display: flex;
   align-items: center;
-  gap: 9px;
-  min-height: 45px;
-  margin-top: 13px;
-  padding: 7px 9px;
+  gap: 0.5625rem;
+  min-height: 2.8125rem;
+  margin-top: 0.8125rem;
+  padding: 0.4375rem 0.5625rem;
   border: 1px solid #303030;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   background: #202020;
 }
 .service-icon {
@@ -623,24 +623,24 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: #d6d6d6;
 }
 .service-main small {
   color: #777;
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 .service-port {
   color: var(--service-color);
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .exposed-line,
 .internal-line {
   display: flex;
   align-items: center;
-  gap: 5px;
-  margin-top: 11px;
-  font-size: 10px;
+  gap: 0.3125rem;
+  margin-top: 0.6875rem;
+  font-size: 0.625rem;
 }
 .exposed-line {
   color: #54c171;
@@ -649,7 +649,7 @@ body {
   margin-left: auto;
   color: #639b70;
   font-style: normal;
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 .internal-line {
   color: #707070;
@@ -658,8 +658,8 @@ body {
   color: #848484;
 }
 .topology-handle {
-  width: 9px;
-  height: 9px;
+  width: 0.5625rem;
+  height: 0.5625rem;
   border: 2px solid #070707;
   border-radius: 50%;
   background: #777;
@@ -670,58 +670,58 @@ body {
 }
 .edge-label {
   position: absolute;
-  padding: 3px 7px;
+  padding: 0.1875rem 0.4375rem;
   border: 1px solid #292929;
-  border-radius: 5px;
+  border-radius: 0.3125rem;
   background: #111;
   color: #858585;
   font-family: var(--font-mono), monospace;
-  font-size: 9px;
+  font-size: 0.5625rem;
   pointer-events: all;
 }
 /* Network diagram: per-network interfaces on a pivot, isolated (internal) networks. */
 .ifaces {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  margin-top: 7px;
+  gap: 0.1875rem;
+  margin-top: 0.4375rem;
 }
 .iface {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 0.4375rem;
   color: #858585;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 .iface-net {
-  min-width: 52px;
-  padding: 1px 6px;
+  min-width: 3.25rem;
+  padding: 1px 0.375rem;
   border: 1px solid #2c2c2c;
-  border-radius: 4px;
+  border-radius: 0.25rem;
   background: #181818;
   color: #a39bc2;
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-align: center;
 }
 /* Two-line label straddling the segment's top edge: name, then subnet and counts. */
 .zone .zone-label {
-  top: -15px;
+  top: -0.9375rem;
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
-  padding: 4px 11px 5px;
-  border-radius: 9px;
+  padding: 0.25rem 0.6875rem 0.3125rem;
+  border-radius: 0.5625rem;
 }
 .zone-title {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 0.4375rem;
 }
 .zone-detail {
-  font-size: 9.5px;
+  font-size: 0.59375rem;
   font-weight: 400;
   letter-spacing: 0;
   color: #6f6f6f;
@@ -729,8 +729,8 @@ body {
 .zone-isolated {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding-left: 7px;
+  gap: 0.1875rem;
+  padding-left: 0.4375rem;
   border-left: 1px solid #2a2a2a;
   color: #c9a85a;
   letter-spacing: 0.06em;
@@ -745,7 +745,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 0.25rem;
   max-width: 50%;
 }
 .service-ports .door {
@@ -759,16 +759,16 @@ body {
 .service-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 13px;
+  gap: 0.375rem;
+  margin-top: 0.8125rem;
 }
 .service-rows .service-chip {
   margin-top: 0;
 }
 .computer-image {
-  margin-top: 3px;
+  margin-top: 0.1875rem;
   color: #6f6f6f;
-  font-size: 10px;
+  font-size: 0.625rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -800,19 +800,19 @@ body {
   bottom: 0;
   z-index: 6;
   transform: translate(-50%, 50%);
-  padding: 4px 9px;
+  padding: 0.25rem 0.5625rem;
   border: 1px solid rgba(84, 193, 113, 0.4);
-  border-radius: 7px;
+  border-radius: 0.4375rem;
   background: #0d1a11;
   color: #8fd3a0;
-  font-size: 10.5px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  font-size: 0.65625rem;
+  box-shadow: 0 0.25rem 0.875rem rgba(0, 0, 0, 0.4);
 }
 .port-tab svg {
   color: #54c171;
 }
 .port-tab .copy-chip {
-  gap: 5px;
+  gap: 0.3125rem;
 }
 .react-flow__pane {
   cursor: default;

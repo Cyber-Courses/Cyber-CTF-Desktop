@@ -18,7 +18,7 @@ export function VmStep({ report, setup }: { report: SystemReport; setup: Machine
   const picked = chosenHypervisor(report, setup);
   if (hypervisors.length === 0) {
     return (
-      <p className="text-[12.5px] text-muted-foreground">
+      <p className="text-[0.78125rem] text-muted-foreground">
         No local hypervisor applies to this machine. You can run VM labs on a Server (ESXi / Proxmox) instead.
       </p>
     );
@@ -92,7 +92,7 @@ export function VagrantStep({ report, setup }: { report: SystemReport; setup: Ma
   const { installing, install } = setup;
   if (!choice) {
     return (
-      <p className="text-[12.5px] text-muted-foreground">
+      <p className="text-[0.78125rem] text-muted-foreground">
         No local hypervisor applies to this machine, so there is nothing for Vagrant to drive here. VM labs can run on a Server instead.
       </p>
     );

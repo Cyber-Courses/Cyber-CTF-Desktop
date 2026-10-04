@@ -165,10 +165,10 @@ export function CloudScreen() {
         </Button>
       </div>
 
-      {error && <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">{error}</p>}
+      {error && <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.78125rem] text-destructive">{error}</p>}
 
       {over.length > 0 && (
-        <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12.5px] text-rose-300">
+        <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[0.78125rem] text-rose-300">
           {over.length === 1 ? `${over[0].name} is over its monthly budget` : `${over.length} accounts are over their monthly budget`} — new labs there are
           blocked until you raise the budget or next month.
         </p>
@@ -176,15 +176,15 @@ export function CloudScreen() {
 
       {running.length > 0 && (
         <Panel>
-          <PanelHeader title="Running now" action={<span className="text-[11.5px] text-muted-foreground">Billing while they run</span>} />
+          <PanelHeader title="Running now" action={<span className="text-[0.71875rem] text-muted-foreground">Billing while they run</span>} />
           {running.map((l) => {
             const s = statuses[l.id];
             return (
-              <div key={l.id} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 text-[12.5px] last:border-b-0">
+              <div key={l.id} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 text-[0.78125rem] last:border-b-0">
                 <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{l.title}</p>
-                  <p className="truncate text-[11px] text-muted-foreground">
+                  <p className="truncate text-[0.6875rem] text-muted-foreground">
                     {s?.host}
                     {s?.expiresAt ? ` · auto-stops ${new Date(s.expiresAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
                   </p>
@@ -203,12 +203,12 @@ export function CloudScreen() {
           title="Accounts"
           action={
             hosts && hosts.length > 0 ? (
-              <span className="text-[11.5px] text-muted-foreground">Billed only while a lab runs; idle accounts cost nothing</span>
+              <span className="text-[0.71875rem] text-muted-foreground">Billed only while a lab runs; idle accounts cost nothing</span>
             ) : undefined
           }
         />
         {hosts === null ? (
-          <div className="flex items-center gap-2 px-3.5 py-4 text-[12.5px] text-muted-foreground">
+          <div className="flex items-center gap-2 px-3.5 py-4 text-[0.78125rem] text-muted-foreground">
             <Spinner className="size-4" /> Loading…
           </div>
         ) : hosts.length === 0 ? (
@@ -230,10 +230,10 @@ export function CloudScreen() {
 
       <Panel>
         <button type="button" onClick={() => setEnvOpen(!envExpanded)} className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left">
-          <span className="text-[13px] font-semibold tracking-tight">Environment</span>
+          <span className="text-[0.8125rem] font-semibold tracking-tight">Environment</span>
           <span
             className={cn(
-              "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
+              "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
               envReady ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500",
             )}
           >
@@ -271,10 +271,13 @@ export function CloudScreen() {
               />
             ))}
             <div className="border-t border-border px-3.5 py-2.5">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">More providers · coming soon</p>
+              <p className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground/70">More providers · coming soon</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {COMING_SOON.map((p) => (
-                  <span key={p.id} className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground">
+                  <span
+                    key={p.id}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[0.6875rem] text-muted-foreground"
+                  >
                     {p.logo ? (
                       // eslint-disable-next-line @next/next/no-img-element -- static export, plain asset
                       <img src={`/brands/${p.id}.svg`} alt="" className="size-3.5" draggable={false} />

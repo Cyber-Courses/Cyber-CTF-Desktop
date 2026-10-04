@@ -193,14 +193,14 @@ export function MachineScreen({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium",
+            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.75rem] font-medium",
             needsSetup ? "border-amber-500/30 text-amber-500" : "border-emerald-500/30 text-emerald-500",
           )}
         >
           <span className={cn("size-1.5 rounded-full", needsSetup ? "bg-amber-500" : "bg-emerald-500")} />
           {needsSetup ? `${needsSetup} lab ${needsSetup === 1 ? "type needs" : "types need"} setup` : "Ready for labs"}
         </span>
-        <span className="text-[12px] text-muted-foreground">
+        <span className="text-[0.75rem] text-muted-foreground">
           {OS_NAME[report.os] ?? report.os} · {report.arch}
           {m ? ` · up ${formatUptime(m.uptimeSecs)}` : ""}
         </span>
@@ -324,12 +324,12 @@ export function MachineScreen({
         <Panel>
           <PanelHeader
             title="Running now"
-            action={labMem > 0 ? <span className="text-[11.5px] tabular-nums text-muted-foreground">{formatBytes(labMem)} in use</span> : undefined}
+            action={labMem > 0 ? <span className="text-[0.71875rem] tabular-nums text-muted-foreground">{formatBytes(labMem)} in use</span> : undefined}
           />
           {workloads === null ? (
             <ListSkeleton />
           ) : workloads.length === 0 ? (
-            <p className="px-3.5 py-3 text-[12.5px] text-muted-foreground">Nothing running.</p>
+            <p className="px-3.5 py-3 text-[0.78125rem] text-muted-foreground">Nothing running.</p>
           ) : (
             workloads.map((w) => {
               const key = `${w.kind}:${w.id}`;
@@ -346,8 +346,8 @@ export function MachineScreen({
                     <Server className="size-4 shrink-0 text-muted-foreground" />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12.5px] font-medium">{name}</p>
-                    <p className="text-[11.5px] tabular-nums text-muted-foreground">{meta}</p>
+                    <p className="truncate text-[0.78125rem] font-medium">{name}</p>
+                    <p className="text-[0.71875rem] tabular-nums text-muted-foreground">{meta}</p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => stop(w)} disabled={stopping !== null}>
                     {stopping === key ? (
@@ -394,9 +394,9 @@ export function MachineScreen({
                     storeItems.length === 0 && "opacity-0",
                   )}
                 />
-                <div className="min-w-0 flex-1 text-[12.5px]">
+                <div className="min-w-0 flex-1 text-[0.78125rem]">
                   <p className="font-medium">{storeItems.length ? `${formatBytes(storeTotal)} of lab downloads` : "No lab downloads yet"}</p>
-                  <p className="text-[11.5px] text-muted-foreground">
+                  <p className="text-[0.71875rem] text-muted-foreground">
                     {storage.images.length} container image{storage.images.length === 1 ? "" : "s"} · {storage.boxes.length} VM image
                     {storage.boxes.length === 1 ? "" : "s"}
                   </p>
@@ -404,14 +404,14 @@ export function MachineScreen({
               </button>
               {showStorage &&
                 storeItems.map((it) => (
-                  <div key={it.name} className="flex items-center gap-3 border-b border-border py-1.5 pr-3.5 pl-10 text-[12px] last:border-b-0">
-                    <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-muted-foreground">{it.name}</span>
+                  <div key={it.name} className="flex items-center gap-3 border-b border-border py-1.5 pr-3.5 pl-10 text-[0.75rem] last:border-b-0">
+                    <span className="min-w-0 flex-1 truncate font-mono text-[0.71875rem] text-muted-foreground">{it.name}</span>
                     <span className="tabular-nums text-muted-foreground">{formatBytes(it.bytes)}</span>
                   </div>
                 ))}
               {confirmClean && (
                 <div className="flex flex-wrap items-center gap-3 border-t border-border bg-muted/30 px-3.5 py-3">
-                  <p className="min-w-0 flex-1 text-[12px]">
+                  <p className="min-w-0 flex-1 text-[0.75rem]">
                     Remove {formatBytes(storeTotal)}? Labs download what they need again on their next start. Anything in use stays.
                   </p>
                   <div className="flex gap-2">
@@ -431,7 +431,7 @@ export function MachineScreen({
                 </div>
               )}
               {freed !== null && !confirmClean && (
-                <p className="border-t border-border px-3.5 py-2 text-[12px] text-muted-foreground">
+                <p className="border-t border-border px-3.5 py-2 text-[0.75rem] text-muted-foreground">
                   {freed > 0 ? `Freed ${formatBytes(freed)}.` : "Nothing could be removed (all in use)."}
                 </p>
               )}
@@ -442,7 +442,7 @@ export function MachineScreen({
 
       {/* Tool versions, for people who want them */}
       <details className="group">
-        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[12.5px] text-muted-foreground hover:text-foreground">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[0.78125rem] text-muted-foreground hover:text-foreground">
           <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" /> Details
         </summary>
         <Panel className="mt-2.5">

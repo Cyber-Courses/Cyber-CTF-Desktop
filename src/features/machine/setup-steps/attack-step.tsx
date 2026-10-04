@@ -41,14 +41,14 @@ export function AttackStep({ report }: { report: SystemReport }) {
         ))}
       </ChoiceGrid>
       {custom && (
-        <p className="text-left text-[12px] text-muted-foreground">
+        <p className="text-left text-[0.75rem] text-muted-foreground">
           Using a custom image from Settings: <span className="font-mono">{image}</span>
         </p>
       )}
       <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border bg-card px-3.5 py-2.5 text-left">
         <span>
-          <span className="block text-[13px] font-medium">Start it with each lab</span>
-          <span className="block text-[12px] text-muted-foreground">Otherwise launch it from the lab’s page when you need it.</span>
+          <span className="block text-[0.8125rem] font-medium">Start it with each lab</span>
+          <span className="block text-[0.75rem] text-muted-foreground">Otherwise launch it from the lab’s page when you need it.</span>
         </span>
         <input
           type="checkbox"
@@ -61,9 +61,9 @@ export function AttackStep({ report }: { report: SystemReport }) {
         />
       </label>
       {!isDockerReady(report) && (
-        <p className="text-left text-[12px] text-muted-foreground">It runs on your container engine, so it works once one is set up.</p>
+        <p className="text-left text-[0.75rem] text-muted-foreground">It runs on your container engine, so it works once one is set up.</p>
       )}
-      <p className="text-left text-[12px] text-muted-foreground">The image downloads the first time a lab starts it.</p>
+      <p className="text-left text-[0.75rem] text-muted-foreground">The image downloads the first time a lab starts it.</p>
     </div>
   );
 }

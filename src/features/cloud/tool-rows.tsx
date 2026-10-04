@@ -27,7 +27,7 @@ export function CliRow({
 }) {
   const installed = !!tool?.installed;
   return (
-    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px]">
+    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[0.78125rem]">
       <Logo provider={provider} />
       <span className="text-foreground">{name}</span>
       <span className="ml-auto flex items-center gap-3">
@@ -59,9 +59,9 @@ export function ToolRow({
 }) {
   const installed = !!tool?.installed;
   return (
-    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px]">
+    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[0.78125rem]">
       <span className="font-medium text-foreground">{name}</span>
-      <span className="truncate text-[11.5px] text-muted-foreground">{note}</span>
+      <span className="truncate text-[0.71875rem] text-muted-foreground">{note}</span>
       <span className="ml-auto flex items-center gap-3">
         <Status tool={tool} />
         {!installed && tool && (
@@ -88,9 +88,9 @@ export function ImageRow({
   onPull: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[12.5px]">
+    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-[0.78125rem]">
       <span className="font-medium text-foreground">{image.name}</span>
-      <span className="truncate text-[11.5px] text-muted-foreground">{note}</span>
+      <span className="truncate text-[0.71875rem] text-muted-foreground">{note}</span>
       <span className="ml-auto flex items-center gap-3">
         <span className={cn("flex items-center gap-1.5", image.present ? "text-emerald-500" : "text-muted-foreground")}>
           {image.present && <span className="size-1.5 rounded-full bg-emerald-500" />}
@@ -114,10 +114,12 @@ export function ImageRow({
 export function Step({ n, title, body }: { n: number; title: string; body: string }) {
   return (
     <div className="flex gap-3">
-      <span className="grid size-5 shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold tabular-nums text-muted-foreground">{n}</span>
+      <span className="grid size-5 shrink-0 place-items-center rounded-full bg-muted text-[0.6875rem] font-semibold tabular-nums text-muted-foreground">
+        {n}
+      </span>
       <div className="min-w-0">
-        <p className="text-[12.5px] font-medium">{title}</p>
-        <p className="text-[11.5px] text-muted-foreground">{body}</p>
+        <p className="text-[0.78125rem] font-medium">{title}</p>
+        <p className="text-[0.71875rem] text-muted-foreground">{body}</p>
       </div>
     </div>
   );

@@ -74,8 +74,8 @@ export function ServerSelfTest({ id, provider, onDone }: { id: string; provider:
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-surface">
       <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
-        <span className="text-[11.5px] font-medium">{running ? "Running a real VM on the host…" : failed ? "VM test failed" : "VM test passed"}</span>
-        <span className="ml-auto font-mono text-[11px] tabular-nums text-muted-foreground">{fmt}</span>
+        <span className="text-[0.71875rem] font-medium">{running ? "Running a real VM on the host…" : failed ? "VM test failed" : "VM test passed"}</span>
+        <span className="ml-auto font-mono text-[0.6875rem] tabular-nums text-muted-foreground">{fmt}</span>
       </div>
       <div className="divide-y divide-border/60">
         {plan.map((p) => {
@@ -94,14 +94,14 @@ export function ServerSelfTest({ id, provider, onDone }: { id: string; provider:
                 )}
               </span>
               <div className="min-w-0 flex-1">
-                <p className={cn("text-[12.5px]", st === "idle" ? "text-muted-foreground/60" : "text-foreground")}>{p.label}</p>
-                {states[p.step]?.detail && <p className="mt-0.5 break-words font-mono text-[11px] text-muted-foreground">{states[p.step]!.detail}</p>}
+                <p className={cn("text-[0.78125rem]", st === "idle" ? "text-muted-foreground/60" : "text-foreground")}>{p.label}</p>
+                {states[p.step]?.detail && <p className="mt-0.5 break-words font-mono text-[0.6875rem] text-muted-foreground">{states[p.step]!.detail}</p>}
               </div>
             </div>
           );
         })}
       </div>
-      {error && <p className="border-t border-border px-3 py-2 text-[11.5px] text-rose-500">{error}</p>}
+      {error && <p className="border-t border-border px-3 py-2 text-[0.71875rem] text-rose-500">{error}</p>}
     </div>
   );
 }

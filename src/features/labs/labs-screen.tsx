@@ -173,7 +173,7 @@ export function Labs({
         <Panel>
           {[0, 1, 2, 3, 4].map((i) => (
             <div key={i} className="flex items-center gap-3 border-t border-border px-4 py-3 first:border-t-0">
-              <Skeleton className="size-[30px] rounded-lg" />
+              <Skeleton className="size-[1.875rem] rounded-lg" />
               <div className="flex-1">
                 <Skeleton className="h-3.5 w-44" />
                 <Skeleton className="mt-2 h-2.5 w-24" />
