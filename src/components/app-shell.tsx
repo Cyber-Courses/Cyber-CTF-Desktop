@@ -2,14 +2,13 @@
 
 import Image from "next/image";
 import { useEffect, useState, type ReactNode } from "react";
-import { CalendarDays, Cloud, Cog, FlaskConical, Globe, LayoutDashboard, type LucideIcon, MonitorCog, Search, Server } from "lucide-react";
+import { CalendarDays, Cloud, Cog, FlaskConical, LayoutDashboard, type LucideIcon, MonitorCog, Search, Server } from "lucide-react";
 import { Account } from "@/features/account/account";
 import { Labs } from "@/features/labs/labs-screen";
 import { HomeScreen } from "@/features/home/home-screen";
 import { MachineScreen } from "@/features/machine/machine-screen";
 import { ServerScreen } from "@/features/servers/servers-screen";
 import { CloudScreen } from "@/features/cloud/cloud-screen";
-import { HostedScreen } from "@/features/hosted/hosted-screen";
 import { SettingsScreen } from "@/features/settings/settings-screen";
 import { Onboarding } from "@/features/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
@@ -17,7 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { authStatus, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-type Tab = "home" | "labs" | "machine" | "setup" | "server" | "cloud" | "hosted" | "events" | "settings";
+type Tab = "home" | "labs" | "machine" | "setup" | "server" | "cloud" | "events" | "settings";
 
 const ONBOARDED_KEY = "cyberctf.onboarded";
 
@@ -26,7 +25,6 @@ const ONBOARDED_KEY = "cyberctf.onboarded";
 const NAV: { id: Tab; label: string; icon: LucideIcon; soon?: boolean; sep?: boolean }[] = [
   { id: "home", label: "Overview", icon: LayoutDashboard },
   { id: "labs", label: "Labs", icon: FlaskConical },
-  { id: "hosted", label: "Hosted", icon: Globe },
   { id: "events", label: "Events", icon: CalendarDays, soon: true },
   { id: "machine", label: "Machine", icon: MonitorCog, sep: true },
   { id: "server", label: "Servers", icon: Server },
@@ -41,7 +39,6 @@ const TITLES: Record<Tab, string> = {
   setup: "Setup",
   server: "Servers",
   cloud: "Cloud",
-  hosted: "Hosted",
   events: "Events",
   settings: "Settings",
 };
@@ -208,7 +205,6 @@ function Screen({
     );
   if (tab === "server") return <ServerScreen onNavigate={onNavigate} />;
   if (tab === "cloud") return <CloudScreen />;
-  if (tab === "hosted") return <HostedScreen onNavigate={onNavigate} loggedIn={auth?.loggedIn ?? false} />;
   if (tab === "events")
     return (
       <ComingSoon
