@@ -17,58 +17,90 @@ pub(super) async fn aws_cmd(h: &HostProfile, env: &[(String, String)], sub: &[&s
     }
 }
 
-/// AWS: verify the credentials work (`sts get-caller-identity`) and that they can actually
-/// launch EC2 (`ec2 run-instances --dry-run`, which creates nothing but checks the permission).
+/// Checks a `terraform` binary is on PATH. Every cloud lab is provisioned with it, so a missing
+/// Terraform fails every launch; this catches it before the user tries. Shared by all clouds.
+async fn terraform_check() -> Check {
+    match crate::exec::run("terraform", &["version"], None).await {
+        Ok(_) => Check::ok("Terraform", "Installed. Labs are provisioned with it."),
+        Err(Error::ToolMissing { .. }) => {
+            Check::fail("Terraform", "Not installed. Every cloud lab is provisioned with Terraform, so install it before launching.")
+        }
+        Err(e) => {
+            let e = e.to_string();
+            Check::warn("Terraform", format!("Couldn't check Terraform ({}).", e.lines().last().unwrap_or_default()))
+        }
+    }
+}
+
+/// AWS: a checklist run before launch. Verifies the credentials (`sts get-caller-identity`), that
+/// the identity can launch EC2 (`ec2 run-instances --dry-run`, which creates nothing), Terraform,
+/// and the monthly budget when one is set.
 pub(super) async fn test_aws(h: &HostProfile, password: &str) -> TestResult {
     let started = Instant::now();
     let env = terraform_env(h, password);
+    let mut checks: Vec<Check> = Vec::new();
+
+    // 1) Credentials.
     let arn = match aws_cmd(h, &env, &["sts", "get-caller-identity", "--query", "Arn", "--output", "text"]).await {
-        Ok(a) => a.trim().to_string(),
+        Ok(a) => {
+            let arn = a.trim().to_string();
+            checks.push(Check::ok("Credentials", format!("Signed in as {arn}.")));
+            arn
+        }
         Err(Error::CommandFailed { stderr, .. }) => {
             let denied = stderr.contains("InvalidClientTokenId")
                 || stderr.contains("SignatureDoesNotMatch")
                 || stderr.contains("AccessDenied")
                 || stderr.contains("Unable to locate credentials")
                 || stderr.contains("sso");
-            return TestResult {
-                ok: false,
-                reachable: true,
-                authenticated: denied.then_some(false),
-                latency_ms: None,
-                message: if denied {
-                    "AWS rejected these credentials, or the profile isn't signed in.".into()
+            checks.push(Check::fail(
+                "Credentials",
+                if denied {
+                    "AWS rejected these credentials, or the profile isn't signed in.".to_string()
                 } else {
                     format!("AWS check failed: {}", stderr.lines().last().unwrap_or_default())
                 },
-            };
+            ));
+            return TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64));
         }
-        Err(e) => return TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("AWS check failed: {e}") },
+        Err(e) => {
+            checks.push(Check::fail("Credentials", format!("Couldn't reach AWS: {e}")));
+            return TestResult { reachable: false, ..TestResult::from_checks(checks, None) };
+        }
     };
-    // Can this identity launch EC2? A dry run creates nothing; it only checks the permission.
+
+    // 2) Launch permission. A dry run creates nothing; it only checks ec2:RunInstances.
     let dry =
         aws_cmd(h, &env, &["ec2", "run-instances", "--dry-run", "--instance-type", "t3.micro", "--image-id", "ami-00000000000000000", "--output", "text"])
             .await;
-    let latency = Some(started.elapsed().as_millis() as u64);
     let stderr = match &dry {
         Err(Error::CommandFailed { stderr, .. }) => stderr.clone(),
         _ => String::new(),
     };
     if stderr.contains("UnauthorizedOperation") {
-        return TestResult {
-            ok: false,
-            reachable: true,
-            authenticated: Some(true),
-            latency_ms: latency,
-            message: format!("Signed in as {arn}, but this identity can't launch EC2 (ec2:RunInstances is denied). Add EC2 permissions to it."),
-        };
+        checks.push(Check::fail("Launch permission", format!("{arn} can't launch EC2 (ec2:RunInstances is denied). Add EC2 permissions to it.")));
+    } else {
+        checks.push(Check::ok("Launch permission", "Able to launch EC2 instances."));
     }
-    TestResult {
-        ok: true,
-        reachable: true,
-        authenticated: Some(true),
-        latency_ms: latency,
-        message: format!("Signed in as {arn}, and able to launch EC2. Labs run here are billed to this account."),
+
+    // 3) Terraform.
+    checks.push(terraform_check().await);
+
+    // 4) Budget, only when one is set.
+    if let Some(limit) = h.monthly_limit.filter(|v| *v > 0.0) {
+        match month_to_date_cost(h, password).await {
+            Ok(spent) if spent >= limit => {
+                checks.push(Check::fail("Budget", format!("Over budget: ${spent:.2} of ${limit:.0} this month. New labs here are blocked.")))
+            }
+            Ok(spent) => checks.push(Check::ok("Budget", format!("${spent:.2} of ${limit:.0} spent this month."))),
+            Err(e) => checks.push(Check::warn(
+                "Budget",
+                format!("Set to ${limit:.0}/mo, but this month's spend couldn't be read: {}", budget_unverifiable_message(&e.to_string())),
+            )),
+        }
     }
+
+    TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64))
 }
 
 /// This month's AWS spend so far (USD) for a host, via Cost Explorer.
@@ -156,48 +188,50 @@ fn budget_unverifiable_message(err: &str) -> String {
 /// subscription is reachable. (az has no cheap VM-create dry-run like AWS.)
 pub(super) async fn test_azure(h: &HostProfile) -> TestResult {
     let started = Instant::now();
+    let mut checks: Vec<Check> = Vec::new();
     let args = ["account", "show", "--subscription", h.username.as_str(), "--query", "name", "--output", "tsv"];
     match crate::exec::run("az", &args, None).await {
-        Ok(name) => TestResult {
-            ok: true,
-            reachable: true,
-            authenticated: Some(true),
-            latency_ms: Some(started.elapsed().as_millis() as u64),
-            message: format!("Signed in to Azure subscription \"{}\". Labs run here are billed to it.", name.trim()),
-        },
+        Ok(name) => checks.push(Check::ok("Subscription", format!("Signed in to subscription \"{}\".", name.trim()))),
         Err(Error::CommandFailed { stderr, .. }) => {
             let not_in = stderr.contains("az login") || stderr.contains("not logged in") || stderr.contains("AADSTS") || stderr.contains("was not found");
-            TestResult {
-                ok: false,
-                reachable: true,
-                authenticated: Some(false),
-                latency_ms: None,
-                message: if not_in {
-                    "Not signed in to Azure, or no access to that subscription. Sign in and check the subscription id.".into()
+            checks.push(Check::fail(
+                "Subscription",
+                if not_in {
+                    "Not signed in to Azure, or no access to that subscription. Sign in and check the subscription id.".to_string()
                 } else {
                     format!("Azure check failed: {}", stderr.lines().last().unwrap_or_default())
                 },
-            }
+            ));
+            return TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64));
         }
-        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("Azure check failed: {e}") },
+        Err(e) => {
+            checks.push(Check::fail("Azure CLI", format!("Couldn't run the Azure CLI: {e}")));
+            return TestResult { reachable: false, ..TestResult::from_checks(checks, None) };
+        }
     }
+    checks.push(terraform_check().await);
+    TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64))
 }
 
 /// GCP: `gcloud projects describe <project>` confirms gcloud's application-default login is
 /// in place and the project is reachable. (No cheap VM-create dry-run like AWS.)
 pub(super) async fn test_gcp(h: &HostProfile) -> TestResult {
     let started = Instant::now();
+    let mut checks: Vec<Check> = Vec::new();
     // The username is the billing account id; confirm the signed-in CLI can see it (labs each
     // create their own project linked to this account).
     let args = ["billing", "accounts", "describe", h.username.as_str(), "--format", "value(displayName)"];
     match crate::exec::run("gcloud", &args, None).await {
-        Ok(name) => TestResult {
-            ok: true,
-            reachable: true,
-            authenticated: Some(true),
-            latency_ms: Some(started.elapsed().as_millis() as u64),
-            message: format!("Signed in to Google Cloud, billing account \"{}\". Each lab creates its own project, billed to it.", name.trim()),
-        },
+        Ok(name) => {
+            checks
+                .push(Check::ok("Billing account", format!("Signed in; billing account \"{}\". Each lab creates its own project linked to it.", name.trim())));
+            // Per-lab projects draw on the billing account's project quota (a hard account limit);
+            // flag it so a later "quota exceeded" at launch isn't a surprise.
+            checks.push(Check::warn(
+                "Project quota",
+                "Each lab creates a new GCP project, which uses your billing account's project quota. If launches fail with \"quota exceeded\", request an increase.",
+            ));
+        }
         Err(Error::CommandFailed { stderr, .. }) => {
             let not_in = stderr.contains("gcloud auth")
                 || stderr.contains("credentials")
@@ -205,115 +239,104 @@ pub(super) async fn test_gcp(h: &HostProfile) -> TestResult {
                 || stderr.contains("was not found")
                 || stderr.contains("PERMISSION_DENIED")
                 || stderr.contains("Permission denied");
-            TestResult {
-                ok: false,
-                reachable: true,
-                authenticated: Some(false),
-                latency_ms: None,
-                message: if not_in {
-                    "Not signed in to Google Cloud, or no access to that billing account. Sign in and check the billing account id.".into()
+            checks.push(Check::fail(
+                "Billing account",
+                if not_in {
+                    "Not signed in to Google Cloud, or no access to that billing account. Sign in and check the billing account id.".to_string()
                 } else {
                     format!("GCP check failed: {}", stderr.lines().last().unwrap_or_default())
                 },
-            }
+            ));
+            return TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64));
         }
-        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("GCP check failed: {e}") },
+        Err(e) => {
+            checks.push(Check::fail("gcloud CLI", format!("Couldn't run the gcloud CLI: {e}")));
+            return TestResult { reachable: false, ..TestResult::from_checks(checks, None) };
+        }
     }
+    checks.push(terraform_check().await);
+    TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64))
 }
 
 /// DigitalOcean: the API token is valid when `GET /v2/account` returns 2xx.
 pub(super) async fn test_digitalocean(token: &str) -> TestResult {
     let started = Instant::now();
+    let mut checks: Vec<Check> = Vec::new();
     match reqwest::Client::new().get("https://api.digitalocean.com/v2/account").bearer_auth(token).send().await {
-        Ok(resp) if resp.status().is_success() => TestResult {
-            ok: true,
-            reachable: true,
-            authenticated: Some(true),
-            latency_ms: Some(started.elapsed().as_millis() as u64),
-            message: "DigitalOcean token is valid. Labs run as droplets in this account.".into(),
-        },
-        Ok(resp) if resp.status() == reqwest::StatusCode::UNAUTHORIZED => TestResult {
-            ok: false,
-            reachable: true,
-            authenticated: Some(false),
-            latency_ms: None,
-            message: "DigitalOcean rejected this token. Create a new one with read/write scope.".into(),
-        },
-        Ok(resp) => TestResult {
-            ok: false,
-            reachable: true,
-            authenticated: Some(false),
-            latency_ms: None,
-            message: format!("DigitalOcean API returned {}.", resp.status()),
-        },
-        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("Can't reach DigitalOcean: {e}") },
+        Ok(resp) if resp.status().is_success() => checks.push(Check::ok("API token", "Token is valid. Labs run as droplets in this account.")),
+        Ok(resp) if resp.status() == reqwest::StatusCode::UNAUTHORIZED => {
+            checks.push(Check::fail("API token", "DigitalOcean rejected this token. Create a new one with read/write scope."));
+            return TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64));
+        }
+        Ok(resp) => {
+            checks.push(Check::fail("API token", format!("DigitalOcean API returned {}.", resp.status())));
+            return TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64));
+        }
+        Err(e) => {
+            checks.push(Check::fail("API token", format!("Can't reach DigitalOcean: {e}")));
+            return TestResult { reachable: false, ..TestResult::from_checks(checks, None) };
+        }
     }
+    checks.push(terraform_check().await);
+    TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64))
 }
 
 /// Linode: the API token is valid when `GET /v4/account` returns 2xx.
 pub(super) async fn test_linode(token: &str) -> TestResult {
     let started = Instant::now();
+    let mut checks: Vec<Check> = Vec::new();
     match reqwest::Client::new().get("https://api.linode.com/v4/account").bearer_auth(token).send().await {
-        Ok(resp) if resp.status().is_success() => TestResult {
-            ok: true,
-            reachable: true,
-            authenticated: Some(true),
-            latency_ms: Some(started.elapsed().as_millis() as u64),
-            message: "Linode token is valid. Labs run as Linodes in this account.".into(),
-        },
-        Ok(resp) if resp.status() == reqwest::StatusCode::UNAUTHORIZED => TestResult {
-            ok: false,
-            reachable: true,
-            authenticated: Some(false),
-            latency_ms: None,
-            message: "Linode rejected this token. Create a new one with read/write scope.".into(),
-        },
-        Ok(resp) => {
-            TestResult { ok: false, reachable: true, authenticated: Some(false), latency_ms: None, message: format!("Linode API returned {}.", resp.status()) }
+        Ok(resp) if resp.status().is_success() => checks.push(Check::ok("API token", "Token is valid. Labs run as Linodes in this account.")),
+        Ok(resp) if resp.status() == reqwest::StatusCode::UNAUTHORIZED => {
+            checks.push(Check::fail("API token", "Linode rejected this token. Create a new one with read/write scope."));
+            return TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64));
         }
-        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("Can't reach Linode: {e}") },
+        Ok(resp) => {
+            checks.push(Check::fail("API token", format!("Linode API returned {}.", resp.status())));
+            return TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64));
+        }
+        Err(e) => {
+            checks.push(Check::fail("API token", format!("Can't reach Linode: {e}")));
+            return TestResult { reachable: false, ..TestResult::from_checks(checks, None) };
+        }
     }
+    checks.push(terraform_check().await);
+    TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64))
 }
 
 /// OCI: if the OCI CLI is installed, a signed `iam compartment get` confirms ~/.oci/config +
 /// the compartment. Terraform itself only needs ~/.oci/config, so a missing CLI isn't fatal.
 pub(super) async fn test_oci(h: &HostProfile) -> TestResult {
     let started = Instant::now();
+    let mut checks: Vec<Check> = Vec::new();
     match crate::exec::run("oci", &["iam", "compartment", "get", "--compartment-id", h.username.as_str(), "--query", "data.name", "--raw-output"], None).await {
-        Ok(name) => TestResult {
-            ok: true,
-            reachable: true,
-            authenticated: Some(true),
-            latency_ms: Some(started.elapsed().as_millis() as u64),
-            message: format!("Reached OCI compartment \"{}\". Labs run in your tenancy.", name.trim()),
-        },
-        Err(Error::ToolMissing { .. }) => TestResult {
-            ok: true,
-            reachable: true,
-            authenticated: None,
-            latency_ms: None,
-            message: "Couldn't verify here (the OCI CLI isn't installed), but Terraform will use ~/.oci/config when you launch a lab.".into(),
-        },
+        Ok(name) => checks.push(Check::ok("Compartment", format!("Reached compartment \"{}\". Labs run in your tenancy.", name.trim()))),
+        // Terraform only needs ~/.oci/config, so a missing CLI isn't fatal; it just can't verify here.
+        Err(Error::ToolMissing { .. }) => checks
+            .push(Check::warn("Compartment", "Couldn't verify here (the OCI CLI isn't installed). Terraform will use ~/.oci/config when you launch a lab.")),
         Err(Error::CommandFailed { stderr, .. }) => {
             let bad = stderr.contains("NotAuthenticated")
                 || stderr.contains("NotAuthorizedOrNotFound")
                 || stderr.contains("config")
                 || stderr.contains("private key")
                 || stderr.contains("401");
-            TestResult {
-                ok: false,
-                reachable: true,
-                authenticated: Some(false),
-                latency_ms: None,
-                message: if bad {
-                    "OCI rejected the request. Check ~/.oci/config (API key) and the compartment OCID.".into()
+            checks.push(Check::fail(
+                "Compartment",
+                if bad {
+                    "OCI rejected the request. Check ~/.oci/config (API key) and the compartment OCID.".to_string()
                 } else {
                     format!("OCI check failed: {}", stderr.lines().last().unwrap_or_default())
                 },
-            }
+            ));
+            return TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64));
         }
-        Err(e) => TestResult { ok: false, reachable: false, authenticated: None, latency_ms: None, message: format!("OCI check failed: {e}") },
+        Err(e) => {
+            checks.push(Check::fail("Compartment", format!("OCI check failed: {e}")));
+            return TestResult { reachable: false, ..TestResult::from_checks(checks, None) };
+        }
     }
+    checks.push(terraform_check().await);
+    TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64))
 }
 
 pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
@@ -346,6 +369,7 @@ pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
                 authenticated: None,
                 latency_ms: None,
                 message: format!("Can't reach {}:{}: {e}", h.host, h.port),
+                checks: Vec::new(),
             };
         }
         Err(_) => {
@@ -355,6 +379,7 @@ pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
                 authenticated: None,
                 latency_ms: None,
                 message: format!("Timed out reaching {}:{}", h.host, h.port),
+                checks: Vec::new(),
             };
         }
     };
@@ -372,6 +397,7 @@ pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
                     authenticated: None,
                     latency_ms,
                     message: "SSH is up. Make sure SSH is enabled on the ESXi host; the password is checked on first lab start.".into(),
+                    checks: Vec::new(),
                 },
                 _ => TestResult {
                     ok: false,
@@ -379,6 +405,7 @@ pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
                     authenticated: None,
                     latency_ms,
                     message: format!("Port {} is open but doesn't answer as SSH. Enable SSH on the ESXi host.", h.port),
+                    checks: Vec::new(),
                 },
             }
         }
@@ -387,8 +414,8 @@ pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
         Provider::Proxmox => {
             drop(stream);
             let r = crate::runtime::proxmox::test(h, password).await;
-            TestResult { ok: r.ok, reachable: true, authenticated: r.authenticated, latency_ms, message: r.message }
+            TestResult { ok: r.ok, reachable: true, authenticated: r.authenticated, latency_ms, message: r.message, checks: Vec::new() }
         }
-        _ => TestResult { ok: true, reachable: true, authenticated: None, latency_ms, message: "Reachable".into() },
+        _ => TestResult { ok: true, reachable: true, authenticated: None, latency_ms, message: "Reachable".into(), checks: Vec::new() },
     }
 }

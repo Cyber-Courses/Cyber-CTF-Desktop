@@ -115,6 +115,52 @@ pub struct TestResult {
     authenticated: Option<bool>,
     latency_ms: Option<u64>,
     message: String,
+    /// The individual pre-flight checks (cloud accounts only; empty for servers). The UI shows
+    /// these as a checklist so a failure points at the exact thing to fix.
+    #[serde(default)]
+    checks: Vec<Check>,
+}
+
+/// One named pre-flight check in a cloud account test (e.g. "Credentials", "Terraform").
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Check {
+    pub name: String,
+    pub state: CheckState,
+    pub detail: String,
+}
+
+#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CheckState {
+    Ok,
+    /// Not a blocker, but worth knowing (e.g. couldn't verify, or a soft limit).
+    Warn,
+    Fail,
+}
+
+impl Check {
+    pub fn ok(name: impl Into<String>, detail: impl Into<String>) -> Self {
+        Check { name: name.into(), state: CheckState::Ok, detail: detail.into() }
+    }
+    pub fn warn(name: impl Into<String>, detail: impl Into<String>) -> Self {
+        Check { name: name.into(), state: CheckState::Warn, detail: detail.into() }
+    }
+    pub fn fail(name: impl Into<String>, detail: impl Into<String>) -> Self {
+        Check { name: name.into(), state: CheckState::Fail, detail: detail.into() }
+    }
+}
+
+impl TestResult {
+    /// Assemble a cloud account result from its checks. `ok` unless something failed; the summary
+    /// message is the first failure's detail, else the last passing check's detail.
+    pub(super) fn from_checks(checks: Vec<Check>, latency_ms: Option<u64>) -> Self {
+        let failed = checks.iter().find(|c| c.state == CheckState::Fail);
+        let ok = failed.is_none();
+        let message =
+            failed.or_else(|| checks.iter().find(|c| c.state == CheckState::Ok)).or_else(|| checks.first()).map(|c| c.detail.clone()).unwrap_or_default();
+        TestResult { ok, reachable: true, authenticated: Some(ok), latency_ms, message, checks }
+    }
 }
 
 mod contract;

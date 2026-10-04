@@ -57,7 +57,7 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
       const r = await serverTest(id);
       setTests((t) => ({ ...t, [id]: r }));
     } catch (e) {
-      setTests((t) => ({ ...t, [id]: { ok: false, reachable: false, authenticated: null, latencyMs: null, message: String(e) } }));
+      setTests((t) => ({ ...t, [id]: { ok: false, reachable: false, authenticated: null, latencyMs: null, message: String(e), checks: [] } }));
     }
   }, []);
 

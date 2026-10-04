@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Cpu, FlaskConical, MemoryStick, MoreHorizontal, Pencil, Star, Trash2, X } from "lucide-react";
+import { Check, Cpu, FlaskConical, MemoryStick, MoreHorizontal, Pencil, Star, Trash2, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { KIND } from "@/features/servers/host-setup";
 import { type HostCapacity, type ServerHost, type ServerTest } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
@@ -99,7 +100,7 @@ export function HostRow({
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <Button variant="outline" size="sm" onClick={onTest} disabled={test === "testing"}>
-            {test === "testing" ? "Testing…" : "Test"}
+            {test === "testing" ? <Spinner className="size-3.5" /> : <Zap className="size-3.5" />} Test
           </Button>
           <Menu
             items={[

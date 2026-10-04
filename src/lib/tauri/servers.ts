@@ -44,6 +44,13 @@ export interface ServerList {
   hosts: ServerHost[];
 }
 
+/** One named pre-flight check in a cloud account test. */
+export interface ServerCheck {
+  name: string;
+  state: "ok" | "warn" | "fail";
+  detail: string;
+}
+
 export interface ServerTest {
   /** Everything checked passed. */
   ok: boolean;
@@ -52,6 +59,8 @@ export interface ServerTest {
   authenticated: boolean | null;
   latencyMs: number | null;
   message: string;
+  /** The individual checks (cloud accounts only; empty for servers). */
+  checks: ServerCheck[];
 }
 
 export const serverList = () => invoke<ServerList>("server_list");

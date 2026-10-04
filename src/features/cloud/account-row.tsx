@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { CheckCircle2, Pencil, Trash2, X, XCircle, Zap } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Pencil, Trash2, X, XCircle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { type ServerHost, type ServerTest, type Tool } from "@/lib/tauri";
+import { type ServerCheck, type ServerHost, type ServerTest, type Tool } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 export function AccountRow({
@@ -24,6 +24,8 @@ export function AccountRow({
 }) {
   const result = test && test !== "testing" ? test : null;
   const ok = result ? result.ok : null;
+  // Status dot: red on any failure, amber when something only warrants a warning, else green.
+  const dot = result == null ? null : !result.ok ? "fail" : result.checks?.some((c) => c.state === "warn") ? "warn" : "ok";
   const [confirming, setConfirming] = useState(false);
   const facts = [
     host.host,
@@ -48,7 +50,12 @@ export function AccountRow({
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-[0.8125rem] font-medium">
             <span className="truncate">{host.name}</span>
-            <span className={cn("size-1.5 shrink-0 rounded-full", ok === null ? "bg-muted-foreground/40" : ok ? "bg-emerald-500" : "bg-rose-500")} />
+            <span
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                dot === null ? "bg-muted-foreground/40" : dot === "ok" ? "bg-emerald-500" : dot === "warn" ? "bg-amber-500" : "bg-rose-500",
+              )}
+            />
           </p>
           <p className="truncate font-mono text-[0.6875rem] text-muted-foreground">
             {facts.join(" · ")}
@@ -81,12 +88,24 @@ export function AccountRow({
           )}
         </div>
       </div>
-      {result && (
-        <p className={cn("mt-2 flex items-start gap-1.5 pl-9 text-[0.75rem]", ok ? "text-emerald-500" : "text-rose-400")}>
-          {ok ? <CheckCircle2 className="mt-px size-3.5 shrink-0" /> : <XCircle className="mt-px size-3.5 shrink-0" />}
-          <span>{result.message}</span>
-        </p>
-      )}
+      {result &&
+        (result.checks?.length ? (
+          <ul className="mt-2 space-y-1 pl-9">
+            {result.checks.map((c) => (
+              <li key={c.name} className="flex items-start gap-1.5 text-[0.75rem]">
+                <CheckGlyph state={c.state} />
+                <span>
+                  <span className="font-medium text-foreground">{c.name}:</span> <span className="text-muted-foreground">{c.detail}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className={cn("mt-2 flex items-start gap-1.5 pl-9 text-[0.75rem]", ok ? "text-emerald-500" : "text-rose-400")}>
+            {ok ? <CheckCircle2 className="mt-px size-3.5 shrink-0" /> : <XCircle className="mt-px size-3.5 shrink-0" />}
+            <span>{result.message}</span>
+          </p>
+        ))}
       {host.monthlyLimit != null && (
         <p className={cn("mt-1.5 pl-9 text-[0.71875rem]", spent != null && spent >= host.monthlyLimit ? "text-rose-400" : "text-muted-foreground")}>
           Budget ${host.monthlyLimit.toFixed(0)}/mo{spent != null ? ` · $${spent.toFixed(2)} this month` : ""}
@@ -95,6 +114,12 @@ export function AccountRow({
       )}
     </div>
   );
+}
+
+function CheckGlyph({ state }: { state: ServerCheck["state"] }) {
+  if (state === "ok") return <CheckCircle2 className="mt-px size-3.5 shrink-0 text-emerald-500" />;
+  if (state === "warn") return <AlertTriangle className="mt-px size-3.5 shrink-0 text-amber-500" />;
+  return <XCircle className="mt-px size-3.5 shrink-0 text-rose-400" />;
 }
 
 function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {

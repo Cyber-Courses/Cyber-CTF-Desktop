@@ -64,7 +64,7 @@ function useHostChecks(hosts: ServerHost[]) {
     setChecks(Object.fromEntries(list.map((id) => [id, "testing" as const])));
     for (const id of list) {
       serverTest(id)
-        .catch((e): ServerTest => ({ ok: false, reachable: false, authenticated: null, latencyMs: null, message: String(e) }))
+        .catch((e): ServerTest => ({ ok: false, reachable: false, authenticated: null, latencyMs: null, message: String(e), checks: [] }))
         .then((r) => live && setChecks((c) => ({ ...c, [id]: r })));
     }
     return () => {

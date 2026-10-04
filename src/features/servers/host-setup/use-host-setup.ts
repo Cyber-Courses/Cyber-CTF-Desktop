@@ -272,7 +272,7 @@ export function useHostSetup({
     try {
       setTest(await serverTest(id));
     } catch (e) {
-      setTest({ ok: false, reachable: false, authenticated: null, latencyMs: null, message: String(e) });
+      setTest({ ok: false, reachable: false, authenticated: null, latencyMs: null, message: String(e), checks: [] });
     }
   }
 
