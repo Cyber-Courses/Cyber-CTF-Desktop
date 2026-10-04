@@ -62,14 +62,20 @@ pub async fn aws_cli_identity(profile: Option<String>) -> Option<String> {
     run("aws", &args, None).await.ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
+/// The Cost Explorer time period for this month so far: Start = the 1st, End = tomorrow
+/// (End is exclusive, so tomorrow includes today's spend).
+pub(crate) fn month_period() -> String {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    let (y, m, _) = ymd_from_secs(now);
+    let (ey, em, ed) = ymd_from_secs(now + 86400);
+    format!("Start={y:04}-{m:02}-01,End={ey:04}-{em:02}-{ed:02}")
+}
+
 /// This month's AWS spend so far in USD, from Cost Explorer, for the budget check. None
 /// when the CLI or Cost Explorer isn't available (CE must be enabled on the account).
 #[tauri::command]
 pub async fn aws_month_to_date_cost(profile: Option<String>) -> Option<f64> {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
-    let (y, m, _) = ymd_from_secs(now);
-    let (ey, em, ed) = ymd_from_secs(now + 86400); // end is exclusive; tomorrow includes today
-    let period = format!("Start={y:04}-{m:02}-01,End={ey:04}-{em:02}-{ed:02}");
+    let period = month_period();
     let mut args = vec![
         "ce", "get-cost-and-usage", "--time-period", &period, "--granularity", "MONTHLY",
         "--metrics", "UnblendedCost", "--query", "ResultsByTime[0].Total.UnblendedCost.Amount", "--output", "text",
@@ -92,14 +98,15 @@ pub async fn aws_profiles() -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Signs in to AWS IAM Identity Center (SSO) in the browser, for a profile that uses it.
-/// Streams the CLI output. Requires the profile to be SSO-configured (`aws configure sso`).
+/// Signs in to AWS in the browser (`aws login`, AWS CLI >= 2.32.0): console credentials for
+/// root / IAM / federation, temporary credentials for up to 12 hours, no SSO setup needed.
+/// Streams the CLI output.
 #[tauri::command]
-pub async fn aws_sso_login(profile: Option<String>, logs: Channel<String>) -> Result<()> {
+pub async fn aws_login(profile: Option<String>, logs: Channel<String>) -> Result<()> {
     let on_line = move |line: String| {
         let _ = logs.send(line);
     };
-    let mut args = vec!["sso", "login"];
+    let mut args = vec!["login"];
     if let Some(p) = profile.as_deref() {
         args.push("--profile");
         args.push(p);
