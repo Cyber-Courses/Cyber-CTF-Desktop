@@ -1,32 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { ChevronRight, Container, Cpu, HardDrive, MemoryStick, Server, Square, Trash2, Wrench } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronRight, Container, Cpu, HardDrive, MemoryStick, Server, Wrench } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { EngineMark, engineName } from "@/features/machine/setup-steps";
-import {
-  apiQuery,
-  machineMetrics,
-  machineOpenSetup,
-  machineStorage,
-  machineStorageClean,
-  machineWorkloadStop,
-  machineWorkloads,
-  type MachineMetrics,
-  type ProviderStatus,
-  type Storage,
-  type SystemReport,
-  type Tool,
-  type Workload,
-} from "@/lib/tauri";
-import { getAttackImage, getLastTest, getVmProvider, type LastTest } from "@/lib/settings";
-import { PROVIDER_LABELS, providerLabel, usableHypervisors } from "@/features/machine/hypervisors";
+import { machineMetrics, machineOpenSetup, type MachineMetrics, type ProviderStatus, type SystemReport, type Tool } from "@/lib/tauri";
+import { getLastTest, getVmProvider, type LastTest } from "@/lib/settings";
+import { providerLabel, usableHypervisors } from "@/features/machine/hypervisors";
 import { cn } from "@/lib/utils";
-import { DetailRow, LabKind, LabTypeRow, ListSkeleton, Stat } from "@/features/machine/machine-parts";
+import { DetailRow, LabKind, LabTypeRow, Stat } from "@/features/machine/machine-parts";
 import { TypeIcon } from "@/components/ui/type-icon";
 import { formatAgo, formatBytes, formatUptime } from "@/lib/format";
+import { DownloadsPanel } from "@/features/machine/downloads-panel";
+import { RunningNowPanel } from "@/features/machine/running-now-panel";
 
 // ---------- formatting ----------
 
@@ -73,43 +60,6 @@ export function MachineScreen({
     };
   }, []);
 
-  // What's running, polled slower (asks Docker and Vagrant).
-  const [workloads, setWorkloads] = useState<Workload[] | null>(null);
-  const [stopping, setStopping] = useState<string | null>(null);
-  const loadWorkloads = useCallback(() => {
-    machineWorkloads()
-      .then(setWorkloads)
-      .catch(() => setWorkloads([]));
-  }, []);
-  useEffect(() => {
-    loadWorkloads();
-    const id = setInterval(loadWorkloads, 8000);
-    return () => clearInterval(id);
-  }, [loadWorkloads]);
-
-  // Lab titles for the running list (the runtime only knows ids).
-  const [titles, setTitles] = useState<Record<string, string>>({});
-  useEffect(() => {
-    apiQuery<{ labs: { id: string; title: string }[] }>("{ labs { id title } }")
-      .then((d) => setTitles(Object.fromEntries(d.labs.map((l) => [l.id, l.title]))))
-      .catch(() => {});
-  }, []);
-
-  // Downloaded images and VM boxes.
-  const [storage, setStorage] = useState<Storage | null>(null);
-  const [showStorage, setShowStorage] = useState(false);
-  const [confirmClean, setConfirmClean] = useState(false);
-  const [cleaning, setCleaning] = useState(false);
-  const [freed, setFreed] = useState<number | null>(null);
-  const loadStorage = useCallback(() => {
-    machineStorage([getAttackImage()])
-      .then(setStorage)
-      .catch(() => setStorage({ images: [], boxes: [] }));
-  }, []);
-  useEffect(() => {
-    loadStorage();
-  }, [loadStorage]);
-
   // Last self-test per lab type (kept locally), and which test is open inline.
   const [last, setLast] = useState<Record<LabKind, LastTest | null>>(() => ({ docker: getLastTest("docker"), vm: getLastTest("vm") }));
   const [testing, setTesting] = useState<LabKind | null>(null);
@@ -120,34 +70,9 @@ export function MachineScreen({
   }, []);
   const refreshLast = () => {
     setLast({ docker: getLastTest("docker"), vm: getLastTest("vm") });
+    // Bumping "now" also refreshes the running list (a test may have started or stopped things).
     setNow(Date.now());
-    loadWorkloads();
   };
-
-  async function stop(w: Workload) {
-    setStopping(`${w.kind}:${w.id}`);
-    try {
-      await machineWorkloadStop(w.kind, w.id);
-    } catch {
-      /* the list shows what's still running */
-    } finally {
-      setStopping(null);
-      loadWorkloads();
-    }
-  }
-
-  async function clean() {
-    setCleaning(true);
-    try {
-      setFreed(await machineStorageClean([getAttackImage()]));
-    } catch {
-      setFreed(0);
-    } finally {
-      setCleaning(false);
-      setConfirmClean(false);
-      loadStorage();
-    }
-  }
 
   // ----- each lab type -----
   const memFree = m ? m.memTotal - m.memUsed : null;
@@ -181,9 +106,6 @@ export function MachineScreen({
   );
 
   const needsSetup = (!dockerReady ? 1 : 0) + (vmApplicable && !vmProvider ? 1 : 0);
-  const labMem = (workloads ?? []).reduce((a, w) => a + w.memBytes, 0);
-  const storeItems = storage ? [...storage.images, ...storage.boxes] : [];
-  const storeTotal = storeItems.reduce((a, i) => a + i.bytes, 0);
   const memPct = m && m.memTotal ? (m.memUsed / m.memTotal) * 100 : 0;
   const diskPct = m && m.diskTotal ? (m.diskUsed / m.diskTotal) * 100 : 0;
 
@@ -320,124 +242,8 @@ export function MachineScreen({
       </Panel>
 
       <div className="grid items-start gap-5 lg:grid-cols-2">
-        {/* Running now */}
-        <Panel>
-          <PanelHeader
-            title="Running now"
-            action={labMem > 0 ? <span className="text-[0.71875rem] tabular-nums text-muted-foreground">{formatBytes(labMem)} in use</span> : undefined}
-          />
-          {workloads === null ? (
-            <ListSkeleton />
-          ) : workloads.length === 0 ? (
-            <p className="px-3.5 py-3 text-[0.78125rem] text-muted-foreground">Nothing running.</p>
-          ) : (
-            workloads.map((w) => {
-              const key = `${w.kind}:${w.id}`;
-              const name = w.id === "selftest" ? "Setup test" : (titles[w.id] ?? w.id);
-              const meta =
-                w.kind === "docker"
-                  ? `${w.count} container${w.count === 1 ? "" : "s"}${w.memBytes ? ` · ${formatBytes(w.memBytes)}` : ""}`
-                  : `${w.count} VM${w.count === 1 ? "" : "s"}${w.provider ? ` · ${PROVIDER_LABELS[w.provider] ?? w.provider}` : ""}`;
-              return (
-                <div key={key} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
-                  {w.kind === "docker" ? (
-                    <Container className="size-4 shrink-0 text-muted-foreground" />
-                  ) : (
-                    <Server className="size-4 shrink-0 text-muted-foreground" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[0.78125rem] font-medium">{name}</p>
-                    <p className="text-[0.71875rem] tabular-nums text-muted-foreground">{meta}</p>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => stop(w)} disabled={stopping !== null}>
-                    {stopping === key ? (
-                      <>
-                        <Spinner className="size-3.5" /> Stopping…
-                      </>
-                    ) : (
-                      <>
-                        <Square className="size-3" /> Stop
-                      </>
-                    )}
-                  </Button>
-                </div>
-              );
-            })
-          )}
-        </Panel>
-
-        {/* Downloads */}
-        <Panel>
-          <PanelHeader
-            title="Downloads"
-            action={
-              storage && storeItems.length > 0 && !confirmClean ? (
-                <Button variant="outline" size="sm" onClick={() => setConfirmClean(true)} disabled={cleaning}>
-                  <Trash2 className="size-3.5" /> Clean up
-                </Button>
-              ) : undefined
-            }
-          />
-          {storage === null ? (
-            <ListSkeleton />
-          ) : (
-            <>
-              <button
-                onClick={() => setShowStorage((v) => !v)}
-                disabled={storeItems.length === 0}
-                className="flex w-full items-center gap-3 border-b border-border px-3.5 py-2.5 text-left last:border-b-0 enabled:hover:bg-muted/40"
-              >
-                <ChevronRight
-                  className={cn(
-                    "size-3.5 shrink-0 text-muted-foreground transition-transform",
-                    showStorage && "rotate-90",
-                    storeItems.length === 0 && "opacity-0",
-                  )}
-                />
-                <div className="min-w-0 flex-1 text-[0.78125rem]">
-                  <p className="font-medium">{storeItems.length ? `${formatBytes(storeTotal)} of lab downloads` : "No lab downloads yet"}</p>
-                  <p className="text-[0.71875rem] text-muted-foreground">
-                    {storage.images.length} container image{storage.images.length === 1 ? "" : "s"} · {storage.boxes.length} VM image
-                    {storage.boxes.length === 1 ? "" : "s"}
-                  </p>
-                </div>
-              </button>
-              {showStorage &&
-                storeItems.map((it) => (
-                  <div key={it.name} className="flex items-center gap-3 border-b border-border py-1.5 pr-3.5 pl-10 text-[0.75rem] last:border-b-0">
-                    <span className="min-w-0 flex-1 truncate font-mono text-[0.71875rem] text-muted-foreground">{it.name}</span>
-                    <span className="tabular-nums text-muted-foreground">{formatBytes(it.bytes)}</span>
-                  </div>
-                ))}
-              {confirmClean && (
-                <div className="flex flex-wrap items-center gap-3 border-t border-border bg-muted/30 px-3.5 py-3">
-                  <p className="min-w-0 flex-1 text-[0.75rem]">
-                    Remove {formatBytes(storeTotal)}? Labs download what they need again on their next start. Anything in use stays.
-                  </p>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => setConfirmClean(false)} disabled={cleaning}>
-                      Cancel
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={clean} disabled={cleaning}>
-                      {cleaning ? (
-                        <>
-                          <Spinner className="size-3.5" /> Removing…
-                        </>
-                      ) : (
-                        "Remove"
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              )}
-              {freed !== null && !confirmClean && (
-                <p className="border-t border-border px-3.5 py-2 text-[0.75rem] text-muted-foreground">
-                  {freed > 0 ? `Freed ${formatBytes(freed)}.` : "Nothing could be removed (all in use)."}
-                </p>
-              )}
-            </>
-          )}
-        </Panel>
+        <RunningNowPanel refreshKey={now} />
+        <DownloadsPanel />
       </div>
 
       {/* Tool versions, for people who want them */}
