@@ -7,6 +7,7 @@ import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
+  awsMonthToDateCost,
   cloudLogin,
   installDependency,
   provisioningImages,
@@ -40,6 +41,7 @@ export function CloudScreen() {
   const [loginBusy, setLoginBusy] = useState<string | null>(null);
   const [pullBusy, setPullBusy] = useState<string | null>(null);
   const [envOpen, setEnvOpen] = useState<boolean | null>(null);
+  const [spend, setSpend] = useState<Record<string, number | null>>({});
 
   const reload = useCallback(() => {
     serverList()
@@ -61,6 +63,16 @@ export function CloudScreen() {
       off.then((f) => f()).catch(() => {});
     };
   }, [reload]);
+  // Month-to-date spend, only for accounts that set a budget (Cost Explorer costs per call).
+  useEffect(() => {
+    (allHosts ?? [])
+      .filter((h) => h.provider === "aws" && h.monthlyLimit)
+      .forEach((h) => {
+        awsMonthToDateCost(h.awsProfile ?? undefined)
+          .then((c) => setSpend((s) => ({ ...s, [h.id]: c })))
+          .catch(() => {});
+      });
+  }, [allHosts]);
 
   const openSetup = (id?: string) => serverOpenSetup(id ?? null, "cloud").catch((e) => setError(String(e)));
 
@@ -151,6 +163,7 @@ export function CloudScreen() {
               key={h.id}
               host={h}
               test={tests[h.id]}
+              spent={spend[h.id]}
               onTest={() => test(h.id)}
               onEdit={() => openSetup(h.id)}
               onRemove={() => remove(h.id)}
@@ -220,7 +233,7 @@ function FirstRun({ onSetup }: { onSetup: () => void }) {
   );
 }
 
-function AccountRow({ host, test, onTest, onEdit, onRemove }: { host: ServerHost; test: ServerTest | "testing" | undefined; onTest: () => void; onEdit: () => void; onRemove: () => void }) {
+function AccountRow({ host, test, spent, onTest, onEdit, onRemove }: { host: ServerHost; test: ServerTest | "testing" | undefined; spent?: number | null; onTest: () => void; onEdit: () => void; onRemove: () => void }) {
   const result = test && test !== "testing" ? test : null;
   const ok = result ? result.ok : null;
   const [confirming, setConfirming] = useState(false);
@@ -266,6 +279,12 @@ function AccountRow({ host, test, onTest, onEdit, onRemove }: { host: ServerHost
         <p className={cn("mt-2 flex items-start gap-1.5 pl-9 text-[12px]", ok ? "text-emerald-500" : "text-rose-400")}>
           {ok ? <CheckCircle2 className="mt-px size-3.5 shrink-0" /> : <XCircle className="mt-px size-3.5 shrink-0" />}
           <span>{result.message}</span>
+        </p>
+      )}
+      {host.monthlyLimit != null && (
+        <p className={cn("mt-1.5 pl-9 text-[11.5px]", spent != null && spent >= host.monthlyLimit ? "text-rose-400" : "text-muted-foreground")}>
+          Budget ${host.monthlyLimit.toFixed(0)}/mo{spent != null ? ` · $${spent.toFixed(2)} this month` : ""}
+          {spent != null && spent >= host.monthlyLimit ? " — over budget" : ""}
         </p>
       )}
     </div>
