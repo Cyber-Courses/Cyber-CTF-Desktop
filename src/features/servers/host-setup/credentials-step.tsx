@@ -62,7 +62,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
         azure
           ? "Sign in with the Azure CLI, then pick your subscription and location."
           : gcp
-            ? "Sign in with the gcloud CLI, then pick a billing account. Labs run in one "Cyber CTF labs" project, created on the first test (it needs one free project slot on the billing account)."
+            ? "Sign in with the gcloud CLI, then pick a billing account. Labs run in one Cyber CTF labs project, created on the first test (it needs one free project slot on the billing account)."
             : tokenCloud
               ? `Paste a ${digitalocean ? "DigitalOcean" : "Linode"} API token with read/write scope, and pick a region.`
               : oci
