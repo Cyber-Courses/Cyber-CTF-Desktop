@@ -3,7 +3,11 @@ use std::path::Path;
 use super::providers::Provider;
 use super::{LabStatus, Machine};
 use crate::error::Result;
-use crate::exec::{run_env, stream};
+use crate::exec::{run_env_timed, stream};
+
+/// A status read must never hang the status poll: a wedged VirtualBox (its global lock held by
+/// a stuck VBoxManage) would otherwise pile up one blocked `vagrant status` per poll tick.
+const STATUS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
 
 /// `env` reaches the Vagrantfile and its provisioners (e.g. the evidence claim).
 pub async fn start(dir: &Path, provider: Provider, env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
@@ -36,7 +40,7 @@ fn parse_status(out: &str) -> Vec<Machine> {
 }
 
 pub async fn status(dir: &Path, env: &[(String, String)]) -> Result<LabStatus> {
-    let out = run_env("vagrant", &["status", "--machine-readable"], Some(dir), env).await?;
+    let out = run_env_timed("vagrant", &["status", "--machine-readable"], Some(dir), env, STATUS_TIMEOUT).await?;
     let machines = parse_status(&out);
     let running = !machines.is_empty() && machines.iter().all(|m| m.state == "running");
     Ok(LabStatus { running, machines, networks: Vec::new(), url: None, host: None, expires_at: None, place: None })

@@ -34,16 +34,55 @@ pub async fn run(program: &'static str, args: &[&str], cwd: Option<&Path>) -> Re
 
 /// `run` with extra environment variables.
 pub async fn run_env(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)]) -> Result<String> {
+    run_inner(program, args, cwd, env, None).await
+}
+
+/// `run_env` that gives up after `timeout`, killing the process, instead of waiting forever.
+/// For read-only probes (status, inspect) where a wedged tool must not hang the caller: a
+/// stuck VirtualBox or Docker daemon then surfaces as an error rather than piling up.
+pub async fn run_env_timed(
+    program: &'static str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(String, String)],
+    timeout: std::time::Duration,
+) -> Result<String> {
+    run_inner(program, args, cwd, env, Some(timeout)).await
+}
+
+async fn run_inner(
+    program: &'static str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(String, String)],
+    timeout: Option<std::time::Duration>,
+) -> Result<String> {
     let mut cmd = build(program, args);
     cmd.stdin(Stdio::null());
     cmd.envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
-    let output = cmd.output().await.map_err(|e| match e.kind() {
+    let to_err = |e: std::io::Error| match e.kind() {
         std::io::ErrorKind::NotFound => Error::ToolMissing { tool: program },
         _ => Error::Io(e),
-    })?;
+    };
+    let output = match timeout {
+        None => cmd.output().await.map_err(to_err)?,
+        Some(dur) => {
+            cmd.kill_on_drop(true);
+            let mut child = cmd.spawn().map_err(to_err)?;
+            match tokio::time::timeout(dur, child.wait_with_output()).await {
+                Ok(out) => out.map_err(to_err)?,
+                Err(_) => {
+                    return Err(Error::CommandFailed {
+                        command: format!("{program} {}", args.join(" ")),
+                        stderr: format!("timed out after {}s (the tool or its backend may be stuck)", dur.as_secs()),
+                    });
+                }
+            }
+        }
+    };
     if !output.status.success() {
         return Err(Error::CommandFailed {
             command: format!("{program} {}", args.join(" ")),

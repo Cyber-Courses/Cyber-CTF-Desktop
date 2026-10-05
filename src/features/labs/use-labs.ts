@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiQuery, labStatus, type LabStatus, type Provider, type Runtime } from "@/lib/tauri";
 
 export interface LabRuntimeInfo {
@@ -44,13 +44,18 @@ export function useLabs(reloadKey: unknown = 0) {
   const [statuses, setStatuses] = useState<Record<string, LabStatus>>({});
   const [completed, setCompleted] = useState<Set<string>>(new Set());
 
+  // One status read per lab at a time: a slow read (a busy VirtualBox can take seconds) must not
+  // let the poll interval stack a second, third, … read on top of it.
+  const inFlight = useRef<Set<string>>(new Set());
   const refreshStatus = useCallback((lab: Lab) => {
-    if (!lab.runtime) return;
+    if (!lab.runtime || inFlight.current.has(lab.id)) return;
+    inFlight.current.add(lab.id);
     labStatus(lab.id, lab.runtime.runtime)
       .then((s) => setStatuses((m) => ({ ...m, [lab.id]: s })))
       .catch(() => {
         /* not installed / not running - leave status unknown */
-      });
+      })
+      .finally(() => inFlight.current.delete(lab.id));
   }, []);
 
   useEffect(() => {
