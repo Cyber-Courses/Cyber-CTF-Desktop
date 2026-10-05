@@ -168,7 +168,14 @@ fn output(state: &Path, name: &str) -> Option<String> {
 /// Destroys everything the target created. `vars` carry the connection again (the
 /// provider needs it); the lab variables are restored from the last apply.
 pub async fn destroy(module: &Path, state: &Path, vars: &[(String, String)], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
+    let mut log = log;
     if !state.join("terraform.tfstate").is_file() {
+        // A recorded deploy whose state is gone (e.g. the app data was wiped): there's nothing to
+        // destroy from here, but resources may still exist on the account. Say so rather than
+        // reporting a clean stop.
+        if state.join(RUN_FILE).is_file() {
+            log("No Terraform state for this lab (it may have been reset). If resources were created, check your account and remove them there.".into());
+        }
         return Ok(());
     }
     let mut all: Vec<(String, String)> = vars.to_vec();

@@ -121,7 +121,12 @@ pub async fn start(
                 log(format!("Running in a {} VM on this machine", provider.id()));
                 let vagrant = lab::vagrant_dir(dir, runtime);
                 start_local_vm(&vagrant, provider, env, &mut log).await?;
-                attack_box_vagrant(&vagrant, &spec, env, &mut log).await
+                // The lab is up at this point; a failing attack box shouldn't read as a failed
+                // deploy. Note it and carry on so the lab stays usable (the shell can retry it).
+                if let Err(e) = attack_box_vagrant(&vagrant, &spec, env, &mut log).await {
+                    log(format!("The lab is running, but its attack box didn't start: {e}. Open the lab shell to retry it."));
+                }
+                Ok(())
             }
             Runtime::Docker => {
                 lab::prepare(dir, isoloom_core::Target::Docker)?;
@@ -210,8 +215,10 @@ pub async fn start(
             // ESXi start doesn't refuse with "an active machine was found with a different provider".
             vm::reconcile_provider(&vagrant, provider, &env, &mut log).await;
             vm::start(&vagrant, provider, &env, &mut log).await?;
-            if runtime == Runtime::Docker {
-                attack_box_vagrant(&vagrant, &spec, &env, &mut log).await?;
+            if runtime == Runtime::Docker
+                && let Err(e) = attack_box_vagrant(&vagrant, &spec, &env, &mut log).await
+            {
+                log(format!("The lab is running, but its attack box didn't start: {e}. Open the lab shell to retry it."));
             }
             Ok(())
         }

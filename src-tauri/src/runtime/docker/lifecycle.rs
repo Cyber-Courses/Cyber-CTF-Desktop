@@ -53,7 +53,9 @@ pub async fn start(dir: &Path, id: &str, env: &[(String, String)], log: impl FnM
         }
     }
     remove_stale_networks(dir, &project, env).await;
-    compose::stream(dir, &project, &["up", "-d", "--pull", "missing", "--wait"], env, log).await
+    // --wait blocks until containers are healthy; bound it so a container stuck in a failing
+    // healthcheck surfaces as a timeout instead of hanging the start indefinitely.
+    compose::stream(dir, &project, &["up", "-d", "--pull", "missing", "--wait", "--wait-timeout", "600"], env, log).await
 }
 
 /// Networks of this lab that its current Compose file no longer defines (left by an older

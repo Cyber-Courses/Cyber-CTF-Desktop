@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiQuery } from "@/lib/tauri";
 
 export interface HostedEndpoint {
@@ -43,6 +43,8 @@ export function useHostedLabs() {
   const [session, setSession] = useState<HostedSession | null>(null);
   const [busyLab, setBusyLab] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Stop polling a session that never settles, so a stuck backend launch doesn't spin forever.
+  const pollDeadline = useRef<{ id: string; until: number } | null>(null);
 
   // Hydrate from the backend once (requires login; a logged-out / errored call just leaves it null).
   useEffect(() => {
@@ -70,7 +72,19 @@ export function useHostedLabs() {
 
   // Poll the active session until it settles (RUNNING with endpoints, or FAILED/STOPPED/EXPIRED).
   useEffect(() => {
-    if (!session || SETTLED.includes(session.state)) return;
+    if (!session || SETTLED.includes(session.state)) {
+      pollDeadline.current = null;
+      return;
+    }
+    // Give a launch a bounded time to come up; a session stuck in REQUESTED/CLAIMED/PULLING past
+    // it stops polling with a message instead of spinning forever.
+    if (!pollDeadline.current || pollDeadline.current.id !== session.id) {
+      pollDeadline.current = { id: session.id, until: Date.now() + 10 * 60 * 1000 };
+    }
+    if (Date.now() > pollDeadline.current.until) {
+      setError("This hosted lab is taking longer than expected to start. It may still come up shortly; otherwise stop it and try again.");
+      return;
+    }
     // Cancelled when the session changes (e.g. stop() clears it): a poll already in flight must
     // not resolve afterwards and resurrect a session the user just stopped.
     let cancelled = false;
