@@ -162,10 +162,10 @@ export function AppShell() {
         <div className="space-y-2.5 border-t border-border px-3.5 py-3">
           <div
             className="flex items-center gap-2 px-0.5 text-[0.71875rem] text-muted-foreground"
-            title={auth?.loggedIn ? "Labs launched from the website run on this machine." : "Sign in so website launches run here."}
+            title={auth?.loggedIn ? "Signed in: labs you launch from the website run on this machine." : "Sign in so labs launched from the website run on this machine."}
           >
             <span className={cn("size-1.5 rounded-full", auth?.loggedIn ? "bg-emerald-500" : "bg-muted-foreground/40")} />
-            {auth?.loggedIn ? "Launcher online" : "Launcher offline"}
+            {auth?.loggedIn ? "This machine · online" : "This machine · offline"}
           </div>
           <Account status={auth} onChange={setAuth} />
         </div>

@@ -262,7 +262,7 @@ export function LabDetail({
                     title={lab.title}
                     hosts={hosts}
                     hostOk={hostOk}
-                    localNote={isDocker ? "Docker, on your system" : "Local hypervisor"}
+                    localNote={isDocker ? "On your system, as containers" : "On your system, in a VM"}
                     localVm={localVms[0] ?? null}
                     hosted={hostedOk}
                     dockerRunning={isDocker ? dockerRunning : null}

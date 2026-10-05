@@ -123,6 +123,11 @@ export function DeploySteps({ lines, busy, ready, where }: { lines: string[]; bu
                 <span className="font-mono text-[0.6875rem] tabular-nums text-muted-foreground">{formatDuration(to - from)}</span>
                 <ChevronRight className={cn("size-3.5 text-muted-foreground/60 transition-transform", expanded && "rotate-90")} />
               </button>
+              {/* While a phase is running, show its latest line inline (e.g. which container is
+                  still "Waiting"), so the long "Wait until healthy" step isn't a blank spinner. */}
+              {state === "running" && !expanded && rows.at(-1)?.line && (
+                <div className="truncate px-3.5 pb-2 pl-10 font-mono text-[0.6875rem] text-muted-foreground">{rows.at(-1)!.line.trim()}</div>
+              )}
               {expanded && (
                 <div className="px-3.5 pb-2.5">
                   <TimedLog rows={rows} origin={start!} />

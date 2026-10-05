@@ -152,7 +152,7 @@ export function RunOnPicker({
           ? undefined
           : dockerRunning
             ? { tone: "ok", label: "Running" }
-            : { tone: "warn", label: "Docker stopped", title: "Start your Docker engine (Machine page)" },
+            : { tone: "warn", label: "Engine stopped", title: "Start your container engine (Machine page)" },
     },
   ];
   if (localVm) {
