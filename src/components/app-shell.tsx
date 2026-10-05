@@ -10,6 +10,7 @@ import { MachineScreen } from "@/features/machine/machine-screen";
 import { ServerScreen } from "@/features/servers/servers-screen";
 import { CloudScreen } from "@/features/cloud/cloud-screen";
 import { SettingsScreen } from "@/features/settings/settings-screen";
+import { CommandPalette, type Command } from "@/components/command-palette";
 import { Onboarding } from "@/features/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -50,6 +51,7 @@ export function AppShell() {
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [onboarded, setOnboarded] = useState(true);
   const [ready, setReady] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const check = () =>
     systemCheck()
@@ -81,21 +83,41 @@ export function AppShell() {
     setOpenLab(slug ?? null);
   }
 
-  // The "/" shortcut advertised next to "Find a lab…": jump to Labs and focus its search,
-  // unless the user is already typing somewhere.
+  function findALab() {
+    setTab("labs");
+    setOpenLab(null);
+    requestAnimationFrame(() => document.querySelector<HTMLInputElement>("[data-lab-search]")?.focus());
+  }
+
+  // Keyboard: ⌘K / Ctrl+K opens the command palette; "/" jumps to Labs search. Both are ignored
+  // while the user is typing in a field.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if ((e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      }
       if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
       const el = document.activeElement as HTMLElement | null;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
       e.preventDefault();
-      setTab("labs");
-      setOpenLab(null);
-      requestAnimationFrame(() => document.querySelector<HTMLInputElement>("[data-lab-search]")?.focus());
+      findALab();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  const paletteCommands: Command[] = [
+    { id: "find-lab", label: "Find a lab", hint: "search", icon: Search, keywords: "labs search ctf", run: findALab },
+    ...NAV.filter((n) => !n.soon).map((n) => ({
+      id: `go-${n.id}`,
+      label: `Go to ${n.label}`,
+      icon: n.icon,
+      keywords: n.label,
+      run: () => navigate(n.id),
+    })),
+  ];
 
   function completeOnboarding() {
     try {
@@ -115,6 +137,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
+      <CommandPalette key={paletteOpen ? "open" : "closed"} open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={paletteCommands} />
       {/* ---- Sidebar ---- */}
       <aside className="flex w-[14.5rem] shrink-0 flex-col border-r border-border">
         {/* macOS titlebar band inside the column, so the sidebar divider runs to the top of the window */}
