@@ -102,10 +102,15 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
         &mut log,
     )
     .await?;
-    // Every lab network, so labs with their own segments (dmz, internal...) are reachable.
+    // Every lab network, so labs with their own segments (dmz, internal...) are reachable. If a
+    // connect fails, tear the half-wired box down so a retry starts clean instead of leaving an
+    // attacker that can only reach some of the lab.
     for lab_net in &lab_nets {
         log(format!("Connecting to the lab network {}…", super::docker::short_network(id, lab_net)));
-        run("docker", &["network", "connect", lab_net, &name], None).await?;
+        if let Err(e) = run("docker", &["network", "connect", lab_net, &name], None).await {
+            let _ = run("docker", &["rm", "-f", &name], None).await;
+            return Err(e);
+        }
     }
     log("✓ Attack box ready — open a shell to start.".into());
     Ok(())
