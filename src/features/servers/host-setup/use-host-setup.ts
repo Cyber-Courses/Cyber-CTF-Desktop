@@ -23,7 +23,9 @@ import {
   type RemoteProvider,
   type SystemReport,
 } from "@/lib/tauri";
-import { CLOUD_META, KIND, StepKey } from "@/features/servers/host-setup/constants";
+import { CLOUD_DEFAULT_NAME, CLOUD_META, KIND, StepKey } from "@/features/servers/host-setup/constants";
+
+const DEFAULT_NAMES = Object.values(CLOUD_DEFAULT_NAME);
 import type { Dependency } from "@/lib/tauri";
 
 /** All the server / cloud setup state and actions, shared by the setup steps. */
@@ -183,6 +185,8 @@ export function useHostSetup({
     setV((s) => ({
       ...s,
       provider: id as RemoteProvider,
+      // The provider's short name, unless the user typed their own.
+      name: !s.name.trim() || DEFAULT_NAMES.includes(s.name.trim()) ? CLOUD_DEFAULT_NAME[id] : s.name,
       host:
         id === "azure"
           ? "westeurope"
@@ -281,7 +285,8 @@ export function useHostSetup({
     setSaving(true);
     setError(null);
     try {
-      const h = await serverSave({ ...v, name: v.name.trim() || v.host.trim() });
+      const fallback = cloud ? CLOUD_DEFAULT_NAME[v.provider as CloudProvider] ?? v.host.trim() : v.host.trim();
+      const h = await serverSave({ ...v, name: v.name.trim() || fallback });
       setSaved(h);
       onSaved(h);
       next();

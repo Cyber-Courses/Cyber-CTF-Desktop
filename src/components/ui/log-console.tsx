@@ -16,11 +16,14 @@ export function LogConsole({
   lines,
   running = false,
   title = "Output",
+  collapseOnDone = false,
   className,
 }: {
   lines: string[];
   running?: boolean;
   title?: string;
+  /** Fold to its header once the run succeeds (it stays open on failure). */
+  collapseOnDone?: boolean;
   className?: string;
 }) {
   const pre = useRef<HTMLPreElement>(null);
@@ -35,15 +38,28 @@ export function LogConsole({
     if (open && el) el.scrollTop = el.scrollHeight;
   }, [lines, open]);
 
+  // Fold away a successful run when asked (its header still says it's done); keep failures open.
+  const [wasRunning, setWasRunning] = useState(running);
+  if (wasRunning !== running) {
+    setWasRunning(running);
+    if (!running && collapseOnDone && !(lines.at(-1)?.trimStart().startsWith("✗") ?? false)) setOpen(false);
+  }
+
   // Tick only while running; setState happens in the async interval callback (not in the
   // effect body), and no refs are read during render.
   useEffect(() => {
     if (!running || lines.length === 0) return;
-    const id = setInterval(() => {
+    const tick = () => {
       setNow(Date.now());
       setStartAt((s) => s ?? Date.now());
-    }, 300);
-    return () => clearInterval(id);
+    };
+    // First tick at once, so a short run still shows its time.
+    const first = setTimeout(tick, 0);
+    const id = setInterval(tick, 300);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
   }, [running, lines.length]);
 
   if (lines.length === 0) return null;
@@ -71,7 +87,8 @@ export function LogConsole({
       </button>
       {open && (
         <pre ref={pre} className="max-h-40 overflow-auto p-3 font-mono text-xs leading-relaxed text-muted-foreground">
-          {lines.join("\n")}
+          {/* Tools print blank lines around their messages: trim them, keep one between paragraphs. */}
+          {lines.join("\n").replace(/^\s*\n+/, "").replace(/\n\s*\n(\s*\n)+/g, "\n\n").trimEnd()}
         </pre>
       )}
     </div>

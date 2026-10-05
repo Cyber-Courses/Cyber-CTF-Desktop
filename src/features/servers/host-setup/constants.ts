@@ -112,6 +112,16 @@ export const OCI_REGIONS: [string, string][] = [
 export type StepKey = "provider" | "hypervisor" | "tools" | "connection" | "placement" | "account" | "credentials" | "options" | "test";
 /** Cloud providers offered in the cloud setup. AWS, Azure and GCP each provision labs in the
  *  player's own account; `ready` gates which are selectable. */
+/** A cloud host's default name: the provider's short name (the user can rename it). */
+export const CLOUD_DEFAULT_NAME: Record<CloudProvider, string> = {
+  aws: "AWS",
+  azure: "Azure",
+  gcp: "GCP",
+  digitalocean: "DigitalOcean",
+  linode: "Linode",
+  oci: "Oracle Cloud",
+};
+
 export const CLOUD_META: Record<CloudProvider, { label: string; cli: string; color: string; ready: boolean }> = {
   aws: { label: "Amazon Web Services", cli: "aws", color: "#ff9900", ready: true },
   azure: { label: "Microsoft Azure", cli: "az", color: "#3b8eea", ready: true },
