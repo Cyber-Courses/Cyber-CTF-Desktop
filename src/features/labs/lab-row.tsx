@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, ChevronRight, Cloud, Container, ExternalLink, Globe, Monitor, Play, Server, Wrench, type LucideIcon } from "lucide-react";
+import { CheckCircle2, ChevronRight, Cloud, Container, ExternalLink, Globe, LogIn, Monitor, Play, Server, Wrench, type LucideIcon } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Spinner } from "@/components/ui/spinner";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
@@ -58,6 +58,7 @@ export function LabRow({
   status,
   busy = false,
   loggedIn,
+  onLogin,
   hostArch,
   onOpen,
   onStart,
@@ -70,6 +71,8 @@ export function LabRow({
   status?: LabStatus;
   busy?: boolean;
   loggedIn: boolean;
+  /** Logged out: the start button logs in instead of being greyed out. */
+  onLogin?: () => Promise<void>;
   hostArch: string;
   onOpen: () => void;
   onStart: () => void;
@@ -144,6 +147,10 @@ export function LabRow({
         ) : setup ? (
           <RowButton onClick={() => machineOpenSetup().catch(() => {})} title="Open machine setup">
             <Wrench className="size-3" /> {setup}
+          </RowButton>
+        ) : !loggedIn && onLogin ? (
+          <RowButton tone="learn" onClick={() => void onLogin().catch(() => {})} title="Log in to start labs">
+            <LogIn className="size-3" /> Log in
           </RowButton>
         ) : (
           <RowButton

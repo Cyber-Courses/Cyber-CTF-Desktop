@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, ExternalLink, Play, Square, Terminal } from "lucide-react";
+import { ArrowLeft, ExternalLink, LogIn, Play, Square, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
@@ -29,6 +29,7 @@ export function LabDetail({
   busy,
   logs,
   loggedIn,
+  onLogin,
   hostArch,
   readyVms = [],
   dockerRunning = null,
@@ -41,6 +42,8 @@ export function LabDetail({
   busy: boolean;
   logs: string[];
   loggedIn: boolean;
+  /** Logged out: the start button logs in instead of being greyed out. */
+  onLogin?: () => Promise<void>;
   hostArch: string;
   /** Local hypervisors ready on this machine (Vagrant + hypervisor), for "in a VM". */
   readyVms?: Provider[];
@@ -201,6 +204,11 @@ export function LabDetail({
           ) : starting ? (
             <Button variant="learn" disabled>
               <Spinner className="size-4" /> Starting… <StartTimer />
+            </Button>
+          ) : !loggedIn && onLogin ? (
+            // Logged out: say so on the button and log in from it, rather than a greyed-out Start.
+            <Button variant="learn" onClick={() => void onLogin().catch(() => {})}>
+              <LogIn className="size-4" /> Log in to start
             </Button>
           ) : (
             <div className="relative">

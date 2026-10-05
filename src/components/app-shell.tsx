@@ -13,7 +13,7 @@ import { SettingsScreen } from "@/features/settings/settings-screen";
 import { Onboarding } from "@/features/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { authStatus, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
+import { authLogin, authStatus, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 type Tab = "home" | "labs" | "machine" | "setup" | "server" | "cloud" | "events" | "settings";
@@ -214,7 +214,13 @@ function Screen({
       />
     );
   return report ? (
-    <Labs loggedIn={auth?.loggedIn ?? false} hostArch={report.arch} report={report} openSlug={openLab} />
+    <Labs
+      loggedIn={auth?.loggedIn ?? false}
+      onLogin={async () => onAuthChange(await authLogin())}
+      hostArch={report.arch}
+      report={report}
+      openSlug={openLab}
+    />
   ) : (
     <p className="text-sm text-muted-foreground">Loading…</p>
   );

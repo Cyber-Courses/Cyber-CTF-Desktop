@@ -21,11 +21,14 @@ type RuntimeFilter = "all" | "DOCKER" | "VM" | "CLOUD";
 
 export function Labs({
   loggedIn,
+  onLogin,
   hostArch,
   report,
   openSlug,
 }: {
   loggedIn: boolean;
+  /** Logs in from a lab (a logged-out Start). */
+  onLogin?: () => Promise<void>;
   hostArch: string;
   report?: SystemReport | null;
   openSlug?: string | null;
@@ -98,6 +101,7 @@ export function Labs({
         busy={busy === detail.id}
         logs={activeLab === detail.id ? logs : []}
         loggedIn={loggedIn}
+        onLogin={onLogin}
         hostArch={hostArch}
         onBack={() => setDetailSlug(null)}
         readyVms={readyVms}
@@ -115,6 +119,7 @@ export function Labs({
       status={statuses[lab.id]}
       busy={busy === lab.id}
       loggedIn={loggedIn}
+      onLogin={onLogin}
       hostArch={hostArch}
       solved={completed.has(lab.id)}
       setup={isRunning(lab) ? null : setupNeeded(lab, report ?? null, servers)}
