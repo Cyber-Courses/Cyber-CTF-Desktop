@@ -124,7 +124,6 @@ export function Labs({
       solved={completed.has(lab.id)}
       setup={isRunning(lab) ? null : setupNeeded(lab, report ?? null, servers)}
       onOpen={() => setDetailSlug(lab.slug)}
-      onStart={() => launch(lab)}
       onStop={() => stop(lab)}
     />
   );

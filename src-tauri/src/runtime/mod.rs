@@ -178,6 +178,9 @@ pub async fn start(
             let spec = lab::prepare(dir, lab::vagrant_target(runtime))?;
             let env: Vec<(String, String)> = env.iter().cloned().chain(conn.env).collect();
             let vagrant = lab::vagrant_dir(dir, runtime);
+            // Switched here from a local (or other) provider: clear the stale state first, so the
+            // ESXi start doesn't refuse with "an active machine was found with a different provider".
+            vm::reconcile_provider(&vagrant, provider, &env, &mut log).await;
             vm::start(&vagrant, provider, &env, &mut log).await?;
             if runtime == Runtime::Docker {
                 attack_box_vagrant(&vagrant, &spec, &env, &mut log).await?;
@@ -201,6 +204,9 @@ pub const LOCAL_VM_MARKER: &str = ".cyberctf-local-vm";
 /// provisioning failure is returned unchanged, never retried.
 async fn start_local_vm(dir: &Path, provider: providers::Provider, env: &[(String, String)], log: &mut impl FnMut(String)) -> Result<()> {
     use std::sync::atomic::{AtomicBool, Ordering};
+    // Switched target since last time (e.g. an ESXi run, now local): clear the old state so
+    // `vagrant up` doesn't refuse with "an active machine was found with a different provider".
+    vm::reconcile_provider(dir, provider, env, log).await;
     let stale = AtomicBool::new(false);
     let first = {
         let out = &mut *log;

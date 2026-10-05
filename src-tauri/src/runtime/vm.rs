@@ -33,6 +33,35 @@ pub fn is_stale_state_error(line: &str) -> bool {
         || l.contains("already exists") // VBoxManage / vmware: a VM or folder of that name is left over
         || l.contains("already registered")
         || l.contains("name is already in use")
+        || l.contains("different provider") // "an active machine was found with a different provider"
+        || l.contains("single provider at a time")
+}
+
+/// Reconciles the lab dir against the provider it is about to start on. Vagrant records a
+/// machine's provider under `.vagrant/machines/<name>/<provider>/`; starting on a different one
+/// (e.g. the lab last ran locally on VirtualBox and is now sent to an ESXi host) makes
+/// `vagrant up` refuse with "an active machine was found with a different provider". When the
+/// recorded provider differs, tear the old one's machines down (best effort, using whatever env
+/// it needs) and reset `.vagrant` so the new provider starts from a clean slate.
+pub async fn reconcile_provider(dir: &Path, requested: Provider, env: &[(String, String)], log: &mut impl FnMut(String)) {
+    let machines = dir.join(".vagrant").join("machines");
+    let Ok(entries) = std::fs::read_dir(&machines) else { return };
+    let mut mismatch = false;
+    for machine in entries.flatten() {
+        if let Ok(provs) = std::fs::read_dir(machine.path()) {
+            for prov in provs.flatten() {
+                if prov.path().is_dir() && prov.file_name().to_string_lossy() != requested.id() {
+                    mismatch = true;
+                }
+            }
+        }
+    }
+    if !mismatch {
+        return;
+    }
+    log("This lab last ran on a different target. Clearing that state so it can start fresh here…".into());
+    let _ = stop(dir, env, |_l: String| {}).await;
+    let _ = std::fs::remove_dir_all(dir.join(".vagrant"));
 }
 
 /// Normalizes a VM name or folder name for matching: lowercase, every run of non-alphanumerics

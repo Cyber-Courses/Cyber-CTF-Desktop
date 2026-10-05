@@ -1,8 +1,7 @@
 "use client";
 
-import { CheckCircle2, ChevronRight, Cloud, Container, ExternalLink, Globe, LogIn, Monitor, Play, Server, Wrench, type LucideIcon } from "lucide-react";
+import { CheckCircle2, ChevronRight, Cloud, Container, ExternalLink, Globe, LogIn, Monitor, Server, Wrench, type LucideIcon } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Spinner } from "@/components/ui/spinner";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import { CLOUDS } from "@/features/labs/run-on";
 import { machineOpenSetup, type LabStatus } from "@/lib/tauri";
@@ -61,7 +60,6 @@ export function LabRow({
   onLogin,
   hostArch,
   onOpen,
-  onStart,
   onStop,
   solved = false,
   setup = null,
@@ -74,7 +72,6 @@ export function LabRow({
   onLogin?: () => Promise<void>;
   hostArch: string;
   onOpen: () => void;
-  onStart: () => void;
   onStop: () => void;
   /** The player already solved it (website evidence). */
   solved?: boolean;
@@ -150,16 +147,8 @@ export function LabRow({
           <RowButton tone="learn" onClick={() => void onLogin().catch(() => {})} title="Sign in to start labs">
             <LogIn className="size-3" /> Sign in
           </RowButton>
-        ) : (
-          <RowButton
-            tone="learn"
-            onClick={onStart}
-            disabled={!loggedIn || !rt || busy}
-            title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Sign in to start labs"}
-          >
-            {busy ? <Spinner className="size-3" /> : <Play className="size-3" />} Start
-          </RowButton>
-        )}
+        ) : null}
+        {/* Starting happens on the lab's own page, where you pick where to run; the row opens it. */}
 
         <ChevronRight className="size-4 text-muted-foreground/50 transition-colors group-hover:text-foreground" />
       </div>

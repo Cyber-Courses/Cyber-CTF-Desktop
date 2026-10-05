@@ -334,7 +334,6 @@ export function HomeScreen({
                     loggedIn={auth?.loggedIn ?? false}
                     hostArch={report?.arch ?? ""}
                     onOpen={() => onNavigate("labs", lab.slug)}
-                    onStart={() => launch(lab)}
                     onStop={() => stop(lab)}
                   />
                 ))
