@@ -17,7 +17,6 @@ import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
-import { runPlaces } from "@/features/labs/lab-row";
 import { labAttackShell, exegolShell, serverList, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
@@ -60,7 +59,9 @@ export function LabDetail({
   const running = status?.running ?? false;
   const starting = busy && !running;
   const url = status?.url;
-  const down = (status?.machines ?? []).filter((m) => m.state !== "running");
+  // Machines that went down while the lab runs. Not while it's starting or stopping: machines
+  // come up one after another then (a web server waits for its database), and that's normal.
+  const down = busy ? [] : (status?.machines ?? []).filter((m) => m.state !== "running");
   const isDocker = rt?.runtime !== "VM";
   const remote = !!status?.host;
 
@@ -132,6 +133,12 @@ export function LabDetail({
     (remote ? labAttackShell(lab.id, "DOCKER") : exegolShell(lab.id)).catch((e) => setShellError(String(e)));
   };
 
+  const deploy = (
+    <Panel>
+      <DeploySteps lines={logs} busy={busy} ready={running} />
+    </Panel>
+  );
+
   return (
     <div className="animate-rise-in space-y-5">
       <button onClick={onBack} className="inline-flex items-center gap-1.5 text-[0.78125rem] text-muted-foreground transition-colors hover:text-foreground">
@@ -162,14 +169,6 @@ export function LabDetail({
               </span>
             )}
             <span>· {lab.category}</span>
-            {rt && (
-              <span className="inline-flex items-center gap-1.5">
-                ·
-                {runPlaces(rt).map(({ key, icon: Icon, label, available }) => (
-                  <Icon key={key} className={cn("size-3.5", available ? "text-learn" : "text-muted-foreground/25")} aria-label={label} />
-                ))}
-              </span>
-            )}
             {rt && !native && (isDocker || runOn === null) && <span className="text-amber-500">· emulated (slower)</span>}
             {(lab.skills ?? []).map((sk) => (
               <span key={sk.id} className="rounded border border-border px-1.5 py-px text-[0.6875rem]">
@@ -294,11 +293,8 @@ export function LabDetail({
             </Panel>
           )}
 
-          {(logs.length > 0 || busy) && (
-            <Panel>
-              <DeploySteps lines={logs} busy={busy} ready={running} />
-            </Panel>
-          )}
+          {/* While it starts, the deployment comes first; once ready, the diagram does. */}
+          {(logs.length > 0 || busy) && !(running && !busy) && deploy}
 
           {running && status && status.machines.length > 0 ? (
             <NetworkDiagram
@@ -313,6 +309,8 @@ export function LabDetail({
               <p className="px-4 py-10 text-center text-[0.78125rem] text-muted-foreground">Start the lab to see its machines and network.</p>
             </Panel>
           )}
+
+          {(logs.length > 0 || busy) && running && !busy && deploy}
 
           <LabBrief labId={lab.id} />
         </div>

@@ -111,6 +111,19 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
     Ok(())
 }
 
+/// Plugs a running attack box into every current lab network (a lab restarted, or updated to
+/// a version with other networks, keeps the attack box but not its connections). Best effort.
+pub async fn rejoin(id: &str) {
+    let name = container(id);
+    if !matches!(run("docker", &["inspect", "-f", "{{.State.Running}}", &name], None).await, Ok(o) if o.trim() == "true") {
+        return;
+    }
+    for lab_net in lab_networks(id).await {
+        // "already exists" when it's plugged in already: fine.
+        let _ = run("docker", &["network", "connect", &lab_net, &name], None).await;
+    }
+}
+
 pub async fn stop(id: &str, mut log: impl FnMut(String)) -> Result<()> {
     log("Removing the attack box…".into());
     let _ = stream("docker", &["rm", "-f", &container(id)], None, &[], &mut log).await;

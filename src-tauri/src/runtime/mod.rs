@@ -80,7 +80,9 @@ pub async fn start(
             Runtime::Docker => {
                 lab::prepare(dir, isoloom_core::Target::Docker)?;
                 mark_local_vm(dir, None)?;
-                docker::start(dir, id, env, log).await
+                docker::start(dir, id, env, log).await?;
+                exegol::rejoin(id).await;
+                Ok(())
             }
             Runtime::Vm => {
                 let provider = provider.ok_or_else(|| Error::Invalid("VM labs need a provider".into()))?;

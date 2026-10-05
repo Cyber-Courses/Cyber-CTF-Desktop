@@ -120,8 +120,10 @@ export function LabRow({
           <span className="hidden items-center gap-1.5 text-[0.6875rem] text-muted-foreground xl:inline-flex">
             {!native && <span className="text-amber-500">emulated</span>}
             <span className="inline-flex items-center gap-1">
+              {/* Only where it can run (and where it runs): greyed-out icons read as noise. */}
               {runPlaces(rt).map(({ key, icon: Icon, label, available }) => {
                 const inUse = running && status?.place === key;
+                if (!available && !inUse) return null;
                 const hint = inUse ? `Running on: ${status?.host ?? label}` : available ? `Can run on: ${label}` : `Not available: ${label}`;
                 return (
                   <span key={key} title={hint} aria-label={hint} className="inline-flex">

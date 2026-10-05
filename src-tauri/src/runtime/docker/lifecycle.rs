@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use super::compose;
+use crate::exec::run;
 use crate::error::{Error, Result};
 
 /// A host port is taken if we can't bind it (another lab, or anything else, holds it).
@@ -37,7 +38,29 @@ pub async fn start(dir: &Path, id: &str, env: &[(String, String)], log: impl FnM
             }
         }
     }
+    remove_stale_networks(dir, &project, env).await;
     compose::stream(dir, &project, &["up", "-d", "--pull", "missing", "--wait"], env, log).await
+}
+
+/// Networks of this lab that its current Compose file no longer defines (left by an older
+/// version of the lab), so tools listing the lab's networks don't pick a dead one. Whatever
+/// is still plugged into one (the attack box) is unplugged first. Best effort.
+async fn remove_stale_networks(dir: &Path, project: &str, env: &[(String, String)]) {
+    let Ok(config) = compose::output_env(dir, project, &["config", "--format", "json"], env).await else { return };
+    let wanted: Vec<String> = serde_json::from_str::<serde_json::Value>(&config)
+        .ok()
+        .and_then(|v| v.get("networks").and_then(|n| n.as_object()).map(|n| n.iter().map(|(k, v)| v["name"].as_str().map(str::to_string).unwrap_or_else(|| format!("{project}_{k}"))).collect()))
+        .unwrap_or_default();
+    let filter = format!("label=com.docker.compose.project={project}");
+    let Ok(listed) = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await else { return };
+    for net in listed.lines().map(str::trim).filter(|n| !n.is_empty() && !wanted.iter().any(|w| w == n)) {
+        if let Ok(attached) = run("docker", &["network", "inspect", "-f", "{{range .Containers}}{{.Name}} {{end}}", net], None).await {
+            for c in attached.split_whitespace() {
+                let _ = run("docker", &["network", "disconnect", "-f", net, c], None).await;
+            }
+        }
+        let _ = run("docker", &["network", "rm", net], None).await;
+    }
 }
 
 /// Removes containers, networks and volumes: the next start is a clean lab.
