@@ -54,7 +54,7 @@ export function Account({ status, onChange }: { status: AuthStatus | null; onCha
               <Spinner className="size-3.5" /> Waiting for the browser…
             </>
           ) : (
-            "Log in"
+            "Sign in"
           )}
         </Button>
       </div>
@@ -72,7 +72,7 @@ export function Account({ status, onChange }: { status: AuthStatus | null; onCha
       </div>
       <button
         onClick={logout}
-        title="Log out"
+        title="Sign out"
         className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         <Icon name="logout" className="size-4" />

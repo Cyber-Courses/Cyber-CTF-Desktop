@@ -81,6 +81,22 @@ export function AppShell() {
     setOpenLab(slug ?? null);
   }
 
+  // The "/" shortcut advertised next to "Find a lab…": jump to Labs and focus its search,
+  // unless the user is already typing somewhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      e.preventDefault();
+      setTab("labs");
+      setOpenLab(null);
+      requestAnimationFrame(() => document.querySelector<HTMLInputElement>("[data-lab-search]")?.focus());
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   function completeOnboarding() {
     try {
       localStorage.setItem(ONBOARDED_KEY, "1");

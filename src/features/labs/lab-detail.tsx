@@ -215,7 +215,7 @@ export function LabDetail({
           ) : !loggedIn && onLogin ? (
             // Logged out: say so on the button and log in from it, rather than a greyed-out Start.
             <Button variant="learn" onClick={() => void onLogin().catch(() => {})}>
-              <LogIn className="size-4" /> Log in to start
+              <LogIn className="size-4" /> Sign in to start
             </Button>
           ) : (
             <div className="relative">
@@ -228,7 +228,7 @@ export function LabDetail({
                   !rt
                     ? "No runtime for this lab yet"
                     : !loggedIn
-                      ? "Log in to start labs"
+                      ? "Sign in to start labs"
                       : hostedLive
                         ? "It's running hosted by Cyber CTF; stop it first"
                         : undefined

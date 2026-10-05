@@ -151,15 +151,15 @@ export function LabRow({
             <Wrench className="size-3" /> {setup}
           </RowButton>
         ) : !loggedIn && onLogin ? (
-          <RowButton tone="learn" onClick={() => void onLogin().catch(() => {})} title="Log in to start labs">
-            <LogIn className="size-3" /> Log in
+          <RowButton tone="learn" onClick={() => void onLogin().catch(() => {})} title="Sign in to start labs">
+            <LogIn className="size-3" /> Sign in
           </RowButton>
         ) : (
           <RowButton
             tone="learn"
             onClick={onStart}
             disabled={!loggedIn || !rt || busy}
-            title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Log in to start labs"}
+            title={!rt ? "No runtime for this lab yet" : loggedIn ? undefined : "Sign in to start labs"}
           >
             {busy ? <Spinner className="size-3" /> : <Play className="size-3" />} Start
           </RowButton>
