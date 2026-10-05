@@ -65,6 +65,10 @@ pub async fn start(
 ) -> Result<()> {
     let Some(host) = host else {
         server::mark_lab(dir, None)?;
+        // A lab runs in one place at a time: if it's already up here, refuse (a second copy
+        // collides on its published host ports); if an earlier start left stopped or partial
+        // infrastructure behind, clear it so this start is clean.
+        ensure_local_slot_free(dir, id, &mut log).await?;
         return match runtime {
             // A container lab in a VM on this machine: Isoloom's docker-vm (Docker on one VM), with
             // the attack box next to it inside the VM (the lab network isn't reachable from here).
@@ -172,6 +176,40 @@ pub async fn start(
 /// Marks a container lab as running in a VM on this machine (Isoloom's docker-vm),
 /// so stop, status and the attack-box shell go to the VM instead of local Docker.
 pub const LOCAL_VM_MARKER: &str = ".cyberctf-local-vm";
+
+/// Guards a local start: refuses when the lab is already running on this machine (Docker or a
+/// local VM), and otherwise tears down any stopped or half-created leftovers from a previous
+/// start so the fresh start doesn't trip over them (a poweroff VM, dead containers).
+async fn ensure_local_slot_free(dir: &Path, id: &str, log: &mut impl FnMut(String)) -> Result<()> {
+    // Docker containers of this lab on this machine (best effort: before the first start the
+    // compose file may not exist yet, and status then errors, which just means nothing to clear).
+    if let Ok(s) = docker::status(dir, id).await {
+        if s.running {
+            return Err(Error::Invalid("This lab is already running on this machine. Stop it before starting it again.".into()));
+        }
+        if !s.machines.is_empty() {
+            log("Clearing a previous, stopped run…".into());
+            let _ = docker::stop(dir, id, |_l: String| {}).await;
+        }
+    }
+    // A local VM for this lab (Docker on one VM, or a VM lab), whichever vagrant folder holds one.
+    for rt in [Runtime::Docker, Runtime::Vm] {
+        let vdir = lab::vagrant_dir(dir, rt);
+        if !vdir.join("Vagrantfile").exists() {
+            continue;
+        }
+        let Ok(s) = vm::status(&vdir, &[]).await else { continue };
+        if s.running {
+            return Err(Error::Invalid("This lab is already running in a VM on this machine. Stop it before starting it again.".into()));
+        }
+        // "not_created" is a clean slate; anything else (poweroff, aborted, saved) is a leftover.
+        if s.machines.iter().any(|m| m.state != "not_created") {
+            log("Clearing a previous, incomplete VM…".into());
+            let _ = vm::stop(&vdir, &[], |_l: String| {}).await;
+        }
+    }
+    Ok(())
+}
 
 fn mark_local_vm(dir: &Path, provider: Option<providers::Provider>) -> Result<()> {
     match provider {

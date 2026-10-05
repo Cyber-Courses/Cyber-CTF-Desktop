@@ -40,7 +40,7 @@ function useTimedLines(lines: string[]): Timed[] {
   return timed;
 }
 
-export function DeploySteps({ lines, busy, ready }: { lines: string[]; busy: boolean; ready: boolean }) {
+export function DeploySteps({ lines, busy, ready, where }: { lines: string[]; busy: boolean; ready: boolean; where?: string }) {
   const timed = useTimedLines(lines);
   const [open, setOpen] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
@@ -71,6 +71,11 @@ export function DeploySteps({ lines, busy, ready }: { lines: string[]; busy: boo
     <div>
       <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
         <h3 className="text-[0.8125rem] font-medium">Deployment</h3>
+        {where && (
+          <span className="truncate text-[0.75rem] text-muted-foreground">
+            on <span className="text-foreground">{where}</span>
+          </span>
+        )}
         <span className="ml-auto flex items-center gap-2 text-[0.75rem]">
           {failed ? (
             <span className="flex items-center gap-1.5 text-rose-400">

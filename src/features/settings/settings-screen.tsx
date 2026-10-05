@@ -6,6 +6,7 @@ import { agentInfo, systemCheck, type AgentInfo, type AuthStatus, type SystemRep
 import { AboutSection } from "@/features/settings/about-section";
 import { AccountSection } from "@/features/settings/account-section";
 import { AttackBoxRows } from "@/features/settings/attack-box-rows";
+import { CleanupSection } from "@/features/settings/cleanup-section";
 import { HypervisorRow } from "@/features/settings/hypervisor-row";
 import { Section, useSavedFlash } from "@/features/settings/settings-layout";
 
@@ -56,6 +57,8 @@ export function SettingsScreen({
         <AttackBoxRows onSaved={flashLabs} />
         <HypervisorRow report={report} onSaved={flashLabs} onNavigate={onNavigate} onRefresh={recheck} />
       </Section>
+
+      <CleanupSection />
 
       <AboutSection version={version} report={report} agent={auth?.loggedIn ? agent : null} />
     </div>

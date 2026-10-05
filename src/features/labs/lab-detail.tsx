@@ -133,9 +133,17 @@ export function LabDetail({
     (remote ? labAttackShell(lab.id, "DOCKER") : exegolShell(lab.id)).catch((e) => setShellError(String(e)));
   };
 
+  // Where this deploy is headed, shown in the Deployment panel so it's clear during a build.
+  const destLabel =
+    status?.host ??
+    (runOn.kind === "host"
+      ? (hosts.find((h) => h.id === runOn.id)?.name ?? "your server")
+      : runOn.kind === "local-vm"
+        ? "a VM on this machine"
+        : "this machine");
   const deploy = (
     <Panel>
-      <DeploySteps lines={logs} busy={busy} ready={running} />
+      <DeploySteps lines={logs} busy={busy} ready={running} where={destLabel} />
     </Panel>
   );
   // The deploy panel is worth showing while a run is in progress, once the lab is up, or when
