@@ -14,7 +14,7 @@ import { CommandPalette, type Command } from "@/components/command-palette";
 import { Onboarding } from "@/features/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { authLogin, authStatus, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
+import { apiQuery, authLogin, authStatus, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 type Tab = "home" | "labs" | "machine" | "setup" | "server" | "cloud" | "events" | "settings";
@@ -52,6 +52,8 @@ export function AppShell() {
   const [onboarded, setOnboarded] = useState(true);
   const [ready, setReady] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // A light lab list for the command palette (jump straight to a lab), refreshed on auth change.
+  const [palLabs, setPalLabs] = useState<{ slug: string; title: string; category: string }[]>([]);
 
   const check = () =>
     systemCheck()
@@ -108,6 +110,13 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Labs for the palette: load once the app is ready and whenever sign-in changes.
+  useEffect(() => {
+    apiQuery<{ labs: { slug: string; title: string; category: string }[] }>("{ labs(sort: [{ title: ASC }]) { slug title category } }")
+      .then((d) => setPalLabs(d.labs))
+      .catch(() => setPalLabs([]));
+  }, [auth?.loggedIn]);
+
   const paletteCommands: Command[] = [
     { id: "find-lab", label: "Find a lab", hint: "search", icon: Search, keywords: "labs search ctf", run: findALab },
     ...NAV.filter((n) => !n.soon).map((n) => ({
@@ -116,6 +125,14 @@ export function AppShell() {
       icon: n.icon,
       keywords: n.label,
       run: () => navigate(n.id),
+    })),
+    ...palLabs.map((l) => ({
+      id: `lab-${l.slug}`,
+      label: l.title,
+      hint: l.category,
+      icon: FlaskConical,
+      keywords: `lab ${l.category}`,
+      run: () => navigate("labs", l.slug),
     })),
   ];
 
