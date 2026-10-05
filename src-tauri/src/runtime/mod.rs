@@ -361,15 +361,25 @@ async fn attack_box_vagrant(vagrant: &Path, spec: &isoloom_core::Spec, env: &[(S
 
 /// This machine's public IPv4, for cloud firewall rules.
 async fn public_ip() -> Result<String> {
-    let ip = reqwest::get("https://checkip.amazonaws.com")
-        .await
-        .map_err(|e| Error::Invalid(format!("couldn't find this machine's public IP: {e}")))?
-        .text()
-        .await
-        .map_err(|e| Error::Invalid(format!("couldn't find this machine's public IP: {e}")))?;
-    let ip = ip.trim();
-    ip.parse::<std::net::Ipv4Addr>().map_err(|_| Error::Invalid("unexpected public IP answer".into()))?;
-    Ok(ip.to_string())
+    // Several resolvers, tried in turn: this is a hard dependency of every cloud launch (the
+    // firewall is locked to this machine's IP), so one endpoint being down or blocked must not
+    // fail the launch. Each has its own short timeout so a hanging endpoint doesn't stall it.
+    const RESOLVERS: [&str; 4] = ["https://checkip.amazonaws.com", "https://api.ipify.org", "https://ifconfig.me/ip", "https://icanhazip.com"];
+    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(8)).build().map_err(|e| Error::Invalid(e.to_string()))?;
+    let mut last = String::new();
+    for url in RESOLVERS {
+        match client.get(url).send().await.and_then(|r| r.error_for_status()) {
+            Ok(resp) => match resp.text().await {
+                Ok(body) if body.trim().parse::<std::net::Ipv4Addr>().is_ok() => return Ok(body.trim().to_string()),
+                Ok(_) => last = format!("{url} gave an unexpected answer"),
+                Err(e) => last = format!("{url}: {e}"),
+            },
+            Err(e) => last = format!("{url}: {e}"),
+        }
+    }
+    Err(Error::Invalid(format!(
+        "Couldn't determine your public IP, needed to allow only your machine through the lab's firewall. Check your internet connection and try again. ({last})"
+    )))
 }
 
 /// Next to a lab's Terraform state: which runtime started it (`DOCKER` or `VM`).
