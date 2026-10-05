@@ -814,7 +814,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.6",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -2209,7 +2209,7 @@ dependencies = [
 [[package]]
 name = "isoloom-core"
 version = "0.6.0"
-source = "git+https://github.com/isoloom/isoloom?rev=f8267ffa4376ca74b9e22a9d29f8597cef8020c3#f8267ffa4376ca74b9e22a9d29f8597cef8020c3"
+source = "git+https://github.com/isoloom/isoloom?rev=b0af1e06bb9b343c8d28b100537ff90bc2784af4#b0af1e06bb9b343c8d28b100537ff90bc2784af4"
 dependencies = [
  "hcl-rs",
  "indexmap 2.14.2",
