@@ -177,6 +177,17 @@ pub async fn destroy(module: &Path, state: &Path, vars: &[(String, String)], env
             }
         }
     }
+    // Modules validate the SSH key even to destroy (older runs didn't save it): the launcher's.
+    if !all.iter().any(|(k, _)| k == "ssh_public_key")
+        && let Some(public) = ssh::launcher_key().and_then(|k| std::fs::read_to_string(k.with_extension("pub")).ok())
+    {
+        all.push(("ssh_public_key".into(), public.trim().to_string()));
+    }
+    if !all.iter().any(|(k, _)| k == "ssh_private_key_file")
+        && let Some(key) = ssh::launcher_key()
+    {
+        all.push(("ssh_private_key_file".into(), key.to_string_lossy().to_string()));
+    }
     terraform(module, state, &with_env(&all, env), "destroy", log).await?;
     let _ = std::fs::remove_file(state.join("terraform.tfstate"));
     Ok(())
