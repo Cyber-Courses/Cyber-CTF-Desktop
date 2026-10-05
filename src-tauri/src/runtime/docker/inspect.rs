@@ -93,6 +93,12 @@ fn declared_services(labels: &HashMap<String, String>) -> Vec<Service> {
         .filter_map(|(k, v)| {
             let name = k.strip_prefix("isoloom.service.").or_else(|| k.strip_prefix("cyberctf.service."))?.trim();
             let (kind, ports) = v.split_once(':').unwrap_or((v, ""));
+            // Isoloom says http or tcp: a web UI, or the service's own name (mysql, ssh...).
+            let kind = match (k.starts_with("isoloom."), kind) {
+                (true, "http") => "web",
+                (true, _) => name,
+                (false, k) => k,
+            };
             let ports = ports.split(',').filter_map(|p| p.trim().parse::<u16>().ok()).filter(|p| *p > 0).collect();
             (!name.is_empty()).then(|| Service { name: name.to_string(), kind: kind.trim().to_string(), ports })
         })

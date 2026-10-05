@@ -446,6 +446,33 @@ pub fn exegol_shell(id: String) -> Result<()> {
 mod tests {
     use super::{local_vm, mark_local_vm, providers::Provider, validate_id};
 
+    /// A real lab through the launcher's Docker path (opt-in, needs Docker):
+    ///   CYBERCTF_TEST_LAB=~/code/invoice-portal-api cargo test docker_lab_end_to_end -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore]
+    async fn docker_lab_end_to_end() {
+        let src = std::path::PathBuf::from(std::env::var("CYBERCTF_TEST_LAB").expect("CYBERCTF_TEST_LAB"));
+        let dir = std::env::temp_dir().join(format!("cyberctf-e2e-{}", rand::random::<u32>()));
+        assert!(std::process::Command::new("cp").arg("-R").arg(&src).arg(&dir).status().unwrap().success());
+        let _ = std::fs::remove_dir_all(dir.join(".isoloom"));
+        let id = "e2e-test";
+        super::lab::prepare(&dir, isoloom_core::Target::Docker).expect("generate");
+        let print = |l: String| println!("{l}");
+        let started = super::docker::start(&dir, id, &[], print).await;
+        let status = super::docker::status(&dir, id).await;
+        let check = super::docker::check(&dir, id).await;
+        super::docker::stop(&dir, id, print).await.expect("stop");
+        let _ = std::fs::remove_dir_all(&dir);
+        started.expect("start");
+        let status = status.expect("status");
+        assert!(status.running, "the lab should be running");
+        let services: Vec<String> = status.machines.iter().flat_map(|m| m.services.iter().map(|s| format!("{}={}", s.name, s.kind))).collect();
+        println!("services: {services:?}, url: {:?}", status.url);
+        assert!(services.contains(&"portal=web".to_string()), "{services:?}");
+        let check = check.expect("check");
+        assert!(check.available && check.ok, "check: {}", check.output);
+    }
+
     #[test]
     fn local_vm_marker_round_trips() {
         let dir = std::env::temp_dir().join(format!("cyberctf-localvm-{}", rand::random::<u32>()));
