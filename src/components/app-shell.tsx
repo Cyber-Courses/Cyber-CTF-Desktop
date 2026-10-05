@@ -11,6 +11,7 @@ import { ServerScreen } from "@/features/servers/servers-screen";
 import { CloudScreen } from "@/features/cloud/cloud-screen";
 import { SettingsScreen } from "@/features/settings/settings-screen";
 import { CommandPalette, type Command } from "@/components/command-palette";
+import { QuitGuard } from "@/features/app/quit-guard";
 import { Onboarding } from "@/features/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -155,6 +156,7 @@ export function AppShell() {
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <CommandPalette key={paletteOpen ? "open" : "closed"} open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={paletteCommands} />
+      <QuitGuard />
       {/* ---- Sidebar ---- */}
       <aside className="flex w-[14.5rem] shrink-0 flex-col border-r border-border">
         {/* macOS titlebar band inside the column, so the sidebar divider runs to the top of the window */}

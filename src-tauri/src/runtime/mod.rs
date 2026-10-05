@@ -16,7 +16,34 @@ mod vm;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex, OnceLock};
+
+/// How many lab start/stop operations are provisioning right now (across all labs). The app
+/// reads this to warn before quitting mid-deploy: interrupting a cloud `terraform apply` can
+/// leave billable resources behind, and a VM/Docker run half-created.
+static ACTIVE_DEPLOYS: AtomicUsize = AtomicUsize::new(0);
+
+pub fn active_deploys() -> usize {
+    ACTIVE_DEPLOYS.load(AtomicOrdering::SeqCst)
+}
+
+/// Increments the active-deploy count for as long as it is alive (RAII), so the count is always
+/// restored even if the operation errors or is cancelled.
+struct DeployGuard;
+
+impl DeployGuard {
+    fn new() -> Self {
+        ACTIVE_DEPLOYS.fetch_add(1, AtomicOrdering::SeqCst);
+        Self
+    }
+}
+
+impl Drop for DeployGuard {
+    fn drop(&mut self) {
+        ACTIVE_DEPLOYS.fetch_sub(1, AtomicOrdering::SeqCst);
+    }
+}
 
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
@@ -77,6 +104,7 @@ pub async fn start(
 ) -> Result<()> {
     let lock = lab_lock(id);
     let _guard = lock.lock().await;
+    let _deploy = DeployGuard::new();
     let Some(host) = host else {
         server::mark_lab(dir, None)?;
         // A lab runs in one place at a time: if it's already up here, refuse (a second copy
@@ -364,6 +392,7 @@ async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl
 /// it can re-check expiry under the same lock before tearing a lab down (the tokio lock is not
 /// reentrant, so it must not call `stop`, which would deadlock).
 async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
+    let _deploy = DeployGuard::new();
     let conn = server::lab_connection(app, dir)?;
     let result = match (runtime, conn) {
         (Runtime::Docker, None) if local_vm(dir).is_some() => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,

@@ -105,3 +105,9 @@ export function labLaunch(labId: string, provider: Provider | null, host: string
   logs.onmessage = onLog;
   return invoke<void>("lab_launch", { labId, provider, host, attackboxImage, logs });
 }
+
+/** Whether leaving now would interrupt a lab deploy (a cloud apply keeps billing if cut off). */
+export const deployInProgress = () => invoke<boolean>("deploy_in_progress");
+
+/** Quit the app even though a deploy is in progress (the user confirmed from the warning). */
+export const forceQuit = () => invoke<void>("force_quit");

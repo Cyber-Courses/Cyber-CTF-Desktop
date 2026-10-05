@@ -33,6 +33,11 @@ async fn terraform(module: &Path, state: &Path, env: &[(String, String)], comman
         return Err(Error::Invalid("Terraform isn't installed. Install it from the server setup (Tools on this machine).".into()));
     }
     std::fs::create_dir_all(state)?;
+    // A crashed or killed terraform can leave the local backend's lock file behind. The launcher
+    // serializes operations on a lab (lab_lock) and is the only writer of this state, so any lock
+    // present now is stale and would otherwise block this op with "Error acquiring the state
+    // lock". Clear it before init.
+    let _ = std::fs::remove_file(state.join(".terraform.tfstate.lock.info"));
     terraform_host(module, state, env, command, log).await
 }
 
@@ -259,15 +264,14 @@ fn has_instance(outputs: &Value) -> bool {
 /// needs a `destroy` to free the resources and end billing (an OS poweroff does not deallocate
 /// on Azure). Unlike `status`, this stays true after expiry; it's the signal the reaper uses.
 pub fn expired(state: &Path) -> bool {
-    let outputs = std::fs::read_to_string(state.join("terraform.tfstate"))
-        .ok()
-        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-        .map(|v| v["outputs"].clone())
-        .unwrap_or(Value::Null);
-    let has_instance = has_instance(&outputs);
+    let json = std::fs::read_to_string(state.join("terraform.tfstate")).ok().and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
+    // A completed apply exposes the lab host's `ip`; an interrupted or crashed apply may have
+    // already created billable resources without ever writing that output. Reap on either, so a
+    // half-done cloud deploy can't keep billing silently.
+    let has_billable = json.as_ref().is_some_and(|j| has_instance(&j["outputs"]) || j["resources"].as_array().is_some_and(|r| !r.is_empty()));
     let expires_at =
         std::fs::read_to_string(state.join(RUN_FILE)).ok().and_then(|raw| serde_json::from_str::<Value>(&raw).ok()).and_then(|v| v[EXPIRES_AT].as_u64());
-    has_instance && expires_at.is_some_and(|t| now() >= t)
+    has_billable && expires_at.is_some_and(|t| now() >= t)
 }
 
 #[cfg(test)]

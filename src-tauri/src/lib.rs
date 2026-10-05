@@ -9,7 +9,41 @@ mod platform;
 mod provisioning;
 mod runtime;
 
-use tauri::Manager;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use tauri::{Emitter, Manager};
+
+/// Set once the user confirms quitting while a deploy is in progress, so the close/exit handlers
+/// stop intercepting and let the app go.
+static FORCE_QUIT: AtomicBool = AtomicBool::new(false);
+
+/// Whether leaving now would interrupt a lab deploy. The UI reads this (and the handlers below
+/// use it) to warn before quitting: an interrupted cloud apply can leave billable resources.
+#[tauri::command]
+fn deploy_in_progress() -> bool {
+    runtime::active_deploys() > 0
+}
+
+/// The user chose to quit anyway from the "a lab is still deploying" prompt: stop intercepting
+/// and exit.
+#[tauri::command]
+fn force_quit(app: tauri::AppHandle) {
+    FORCE_QUIT.store(true, Ordering::SeqCst);
+    app.exit(0);
+}
+
+/// If a deploy is in progress (and the user hasn't already confirmed), keep the app open and ask
+/// the frontend to confirm. Returns true when the quit was intercepted.
+fn intercept_quit(app: &tauri::AppHandle) -> bool {
+    if FORCE_QUIT.load(Ordering::SeqCst) || runtime::active_deploys() == 0 {
+        return false;
+    }
+    let _ = app.emit("quit-blocked", runtime::active_deploys());
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.set_focus();
+    }
+    true
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,6 +61,16 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
+        // Quitting mid-deploy can leave resources running (a cloud apply keeps billing). Hold the
+        // window open and let the frontend confirm; the red-button close is handled here, Cmd+Q /
+        // app exit in the run() callback below.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && intercept_quit(&window.app_handle().clone())
+            {
+                api.prevent_close();
+            }
+        })
         // macOS app menu: Tauri's default menu labels the About/Hide/Quit items with the
         // crate name (cyberctf-desktop); build it explicitly so they read "Cyber CTF".
         // Edit + Window are kept so clipboard shortcuts and window controls still work.
@@ -129,7 +173,19 @@ pub fn run() {
             runtime::server::server_capacity,
             runtime::server_selftest::server_selftest,
             runtime::server::server_open_setup,
+            deploy_in_progress,
+            force_quit,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Cyber CTF");
+        .build(tauri::generate_context!())
+        .expect("error while building Cyber CTF")
+        .run(|app, event| {
+            // Cmd+Q, the Quit menu item and a system shutdown come through here, not the window
+            // close event. Intercept the same way, so a deploy in progress isn't cut off.
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = &event
+                && code.is_none()
+                && intercept_quit(app)
+            {
+                api.prevent_exit();
+            }
+        });
 }
