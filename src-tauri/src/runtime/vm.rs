@@ -10,6 +10,17 @@ use crate::exec::{run, run_env_timed, stream};
 /// a stuck VBoxManage) would otherwise pile up one blocked `vagrant status` per poll tick.
 const STATUS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
 
+/// How long a best-effort cleanup `vagrant destroy` may run before we give up waiting and fall
+/// back to hypervisor-level teardown: a wedged VirtualBox (a stuck VBoxManage) must not hang a
+/// start indefinitely.
+const CLEANUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
+
+/// A cleanup `vagrant destroy`, bounded so it can't hang the caller. Errors and timeouts are
+/// ignored: the hypervisor-level cleanup that follows handles whatever the destroy didn't.
+async fn stop_bounded(dir: &Path, env: &[(String, String)]) {
+    let _ = tokio::time::timeout(CLEANUP_TIMEOUT, stop(dir, env, |_l: String| {})).await;
+}
+
 /// `env` reaches the Vagrantfile and its provisioners (e.g. the evidence claim).
 pub async fn start(dir: &Path, provider: Provider, env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
     stream("vagrant", &["up", "--provider", provider.id()], Some(dir), env, log).await
@@ -60,7 +71,7 @@ pub async fn reconcile_provider(dir: &Path, requested: Provider, env: &[(String,
         return;
     }
     log("This lab last ran on a different target. Clearing that state so it can start fresh here…".into());
-    let _ = stop(dir, env, |_l: String| {}).await;
+    stop_bounded(dir, env).await;
     let _ = std::fs::remove_dir_all(dir.join(".vagrant"));
 }
 
@@ -172,7 +183,7 @@ async fn recover_parallels(wanted: &HashSet<String>, log: &mut impl FnMut(String
 /// step tolerates "nothing there". Scoped to this lab's own VM names, so it never touches
 /// unrelated VMs on the machine.
 pub async fn recover_local(dir: &Path, provider: Provider, log: &mut impl FnMut(String)) {
-    let _ = stop(dir, &[], |_l: String| {}).await;
+    stop_bounded(dir, &[]).await;
     let names: HashSet<String> = vm_names(dir).iter().map(|n| norm(n)).collect();
     if !names.is_empty() {
         match provider {
