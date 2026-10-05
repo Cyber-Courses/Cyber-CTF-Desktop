@@ -50,6 +50,9 @@ export const AWS_REGIONS: [string, string][] = [
 
 /** Common Azure locations for the cloud setup dropdown (id, human name). */
 export const AZURE_LOCATIONS: [string, string][] = [
+  // First: it accepts new subscriptions (busy regions such as West Europe may not).
+  ["swedencentral", "Sweden Central (Gävle)"],
+  ["italynorth", "Italy North (Milan)"],
   ["westeurope", "West Europe (Netherlands)"],
   ["northeurope", "North Europe (Ireland)"],
   ["francecentral", "France Central (Paris)"],

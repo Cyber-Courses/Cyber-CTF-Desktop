@@ -189,7 +189,7 @@ export function useHostSetup({
       name: !s.name.trim() || DEFAULT_NAMES.includes(s.name.trim()) ? CLOUD_DEFAULT_NAME[id] : s.name,
       host:
         id === "azure"
-          ? "westeurope"
+          ? "swedencentral"
           : id === "gcp"
             ? "europe-west1"
             : id === "digitalocean"

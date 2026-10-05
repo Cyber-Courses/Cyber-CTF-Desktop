@@ -209,8 +209,50 @@ pub(super) async fn test_azure(h: &HostProfile) -> TestResult {
             return TestResult { reachable: false, ..TestResult::from_checks(checks, None) };
         }
     }
+    checks.push(azure_capacity_check(h).await);
     checks.push(terraform_check().await);
     TestResult::from_checks(checks, Some(started.elapsed().as_millis() as u64))
+}
+
+/// Azure: can this subscription create the lab VM size in the region? New subscriptions often
+/// can't: a region refuses new customers, a size isn't offered to the subscription, or its
+/// family has no core quota. All seen on real runs; each makes a launch fail late.
+async fn azure_capacity_check(h: &HostProfile) -> Check {
+    // The size labs use: the one set on the account, else Isoloom's default for a small lab.
+    let size = h.datastore.clone().unwrap_or_else(|| "Standard_D2als_v6".into());
+    let region = h.host.as_str();
+    let sku = crate::exec::run(
+        "az",
+        &["vm", "list-skus", "--subscription", &h.username, "-l", region, "--size", &size, "--resource-type", "virtualMachines", "-o", "json"],
+        None,
+    )
+    .await;
+    let skus: Vec<serde_json::Value> = sku.ok().and_then(|o| serde_json::from_str(&o).ok()).unwrap_or_default();
+    let Some(entry) = skus.iter().find(|k| k["name"].as_str() == Some(size.as_str())) else {
+        return Check::fail("VM size", format!("{size} isn't offered in {region}. Try the region swedencentral, which accepts new subscriptions."));
+    };
+    if entry["restrictions"].as_array().is_some_and(|r| !r.is_empty()) {
+        return Check::fail("VM size", format!("{size} isn't available to this subscription in {region}. Try the region swedencentral."));
+    }
+    let family = entry["family"].as_str().unwrap_or_default().to_lowercase();
+    let usage = crate::exec::run("az", &["vm", "list-usage", "--subscription", &h.username, "-l", region, "-o", "json"], None).await;
+    let free = usage
+        .ok()
+        .and_then(|o| serde_json::from_str::<Vec<serde_json::Value>>(&o).ok())
+        .and_then(|u| {
+            u.into_iter().find(|x| x["name"]["value"].as_str().map(str::to_lowercase).as_deref() == Some(family.as_str())).map(|x| {
+                let n = |v: &serde_json::Value| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64()).unwrap_or(0);
+                n(&x["limit"]) - n(&x["currentValue"])
+            })
+        });
+    match free {
+        Some(f) if f >= 2 => Check::ok("VM size", format!("{size} is available in {region} ({f} cores of quota free).")),
+        Some(_) => Check::fail(
+            "VM size",
+            format!("No core quota left for {size} in {region}. Request more in the Azure portal (Quotas), or try the region swedencentral."),
+        ),
+        None => Check::warn("VM size", format!("Couldn't read the core quota for {size} in {region}; a launch may still fail on it.")),
+    }
 }
 
 /// GCP: `gcloud projects describe <project>` confirms gcloud's application-default login is
