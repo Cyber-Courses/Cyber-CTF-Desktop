@@ -292,7 +292,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             {(azure ? AZURE_LOCATIONS : gcp ? GCP_REGIONS : digitalocean ? DO_REGIONS : linode ? LINODE_REGIONS : oci ? OCI_REGIONS : AWS_REGIONS).map(
               ([code, name]) => (
                 <option key={code} value={code}>
-                  {code} — {name}
+                  {code} · {name}
                 </option>
               ),
             )}
