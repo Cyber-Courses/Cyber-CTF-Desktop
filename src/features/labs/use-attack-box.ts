@@ -16,10 +16,19 @@ export function useAttackBox(labId: string, { running, local }: { running: boole
   // Set in Settings; read once per visit.
   const [autoStart] = useState(() => getAutoAttackBox());
 
+  // Only the newest status read wins: a slow poll that was already in flight when the box was
+  // stopped must not resolve afterwards with a stale "running" and flip the button back (which
+  // made Stop seem to need two or three clicks).
+  const seq = useRef(0);
   const refresh = useCallback(() => {
+    const mine = ++seq.current;
     exegolStatus(labId, getAttackImage())
-      .then(setStatus)
-      .catch(() => setStatus(null));
+      .then((s) => {
+        if (mine === seq.current) setStatus(s);
+      })
+      .catch(() => {
+        if (mine === seq.current) setStatus(null);
+      });
   }, [labId]);
   useEffect(() => {
     if (!running || !local) return;
@@ -44,7 +53,16 @@ export function useAttackBox(labId: string, { running, local }: { running: boole
     [refresh],
   );
   const start = useCallback(() => run((l) => exegolStart(labId, getAttackImage(), l), "Starting the attack box…"), [run, labId]);
-  const stop = useCallback(() => run((l) => exegolStop(labId, l), "Removing the attack box…"), [run, labId]);
+  const stop = useCallback(
+    () =>
+      run(async (l) => {
+        await exegolStop(labId, l);
+        // It's gone now: show it immediately (a later poll confirms), so the button flips on
+        // the first click instead of waiting on the next status read.
+        setStatus((s) => (s ? { ...s, running: false, ip: "" } : s));
+      }, "Removing the attack box…"),
+    [run, labId],
+  );
 
   const autoStarted = useRef(false);
   useEffect(() => {
