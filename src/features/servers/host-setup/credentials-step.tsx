@@ -126,6 +126,20 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             </div>
           ) : azureSubs.length > 0 ? (
             <>
+              {/* The sign-in, its log, then the subscription it gives access to (as for GCP). */}
+              <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
+                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+                <span className="text-muted-foreground">Signed in to the Azure CLI.</span>
+                <button
+                  type="button"
+                  onClick={signIn}
+                  disabled={signingIn}
+                  className="ml-auto shrink-0 text-[0.6875rem] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+                >
+                  {signingIn ? "Signing in…" : "Switch account"}
+                </button>
+              </div>
+              {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" collapseOnDone />}
               <Field label="Subscription">
                 <Select value={v.username} onChange={(e) => set("username", e.target.value)}>
                   {!v.username && <option value="">Choose a subscription…</option>}
@@ -137,28 +151,21 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
                   ))}
                 </Select>
               </Field>
-              <div className="flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
-                <CheckCircle2 className="size-3.5 text-emerald-500" />
-                <span className="text-emerald-500">Signed in to the Azure CLI.</span>
-                <button type="button" onClick={signIn} disabled={signingIn} className="ml-auto underline-offset-2 hover:underline disabled:opacity-50">
-                  {signingIn ? "Signing in…" : "Switch account"}
-                </button>
-              </div>
             </>
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem]">
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
                 <span className="text-muted-foreground">Sign in with the Azure CLI to list your subscriptions.</span>
                 <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
                   {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (az login)
                 </Button>
               </div>
+              {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" collapseOnDone />}
               <Field label="Subscription ID" hint="or paste it">
                 <Input {...text("username")} placeholder="00000000-0000-0000-0000-000000000000" />
               </Field>
             </>
           )}
-          {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" />}
         </div>
       ) : gcp ? (
         <div className="space-y-3">
@@ -230,6 +237,26 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
         </div>
       ) : v.useCliCreds ? (
         <div className="space-y-3">
+          {/* The sign-in, its log, then the profile (as for GCP and Azure). */}
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
+            {checkingId ? (
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <Spinner className="size-3.5" /> Checking…
+              </span>
+            ) : awsIdentity ? (
+              <span className="flex min-w-0 items-center gap-1.5">
+                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+                <span className="text-muted-foreground">Signed in as</span>
+                <span className="truncate text-foreground">{awsIdentity}</span>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">Not signed in on this profile.</span>
+            )}
+            <Button variant="outline" size="sm" className="ml-auto" onClick={awsSignIn} disabled={signingIn}>
+              {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (browser)
+            </Button>
+          </div>
+          {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" collapseOnDone />}
           {profiles.length > 0 && (
             <Field label="Profile">
               <Select value={v.awsProfile ?? ""} onChange={(e) => set("awsProfile", e.target.value || null)}>
@@ -242,23 +269,6 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
               </Select>
             </Field>
           )}
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem]">
-            {checkingId ? (
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Spinner className="size-3.5" /> Checking…
-              </span>
-            ) : awsIdentity ? (
-              <span className="flex items-center gap-1.5 text-emerald-500">
-                <CheckCircle2 className="size-3.5" /> Signed in as {awsIdentity}
-              </span>
-            ) : (
-              <span className="text-muted-foreground">Not signed in on this profile.</span>
-            )}
-            <Button variant="outline" size="sm" className="ml-auto" onClick={awsSignIn} disabled={signingIn}>
-              {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (browser)
-            </Button>
-          </div>
-          {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" />}
         </div>
       ) : (
         <>
