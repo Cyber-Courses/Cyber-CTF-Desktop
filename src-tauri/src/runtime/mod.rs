@@ -138,7 +138,11 @@ pub async fn start(
             if provider.is_cloud() {
                 log(format!("This lab runs in your {} account and is billed there until you stop it.", conn.provider.id().to_uppercase()));
             }
-            terraform::apply(&module, &state_dir(app, id, tf)?, &vars, &conn.tf_env, &mut log).await?;
+            let state = state_dir(app, id, tf)?;
+            // Which output ran (containers or one VM per machine), for the auto-stop reaper.
+            std::fs::create_dir_all(&state)?;
+            std::fs::write(state.join(RUNTIME_FILE), if runtime == Runtime::Vm { "VM" } else { "DOCKER" })?;
+            terraform::apply(&module, &state, &vars, &conn.tf_env, &mut log).await?;
             if runtime == Runtime::Docker {
                 attack_box_remote(app, id, &spec, env, &mut log).await?;
             }
@@ -243,6 +247,9 @@ async fn public_ip() -> Result<String> {
     Ok(ip.to_string())
 }
 
+/// Next to a lab's Terraform state: which runtime started it (`DOCKER` or `VM`).
+const RUNTIME_FILE: &str = "runtime";
+
 /// Terraform state for a lab's target, outside the lab folder.
 fn state_dir(app: &AppHandle, id: &str, target: &str) -> Result<PathBuf> {
     validate_id(id)?;
@@ -308,11 +315,10 @@ pub async fn reap_expired_labs(app: &AppHandle) {
         }
         // Best effort: tear it down to end billing. No UI context here, so logs are dropped;
         // if the destroy fails, the next sweep retries.
-        // The module tells the runtime: Docker on one VM, or one VM per machine on Proxmox.
-        let runtime = if dir.join(".isoloom/proxmox").is_dir() && target == "proxmox" && !dir.join(".isoloom/docker-vm/proxmox").is_dir() {
-            Runtime::Vm
-        } else {
-            Runtime::Docker
+        // Recorded at start: containers on one VM, or one VM per machine.
+        let runtime = match std::fs::read_to_string(state.join(RUNTIME_FILE)).as_deref().map(str::trim) {
+            Ok("VM") => Runtime::Vm,
+            _ => Runtime::Docker,
         };
         let _ = stop(app, &dir, &id, runtime, |_line: String| {}).await;
     }

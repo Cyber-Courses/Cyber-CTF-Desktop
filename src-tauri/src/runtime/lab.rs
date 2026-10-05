@@ -67,7 +67,10 @@ pub fn terraform(dir: &Path, runtime: Runtime, tf: &str) -> Result<(PathBuf, Tar
         (Runtime::Docker, "proxmox") => (dir.join(".isoloom/docker-vm/proxmox"), Target::DockerVm),
         (Runtime::Vm, "proxmox") => (dir.join(".isoloom/proxmox"), Target::Proxmox),
         (Runtime::Docker, cloud) => (dir.join(".isoloom/cloud-docker").join(cloud), Target::CloudDocker),
-        (Runtime::Vm, _) => return Err(Error::Invalid("VM labs can't run in the cloud yet: run them on this machine, an ESXi host or Proxmox.".into())),
+        (Runtime::Vm, "aws") => (dir.join(".isoloom/cloud-vm/aws"), Target::CloudVm),
+        (Runtime::Vm, _) => {
+            return Err(Error::Invalid("VM labs run in the cloud on AWS only for now: or run them on this machine, an ESXi host or Proxmox.".into()));
+        }
     })
 }
 
@@ -139,6 +142,7 @@ mod tests {
         assert_eq!(terraform(d, Runtime::Docker, "aws").unwrap(), (PathBuf::from("/l/.isoloom/cloud-docker/aws"), Target::CloudDocker));
         assert_eq!(terraform(d, Runtime::Docker, "proxmox").unwrap().0, PathBuf::from("/l/.isoloom/docker-vm/proxmox"));
         assert_eq!(terraform(d, Runtime::Vm, "proxmox").unwrap().1, Target::Proxmox);
-        assert!(terraform(d, Runtime::Vm, "aws").is_err());
+        assert_eq!(terraform(d, Runtime::Vm, "aws").unwrap(), (PathBuf::from("/l/.isoloom/cloud-vm/aws"), Target::CloudVm));
+        assert!(terraform(d, Runtime::Vm, "azure").is_err());
     }
 }

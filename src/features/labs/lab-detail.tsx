@@ -21,6 +21,8 @@ import { runPlaces } from "@/features/labs/lab-row";
 import { labAttackShell, exegolShell, serverList, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
+const VM_CLOUDS_NOT_YET = ["azure", "gcp", "digitalocean", "linode", "oci"];
+
 export function LabDetail({
   lab,
   status,
@@ -84,7 +86,9 @@ export function LabDetail({
     void hosted.launch(lab.id);
   };
   const hostOk = useCallback(
-    (h: ServerHost) => !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && (h.provider === "proxmox" || h.provider === "aws")),
+    // VM labs: one VM per machine on ESXi, Proxmox and AWS (Isoloom's vagrant, proxmox and
+    // cloud-vm outputs); the other clouds run container labs only for now.
+    (h: ServerHost) => !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && VM_CLOUDS_NOT_YET.includes(h.provider)),
     [rt],
   );
   useEffect(() => {
