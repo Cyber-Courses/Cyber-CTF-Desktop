@@ -4,11 +4,23 @@ use std::path::Path;
 
 use super::compose;
 use crate::error::{Error, Result};
-use crate::exec::run;
+use crate::exec::{run, run_read};
 
-/// A host port is taken if we can't bind it (another lab, or anything else, holds it).
+/// Fails fast with a clear message when the Docker engine isn't reachable, instead of letting
+/// `compose up` (or the port/config probes) surface a raw "Cannot connect to the Docker daemon".
+/// Timed, so a wedged daemon can't hang the start.
+async fn ensure_docker_up() -> Result<()> {
+    run_read("docker", &["info", "--format", "{{.ServerVersion}}"], None)
+        .await
+        .map(|_| ())
+        .map_err(|_| Error::Invalid("Docker isn't running. Start Docker Desktop (or your container engine), then start the lab again.".into()))
+}
+
+/// A host port is taken if we can't bind it (another lab, or anything else, holds it). Checks
+/// every interface a container can publish to: all interfaces and the loopback specifically
+/// (a port held only on 127.0.0.1 doesn't fail the 0.0.0.0 bind on its own).
 fn port_in_use(port: u16) -> bool {
-    std::net::TcpListener::bind(("0.0.0.0", port)).is_err()
+    std::net::TcpListener::bind(("0.0.0.0", port)).is_err() || std::net::TcpListener::bind(("127.0.0.1", port)).is_err()
 }
 
 async fn is_running(dir: &Path, project: &str) -> bool {
@@ -18,19 +30,21 @@ async fn is_running(dir: &Path, project: &str) -> bool {
     }
 }
 
-async fn published_host_ports(dir: &Path, project: &str, env: &[(String, String)]) -> Vec<u16> {
-    match compose::output_env(dir, project, &["config", "--format", "json"], env).await {
-        Ok(out) => compose::host_ports_from_config(&out),
-        Err(_) => Vec::new(),
-    }
+async fn published_host_ports(dir: &Path, project: &str, env: &[(String, String)]) -> Result<Vec<u16>> {
+    let out = compose::output_env(dir, project, &["config", "--format", "json"], env).await?;
+    Ok(compose::host_ports_from_config(&out))
 }
 
 pub async fn start(dir: &Path, id: &str, env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
+    // A stopped engine otherwise surfaces as a raw daemon-connection error much later.
+    ensure_docker_up().await?;
     let project = compose::project(id);
     // Two labs can't share a host port. Unless this lab is already up (idempotent restart),
-    // refuse up front with a clear message instead of a cryptic Docker bind error.
+    // refuse up front with a clear message instead of a cryptic Docker bind error. With the
+    // engine confirmed up, a failure reading the ports is a real Compose-config error worth
+    // surfacing now rather than letting `up` fail on it.
     if !is_running(dir, &project).await {
-        for port in published_host_ports(dir, &project, env).await {
+        for port in published_host_ports(dir, &project, env).await? {
             if port_in_use(port) {
                 return Err(Error::Invalid(format!(
                     "Host port {port} is already in use — another lab is probably using it. Stop that lab, then start this one."

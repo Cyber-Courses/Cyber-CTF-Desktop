@@ -233,6 +233,41 @@ pub async fn detect(vagrant_installed: bool) -> Vec<ProviderStatus> {
     statuses
 }
 
+/// Verifies a local provider is actually usable before a start, so a missing hypervisor or
+/// Vagrant plugin fails with an actionable message instead of a raw Vagrant error mid-boot.
+/// Remote and cloud providers are validated by their own host/connection checks, so they pass.
+pub async fn ensure_usable(provider: Provider) -> std::result::Result<(), String> {
+    if provider.is_remote() || provider.is_cloud() {
+        return Ok(());
+    }
+    if !tool_present("vagrant", &["--version"]).await {
+        return Err("Vagrant isn't installed. Install it from the Machine page, then start the lab again.".into());
+    }
+    let hypervisor_ok = if provider == Provider::Hyperv {
+        true // a Windows feature, not probed here
+    } else if provider == Provider::Utm {
+        std::path::Path::new(UTM_APP).exists()
+    } else if let Some((program, args)) = provider.probe() {
+        tool_present(program, args).await
+    } else {
+        true
+    };
+    if !hypervisor_ok {
+        let what = provider.probe().map(|(p, _)| format!("`{p}` was not found")).unwrap_or_else(|| "its hypervisor isn't installed".into());
+        return Err(format!("Can't run on {} here: {what}. Install it from the Machine page, then start the lab again.", provider.id()));
+    }
+    if let Some(needed) = provider.plugin() {
+        let plugins = run("vagrant", &["plugin", "list"], None).await.map(|o| parse_plugins(&o)).unwrap_or_default();
+        if !plugins.iter().any(|i| i == needed) {
+            return Err(format!(
+                "The Vagrant plugin `{needed}` for {} isn't installed. Install it from the Machine page, then start the lab again.",
+                provider.id()
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

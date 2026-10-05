@@ -204,6 +204,9 @@ pub const LOCAL_VM_MARKER: &str = ".cyberctf-local-vm";
 /// provisioning failure is returned unchanged, never retried.
 async fn start_local_vm(dir: &Path, provider: providers::Provider, env: &[(String, String)], log: &mut impl FnMut(String)) -> Result<()> {
     use std::sync::atomic::{AtomicBool, Ordering};
+    // A missing hypervisor or Vagrant plugin should say so plainly, not fail mid-boot with a
+    // raw Vagrant error.
+    providers::ensure_usable(provider).await.map_err(Error::Invalid)?;
     // Switched target since last time (e.g. an ESXi run, now local): clear the old state so
     // `vagrant up` doesn't refuse with "an active machine was found with a different provider".
     vm::reconcile_provider(dir, provider, env, log).await;
@@ -354,6 +357,13 @@ fn state_dir(app: &AppHandle, id: &str, target: &str) -> Result<PathBuf> {
 async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
     let lock = lab_lock(id);
     let _guard = lock.lock().await;
+    stop_locked(app, dir, id, runtime, log).await
+}
+
+/// The body of `stop`, assuming the caller already holds the lab lock. The reaper uses this so
+/// it can re-check expiry under the same lock before tearing a lab down (the tokio lock is not
+/// reentrant, so it must not call `stop`, which would deadlock).
+async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
     let conn = server::lab_connection(app, dir)?;
     let result = match (runtime, conn) {
         (Runtime::Docker, None) if local_vm(dir).is_some() => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,
@@ -409,6 +419,14 @@ pub async fn reap_expired_labs(app: &AppHandle) {
         if !terraform::expired(&state) {
             continue;
         }
+        // Take the lab lock before tearing it down, and re-check expiry while holding it: between
+        // the cheap filter above and here a user may have restarted or extended this lab (a start
+        // re-applies and writes a fresh expiry), and destroying their live lab would be wrong.
+        let lock = lab_lock(&id);
+        let _guard = lock.lock().await;
+        if !terraform::expired(&state) {
+            continue;
+        }
         // Best effort: tear it down to end billing. No UI context here, so logs are dropped;
         // if the destroy fails, the next sweep retries.
         // Recorded at start: containers on one VM, or one VM per machine.
@@ -416,7 +434,7 @@ pub async fn reap_expired_labs(app: &AppHandle) {
             Ok("VM") => Runtime::Vm,
             _ => Runtime::Docker,
         };
-        let _ = stop(app, &dir, &id, runtime, |_line: String| {}).await;
+        let _ = stop_locked(app, &dir, &id, runtime, |_line: String| {}).await;
     }
 }
 

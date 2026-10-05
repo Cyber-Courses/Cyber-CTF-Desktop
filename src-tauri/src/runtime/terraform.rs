@@ -190,6 +190,9 @@ pub async fn destroy(module: &Path, state: &Path, vars: &[(String, String)], env
     }
     terraform(module, state, &with_env(&all, env), "destroy", log).await?;
     let _ = std::fs::remove_file(state.join("terraform.tfstate"));
+    // Drop the per-deployment known_hosts too: the next lab can get a recycled host IP with a
+    // new host key, and a stale pinned key would make its SSH (wait_ready, attack shell) fail.
+    let _ = std::fs::remove_file(state.join("known_hosts"));
     Ok(())
 }
 
