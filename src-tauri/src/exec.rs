@@ -32,6 +32,15 @@ pub async fn run(program: &'static str, args: &[&str], cwd: Option<&Path>) -> Re
     run_env(program, args, cwd, &[]).await
 }
 
+/// How long a read-only status probe (docker/vagrant inspect, ps, network ls) may take before
+/// it's treated as a stuck tool. Polled paths use this so a wedged daemon can't hang the UI.
+pub const STATUS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
+
+/// `run` with the shared status timeout, for polled read-only probes.
+pub async fn run_read(program: &'static str, args: &[&str], cwd: Option<&Path>) -> Result<String> {
+    run_inner(program, args, cwd, &[], Some(STATUS_TIMEOUT)).await
+}
+
 /// `run` with extra environment variables.
 pub async fn run_env(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)]) -> Result<String> {
     run_inner(program, args, cwd, env, None).await
@@ -71,7 +80,7 @@ async fn run_inner(
         None => cmd.output().await.map_err(to_err)?,
         Some(dur) => {
             cmd.kill_on_drop(true);
-            let mut child = cmd.spawn().map_err(to_err)?;
+            let child = cmd.spawn().map_err(to_err)?;
             match tokio::time::timeout(dur, child.wait_with_output()).await {
                 Ok(out) => out.map_err(to_err)?,
                 Err(_) => {
@@ -109,16 +118,28 @@ pub async fn stream(program: &'static str, args: &[&str], cwd: Option<&Path>, en
     let mut stdout = BufReader::new(child.stdout.take().expect("piped stdout")).lines();
     let mut stderr = BufReader::new(child.stderr.take().expect("piped stderr")).lines();
     let (mut out_done, mut err_done) = (false, false);
+    // Keep the last few stderr lines so a failure's error carries the actual cause, not just the
+    // exit status (callers that surface the returned error, not the log channel, rely on this).
+    let mut tail: std::collections::VecDeque<String> = std::collections::VecDeque::new();
     while !(out_done && err_done) {
         tokio::select! {
             line = stdout.next_line(), if !out_done => match line? { Some(l) => on_line(l), None => out_done = true },
-            line = stderr.next_line(), if !err_done => match line? { Some(l) => on_line(l), None => err_done = true },
+            line = stderr.next_line(), if !err_done => match line? {
+                Some(l) => {
+                    if tail.len() == 10 { tail.pop_front(); }
+                    tail.push_back(l.clone());
+                    on_line(l);
+                }
+                None => err_done = true,
+            },
         }
     }
 
     let status = child.wait().await?;
     if !status.success() {
-        return Err(Error::CommandFailed { command: format!("{program} {}", args.join(" ")), stderr: format!("exited with {status}") });
+        let cause = tail.iter().cloned().collect::<Vec<_>>().join("\n");
+        let stderr = if cause.trim().is_empty() { format!("exited with {status}") } else { format!("{} (exited with {status})", cause.trim()) };
+        return Err(Error::CommandFailed { command: format!("{program} {}", args.join(" ")), stderr });
     }
     Ok(())
 }

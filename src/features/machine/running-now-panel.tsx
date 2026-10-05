@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Container, Server, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
@@ -15,10 +15,18 @@ import { apiQuery, machineWorkloadStop, machineWorkloads, type Workload } from "
 export function RunningNowPanel({ refreshKey }: { refreshKey: unknown }) {
   const [workloads, setWorkloads] = useState<Workload[] | null>(null);
   const [stopping, setStopping] = useState<string | null>(null);
+  // One workloads read at a time: the read shells out to docker/vagrant and can be slow, so the
+  // 8s poll must not stack reads on top of one still in flight.
+  const loading = useRef(false);
   const load = useCallback(() => {
+    if (loading.current) return;
+    loading.current = true;
     machineWorkloads()
       .then(setWorkloads)
-      .catch(() => setWorkloads([]));
+      .catch(() => setWorkloads([]))
+      .finally(() => {
+        loading.current = false;
+      });
   }, []);
   useEffect(() => {
     load();

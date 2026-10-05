@@ -71,14 +71,20 @@ export function useHostedLabs() {
   // Poll the active session until it settles (RUNNING with endpoints, or FAILED/STOPPED/EXPIRED).
   useEffect(() => {
     if (!session || SETTLED.includes(session.state)) return;
+    // Cancelled when the session changes (e.g. stop() clears it): a poll already in flight must
+    // not resolve afterwards and resurrect a session the user just stopped.
+    let cancelled = false;
     const t = setTimeout(() => {
       apiQuery<{ labSession: HostedSession | null }>(SESSION, { id: session.id })
         .then((d) => {
-          if (d.labSession) setSession(d.labSession);
+          if (!cancelled && d.labSession) setSession(d.labSession);
         })
         .catch(() => {});
     }, 2500);
-    return () => clearTimeout(t);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [session]);
 
   const stop = useCallback(async () => {

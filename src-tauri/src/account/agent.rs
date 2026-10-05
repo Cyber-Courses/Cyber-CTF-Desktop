@@ -193,15 +193,25 @@ pub fn spawn(app: AppHandle) {
             }
         };
         log::info!("launcher agent online: {agent_id}");
-        let mut tick: u64 = 0;
+        // Heartbeat on its own task: claiming and running a lab can block for a long time (a
+        // cloud launch waits on terraform apply, up to tens of minutes), and the machine must
+        // keep reporting that it's online for the whole launch, not drop offline while busy.
+        {
+            let app = app.clone();
+            let agent_id = agent_id.clone();
+            tokio::spawn(async move {
+                loop {
+                    if auth::access_token().await.is_ok() {
+                        let _ = heartbeat(&app, &agent_id).await;
+                    }
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                }
+            });
+        }
         loop {
             if auth::access_token().await.is_ok() {
-                if tick.is_multiple_of(5) {
-                    let _ = heartbeat(&app, &agent_id).await;
-                }
                 let _ = poll_once(&app, &agent_id).await;
             }
-            tick = tick.wrapping_add(1);
             tokio::time::sleep(Duration::from_secs(6)).await;
         }
     });

@@ -14,7 +14,9 @@ mod ssh;
 mod terraform;
 mod vm;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
@@ -46,6 +48,16 @@ fn lab_dir(app: &AppHandle, id: &str) -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// One operation per lab at a time: start, stop and the expiry reaper all take this per-lab
+/// lock, so a user Start/Stop and the reaper can't run two Terraform (or Vagrant) operations
+/// over the same state at once, which could corrupt `terraform.tfstate`.
+fn lab_lock(id: &str) -> Arc<tokio::sync::Mutex<()>> {
+    static LOCKS: OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = OnceLock::new();
+    let map = LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut map = map.lock().expect("lab lock registry");
+    map.entry(id.to_string()).or_default().clone()
+}
+
 /// Starts an installed lab; `env` is passed to the runtime (evidence claim, attack box).
 ///
 /// - No `host`: Docker labs run on this machine's Docker, or in one VM on this machine with a
@@ -63,6 +75,8 @@ pub async fn start(
     env: &[(String, String)],
     mut log: impl FnMut(String),
 ) -> Result<()> {
+    let lock = lab_lock(id);
+    let _guard = lock.lock().await;
     let Some(host) = host else {
         server::mark_lab(dir, None)?;
         // A lab runs in one place at a time: if it's already up here, refuse (a second copy
@@ -303,6 +317,8 @@ fn state_dir(app: &AppHandle, id: &str, target: &str) -> Result<PathBuf> {
 
 /// Stops a lab wherever it runs, destroying remote VMs so the next start is clean.
 async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
+    let lock = lab_lock(id);
+    let _guard = lock.lock().await;
     let conn = server::lab_connection(app, dir)?;
     let result = match (runtime, conn) {
         (Runtime::Docker, None) if local_vm(dir).is_some() => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,

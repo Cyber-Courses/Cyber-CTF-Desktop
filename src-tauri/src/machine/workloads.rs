@@ -14,7 +14,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::error::{Error, Result};
-use crate::exec::{run, run_env_timed};
+use crate::exec::{run, run_env_timed, run_read};
 use crate::machine::selftest;
 use crate::runtime::providers::Provider;
 
@@ -79,7 +79,7 @@ fn lab_of(name: &str, project: &str) -> Option<String> {
 
 async fn docker_workloads() -> Vec<Workload> {
     let Ok(ps) =
-        run("docker", &["ps", "--filter", "name=^cyberctf-", "--format", "{{.ID}}\t{{.Names}}\t{{.Label \"com.docker.compose.project\"}}"], None).await
+        run_read("docker", &["ps", "--filter", "name=^cyberctf-", "--format", "{{.ID}}\t{{.Names}}\t{{.Label \"com.docker.compose.project\"}}"], None).await
     else {
         return Vec::new();
     };
@@ -101,7 +101,7 @@ async fn docker_workloads() -> Vec<Workload> {
     let ids: Vec<&str> = by_lab.values().flat_map(|(_, c)| c.iter().map(String::as_str)).collect();
     let mut args = vec!["stats", "--no-stream", "--format", "{{.ID}}\t{{.MemUsage}}"];
     args.extend(ids.iter());
-    let stats = run("docker", &args, None).await.unwrap_or_default();
+    let stats = run_read("docker", &args, None).await.unwrap_or_default();
     let mem: BTreeMap<String, u64> = stats
         .lines()
         .filter_map(|l| {

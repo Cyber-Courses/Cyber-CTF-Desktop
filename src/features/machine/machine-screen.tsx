@@ -40,8 +40,13 @@ export function MachineScreen({
   const [hist, setHist] = useState<{ cpu: number[]; mem: number[]; disk: number[] }>({ cpu: [], mem: [], disk: [] });
   useEffect(() => {
     let alive = true;
+    // One metrics read at a time: on a busy machine the read can take a moment, and the 2.5s
+    // interval must not stack a second read on top of one still running.
+    let reading = false;
     const push = (a: number[], v: number) => [...a, v].slice(-24);
-    const tick = () =>
+    const tick = () => {
+      if (reading) return;
+      reading = true;
       machineMetrics()
         .then((x) => {
           if (!alive) return;
@@ -52,7 +57,11 @@ export function MachineScreen({
             disk: push(h.disk, x.diskTotal ? (x.diskUsed / x.diskTotal) * 100 : 0),
           }));
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          reading = false;
+        });
+    };
     tick();
     const id = setInterval(tick, 2500);
     return () => {

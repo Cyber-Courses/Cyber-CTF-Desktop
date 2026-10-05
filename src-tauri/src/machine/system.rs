@@ -2,7 +2,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use crate::error::{Error, Result};
-use crate::exec::run;
+use crate::exec::{run, run_read};
 use crate::runtime::providers::{self, ProviderStatus};
 
 #[derive(Serialize)]
@@ -182,7 +182,7 @@ pub async fn system_check() -> SystemReport {
         probe("docker", &["--version"]),
         probe("docker", &["compose", "version", "--short"]),
         probe("vagrant", &["--version"]),
-        run("docker", &["info", "--format", "{{.OperatingSystem}}"], None),
+        run_read("docker", &["info", "--format", "{{.OperatingSystem}}"], None),
         probe("aws", &["--version"]),
         // `az version` prints JSON (first line is "{"); ask for just the azure-cli version string.
         probe("az", &["version", "--query", "\"azure-cli\"", "--output", "tsv"]),
@@ -256,7 +256,7 @@ pub async fn machine_metrics() -> MachineMetrics {
     let disk_used = disk_total.saturating_sub(disk_avail);
 
     let containers =
-        run("docker", &["ps", "--format", "{{.ID}}"], None).await.ok().map(|o| o.lines().filter(|l| !l.trim().is_empty()).count() as u32).unwrap_or(0);
+        run_read("docker", &["ps", "--format", "{{.ID}}"], None).await.ok().map(|o| o.lines().filter(|l| !l.trim().is_empty()).count() as u32).unwrap_or(0);
 
     MachineMetrics { cpu, mem_used, mem_total, disk_used, disk_total, uptime_secs: System::uptime(), cores, containers }
 }

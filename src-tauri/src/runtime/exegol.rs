@@ -5,7 +5,7 @@
 use serde::Serialize;
 
 use crate::error::{Error, Result};
-use crate::exec::{run, stream};
+use crate::exec::{run, run_read, stream};
 
 fn container(id: &str) -> String {
     format!("cyberctf-{id}-attacker")
@@ -40,7 +40,7 @@ pub struct ExegolStatus {
 /// is the one most targets see.
 async fn lab_networks(id: &str) -> Vec<String> {
     let filter = format!("label=com.docker.compose.project=cyberctf-{id}");
-    let out = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await.unwrap_or_default();
+    let out = run_read("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await.unwrap_or_default();
     main_first(out.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect())
 }
 
@@ -59,12 +59,12 @@ async fn lab_network(id: &str) -> Option<String> {
 }
 
 pub async fn status(id: &str, image: &str) -> ExegolStatus {
-    let image_present = run("docker", &["image", "inspect", image], None).await.is_ok();
+    let image_present = run_read("docker", &["image", "inspect", image], None).await.is_ok();
     let name = container(id);
     // Report the attacker's address on the lab network: the one the targets see it from.
     let lab_net = lab_network(id).await.unwrap_or_default();
     let tmpl = format!("{{{{.State.Running}}}}\t{{{{with index .NetworkSettings.Networks \"{lab_net}\"}}}}{{{{.IPAddress}}}}{{{{end}}}}");
-    let probe = run("docker", &["inspect", "-f", &tmpl, &name], None).await;
+    let probe = run_read("docker", &["inspect", "-f", &tmpl, &name], None).await;
     let (running, ip) = match probe {
         Ok(out) => {
             let line = out.lines().next().unwrap_or_default();
@@ -115,7 +115,7 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
 /// a version with other networks, keeps the attack box but not its connections). Best effort.
 pub async fn rejoin(id: &str) {
     let name = container(id);
-    if !matches!(run("docker", &["inspect", "-f", "{{.State.Running}}", &name], None).await, Ok(o) if o.trim() == "true") {
+    if !matches!(run_read("docker", &["inspect", "-f", "{{.State.Running}}", &name], None).await, Ok(o) if o.trim() == "true") {
         return;
     }
     for lab_net in lab_networks(id).await {

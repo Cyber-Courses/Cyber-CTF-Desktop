@@ -7,7 +7,7 @@ use std::path::Path;
 
 use super::compose::{self, PsEntry, Publisher};
 use crate::error::Result;
-use crate::exec::run;
+use crate::exec::run_read;
 use crate::runtime::{Interface, LabStatus, Machine, Network, Port, Service};
 
 /// True for services that aren't a web UI (databases, caches, brokers): the Open button
@@ -58,7 +58,7 @@ async fn inspect_containers(dir: &Path, id: &str, names: &[String]) -> HashMap<S
     let mut args: Vec<&str> =
         vec!["inspect", "-f", "{{.Name}}\t{{range $k, $v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}\t{{json .Config.Labels}}"];
     args.extend(names.iter().map(String::as_str));
-    let out = match run("docker", &args, Some(dir)).await {
+    let out = match run_read("docker", &args, Some(dir)).await {
         Ok(out) => out,
         Err(_) => return HashMap::new(),
     };
@@ -110,7 +110,7 @@ fn declared_services(labels: &HashMap<String, String>) -> Vec<Service> {
 /// The lab's networks (Compose labels them with the project), with subnet and isolation.
 async fn lab_networks(id: &str) -> Vec<Network> {
     let filter = format!("label=com.docker.compose.project={}", compose::project(id));
-    let Ok(names) = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await else {
+    let Ok(names) = run_read("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await else {
         return Vec::new();
     };
     let names: Vec<&str> = names.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
@@ -119,7 +119,7 @@ async fn lab_networks(id: &str) -> Vec<Network> {
     }
     let mut args = vec!["network", "inspect", "-f", "{{.Name}}\t{{range .IPAM.Config}}{{.Subnet}} {{end}}\t{{.Internal}}"];
     args.extend(names);
-    match run("docker", &args, None).await {
+    match run_read("docker", &args, None).await {
         Ok(out) => parse_networks(id, &out),
         Err(_) => Vec::new(),
     }

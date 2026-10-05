@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use super::{LabStatus, Machine, ssh};
 use crate::error::{Error, Result};
-use crate::exec::{run, stream};
+use crate::exec::{run_read, stream};
 
 /// Non-secret run parameters, kept next to the state so `destroy` can be replayed.
 const RUN_FILE: &str = "run.json";
@@ -29,7 +29,7 @@ async fn terraform(module: &Path, state: &Path, env: &[(String, String)], comman
     if !module.join("main.tf").is_file() {
         return Err(Error::Invalid(format!("this lab has no Terraform module at {}", module.display())));
     }
-    if run("terraform", &["version"], None).await.is_err() {
+    if run_read("terraform", &["version"], None).await.is_err() {
         return Err(Error::Invalid("Terraform isn't installed. Install it from the server setup (Tools on this machine).".into()));
     }
     std::fs::create_dir_all(state)?;

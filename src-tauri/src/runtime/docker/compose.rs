@@ -6,7 +6,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::error::Result;
-use crate::exec::{run, run_env, stream as exec_stream};
+use crate::exec::{run_env, run_read, stream as exec_stream};
 
 // One compose project per lab, so labs never collide and can be cleaned up by name.
 pub(super) fn project(id: &str) -> String {
@@ -25,7 +25,7 @@ fn args(project: &str, rest: &[&str]) -> Vec<String> {
 pub(super) async fn output(dir: &Path, project: &str, rest: &[&str]) -> Result<String> {
     let a = args(project, rest);
     let a: Vec<&str> = a.iter().map(String::as_str).collect();
-    run("docker", &a, Some(dir)).await
+    run_read("docker", &a, Some(dir)).await
 }
 
 /// Runs a compose subcommand with extra environment, and returns its stdout.
