@@ -48,8 +48,18 @@ async fn terraform_host(dir: &Path, state: &Path, env: &[(String, String)], comm
     let mut full = env.to_vec();
     full.push(("TF_DATA_DIR".to_string(), state.join(".terraform").display().to_string()));
     full.push(("TF_IN_AUTOMATION".to_string(), "1".to_string()));
-    // Isoloom pins provider versions in the module; the lock file is written next to it.
-    stream("terraform", &["init", "-input=false", "-no-color", backend.as_str()], Some(dir), &full, &mut log).await?;
+    // Isoloom pins provider versions in the module; the lock file is written next to it. init
+    // downloads the provider plugins the first time, which needs the network; say so plainly if
+    // that's what failed (otherwise a destroy of an existing lab can look impossible when it's
+    // just offline).
+    stream("terraform", &["init", "-input=false", "-no-color", backend.as_str()], Some(dir), &full, &mut log).await.map_err(|e| {
+        let s = e.to_string().to_lowercase();
+        if ["registry", "no such host", "timeout", "tls", "connection", "network is unreachable", "could not download"].iter().any(|m| s.contains(m)) {
+            Error::Invalid("Couldn't download the Terraform provider plugins (the first run needs internet). Check your connection and try again.".into())
+        } else {
+            e
+        }
+    })?;
     stream("terraform", &[command, "-auto-approve", "-input=false", "-no-color"], Some(dir), &full, log).await
 }
 

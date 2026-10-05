@@ -140,7 +140,8 @@ pub async fn start(
                 if provider.is_remote() {
                     return Err(Error::Invalid("pick a server host to run on ESXi or Proxmox".into()));
                 }
-                lab::prepare(dir, lab::vagrant_target(runtime))?;
+                let spec = lab::prepare(dir, lab::vagrant_target(runtime))?;
+                warn_if_low_memory(&spec, &mut log);
                 start_local_vm(&lab::vagrant_dir(dir, runtime), provider, env, &mut log).await
             }
         };
@@ -232,6 +233,22 @@ pub const LOCAL_VM_MARKER: &str = ".cyberctf-local-vm";
 /// Guards a local start: refuses when the lab is already running on this machine (Docker or a
 /// local VM), and otherwise tears down any stopped or half-created leftovers from a previous
 /// start so the fresh start doesn't trip over them (a poweroff VM, dead containers).
+/// Warns (without blocking) when the host likely can't fit all of a one-VM-per-machine lab's
+/// memory, so an out-of-memory failure mid-boot isn't a surprise. Not used for a container lab
+/// in a single VM, where the total would overcount.
+fn warn_if_low_memory(spec: &isoloom_core::Spec, log: &mut impl FnMut(String)) {
+    use sysinfo::System;
+    let needed_mb = u64::from(isoloom_core::totals(spec).memory_mb);
+    let mut sys = System::new();
+    sys.refresh_memory();
+    let available_mb = sys.available_memory() / (1024 * 1024);
+    if available_mb > 0 && needed_mb > available_mb {
+        log(format!(
+            "This lab's VMs ask for about {needed_mb} MB, but only ~{available_mb} MB is free on this machine. It may run slowly or fail to boot; close other apps or stop other labs if it struggles."
+        ));
+    }
+}
+
 /// Starts local VMs with one automatic recovery. A `vagrant up` can fail because a crashed or
 /// interrupted previous run left state behind that `ensure_local_slot_free` couldn't see: an
 /// orphaned hypervisor VM (VirtualBox "VERR_ALREADY_EXISTS") or a stale lock ("the machine is
