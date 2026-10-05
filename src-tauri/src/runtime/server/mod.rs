@@ -440,8 +440,36 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
     Ok(profile)
 }
 
+/// How many installed labs are marked as running on this host (filesystem markers only, no host
+/// calls or credentials).
+fn labs_on_host(app: &AppHandle, id: &str) -> u32 {
+    let Ok(labs) = app.path().app_data_dir().map(|d| d.join("labs")) else { return 0 };
+    let mut n = 0;
+    if let Ok(entries) = std::fs::read_dir(labs) {
+        for e in entries.flatten() {
+            if let Ok(marker) = std::fs::read_to_string(e.path().join(HOST_MARKER))
+                && marker.trim() == id
+            {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
 #[tauri::command]
 pub fn server_remove(app: AppHandle, id: String) -> Result<()> {
+    // Don't strand running labs: this host holds the credentials and state needed to stop and
+    // destroy its labs. Removing it mid-run would leave them unstoppable from the app, and a
+    // cloud lab would keep billing with no way left to tear it down.
+    let running = labs_on_host(&app, &id);
+    if running > 0 {
+        return Err(Error::Invalid(format!(
+            "{running} lab{} still running on this host. Stop {} before removing the host.",
+            if running == 1 { "" } else { "s" },
+            if running == 1 { "it" } else { "them" },
+        )));
+    }
     let mut store = load(&app)?;
     store.hosts.retain(|h| h.id != id);
     if store.default.as_deref() == Some(id.as_str()) {

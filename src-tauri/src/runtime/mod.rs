@@ -503,6 +503,13 @@ pub async fn lab_stop(app: AppHandle, id: String, runtime: Runtime, logs: Channe
     stop(&app, &dir, &id, runtime, log).await
 }
 
+/// Stops a lab with no log sink, for a caller that only needs the teardown (the hosted agent
+/// cleaning up after a launch that started infra but then failed to report back).
+pub async fn stop_lab(app: &AppHandle, id: &str, runtime: Runtime) -> Result<()> {
+    let dir = lab_dir(app, id)?;
+    stop(app, &dir, id, runtime, |_l: String| {}).await
+}
+
 #[tauri::command]
 pub async fn lab_status(app: AppHandle, id: String, runtime: Runtime) -> Result<LabStatus> {
     let dir = lab_dir(&app, &id)?;

@@ -139,22 +139,35 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
     };
     let image = host.as_ref().map(|_| DEFAULT_ATTACK_IMAGE);
     let url = labs::run(app, data["claimLaunch"].clone(), None, host.as_deref(), image, |_line: String| {}).await?;
-    let running_on = host.as_deref().and_then(|h| server::host_name(app, h)).map(|n| format!("Running on {n}"));
-    let token = random_hex();
-    let nonce = random_hex();
-    let control_url = colocation::serve(token.clone(), nonce.clone()).await.ok().map(|port| format!("http://127.0.0.1:{port}"));
-    update_state(
-        session_id,
-        "RUNNING",
-        Progress {
-            local_url: url.as_deref(),
-            control_url: control_url.as_deref(),
-            token: Some(&token),
-            nonce: Some(&nonce),
-            message: Some(running_on.as_deref().unwrap_or("Running on your machine")),
-        },
-    )
-    .await?;
+    // The lab is actually running on this machine now. If anything below fails (reporting back to
+    // the backend), tear it down before returning the error, so we don't leave infra running
+    // under a session the poller will mark FAILED.
+    let report = async {
+        let running_on = host.as_deref().and_then(|h| server::host_name(app, h)).map(|n| format!("Running on {n}"));
+        let token = random_hex();
+        let nonce = random_hex();
+        let control_url = colocation::serve(token.clone(), nonce.clone()).await.ok().map(|port| format!("http://127.0.0.1:{port}"));
+        update_state(
+            session_id,
+            "RUNNING",
+            Progress {
+                local_url: url.as_deref(),
+                control_url: control_url.as_deref(),
+                token: Some(&token),
+                nonce: Some(&nonce),
+                message: Some(running_on.as_deref().unwrap_or("Running on your machine")),
+            },
+        )
+        .await
+    }
+    .await;
+    if let Err(e) = report {
+        let runtime = if data["claimLaunch"]["runtime"] == "VM" { crate::runtime::Runtime::Vm } else { crate::runtime::Runtime::Docker };
+        if let Some(lab_id) = data["claimLaunch"]["labId"].as_str() {
+            let _ = crate::runtime::stop_lab(app, lab_id, runtime).await;
+        }
+        return Err(e);
+    }
     // A lab launched from the website just started here: let the player know on this machine.
     let _ = app.notification().builder().title("Lab running").body("A lab launched from the website is now running on this machine.").show();
     Ok(())
