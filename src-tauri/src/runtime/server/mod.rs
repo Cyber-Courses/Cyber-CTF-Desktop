@@ -279,7 +279,7 @@ fn valid_access_key_id(id: &str) -> bool {
     (16..=128).contains(&id.len()) && id.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
 }
 
-/// The Terraform target (deploy/terraform/<target>) for a provider, if it uses Terraform.
+/// The Terraform target (state folder, Isoloom module) for a provider, if it uses Terraform.
 pub fn terraform_target(provider: Provider) -> Option<&'static str> {
     match provider {
         Provider::Proxmox => Some("proxmox"),

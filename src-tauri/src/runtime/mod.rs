@@ -1,9 +1,10 @@
-//! Lab runtimes. A lab is a directory under `<app data>/labs/<lab id>/` holding
-//! either a `docker-compose.yml` (Docker labs) or a `Vagrantfile` (VM labs).
-//! The UI only ever passes a lab id and a runtime; paths and commands are built here.
+//! Lab runtimes. A lab is a directory under `<app data>/labs/<lab id>/` with an `isoloom.yml`
+//! at its root; the files of the target it runs on are generated under its `.isoloom/` (see
+//! `lab`). The UI only ever passes a lab id and a runtime; paths and commands are built here.
 
 mod docker;
 mod exegol;
+pub mod lab;
 mod model;
 pub mod providers;
 mod proxmox;
@@ -24,7 +25,7 @@ use crate::error::{Error, Result};
 pub use model::{Interface, LabStatus, Machine, Network, Place, Port, Service};
 
 /// Mirrors `LabRuntime` in CyberBackend.
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Runtime {
     Docker,
@@ -47,11 +48,10 @@ fn lab_dir(app: &AppHandle, id: &str) -> Result<PathBuf> {
 
 /// Starts an installed lab; `env` is passed to the runtime (evidence claim, attack box).
 ///
-/// - No `host`: Docker labs run on this machine; VM labs run their root Vagrantfile with
-///   the local `provider`.
-/// - With a server `host`: the lab runs there. A Docker lab is deployed through its
-///   `deploy/` layer onto a lab host VM (ESXi: `deploy/vagrant`, Proxmox:
-///   `deploy/terraform/proxmox`); a VM lab runs its root Vagrantfile on ESXi.
+/// - No `host`: Docker labs run on this machine's Docker, or in one VM on this machine with a
+///   local `provider` (Isoloom's docker-vm); VM labs run one VM per machine (Isoloom's vagrant).
+/// - With a server `host`: the lab runs there. ESXi runs the same Vagrantfiles; Proxmox and
+///   the clouds run Isoloom's Terraform (Docker on one VM, or one VM per machine on Proxmox).
 #[allow(clippy::too_many_arguments)]
 pub async fn start(
     app: &AppHandle,
@@ -66,19 +66,19 @@ pub async fn start(
     let Some(host) = host else {
         server::mark_lab(dir, None)?;
         return match runtime {
-            // A container lab in a VM on this machine: the lab's deploy/vagrant lab host, with
+            // A container lab in a VM on this machine: Isoloom's docker-vm (Docker on one VM), with
             // the attack box next to it inside the VM (the lab network isn't reachable from here).
             Runtime::Docker if provider.is_some_and(|p| !p.is_remote()) => {
                 let provider = provider.unwrap_or(providers::Provider::Virtualbox);
-                let vagrant = dir.join("deploy").join("vagrant");
-                if !vagrant.join("Vagrantfile").is_file() {
-                    return Err(Error::Invalid("this lab can't run in a VM yet (no deploy/vagrant)".into()));
-                }
+                let spec = lab::prepare(dir, lab::vagrant_target(runtime))?;
                 mark_local_vm(dir, Some(provider))?;
                 log(format!("Running in a {} VM on this machine", provider.id()));
-                vm::start(&vagrant, provider, env, log).await
+                let vagrant = lab::vagrant_dir(dir, runtime);
+                vm::start(&vagrant, provider, env, &mut log).await?;
+                attack_box_vagrant(&vagrant, &spec, env, &mut log).await
             }
             Runtime::Docker => {
+                lab::prepare(dir, isoloom_core::Target::Docker)?;
                 mark_local_vm(dir, None)?;
                 docker::start(dir, id, env, log).await
             }
@@ -87,7 +87,8 @@ pub async fn start(
                 if provider.is_remote() {
                     return Err(Error::Invalid("pick a server host to run on ESXi or Proxmox".into()));
                 }
-                vm::start(dir, provider, env, log).await
+                lab::prepare(dir, lab::vagrant_target(runtime))?;
+                vm::start(&lab::vagrant_dir(dir, runtime), provider, env, log).await
             }
         };
     };
@@ -96,17 +97,25 @@ pub async fn start(
     // Mark first, so a half-created lab can still be destroyed on the same host.
     server::mark_lab(dir, Some(host))?;
     log(format!("Running on server host {} ({})", conn.name, conn.provider.id()));
-    match (runtime, conn.provider) {
-        (Runtime::Docker, provider) if server::terraform_target(provider).is_some() => {
-            let target = server::terraform_target(provider).unwrap_or_default();
+    match conn.provider {
+        provider if server::terraform_target(provider).is_some() => {
+            let tf = server::terraform_target(provider).unwrap_or_default();
+            let (module, target) = lab::terraform(dir, runtime, tf)?;
+            let spec = lab::prepare(dir, target)?;
             let mut vars = conn.tf_vars.clone();
-            vars.extend(lab_vars(dir, id, env)?);
-            // The launcher's key, so "Open shell" can reach the attack box on the lab host.
-            vars.push(("ssh_public_key".into(), ssh::ensure_key(app).await?.1));
-            // Every cloud target's firewall opens SSH to this machine's public IP only; without
-            // this the security group / NSG / firewall has no inbound rule and the lab is
-            // unreachable (while still billing).
-            vars.push(("allowed_cidr".into(), format!("{}/32", public_ip().await?)));
+            if let Some(inputs) = lab::inputs_json(&spec, env) {
+                vars.push(("inputs".into(), inputs));
+            }
+            // The launcher's key: Terraform copies the lab over SSH with it, and "Open shell"
+            // reaches the attack box on the lab host.
+            let (key, public) = ssh::ensure_key(app).await?;
+            vars.push(("ssh_public_key".into(), public));
+            vars.push(("ssh_private_key_file".into(), key.to_string_lossy().to_string()));
+            if provider.is_cloud() {
+                // Every cloud firewall opens SSH and the published ports to this machine's
+                // public IP only.
+                vars.push(("allowed_cidr".into(), format!("{}/32", public_ip().await?)));
+            }
             if provider == providers::Provider::Aws {
                 // Stop before spending if this account is over its monthly budget, or if a budget
                 // is set and the spend is over it (AWS only); if the spend can't be read, warn
@@ -126,30 +135,30 @@ pub async fn start(
                     server::BudgetCheck::Ok => {}
                 }
             }
-            log(format!("This lab runs in your {} account and is billed there until you stop it.", conn.provider.id().to_uppercase()));
-            terraform::apply(&dir.join("deploy"), &state_dir(app, id, target)?, target, &vars, &conn.tf_env, log).await
-        }
-        (Runtime::Docker, provider) => {
-            let vagrant = dir.join("deploy").join("vagrant");
-            if !vagrant.join("Vagrantfile").is_file() {
-                return Err(Error::Invalid("this lab can't run on a server host yet (no deploy/vagrant)".into()));
+            if provider.is_cloud() {
+                log(format!("This lab runs in your {} account and is billed there until you stop it.", conn.provider.id().to_uppercase()));
             }
-            let env: Vec<(String, String)> = env.iter().cloned().chain(conn.env).collect();
-            vm::start(&vagrant, provider, &env, log).await
+            terraform::apply(&module, &state_dir(app, id, tf)?, &vars, &conn.tf_env, &mut log).await?;
+            if runtime == Runtime::Docker {
+                attack_box_remote(app, id, &spec, env, &mut log).await?;
+            }
+            Ok(())
         }
-        // vagrant-proxmox (last release 2016) no longer installs on current Vagrant, and
-        // multi-VM labs don't have a Terraform module yet.
-        (Runtime::Vm, providers::Provider::Proxmox | providers::Provider::Aws) => {
-            Err(Error::Invalid("This VM lab can only run on this machine or an ESXi host for now.".into()))
-        }
-        (Runtime::Vm, provider) => {
+        // ESXi: the same Vagrantfiles as on this machine, with the vmware_esxi provider.
+        provider => {
+            let spec = lab::prepare(dir, lab::vagrant_target(runtime))?;
             let env: Vec<(String, String)> = env.iter().cloned().chain(conn.env).collect();
-            vm::start(dir, provider, &env, log).await
+            let vagrant = lab::vagrant_dir(dir, runtime);
+            vm::start(&vagrant, provider, &env, &mut log).await?;
+            if runtime == Runtime::Docker {
+                attack_box_vagrant(&vagrant, &spec, &env, &mut log).await?;
+            }
+            Ok(())
         }
     }
 }
 
-/// Marks a container lab as running in a VM on this machine (its deploy/vagrant lab host),
+/// Marks a container lab as running in a VM on this machine (Isoloom's docker-vm),
 /// so stop, status and the attack-box shell go to the VM instead of local Docker.
 pub const LOCAL_VM_MARKER: &str = ".cyberctf-local-vm";
 
@@ -179,20 +188,46 @@ fn vm_label(provider: &str) -> &str {
     }
 }
 
-/// Terraform's lab variables: what to fetch (repository @ commit, recorded at install)
-/// and the run env (evidence claim, attack box).
-fn lab_vars(dir: &Path, id: &str, env: &[(String, String)]) -> Result<Vec<(String, String)>> {
-    let read = |name: &str| std::fs::read_to_string(dir.join(name)).map(|s| s.trim().to_string()).ok().filter(|s| !s.is_empty());
-    let (Some(repository), Some(commit)) = (read(".cyberctf-repository"), read(".cyberctf-commit")) else {
-        return Err(Error::Invalid("launch this lab once from the catalogue so the launcher knows its source".into()));
-    };
-    let mut vars = vec![("lab_slug".to_string(), id.to_string()), ("lab_repository".into(), repository), ("lab_commit".into(), commit)];
-    for (name, var) in [("CTF_API_URL", "ctf_api_url"), ("CTF_LAUNCH_TOKEN", "ctf_launch_token"), ("CYBERCTF_ATTACKBOX_IMAGE", "attackbox_image")] {
-        if let Some((_, v)) = env.iter().find(|(k, _)| k == name) {
-            vars.push((var.to_string(), v.clone()));
-        }
-    }
-    Ok(vars)
+/// The attack-box image the player picked, when one was (passed in the run env).
+fn attack_box_image(env: &[(String, String)]) -> Option<&str> {
+    env.iter().find(|(k, _)| k == "CYBERCTF_ATTACKBOX_IMAGE").map(|(_, v)| v.as_str()).filter(|i| exegol::valid_image(i))
+}
+
+/// Starts the attack box on a lab host running the lab's Compose file: a container named
+/// `attacker` on every network of the Compose project (the spec's name), so segmented labs
+/// are reachable from it. The lab network isn't reachable from this machine, so the player's
+/// shell goes over SSH into this container.
+fn attack_box_script(project: &str, image: &str) -> String {
+    format!(
+        "set -euo pipefail\ndocker rm -f attacker >/dev/null 2>&1 || true\nmapfile -t networks < <(docker network ls -q --filter label=com.docker.compose.project={project})\n[ -n \"${{networks[*]:-}}\" ] || {{ echo 'the lab has no network' >&2; exit 1; }}\ndocker pull -q {image} >/dev/null\ndocker run -d --name attacker --hostname attacker --network \"${{networks[0]}}\" {image} sleep infinity >/dev/null\nfor n in \"${{networks[@]:1}}\"; do docker network connect \"$n\" attacker; done\n",
+        project = ssh::sh_quote(project),
+        image = ssh::sh_quote(image),
+    )
+}
+
+/// The attack box on a Terraform lab host (server or cloud), over SSH with the launcher's key.
+async fn attack_box_remote(app: &AppHandle, id: &str, spec: &isoloom_core::Spec, env: &[(String, String)], log: &mut impl FnMut(String)) -> Result<()> {
+    let Some(image) = attack_box_image(env) else { return Ok(()) };
+    let Some(conn) = server::lab_connection(app, &lab_dir(app, id)?)? else { return Ok(()) };
+    let tf = server::terraform_target(conn.provider).unwrap_or_default();
+    let state = state_dir(app, id, tf)?;
+    let (host, user) = terraform::ssh_endpoint(&state).ok_or_else(|| Error::Invalid("the lab host has no address".into()))?;
+    let target = ssh::Target { host, port: 22, user, identity: ssh::ensure_key(app).await?.0 };
+    log("Starting the attack box next to the lab (this pulls its image the first time)…".into());
+    let script = attack_box_script(&spec.name, image);
+    target.exec(&state.join("known_hosts"), &format!("sudo bash -c {}", ssh::sh_quote(&script))).await?;
+    log("Attack box ready.".into());
+    Ok(())
+}
+
+/// The attack box in a local or ESXi lab VM (Docker on one VM), through `vagrant ssh`.
+async fn attack_box_vagrant(vagrant: &Path, spec: &isoloom_core::Spec, env: &[(String, String)], log: &mut impl FnMut(String)) -> Result<()> {
+    let Some(image) = attack_box_image(env) else { return Ok(()) };
+    log("Starting the attack box next to the lab (this pulls its image the first time)…".into());
+    let command = format!("sudo bash -c {}", ssh::sh_quote(&attack_box_script(&spec.name, image)));
+    crate::exec::run_env("vagrant", &["ssh", "-c", &command], Some(vagrant), env).await?;
+    log("Attack box ready.".into());
+    Ok(())
 }
 
 /// This machine's public IPv4, for cloud firewall rules.
@@ -218,15 +253,15 @@ fn state_dir(app: &AppHandle, id: &str, target: &str) -> Result<PathBuf> {
 async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
     let conn = server::lab_connection(app, dir)?;
     let result = match (runtime, conn) {
-        (Runtime::Docker, None) if local_vm(dir).is_some() => vm::stop(&dir.join("deploy").join("vagrant"), &[], log).await,
+        (Runtime::Docker, None) if local_vm(dir).is_some() => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,
         (Runtime::Docker, None) => docker::stop(dir, id, log).await,
-        (Runtime::Vm, None) => vm::stop(dir, &[], log).await,
-        (Runtime::Docker, Some(c)) if server::terraform_target(c.provider).is_some() => {
-            let target = server::terraform_target(c.provider).unwrap_or_default();
-            terraform::destroy(&dir.join("deploy"), &state_dir(app, id, target)?, target, &c.tf_vars, &c.tf_env, log).await
+        (Runtime::Vm, None) => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,
+        (_, Some(c)) if server::terraform_target(c.provider).is_some() => {
+            let tf = server::terraform_target(c.provider).unwrap_or_default();
+            let (module, _) = lab::terraform(dir, runtime, tf)?;
+            terraform::destroy(&module, &state_dir(app, id, tf)?, &c.tf_vars, &c.tf_env, log).await
         }
-        (Runtime::Docker, Some(c)) => vm::stop(&dir.join("deploy").join("vagrant"), &c.env, log).await,
-        (Runtime::Vm, Some(c)) => vm::stop(dir, &c.env, log).await,
+        (_, Some(c)) => vm::stop(&lab::vagrant_dir(dir, runtime), &c.env, log).await,
     };
     if result.is_ok() {
         server::mark_lab(dir, None)?;
@@ -240,19 +275,16 @@ async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Resu
         return match runtime {
             // Shown like a remote lab (the attack box lives in the VM, reached over SSH).
             Runtime::Docker if let Some(p) = local_vm(dir) => {
-                let status = vm::status(&dir.join("deploy").join("vagrant"), &[]).await?;
+                let status = vm::status(&lab::vagrant_dir(dir, runtime), &[]).await?;
                 Ok(LabStatus { host: Some(format!("{} VM on this machine", vm_label(&p))), place: Some(Place::LocalVm), ..status })
             }
             Runtime::Docker => Ok(LabStatus { place: Some(Place::Container), ..docker::status(dir, id).await? }),
-            Runtime::Vm => Ok(LabStatus { place: Some(Place::LocalVm), ..vm::status(dir, &[]).await? }),
+            Runtime::Vm => Ok(LabStatus { place: Some(Place::LocalVm), ..vm::status(&lab::vagrant_dir(dir, runtime), &[]).await? }),
         };
     };
-    let status = match runtime {
-        Runtime::Docker if server::terraform_target(c.provider).is_some() => {
-            terraform::status(&state_dir(app, id, server::terraform_target(c.provider).unwrap_or_default())?)
-        }
-        Runtime::Docker => vm::status(&dir.join("deploy").join("vagrant"), &c.env).await?,
-        Runtime::Vm => vm::status(dir, &c.env).await?,
+    let status = match server::terraform_target(c.provider) {
+        Some(tf) => terraform::status(&state_dir(app, id, tf)?),
+        None => vm::status(&lab::vagrant_dir(dir, runtime), &c.env).await?,
     };
     let place = if c.provider.is_cloud() { Place::Cloud } else { Place::Server };
     Ok(LabStatus { host: Some(c.name), place: Some(place), ..status })
@@ -276,7 +308,13 @@ pub async fn reap_expired_labs(app: &AppHandle) {
         }
         // Best effort: tear it down to end billing. No UI context here, so logs are dropped;
         // if the destroy fails, the next sweep retries.
-        let _ = stop(app, &dir, &id, Runtime::Docker, |_line: String| {}).await;
+        // The module tells the runtime: Docker on one VM, or one VM per machine on Proxmox.
+        let runtime = if dir.join(".isoloom/proxmox").is_dir() && target == "proxmox" && !dir.join(".isoloom/docker-vm/proxmox").is_dir() {
+            Runtime::Vm
+        } else {
+            Runtime::Docker
+        };
+        let _ = stop(app, &dir, &id, runtime, |_line: String| {}).await;
     }
 }
 
@@ -340,7 +378,7 @@ pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> R
     let dir = lab_dir(&app, &id)?;
     let Some(conn) = server::lab_connection(&app, &dir)? else {
         if local_vm(&dir).is_some() && matches!(runtime, Runtime::Docker) {
-            let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&dir.join("deploy").join("vagrant")), &[]).await?;
+            let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&lab::vagrant_dir(&dir, runtime)), &[]).await?;
             let target = ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab VM's SSH settings".into()))?;
             return exegol::open_terminal(&target.attack_shell_command(&ssh::known_hosts(&app)?)?);
         }
@@ -354,7 +392,7 @@ pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> R
             .ok_or_else(|| Error::Invalid("the lab host has no address yet; wait for it to finish starting".into()))?;
         ssh::Target { host, port: 22, user, identity: ssh::ensure_key(&app).await?.0 }
     } else {
-        let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&dir.join("deploy").join("vagrant")), &conn.env).await?;
+        let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&lab::vagrant_dir(&dir, runtime)), &conn.env).await?;
         ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab host's SSH settings".into()))?
     };
     exegol::open_terminal(&target.attack_shell_command(&ssh::known_hosts(&app)?)?)

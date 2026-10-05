@@ -1,5 +1,5 @@
-//! Terraform targets of a lab's `deploy/terraform/<target>/` module (Proxmox servers and the
-//! AWS / Azure / GCP clouds). A local `terraform` binary is required; state is kept as plain
+//! Terraform runs of a lab's Isoloom module (`.isoloom/docker-vm/proxmox`, `.isoloom/proxmox`,
+//! `.isoloom/cloud-docker/<cloud>`: Proxmox servers and the clouds). A local `terraform` binary is required; state is kept as plain
 //! files on the host. A containerised terraform would be simpler to ship but couldn't reach the
 //! host's cloud CLI auth (`~/.aws`, `az login` / `~/.azure`, gcloud ADC), so the cloud targets
 //! need the host binary. Variables reach it as `TF_VAR_*` through the environment (never on the
@@ -25,37 +25,37 @@ fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-async fn terraform(deploy: &Path, state: &Path, target: &str, env: &[(String, String)], command: &str, log: impl FnMut(String)) -> Result<()> {
-    if !deploy.join("terraform").join(target).is_dir() {
-        return Err(Error::Invalid(format!("this lab has no `{target}` deployment yet")));
+async fn terraform(module: &Path, state: &Path, env: &[(String, String)], command: &str, log: impl FnMut(String)) -> Result<()> {
+    if !module.join("main.tf").is_file() {
+        return Err(Error::Invalid(format!("this lab has no Terraform module at {}", module.display())));
     }
     if run("terraform", &["version"], None).await.is_err() {
         return Err(Error::Invalid("Terraform isn't installed. Install it from the server setup (Tools on this machine).".into()));
     }
     std::fs::create_dir_all(state)?;
-    terraform_host(deploy, state, target, env, command, log).await
+    terraform_host(module, state, env, command, log).await
 }
 
 /// Runs terraform from the host PATH (init, then the command). State lives in `state` as
 /// plain files on the host.
-async fn terraform_host(deploy: &Path, state: &Path, target: &str, env: &[(String, String)], command: &str, mut log: impl FnMut(String)) -> Result<()> {
-    let dir = deploy.join("terraform").join(target);
+async fn terraform_host(dir: &Path, state: &Path, env: &[(String, String)], command: &str, mut log: impl FnMut(String)) -> Result<()> {
     let backend = format!("-backend-config=path={}", state.join("terraform.tfstate").display());
     let mut full = env.to_vec();
     full.push(("TF_DATA_DIR".to_string(), state.join(".terraform").display().to_string()));
     full.push(("TF_IN_AUTOMATION".to_string(), "1".to_string()));
-    stream("terraform", &["init", "-input=false", "-no-color", "-lockfile=readonly", backend.as_str()], Some(&dir), &full, &mut log).await?;
-    stream("terraform", &[command, "-auto-approve", "-input=false", "-no-color"], Some(&dir), &full, log).await
+    // Isoloom pins provider versions in the module; the lock file is written next to it.
+    stream("terraform", &["init", "-input=false", "-no-color", backend.as_str()], Some(dir), &full, &mut log).await?;
+    stream("terraform", &[command, "-auto-approve", "-input=false", "-no-color"], Some(dir), &full, log).await
 }
 
 /// Creates (or updates) the target's resources. `vars` are Terraform variable names;
 /// `env` is raw environment the provider reads itself (cloud credentials).
-pub async fn apply(deploy: &Path, state: &Path, target: &str, vars: &[(String, String)], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
+pub async fn apply(module: &Path, state: &Path, vars: &[(String, String)], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
     std::fs::create_dir_all(state)?;
     // Remember the non-secret variables, so a later destroy has them without the launch spec.
     let mut run: serde_json::Map<String, Value> = vars
         .iter()
-        .filter(|(k, _)| matches!(k.as_str(), "lab_slug" | "lab_repository" | "lab_commit"))
+        .filter(|(k, _)| matches!(k.as_str(), "ssh_public_key" | "ssh_private_key_file" | "allowed_cidr"))
         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
         .collect();
     // When the lab host stops itself (cloud auto-stop), so status can tell.
@@ -65,7 +65,7 @@ pub async fn apply(deploy: &Path, state: &Path, target: &str, vars: &[(String, S
     std::fs::write(state.join(RUN_FILE), serde_json::to_string(&run).unwrap_or_default())?;
     let mut log = log;
     let vars = with_ssh_key(vars, ssh::launcher_key());
-    terraform(deploy, state, target, &with_env(&vars, env), "apply", &mut log).await?;
+    terraform(module, state, &with_env(&vars, env), "apply", &mut log).await?;
     wait_ready(state, &mut log).await
 }
 
@@ -162,7 +162,7 @@ fn output(state: &Path, name: &str) -> Option<String> {
 
 /// Destroys everything the target created. `vars` carry the connection again (the
 /// provider needs it); the lab variables are restored from the last apply.
-pub async fn destroy(deploy: &Path, state: &Path, target: &str, vars: &[(String, String)], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
+pub async fn destroy(module: &Path, state: &Path, vars: &[(String, String)], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
     if !state.join("terraform.tfstate").is_file() {
         return Ok(());
     }
@@ -177,7 +177,7 @@ pub async fn destroy(deploy: &Path, state: &Path, target: &str, vars: &[(String,
             }
         }
     }
-    terraform(deploy, state, target, &with_env(&all, env), "destroy", log).await?;
+    terraform(module, state, &with_env(&all, env), "destroy", log).await?;
     let _ = std::fs::remove_file(state.join("terraform.tfstate"));
     Ok(())
 }
@@ -203,7 +203,7 @@ pub fn ssh_endpoint(state: &Path) -> Option<(String, String)> {
     let raw = std::fs::read_to_string(state.join("terraform.tfstate")).ok()?;
     let v: Value = serde_json::from_str(&raw).ok()?;
     let ip = v["outputs"]["ip"]["value"].as_str().filter(|s| !s.is_empty())?.to_string();
-    let user = v["outputs"]["ssh_user"]["value"].as_str().unwrap_or("debian").to_string();
+    let user = v["outputs"]["ssh_user"]["value"].as_str().unwrap_or("isoloom").to_string();
     Some((ip, user))
 }
 
@@ -218,7 +218,7 @@ pub fn status(state: &Path) -> LabStatus {
         std::fs::read_to_string(state.join(RUN_FILE)).ok().and_then(|raw| serde_json::from_str::<Value>(&raw).ok()).and_then(|v| v[EXPIRES_AT].as_u64());
     // Past its auto-stop, the cloud instance has terminated itself.
     let expired = expires_at.is_some_and(|t| now() >= t);
-    let created = (!outputs["vm_id"]["value"].is_null() || !outputs["instance_id"]["value"].is_null()) && !expired;
+    let created = has_instance(&outputs) && !expired;
     let ip = outputs["ip"]["value"].as_str().unwrap_or_default().to_string();
     let machines = if created {
         vec![Machine {
@@ -236,6 +236,11 @@ pub fn status(state: &Path) -> LabStatus {
     LabStatus { running: created, machines, networks: Vec::new(), url: None, host: None, expires_at: expires_at.filter(|_| created), place: None }
 }
 
+/// The state holds a lab host: Isoloom modules output its `ip`.
+fn has_instance(outputs: &Value) -> bool {
+    outputs["ip"]["value"].as_str().is_some_and(|ip| !ip.is_empty())
+}
+
 /// True when the state still holds a cloud instance whose auto-stop time has passed, so it
 /// needs a `destroy` to free the resources and end billing (an OS poweroff does not deallocate
 /// on Azure). Unlike `status`, this stays true after expiry; it's the signal the reaper uses.
@@ -245,7 +250,7 @@ pub fn expired(state: &Path) -> bool {
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
         .map(|v| v["outputs"].clone())
         .unwrap_or(Value::Null);
-    let has_instance = !outputs["vm_id"]["value"].is_null() || !outputs["instance_id"]["value"].is_null();
+    let has_instance = has_instance(&outputs);
     let expires_at =
         std::fs::read_to_string(state.join(RUN_FILE)).ok().and_then(|raw| serde_json::from_str::<Value>(&raw).ok()).and_then(|v| v[EXPIRES_AT].as_u64());
     has_instance && expires_at.is_some_and(|t| now() >= t)
@@ -286,7 +291,7 @@ mod tests {
     async fn no_ready_file_output_means_no_wait() {
         let dir = std::env::temp_dir().join(format!("cyberctf-tf-{}", rand::random::<u32>()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("terraform.tfstate"), r#"{"outputs":{"vm_id":{"value":100},"ip":{"value":"10.0.0.9"}}}"#).unwrap();
+        std::fs::write(dir.join("terraform.tfstate"), r#"{"outputs":{"ip":{"value":"10.0.0.9"}}}"#).unwrap();
         let mut lines = Vec::new();
         wait_ready(&dir, &mut |l| lines.push(l)).await.unwrap();
         assert!(lines.is_empty());
@@ -298,7 +303,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("cyberctf-tf-{}", rand::random::<u32>()));
         std::fs::create_dir_all(&dir).unwrap();
         assert!(!status(&dir).running);
-        std::fs::write(dir.join("terraform.tfstate"), r#"{"outputs":{"vm_id":{"value":100},"ip":{"value":"10.10.10.150"}}}"#).unwrap();
+        std::fs::write(dir.join("terraform.tfstate"), r#"{"outputs":{"ip":{"value":"10.10.10.150"}}}"#).unwrap();
         let s = status(&dir);
         assert!(s.running);
         assert_eq!(s.machines[0].ip, "10.10.10.150");
@@ -310,55 +315,39 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
-    /// The launcher's Proxmox path against a real host (opt-in, slow):
-    ///   CYBERCTF_TEST_DEPLOY=<lab>/deploy CYBERCTF_TEST_PVE_HOST=... CYBERCTF_TEST_PVE_PASSWORD=... \
-    ///   CYBERCTF_TEST_LAB_COMMIT=<sha> cargo test proxmox_apply_status_destroy -- --ignored --nocapture
+    /// The launcher's Proxmox path against a real host (opt-in, slow), with a lab's Isoloom
+    /// module (Docker on one VM):
+    ///   CYBERCTF_TEST_MODULE=<lab>/.isoloom/docker-vm/proxmox CYBERCTF_TEST_PVE_HOST=... \
+    ///   CYBERCTF_TEST_PVE_PASSWORD=... cargo test proxmox_apply_status_destroy -- --ignored --nocapture
     #[tokio::test]
     #[ignore]
     async fn proxmox_apply_status_destroy() {
         let var = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("{k} is required"));
         let host = var("CYBERCTF_TEST_PVE_HOST");
         let state = std::env::temp_dir().join(format!("cyberctf-tf-it-{}", rand::random::<u32>()));
-        // A copy of deploy/, so a host without KVM can create the VM without starting it
-        // (CYBERCTF_TEST_PVE_NO_START) through a Terraform override file.
-        let deploy = std::env::temp_dir().join(format!("cyberctf-deploy-it-{}", rand::random::<u32>()));
-        let copied = std::process::Command::new("cp").arg("-R").arg(var("CYBERCTF_TEST_DEPLOY")).arg(&deploy).status().unwrap();
-        assert!(copied.success());
-        let _ = std::fs::remove_dir_all(deploy.join("terraform/proxmox/.terraform"));
-        if std::env::var("CYBERCTF_TEST_PVE_NO_START").is_ok() {
-            std::fs::write(
-                deploy.join("terraform/proxmox/test_override.tf"),
-                "resource \"proxmox_virtual_environment_vm\" \"labhost\" {\n  started = false\n}\n",
-            )
-            .unwrap();
-        }
-        let mut vars: Vec<(String, String)> = [
+        let module = std::path::PathBuf::from(var("CYBERCTF_TEST_MODULE"));
+        let (key, public) = (var("CYBERCTF_TEST_SSH_KEY"), std::fs::read_to_string(format!("{}.pub", var("CYBERCTF_TEST_SSH_KEY"))).unwrap());
+        let connection: Vec<(String, String)> = [
             ("proxmox_endpoint", format!("https://{host}:8006/")),
             ("proxmox_username", "root@pam".into()),
             ("proxmox_password", var("CYBERCTF_TEST_PVE_PASSWORD")),
             ("proxmox_insecure", "true".into()),
-            ("proxmox_ssh_address", host.clone()),
-            ("proxmox_storage", std::env::var("CYBERCTF_TEST_PVE_STORAGE").unwrap_or_else(|_| "local".into())),
-            ("cpu_type", std::env::var("CYBERCTF_TEST_PVE_CPU").unwrap_or_else(|_| "host".into())),
+            ("node", std::env::var("CYBERCTF_TEST_PVE_NODE").unwrap_or_else(|_| "pve".into())),
+            ("datastore", std::env::var("CYBERCTF_TEST_PVE_STORAGE").unwrap_or_else(|_| "local".into())),
         ]
         .into_iter()
         .map(|(k, v)| (k.to_string(), v))
         .collect();
-        let connection = vars.clone();
-        vars.extend([
-            ("lab_slug".to_string(), "invoice-portal-api".to_string()),
-            ("lab_repository".into(), "CyberCTF/invoice-portal-api".into()),
-            ("lab_commit".into(), var("CYBERCTF_TEST_LAB_COMMIT")),
-        ]);
+        let mut vars = connection.clone();
+        vars.extend([("ssh_public_key".to_string(), public.trim().to_string()), ("ssh_private_key_file".into(), key)]);
         let print = |l: String| println!("{l}");
 
-        let applied = apply(&deploy, &state, "proxmox", &vars, &[], print).await;
+        let applied = apply(&module, &state, &vars, &[], print).await;
         let s = status(&state);
         println!("status after apply: running={} machines={}", s.running, s.machines.len());
-        let destroyed = destroy(&deploy, &state, "proxmox", &connection, &[], print).await;
+        let destroyed = destroy(&module, &state, &connection, &[], print).await;
         let after = status(&state);
         let _ = std::fs::remove_dir_all(&state);
-        let _ = std::fs::remove_dir_all(&deploy);
         applied.expect("apply");
         assert!(s.running, "state outputs should show the VM");
         destroyed.expect("destroy");

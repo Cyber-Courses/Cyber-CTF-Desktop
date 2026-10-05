@@ -1,5 +1,5 @@
-//! The lab's exploitability self-check: a `check` service in the lab's compose file (its
-//! command is the lab's verify script) that asserts the intended exploit path still works.
+//! The lab's exploitability self-check: the lab's Isoloom `checks:`, run by the Compose file's
+//! `isoloom-check` service (profile `check`) on the lab networks.
 
 use std::path::Path;
 
@@ -23,11 +23,12 @@ pub struct Check {
 /// told to reset it instead of fighting a lab that can no longer be solved. Exit 0 = solvable.
 pub async fn check(dir: &Path, id: &str) -> Result<Check> {
     let project = compose::project(id);
-    let config = compose::output(dir, &project, &["config", "--format", "json"]).await.ok();
-    if !config.as_deref().map(|c| compose::config_has_service(c, "check")).unwrap_or(false) {
+    let service = crate::runtime::lab::CHECK_SERVICE;
+    let config = compose::output(dir, &project, &["--profile", "check", "config", "--format", "json"]).await.ok();
+    if !config.as_deref().map(|c| compose::config_has_service(c, service)).unwrap_or(false) {
         return Ok(Check { available: false, ok: false, output: String::new() });
     }
     let mut lines: Vec<String> = Vec::new();
-    let res = compose::stream(dir, &project, &["--profile", "check", "run", "--rm", "--no-deps", "check"], &[], |l| lines.push(l)).await;
+    let res = compose::stream(dir, &project, &["--profile", "check", "run", "--rm", "--no-deps", service], &[], |l| lines.push(l)).await;
     Ok(Check { available: true, ok: res.is_ok(), output: lines.join("\n") })
 }

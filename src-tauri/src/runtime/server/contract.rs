@@ -22,6 +22,17 @@ pub fn connection_env(h: &HostProfile, password: &str) -> Vec<(String, String)> 
             if let Some(v) = &h.network {
                 env.push(("CYBERCTF_ESXI_VIRTUAL_NETWORK", v.clone()));
             }
+            // The names Isoloom's Vagrantfiles read (the plugin reads the password itself).
+            env.push(("ESXI_HOSTNAME", h.host.clone()));
+            env.push(("ESXI_HOSTPORT", h.port.to_string()));
+            env.push(("ESXI_USERNAME", h.username.clone()));
+            env.push(("ESXI_PASSWORD", password.into()));
+            if let Some(v) = &h.datastore {
+                env.push(("ESXI_DATASTORE", v.clone()));
+            }
+            if let Some(v) = &h.network {
+                env.push(("ESXI_VIRTUAL_NETWORK", v.clone()));
+            }
         }
         Provider::Proxmox => {
             env.push(("CYBERCTF_PROXMOX_ENDPOINT", proxmox_endpoint(h)));
@@ -81,13 +92,25 @@ pub fn terraform_env(h: &HostProfile, password: &str) -> Vec<(String, String)> {
     }
 }
 
-/// Terraform variables for a host (`deploy/terraform/<target>`).
+/// Terraform variables for a host (the variables of Isoloom's modules).
 pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> {
     if matches!(h.provider, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode | Provider::Oci) {
-        let mut vars =
-            vec![("region".to_string(), h.host.clone()), ("auto_stop_hours".to_string(), h.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS).to_string())];
+        let hours = h.auto_stop_hours.unwrap_or(DEFAULT_AUTO_STOP_HOURS);
+        // `auto_stop_hours` is the launcher's own (expiry, reaper); Isoloom's modules take minutes.
+        let mut vars = vec![
+            ("region".to_string(), h.host.clone()),
+            ("auto_stop_hours".to_string(), hours.to_string()),
+            ("auto_stop_minutes".to_string(), (hours * 60).to_string()),
+        ];
+        // The size, under each module's own variable name.
         if let Some(t) = &h.datastore {
-            vars.push(("instance_type".into(), t.clone()));
+            let name = match h.provider {
+                Provider::Azure | Provider::DigitalOcean => "size",
+                Provider::Gcp => "machine_type",
+                Provider::Linode => "type",
+                _ => "instance_type",
+            };
+            vars.push((name.into(), t.clone()));
         }
         // GCP creates a project per lab, linked to this billing account and (optionally) org.
         if h.provider == Provider::Gcp {
@@ -98,7 +121,7 @@ pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> 
         }
         // OCI deploys into a compartment (the tenancy root works).
         if h.provider == Provider::Oci {
-            vars.push(("compartment_ocid".into(), h.username.clone()));
+            vars.push(("compartment_id".into(), h.username.clone()));
         }
         return vars;
     }
@@ -117,14 +140,15 @@ pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> 
     } else {
         vars.push(("proxmox_password", password.to_string()));
     }
+    // Isoloom's Proxmox variables.
     if let Some(v) = &h.node {
-        vars.push(("proxmox_node", v.clone()));
+        vars.push(("node", v.clone()));
     }
     if let Some(v) = &h.datastore {
-        vars.push(("proxmox_storage", v.clone()));
+        vars.push(("datastore", v.clone()));
     }
     if let Some(v) = &h.network {
-        vars.push(("proxmox_bridge", v.clone()));
+        vars.push(("uplink_bridge", v.clone()));
     }
     vars.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
 }

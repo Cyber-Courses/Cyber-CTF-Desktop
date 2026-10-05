@@ -23,23 +23,23 @@ pub enum Provider {
     VmwareEsxi,
     /// Remote Proxmox VE host (Terraform bpg/proxmox; plugin `vagrant-proxmox` is dead).
     Proxmox,
-    /// The player's AWS account (Terraform, a lab's deploy/terraform/aws). Not a Vagrant
+    /// The player's AWS account (Terraform, a lab's Isoloom cloud-docker module). Not a Vagrant
     /// provider and never detected locally, so it is not in `ALL`.
     Aws,
-    /// The player's Azure subscription (Terraform, a lab's deploy/terraform/azure). Like
+    /// The player's Azure subscription (Terraform, a lab's Isoloom cloud-docker module). Like
     /// AWS: not a Vagrant provider, never detected locally, not in `ALL`.
     Azure,
-    /// The player's Google Cloud project (Terraform, a lab's deploy/terraform/gcp). Like
+    /// The player's Google Cloud project (Terraform, a lab's Isoloom cloud-docker module). Like
     /// AWS and Azure: not a Vagrant provider, never detected locally, not in `ALL`.
     Gcp,
-    /// The player's DigitalOcean account (Terraform, a lab's deploy/terraform/digitalocean).
+    /// The player's DigitalOcean account (Terraform, a lab's Isoloom cloud-docker module).
     /// Authenticated with an API token; not a Vagrant provider, never detected, not in `ALL`.
     #[serde(rename = "digitalocean")]
     DigitalOcean,
-    /// The player's Linode account (Terraform, a lab's deploy/terraform/linode). Like
+    /// The player's Linode account (Terraform, a lab's Isoloom cloud-docker module). Like
     /// DigitalOcean: API-token auth, not a Vagrant provider, never detected, not in `ALL`.
     Linode,
-    /// The player's Oracle Cloud tenancy (Terraform, a lab's deploy/terraform/oci). Authenticated
+    /// The player's Oracle Cloud tenancy (Terraform, a lab's Isoloom cloud-docker module). Authenticated
     /// with an API signing key in ~/.oci/config; not a Vagrant provider, never detected, not in `ALL`.
     Oci,
 }

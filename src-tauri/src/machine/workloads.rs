@@ -212,11 +212,21 @@ pub async fn machine_workload_stop(app: AppHandle, kind: String, id: String) -> 
             Ok(())
         }
         "vm" => {
-            let dir = if id == "selftest" { selftest::work_dir(&app, "vm")? } else { labs_dir(&app)?.join(&id) };
-            if !dir.join("Vagrantfile").is_file() {
+            // A lab's VMs: one per machine (.isoloom/vagrant) or Docker on one VM (.isoloom/docker-vm).
+            let dirs: Vec<PathBuf> = if id == "selftest" {
+                vec![selftest::work_dir(&app, "vm")?]
+            } else {
+                let lab = labs_dir(&app)?.join(&id);
+                vec![lab.join(".isoloom/vagrant"), lab.join(".isoloom/docker-vm")]
+            };
+            let dirs: Vec<PathBuf> = dirs.into_iter().filter(|d| d.join("Vagrantfile").is_file()).collect();
+            if dirs.is_empty() {
                 return Err(Error::Invalid(format!("no VMs found for `{id}`")));
             }
-            run("vagrant", &["destroy", "-f"], Some(&dir)).await.map(|_| ())
+            for dir in dirs {
+                run("vagrant", &["destroy", "-f"], Some(&dir)).await?;
+            }
+            Ok(())
         }
         _ => Err(Error::Invalid(format!("unknown workload kind `{kind}`"))),
     }
@@ -243,7 +253,7 @@ pub struct Storage {
 /// Images an installed Docker lab's compose file references.
 async fn lab_images(dir: &Path, id: &str) -> Vec<String> {
     let project = format!("cyberctf-{id}");
-    run("docker", &["compose", "-p", &project, "-f", "docker-compose.yml", "config", "--images"], Some(dir))
+    run("docker", &["compose", "-p", &project, "-f", crate::runtime::lab::COMPOSE_FILE, "config", "--images"], Some(dir))
         .await
         .map(|o| o.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
         .unwrap_or_default()
@@ -290,11 +300,12 @@ async fn wanted(app: &AppHandle, extra_images: &[String]) -> (BTreeSet<String>, 
     images.insert(selftest::IMAGE.to_string());
     let mut boxes = BTreeSet::new();
     for (id, dir) in installed_labs(app) {
-        if dir.join("docker-compose.yml").is_file() {
+        // The lab's generated files (written when it last ran on that target).
+        if dir.join(crate::runtime::lab::COMPOSE_FILE).is_file() {
             images.extend(lab_images(&dir, &id).await);
         }
-        boxes.extend(vagrantfile_boxes(&dir.join("Vagrantfile")));
-        boxes.extend(vagrantfile_boxes(&dir.join("deploy").join("vagrant").join("Vagrantfile")));
+        boxes.extend(vagrantfile_boxes(&dir.join(".isoloom/vagrant/Vagrantfile")));
+        boxes.extend(vagrantfile_boxes(&dir.join(".isoloom/docker-vm/Vagrantfile")));
     }
     let arm = std::env::consts::ARCH == "aarch64";
     for p in [Provider::Virtualbox, Provider::VmwareDesktop, Provider::Parallels, Provider::Utm, Provider::Libvirt, Provider::Qemu, Provider::Hyperv] {

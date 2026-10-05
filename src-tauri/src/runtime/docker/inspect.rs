@@ -84,13 +84,14 @@ fn parse_inspect(id: &str, out: &str) -> HashMap<String, Inspected> {
         .collect()
 }
 
-/// The services a lab declares on a container: `cyberctf.service.<name>: "<kind>:<ports>"`,
-/// ports comma-separated and optional (`worker`). Malformed ports are skipped, never guessed.
+/// The services a lab declares on a container: Isoloom's `isoloom.service.<name>: "<http|tcp>:<port>"`
+/// (or the older `cyberctf.service.<name>: "<kind>:<ports>"`), ports comma-separated and optional.
+/// Malformed ports are skipped, never guessed.
 fn declared_services(labels: &HashMap<String, String>) -> Vec<Service> {
     let mut services: Vec<Service> = labels
         .iter()
         .filter_map(|(k, v)| {
-            let name = k.strip_prefix("cyberctf.service.")?.trim();
+            let name = k.strip_prefix("isoloom.service.").or_else(|| k.strip_prefix("cyberctf.service."))?.trim();
             let (kind, ports) = v.split_once(':').unwrap_or((v, ""));
             let ports = ports.split(',').filter_map(|p| p.trim().parse::<u16>().ok()).filter(|p| *p > 0).collect();
             (!name.is_empty()).then(|| Service { name: name.to_string(), kind: kind.trim().to_string(), ports })

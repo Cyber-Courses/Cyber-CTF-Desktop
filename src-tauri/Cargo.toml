@@ -37,6 +37,8 @@ tar = "0.4.46"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 reqwest = { version = "0.13", features = ["json", "form"] }
 serde_yaml_ng = "0.10.0"
+# Labs describe themselves with an isoloom.yml; the launcher generates and runs their files.
+isoloom-core = { git = "https://github.com/isoloom/isoloom", rev = "a98835adaf157f890ee7d0a9f561f098bdb8cde3" }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }

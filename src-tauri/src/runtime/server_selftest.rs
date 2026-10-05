@@ -113,7 +113,7 @@ async fn proxmox(app: &AppHandle, r: &Reporter, conn: &server::Connection, work:
         let vars = vars.clone();
         let tf_env = conn.tf_env.clone();
         r.step("apply", "Create and boot the VM on the host", async {
-            terraform::apply(work, &state, target, &vars, &tf_env, |l| r.progress("apply", "Create and boot the VM on the host", l)).await?;
+            terraform::apply(&work.join("terraform").join(target), &state, &vars, &tf_env, |l| r.progress("apply", "Create and boot the VM on the host", l)).await?;
             Ok(((), Some("VM created".into())))
         })
         .await
@@ -151,7 +151,7 @@ async fn proxmox(app: &AppHandle, r: &Reporter, conn: &server::Connection, work:
 async fn destroy_proxmox(r: &Reporter, conn: &server::Connection, work: &Path, state: &Path, target: &str) {
     let _ = r
         .step("cleanup", "Destroy the test VM", async {
-            terraform::destroy(work, state, target, &conn.tf_vars, &conn.tf_env, |l| r.progress("cleanup", "Destroy the test VM", l)).await?;
+            terraform::destroy(&work.join("terraform").join(target), state, &conn.tf_vars, &conn.tf_env, |l| r.progress("cleanup", "Destroy the test VM", l)).await?;
             Ok(((), Some("removed".into())))
         })
         .await;
@@ -198,7 +198,7 @@ provider "proxmox" {
     dynamic "node" {
       for_each = var.proxmox_ssh_address == "" ? [] : [var.proxmox_ssh_address]
       content {
-        name    = var.proxmox_node
+        name    = var.node
         address = node.value
       }
     }
@@ -210,8 +210,8 @@ locals {
 }
 
 resource "proxmox_download_file" "debian" {
-  node_name           = var.proxmox_node
-  datastore_id        = var.proxmox_image_storage
+  node_name           = var.node
+  datastore_id        = var.image_datastore
   content_type        = "iso"
   url                 = "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2"
   file_name           = "cyberctf-debian-12-genericcloud-amd64.img"
@@ -220,8 +220,8 @@ resource "proxmox_download_file" "debian" {
 }
 
 resource "proxmox_virtual_environment_file" "user_data" {
-  node_name    = var.proxmox_node
-  datastore_id = var.proxmox_snippet_storage
+  node_name    = var.node
+  datastore_id = var.snippets_datastore
   content_type = "snippets"
   source_raw {
     file_name = "${local.name}-user-data.yaml"
@@ -240,7 +240,7 @@ resource "proxmox_virtual_environment_file" "user_data" {
 
 resource "proxmox_virtual_environment_vm" "labhost" {
   name      = local.name
-  node_name = var.proxmox_node
+  node_name = var.node
   tags      = ["cyberctf", "selftest"]
   on_boot   = false
 
@@ -255,21 +255,21 @@ resource "proxmox_virtual_environment_vm" "labhost" {
     dedicated = var.memory_mb
   }
   disk {
-    datastore_id = var.proxmox_storage
+    datastore_id = var.datastore
     file_id      = proxmox_download_file.debian.id
     interface    = "virtio0"
     size         = var.disk_gb
     discard      = "on"
   }
   network_device {
-    bridge = var.proxmox_bridge
+    bridge = var.uplink_bridge
   }
   operating_system {
     type = "l26"
   }
   serial_device {}
   initialization {
-    datastore_id      = var.proxmox_storage
+    datastore_id      = var.datastore
     user_data_file_id = proxmox_virtual_environment_file.user_data.id
     ip_config {
       ipv4 {
@@ -309,23 +309,23 @@ variable "proxmox_ssh_address" {
   type    = string
   default = ""
 }
-variable "proxmox_node" {
+variable "node" {
   type    = string
   default = "pve"
 }
-variable "proxmox_storage" {
+variable "datastore" {
   type    = string
   default = "local-lvm"
 }
-variable "proxmox_image_storage" {
+variable "image_datastore" {
   type    = string
   default = "local"
 }
-variable "proxmox_snippet_storage" {
+variable "snippets_datastore" {
   type    = string
   default = "local"
 }
-variable "proxmox_bridge" {
+variable "uplink_bridge" {
   type    = string
   default = "vmbr0"
 }
