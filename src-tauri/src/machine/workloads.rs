@@ -14,7 +14,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::error::{Error, Result};
-use crate::exec::run;
+use crate::exec::{run, run_env_timed};
 use crate::machine::selftest;
 use crate::runtime::providers::Provider;
 
@@ -121,7 +121,13 @@ async fn docker_workloads() -> Vec<Workload> {
 
 /// Running local VMs from `vagrant global-status`, kept to the app's own folders.
 async fn vm_workloads(app: &AppHandle) -> Vec<Workload> {
-    let Ok(out) = run("vagrant", &["global-status", "--prune", "--machine-readable"], None).await else { return Vec::new() };
+    // Timed: `vagrant global-status` talks to VirtualBox, which can be wedged. Without a limit a
+    // polled call would hang and stack up one blocked process per tick.
+    let Ok(out) =
+        run_env_timed("vagrant", &["global-status", "--prune", "--machine-readable"], None, &[], std::time::Duration::from_secs(30)).await
+    else {
+        return Vec::new();
+    };
     let labs = labs_dir(app).ok();
     let selftest_dir = selftest::work_dir(app, "vm").ok();
 

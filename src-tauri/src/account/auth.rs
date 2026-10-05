@@ -205,13 +205,24 @@ async fn receive_callback(listener: TcpListener) -> Result<(String, String)> {
             continue;
         }
         let param = |k: &str| url.query_pairs().find(|(key, _)| key == k).map(|(_, v)| v.into_owned());
-        let body = if param("error").is_some() {
+        let failed = param("error").is_some();
+        let body = if failed {
             "Login was cancelled or failed. You can close this tab and try again from Cyber CTF."
         } else {
             "You are logged in. You can close this tab and return to Cyber CTF."
         };
+        // A button that reopens the app (the cyberctf:// scheme brings the running window to the
+        // front) and then closes this tab. window.close() only works for a script-opened tab, so
+        // it's best effort; the deep link raises the app either way, and the text covers the rest.
+        let label = if failed { "Back to Cyber CTF" } else { "Return to Cyber CTF" };
         let page = format!(
-            "<!doctype html><meta charset=utf-8><title>Cyber CTF</title><body style=\"font-family:system-ui;background:#0a0a0a;color:#e5e5e5;display:grid;place-items:center;height:100vh\"><p>{body}</p>"
+            "<!doctype html><meta charset=utf-8><title>Cyber CTF</title>\
+             <body style=\"font-family:system-ui;background:#0a0a0a;color:#e5e5e5;display:grid;place-items:center;height:100vh;margin:0\">\
+             <div style=\"text-align:center;max-width:30rem;padding:1.5rem\">\
+             <p style=\"line-height:1.5\">{body}</p>\
+             <button id=\"r\" style=\"margin-top:1rem;padding:.6rem 1.2rem;border:0;border-radius:.5rem;background:#7c5cff;color:#fff;font:inherit;font-weight:600;cursor:pointer\">{label}</button>\
+             </div>\
+             <script>var b=document.getElementById('r');function go(){{location.href='cyberctf://';setTimeout(function(){{window.open('','_self');window.close();}},300);}}b.addEventListener('click',go);</script>"
         );
         let _ = stream
             .write_all(
