@@ -117,8 +117,9 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
   logout: (
     <>
-      <path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3" />
-      <path d="M10 12h10M17 9l3 3-3 3" />
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="m16 17 5-5-5-5" />
+      <path d="M21 12H9" />
     </>
   ),
   sparkles: (

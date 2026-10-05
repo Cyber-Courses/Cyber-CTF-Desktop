@@ -47,10 +47,12 @@ export function HostedSessionPanel({
                 Open it in your browser and attack it with your own tools. {expiresIn(session!.expiresAt)}
               </p>
             </>
-          ) : state === "FAILED" || (!session && error) ? (
+          ) : state === "FAILED" || error ? (
             <>
-              <p className="text-[0.8125rem] font-medium text-destructive">Couldn&rsquo;t start the hosted lab</p>
-              <p className="mt-0.5 text-[0.75rem] text-muted-foreground">{session?.message ?? error ?? "Try again in a moment."}</p>
+              <p className="text-[0.8125rem] font-medium text-destructive">
+                {state === "FAILED" ? "Couldn’t start the hosted lab" : "This is taking longer than expected"}
+              </p>
+              <p className="mt-0.5 text-[0.75rem] text-muted-foreground">{error ?? session?.message ?? "Try again in a moment."}</p>
             </>
           ) : state === "STOPPED" || state === "EXPIRED" ? (
             <p className="text-[0.8125rem] text-muted-foreground">The hosted session {state === "EXPIRED" ? "expired" : "ended"}.</p>

@@ -32,8 +32,13 @@ export function useAuthActions(onChange: (status: AuthStatus) => void) {
   }
 
   async function logout() {
-    await authLogout();
-    onChange({ loggedIn: false, name: null, email: null });
+    // Always clear local auth state, even if the backend logout call fails, so the UI can't get
+    // stuck "signed in" with no way out.
+    try {
+      await authLogout();
+    } finally {
+      onChange({ loggedIn: false, name: null, email: null });
+    }
   }
 
   return { login, logout, busy, error };

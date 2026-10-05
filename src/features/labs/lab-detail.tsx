@@ -108,15 +108,19 @@ export function LabDetail({
     (h: ServerHost) => !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && VM_CLOUDS_NOT_YET.includes(h.provider)),
     [rt],
   );
+  // Prefer this machine when a local hypervisor can run the lab; fall back to the default server
+  // only when none can. A default server shouldn't silently capture every VM lab.
+  const localReady = isDocker || (readyVms ?? []).some((p) => rt?.providers.includes(p));
   useEffect(() => {
     serverList()
       .then((l) => {
         setHosts(l.hosts);
         const def = l.hosts.find((h) => h.id === l.default);
-        setRunOn(!isDocker && def && hostOk(def) ? { kind: "host", id: def.id } : { kind: "local" });
+        const preferHost = !localReady && def && hostOk(def);
+        setRunOn(preferHost ? { kind: "host", id: def.id } : { kind: "local" });
       })
       .catch(() => setHosts([]));
-  }, [isDocker, hostOk]);
+  }, [isDocker, hostOk, localReady]);
   const [shellError, setShellError] = useState<string | null>(null);
 
   // The attack box (local container labs); a remote lab's runs next to it on its host.
@@ -196,7 +200,7 @@ export function LabDetail({
               </span>
             )}
             <span>· {lab.category}</span>
-            {rt && !native && (isDocker || runOn === null) && <span className="text-amber-500">· emulated (slower)</span>}
+            {rt && !native && isDocker && <span className="text-amber-500">· emulated (slower)</span>}
             {(lab.skills ?? []).map((sk) => (
               <span key={sk.id} className="rounded border border-border px-1.5 py-px text-[0.6875rem]">
                 {sk.name}

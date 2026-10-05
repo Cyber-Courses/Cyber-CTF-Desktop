@@ -48,9 +48,10 @@ function RowButton({
 }
 
 /**
- * One lab as a dense list row: runtime glyph, title + difficulty/category, description,
- * and the contextual action (Start, or Open + Running) with a chevron into the detail.
- * Reused on the Overview rail-list and the full Labs list.
+ * One lab as a dense list row: runtime glyph, title + difficulty/category, the run-place icons
+ * (where it runs / can run / can't), and Open + Stop while it runs, with a chevron into the
+ * detail (starting happens on the lab's own page). Reused on the Overview rail-list and the full
+ * Labs list.
  */
 export function LabRow({
   lab,

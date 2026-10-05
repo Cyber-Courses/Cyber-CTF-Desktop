@@ -8,22 +8,85 @@ import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 
 /**
- * A lab's start-up as named steps with their durations, Vercel-build style. The steps are
- * read from the launch log as it streams (the launcher's own lines and Docker Compose's
- * progress), and each line is timed when it arrives. The raw log stays one click away.
+ * A lab's start-up as named steps with their durations, Vercel-build style. The steps are read
+ * from the launch log as it streams and timed when each line arrives. Which steps appear depends
+ * on the target the launcher is driving, detected from the output itself:
+ *  - Docker Compose: pull images, create, start, wait until healthy.
+ *  - Vagrant (a VM on this machine, or an ESXi host): one step per machine (dc01, ws01, …), each
+ *    showing its live action (importing the box, booting, provisioning).
+ *  - Terraform (a cloud account or Proxmox): set up Terraform, create the infrastructure, then
+ *    install and start the lab on the host.
+ * The raw log stays one click away.
  */
 
-type Phase = { id: string; label: string; match: (line: string) => boolean };
+type Timed = { line: string; at: number };
+type Step = { id: string; label: string; rows: Timed[] };
 
-const PHASES: Phase[] = [
-  { id: "download", label: "Download the lab", match: (l) => /^Downloading |^Lab installed|^Running on server host/.test(l) },
+// Docker Compose phases, matched line by line.
+type Phase = { id: string; label: string; match: (line: string) => boolean };
+const DOCKER_PHASES: Phase[] = [
   { id: "images", label: "Get images", match: (l) => /\bImage\b.*\b(Pulling|Pulled|Building|Built)\b|^\s*(Pulling|Building)\b/.test(l) },
   { id: "create", label: "Create the network and containers", match: (l) => /\b(Network|Volume|Container)\b.*\b(Creating|Created)\b/.test(l) },
   { id: "start", label: "Start the containers", match: (l) => /\bContainer\b.*\b(Starting|Started)\b/.test(l) },
   { id: "health", label: "Wait until healthy", match: (l) => /\bContainer\b.*\b(Waiting|Healthy|Exited)\b/.test(l) },
 ];
 
-type Timed = { line: string; at: number };
+/** Which target's output this is, inferred from the lines seen so far. */
+function detectTarget(text: string): "vagrant" | "terraform" | "docker" | "unknown" {
+  if (/^\s*==>\s*\S+:/m.test(text) || /Bringing machine '.*' up/.test(text)) return "vagrant";
+  if (/Initializing the backend|Terraform (has been|will perform)|^\s*[\w.[\]"-]+: (Creating|Creation complete|Still creating)/m.test(text)) return "terraform";
+  if (/\bContainer\b.*\b(Creating|Started|Running)\b|^\s*Pulling\s|\bNetwork\b.*\bCreat/m.test(text)) return "docker";
+  return "unknown";
+}
+
+// A line the launcher prints while fetching/placing the lab, before the target's own output.
+const isDownloadLine = (l: string) => /^(Downloading|Cloning|Lab installed|Fetching)\b|^Running (on server host|in a .* VM)/.test(l);
+// The launcher's own narration during a local VM start (recovery, provider choice).
+const isPrepLine = (l: string) => /left VM state behind|Clearing leftover|different target|Recovering|Preparing the lab/.test(l);
+
+const machineLabel = (name: string) => name.replace(/^isoloom-/, "");
+
+/** Builds the ordered step list from the timed log, per the detected target. */
+function deriveSteps(timed: Timed[]): Step[] {
+  const steps: Step[] = [];
+  const push = (id: string, label: string, t: Timed) => {
+    let s = steps.find((x) => x.id === id);
+    if (!s) {
+      s = { id, label, rows: [] };
+      steps.push(s);
+    }
+    s.rows.push(t);
+  };
+  const target = detectTarget(timed.map((t) => t.line).join("\n"));
+  let machine: string | null = null;
+  let docker: Phase | null = null;
+  for (const t of timed) {
+    const l = t.line;
+    if (isDownloadLine(l)) {
+      push("download", "Download the lab", t);
+      continue;
+    }
+    if (target === "vagrant") {
+      const m = l.match(/^\s*==>\s*([A-Za-z0-9_.-]+):/);
+      if (m) machine = m[1];
+      if (machine) push(`m:${machine}`, machineLabel(machine), t);
+      else push("prepare", isPrepLine(l) ? "Prepare this machine" : "Start", t);
+    } else if (target === "terraform") {
+      if (/Initializing|terraform init|Installing|Finding .* versions|Reusing previous/.test(l)) push("tf-init", "Set up Terraform", t);
+      else if (/Creating\.\.\.|Creation complete|Still creating|Destroying|Apply complete|Plan:|will perform|Modif/.test(l)) push("tf-apply", "Create the infrastructure", t);
+      else if (/Waiting for the lab host|running:|install Docker|cloud-init|bootstrap|is ready|ready/i.test(l)) push("tf-ready", "Install and start the lab", t);
+      else push(steps.at(-1)?.id ?? "tf-init", steps.at(-1)?.label ?? "Set up Terraform", t);
+    } else if (target === "docker") {
+      const p = DOCKER_PHASES.find((ph) => ph.match(l));
+      if (p) docker = p;
+      if (docker) push(docker.id, docker.label, t);
+      else push("prepare", "Prepare the lab", t);
+    } else {
+      push(steps.at(-1)?.id ?? "prepare", steps.at(-1)?.label ?? "Preparing", t);
+    }
+  }
+  return steps;
+}
 
 /** Times each log line when it arrives; starts over when a new launch clears the log. */
 function useTimedLines(lines: string[]): Timed[] {
@@ -56,16 +119,9 @@ export function DeploySteps({ lines, busy, ready, where }: { lines: string[]; bu
   const start = timed[0]?.at;
   const end = done?.at ?? failed?.at ?? (busy ? now : timed.at(-1)?.at);
 
-  // Assign each line to the phase it matches; unmatched lines stay with the current phase.
-  const byPhase = new Map<string, Timed[]>();
-  let current: string | null = null;
-  for (const t of timed) {
-    const p = PHASES.find((ph) => ph.match(t.line));
-    if (p) current = p.id;
-    if (current) byPhase.set(current, [...(byPhase.get(current) ?? []), t]);
-  }
-  const seen = PHASES.filter((p) => byPhase.has(p.id));
-  const lastSeen = seen.at(-1)?.id;
+  // The steps to show, built from the log per the detected target (Vagrant / Terraform / Docker).
+  const steps = deriveSteps(timed);
+  const lastSeen = steps.at(-1)?.id;
 
   return (
     <div>
@@ -95,9 +151,9 @@ export function DeploySteps({ lines, busy, ready, where }: { lines: string[]; bu
       </div>
 
       <ul className="divide-y divide-border">
-        {seen.map((p, i) => {
-          const rows = byPhase.get(p.id)!;
-          const next = seen[i + 1] ? byPhase.get(seen[i + 1].id)![0].at : undefined;
+        {steps.map((p, i) => {
+          const rows = p.rows;
+          const next = steps[i + 1]?.rows[0]?.at;
           const isLast = p.id === lastSeen;
           const state = failed && isLast ? "fail" : isLast && busy ? "running" : "ok";
           const from = rows[0].at;
@@ -144,7 +200,7 @@ export function DeploySteps({ lines, busy, ready, where }: { lines: string[]; bu
             <span className="flex-1 text-foreground">Ready</span>
           </li>
         )}
-        {busy && seen.length === 0 && (
+        {busy && steps.length === 0 && (
           <li className="flex items-center gap-2.5 px-3.5 py-2 text-[0.78125rem] text-muted-foreground">
             <span className="flex size-4 shrink-0 items-center justify-center">
               <Circle className="size-2" />
