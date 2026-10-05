@@ -176,12 +176,21 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     };
     let down: Vec<(String, String)> =
         entries.iter().filter(|e| e.state != "running" && serving.iter().any(|s| s == &e.service)).map(|e| (e.service.clone(), e.state.clone())).collect();
+    // The lab's own networks, in order: a container also sits on Docker's own bridges (the
+    // default `bridge`, a publish bridge), whose 172.x address isn't the lab address, and
+    // `docker inspect` lists them in random order. Keep only lab-network interfaces, in this
+    // order, so the diagram shows each machine's real lab address deterministically.
+    let lab_order: Vec<&str> = networks.iter().map(|n| n.name.as_str()).collect();
     let mut machines: Vec<Machine> = entries
         .into_iter()
         .filter(|e| e.state == "running")
         .map(|e| {
             let ports = tcp_ports(&e.publishers);
-            let Inspected { interfaces, services } = inspected.remove(&e.name).unwrap_or_default();
+            let Inspected { mut interfaces, services } = inspected.remove(&e.name).unwrap_or_default();
+            if !lab_order.is_empty() {
+                interfaces.retain(|i| lab_order.contains(&i.network.as_str()));
+                interfaces.sort_by_key(|i| lab_order.iter().position(|n| *n == i.network).unwrap_or(usize::MAX));
+            }
             let ip = interfaces.first().map(|i| i.ip.clone()).unwrap_or_default();
             // A running container that fails its compose healthcheck is surfaced as unhealthy,
             // so the UI greys it like a dead one instead of showing a broken lab as fine.

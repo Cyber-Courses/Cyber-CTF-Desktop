@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, ExternalLink, LogIn, Play, Square, Terminal } from "lucide-react";
+import { ArrowLeft, ExternalLink, LogIn, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
@@ -198,11 +198,6 @@ export function LabDetail({
                   <ExternalLink className="size-4" /> Open lab
                 </Button>
               )}
-              {attackReady && (
-                <Button variant={url ? "outline" : "learn"} onClick={openShell}>
-                  <Terminal className="size-4" /> Open shell
-                </Button>
-              )}
               <Button variant="destructive" onClick={() => onStop()} disabled={busy}>
                 {busy && !resetting ? (
                   "Stopping…"
@@ -332,7 +327,9 @@ export function LabDetail({
         </div>
 
         <aside className="h-fit space-y-4 lg:sticky lg:top-2">
-          {isDocker && <AttackBoxPanel box={box} running={running} host={remote ? (status?.host ?? null) : null} />}
+          {isDocker && (
+            <AttackBoxPanel box={box} running={running} host={remote ? (status?.host ?? null) : null} onShell={openShell} shellReady={attackReady} />
+          )}
 
           {running && (
             <Panel>
