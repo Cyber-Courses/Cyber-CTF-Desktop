@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, ExternalLink, LogIn, Play, Square } from "lucide-react";
+import { ArrowLeft, Container, ExternalLink, LogIn, Monitor, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
@@ -13,6 +13,7 @@ import { HealthBanner, useLabCheck } from "@/features/labs/lab-health";
 import { AutoStop, StartTimer } from "@/features/labs/lab-timers";
 import { NetworkDiagram } from "@/features/labs/network-diagram";
 import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on";
+import { runPlaces } from "@/features/labs/lab-row";
 import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
 import { useAttackBox } from "@/features/labs/use-attack-box";
@@ -202,6 +203,7 @@ export function LabDetail({
               </span>
             ))}
           </div>
+          {lab.description && <p className="mt-3 max-w-2xl text-[0.8125rem] leading-relaxed text-muted-foreground">{lab.description}</p>}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {running ? (
@@ -342,6 +344,32 @@ export function LabDetail({
         <aside className="h-fit space-y-4 lg:sticky lg:top-2">
           {isDocker && (
             <AttackBoxPanel box={box} running={running} host={remote ? (status?.host ?? null) : null} onShell={openShell} shellReady={attackReady} />
+          )}
+
+          {/* Before it runs, the aside would otherwise be empty for a VM lab: say what the lab is
+              and where it can run, so the page reads as complete at rest. */}
+          {!running && rt && (
+            <Panel>
+              <PanelHeader title="About" />
+              <div className="space-y-3.5 p-4 text-[0.75rem]">
+                <div className="flex items-center gap-2 text-foreground">
+                  {isDocker ? <Container className="size-4 text-muted-foreground" /> : <Monitor className="size-4 text-muted-foreground" />}
+                  <span>{isDocker ? "Runs as containers" : "Runs as virtual machines"}</span>
+                </div>
+                <div>
+                  <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">Where it runs</p>
+                  <div className="space-y-1.5">
+                    {runPlaces(rt).map(({ key, icon: Icon, label, available }) => (
+                      <div key={key} className={cn("flex items-center gap-2", available ? "text-foreground" : "text-muted-foreground/40")} title={available ? undefined : "Not available for this lab"}>
+                        <Icon className="size-3.5 shrink-0" />
+                        <span>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {!native && <p className="text-amber-500">Emulated on your CPU (slower than native).</p>}
+              </div>
+            </Panel>
           )}
 
           {running && (
