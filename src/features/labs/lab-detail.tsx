@@ -138,6 +138,11 @@ export function LabDetail({
       <DeploySteps lines={logs} busy={busy} ready={running} />
     </Panel>
   );
+  // The deploy panel is worth showing while a run is in progress, once the lab is up, or when
+  // the last run failed. Once a lab is stopped the leftover "✓ Lab is running" logs are stale
+  // (they'd otherwise read "Ready" with nothing running), so we don't show them.
+  const deployFailed = logs.some((l) => l.startsWith("✗"));
+  const showDeploy = busy || running || deployFailed;
 
   return (
     <div className="animate-rise-in space-y-5">
@@ -294,7 +299,7 @@ export function LabDetail({
           )}
 
           {/* While it starts, the deployment comes first; once ready, the diagram does. */}
-          {(logs.length > 0 || busy) && !(running && !busy) && deploy}
+          {showDeploy && !(running && !busy) && deploy}
 
           {/* Only show the diagram once the lab is up and we're no longer deploying: during a
               build the backend may already report a machine "running" while it's still being
@@ -313,7 +318,7 @@ export function LabDetail({
             </Panel>
           )}
 
-          {(logs.length > 0 || busy) && running && !busy && deploy}
+          {showDeploy && running && !busy && deploy}
 
           <LabBrief labId={lab.id} />
         </div>
