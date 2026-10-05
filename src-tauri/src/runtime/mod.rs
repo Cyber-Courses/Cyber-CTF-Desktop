@@ -265,7 +265,7 @@ async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl
         (Runtime::Vm, None) => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,
         (_, Some(c)) if server::terraform_target(c.provider).is_some() => {
             let tf = server::terraform_target(c.provider).unwrap_or_default();
-            let (module, _) = lab::terraform(dir, runtime, tf)?;
+            let module = lab::terraform_to_destroy(dir, runtime, tf)?;
             terraform::destroy(&module, &state_dir(app, id, tf)?, &c.tf_vars, &c.tf_env, log).await
         }
         (_, Some(c)) => vm::stop(&lab::vagrant_dir(dir, runtime), &c.env, log).await,

@@ -74,6 +74,17 @@ pub fn terraform(dir: &Path, runtime: Runtime, tf: &str) -> Result<(PathBuf, Tar
     })
 }
 
+/// The module to destroy a lab's Terraform resources with: its Isoloom module, or, for a lab
+/// started before labs moved to Isoloom (still installed at that commit), its old
+/// `deploy/terraform/<target>` module, so those resources can still be removed.
+pub fn terraform_to_destroy(dir: &Path, runtime: Runtime, tf: &str) -> Result<PathBuf> {
+    let legacy = dir.join("deploy/terraform").join(tf);
+    if !dir.join(".isoloom").is_dir() && legacy.is_dir() {
+        return Ok(legacy);
+    }
+    Ok(terraform(dir, runtime, tf)?.0)
+}
+
 /// The lab's inputs found in `env`, as the JSON object Terraform's `inputs` variable takes.
 pub fn inputs_json(spec: &Spec, env: &[(String, String)]) -> Option<String> {
     if spec.inputs.is_empty() {
@@ -133,6 +144,16 @@ mod tests {
         let spec = spec(&dir).unwrap();
         let env = vec![("CTF_LAUNCH_TOKEN".to_string(), "t0k".to_string()), ("OTHER".to_string(), "x".to_string())];
         assert_eq!(inputs_json(&spec, &env).unwrap(), r#"{"CTF_LAUNCH_TOKEN":"t0k"}"#);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn destroys_an_old_deploy_run_with_its_own_module() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-legacy-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(dir.join("deploy/terraform/azure")).unwrap();
+        assert_eq!(terraform_to_destroy(&dir, Runtime::Docker, "azure").unwrap(), dir.join("deploy/terraform/azure"));
+        std::fs::create_dir_all(dir.join(".isoloom")).unwrap();
+        assert_eq!(terraform_to_destroy(&dir, Runtime::Docker, "azure").unwrap(), dir.join(".isoloom/cloud-docker/azure"));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
