@@ -54,6 +54,18 @@ export function LabDetail({
 }) {
   const [resetting, setResetting] = useState(false);
 
+  // Esc returns to the list (unless a dialog or a field is focused, which handle Esc themselves).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable || el.closest("[role=dialog]"))) return;
+      onBack();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onBack]);
+
   const rt = lab.runtime;
   const native = rt?.architectures.includes(hostArch) ?? true;
   const running = status?.running ?? false;
@@ -154,8 +166,9 @@ export function LabDetail({
 
   return (
     <div className="animate-rise-in space-y-5">
-      <button onClick={onBack} className="inline-flex items-center gap-1.5 text-[0.78125rem] text-muted-foreground transition-colors hover:text-foreground">
+      <button onClick={onBack} className="group inline-flex items-center gap-1.5 text-[0.78125rem] text-muted-foreground transition-colors hover:text-foreground">
         <ArrowLeft className="size-4" /> All labs
+        <kbd className="rounded border border-border px-1.5 text-[0.625rem] text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100">esc</kbd>
       </button>
 
       {/* Header: what the lab is, and the one thing to do next. */}
