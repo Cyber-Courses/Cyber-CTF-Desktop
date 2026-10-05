@@ -296,14 +296,17 @@ export function LabDetail({
           {/* While it starts, the deployment comes first; once ready, the diagram does. */}
           {(logs.length > 0 || busy) && !(running && !busy) && deploy}
 
-          {running && status && status.machines.length > 0 ? (
+          {/* Only show the diagram once the lab is up and we're no longer deploying: during a
+              build the backend may already report a machine "running" while it's still being
+              provisioned, and a half-resolved diagram is more confusing than helpful. */}
+          {running && !busy && status && status.machines.length > 0 ? (
             <NetworkDiagram
               machines={status.machines}
               networks={status.networks}
               host={status.host}
               attacker={exegol ? { running: exegol.running, ip: exegol.ip, labNetwork: exegol.labNetwork } : null}
             />
-          ) : (
+          ) : busy || starting ? null : (
             <Panel>
               <PanelHeader title="Network" />
               <p className="px-4 py-10 text-center text-[0.78125rem] text-muted-foreground">Start the lab to see its machines and network.</p>

@@ -1,21 +1,21 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { serverList, labLaunch, labStop, type Provider } from "@/lib/tauri";
 import { getAttackImage, getVmProvider } from "@/lib/settings";
 import { notify } from "@/lib/notify";
 import type { Lab } from "@/features/labs/use-labs";
 import { setLastRun } from "@/lib/last-run";
+import { appendDeployLog, beginDeploy, endDeploy, useDeploy } from "@/lib/deploy-store";
 
 /**
- * Start/stop actions for labs, shared across screens. Tracks which lab is busy, the
- * streamed log lines for the lab currently acting (for a console), and refreshes the
- * lab's status when done. UI (console, buttons) reads `busy` / `activeLab` / `logs`.
+ * Start/stop actions for labs, shared across screens. The busy lab, its streamed log lines
+ * and which lab they belong to live in a module store (deploy-store), so a deploy started
+ * here keeps streaming and stays visible even after the labs screen unmounts (e.g. the user
+ * opens Settings) and comes back. UI reads `busy` / `activeLab` / `logs`.
  */
 export function useLabActions(refresh: (lab: Lab) => void) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [activeLab, setActiveLab] = useState<string | null>(null);
-  const [logs, setLogs] = useState<string[]>([]);
+  const { busy, activeLab, logs } = useDeploy();
 
   /**
    * `host` = a server host id to run a VM lab on, null for this machine. Omitted, VM labs
@@ -25,9 +25,7 @@ export function useLabActions(refresh: (lab: Lab) => void) {
   const launch = useCallback(
     async (lab: Lab, host?: string | null, vmProvider?: Provider) => {
       if (!lab.runtime) return;
-      setBusy(lab.id);
-      setActiveLab(lab.id);
-      setLogs([]);
+      beginDeploy(lab.id);
       try {
         const vm = lab.runtime.runtime === "VM";
         if (vm && host === undefined) host = await defaultHostFor(lab);
@@ -42,8 +40,8 @@ export function useLabActions(refresh: (lab: Lab) => void) {
         // Remotely, or inside a local VM, the lab network isn't reachable from here: start
         // the attack box next to the lab.
         const attackbox = remote || inLocalVm ? getAttackImage() : null;
-        await labLaunch(lab.id, provider, remote ? host! : null, attackbox, (line) => setLogs((l) => [...l, line]));
-        setLogs((l) => [...l, "✓ Lab is running"]);
+        await labLaunch(lab.id, provider, remote ? host! : null, attackbox, (line) => appendDeployLog(line));
+        appendDeployLog("✓ Lab is running");
         setLastRun(lab.id);
         notify(
           "Lab ready",
@@ -54,9 +52,9 @@ export function useLabActions(refresh: (lab: Lab) => void) {
               : `${lab.title} is running on this machine.`,
         );
       } catch (e) {
-        setLogs((l) => [...l, `✗ ${String(e)}`]);
+        appendDeployLog(`✗ ${String(e)}`);
       } finally {
-        setBusy(null);
+        endDeploy();
         refresh(lab);
       }
     },
@@ -66,16 +64,14 @@ export function useLabActions(refresh: (lab: Lab) => void) {
   const stop = useCallback(
     async (lab: Lab) => {
       if (!lab.runtime) return;
-      setBusy(lab.id);
-      setActiveLab(lab.id);
-      setLogs([]);
+      beginDeploy(lab.id);
       try {
-        await labStop(lab.id, lab.runtime.runtime, (line) => setLogs((l) => [...l, line]));
-        setLogs((l) => [...l, "✓ Lab stopped"]);
+        await labStop(lab.id, lab.runtime.runtime, (line) => appendDeployLog(line));
+        appendDeployLog("✓ Lab stopped");
       } catch (e) {
-        setLogs((l) => [...l, `✗ ${String(e)}`]);
+        appendDeployLog(`✗ ${String(e)}`);
       } finally {
-        setBusy(null);
+        endDeploy();
         refresh(lab);
       }
     },
