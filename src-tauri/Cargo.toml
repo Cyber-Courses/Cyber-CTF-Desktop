@@ -38,7 +38,7 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 reqwest = { version = "0.13", features = ["json", "form"] }
 serde_yaml_ng = "0.10.0"
 # Labs describe themselves with an isoloom.yml; the launcher generates and runs their files.
-isoloom-core = { git = "https://github.com/isoloom/isoloom", rev = "818d0b9c047874b4ece8a197d1fce3393b6ca76c" }
+isoloom-core = { git = "https://github.com/isoloom/isoloom", rev = "486d654c66c24857a2586a5511731ebc07f22420" }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
