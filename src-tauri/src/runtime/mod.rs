@@ -92,7 +92,7 @@ pub async fn start(
                 mark_local_vm(dir, Some(provider))?;
                 log(format!("Running in a {} VM on this machine", provider.id()));
                 let vagrant = lab::vagrant_dir(dir, runtime);
-                vm::start(&vagrant, provider, env, &mut log).await?;
+                start_local_vm(&vagrant, provider, env, &mut log).await?;
                 attack_box_vagrant(&vagrant, &spec, env, &mut log).await
             }
             Runtime::Docker => {
@@ -108,7 +108,7 @@ pub async fn start(
                     return Err(Error::Invalid("pick a server host to run on ESXi or Proxmox".into()));
                 }
                 lab::prepare(dir, lab::vagrant_target(runtime))?;
-                vm::start(&lab::vagrant_dir(dir, runtime), provider, env, log).await
+                start_local_vm(&lab::vagrant_dir(dir, runtime), provider, env, &mut log).await
             }
         };
     };
@@ -194,6 +194,35 @@ pub const LOCAL_VM_MARKER: &str = ".cyberctf-local-vm";
 /// Guards a local start: refuses when the lab is already running on this machine (Docker or a
 /// local VM), and otherwise tears down any stopped or half-created leftovers from a previous
 /// start so the fresh start doesn't trip over them (a poweroff VM, dead containers).
+/// Starts local VMs with one automatic recovery. A `vagrant up` can fail because a crashed or
+/// interrupted previous run left state behind that `ensure_local_slot_free` couldn't see: an
+/// orphaned hypervisor VM (VirtualBox "VERR_ALREADY_EXISTS") or a stale lock ("the machine is
+/// locked"). When the failure is one of those, clear the leftovers and try once more; a genuine
+/// provisioning failure is returned unchanged, never retried.
+async fn start_local_vm(dir: &Path, provider: providers::Provider, env: &[(String, String)], log: &mut impl FnMut(String)) -> Result<()> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let stale = AtomicBool::new(false);
+    let first = {
+        let out = &mut *log;
+        vm::start(dir, provider, env, |l: String| {
+            if vm::is_stale_state_error(&l) {
+                stale.store(true, Ordering::Relaxed);
+            }
+            out(l);
+        })
+        .await
+    };
+    match first {
+        Ok(()) => Ok(()),
+        Err(_) if stale.load(Ordering::Relaxed) => {
+            log("A previous run left VM state behind. Clearing it, then starting again…".into());
+            vm::recover_local(dir, provider, log).await;
+            vm::start(dir, provider, env, log).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
 async fn ensure_local_slot_free(dir: &Path, id: &str, log: &mut impl FnMut(String)) -> Result<()> {
     // Docker containers of this lab on this machine (best effort: before the first start the
     // compose file may not exist yet, and status then errors, which just means nothing to clear).

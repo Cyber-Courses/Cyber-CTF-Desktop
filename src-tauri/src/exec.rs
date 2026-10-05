@@ -49,23 +49,11 @@ pub async fn run_env(program: &'static str, args: &[&str], cwd: Option<&Path>, e
 /// `run_env` that gives up after `timeout`, killing the process, instead of waiting forever.
 /// For read-only probes (status, inspect) where a wedged tool must not hang the caller: a
 /// stuck VirtualBox or Docker daemon then surfaces as an error rather than piling up.
-pub async fn run_env_timed(
-    program: &'static str,
-    args: &[&str],
-    cwd: Option<&Path>,
-    env: &[(String, String)],
-    timeout: std::time::Duration,
-) -> Result<String> {
+pub async fn run_env_timed(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)], timeout: std::time::Duration) -> Result<String> {
     run_inner(program, args, cwd, env, Some(timeout)).await
 }
 
-async fn run_inner(
-    program: &'static str,
-    args: &[&str],
-    cwd: Option<&Path>,
-    env: &[(String, String)],
-    timeout: Option<std::time::Duration>,
-) -> Result<String> {
+async fn run_inner(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)], timeout: Option<std::time::Duration>) -> Result<String> {
     let mut cmd = build(program, args);
     cmd.stdin(Stdio::null());
     cmd.envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));

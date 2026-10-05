@@ -113,7 +113,8 @@ async fn proxmox(app: &AppHandle, r: &Reporter, conn: &server::Connection, work:
         let vars = vars.clone();
         let tf_env = conn.tf_env.clone();
         r.step("apply", "Create and boot the VM on the host", async {
-            terraform::apply(&work.join("terraform").join(target), &state, &vars, &tf_env, |l| r.progress("apply", "Create and boot the VM on the host", l)).await?;
+            terraform::apply(&work.join("terraform").join(target), &state, &vars, &tf_env, |l| r.progress("apply", "Create and boot the VM on the host", l))
+                .await?;
             Ok(((), Some("VM created".into())))
         })
         .await
@@ -151,7 +152,8 @@ async fn proxmox(app: &AppHandle, r: &Reporter, conn: &server::Connection, work:
 async fn destroy_proxmox(r: &Reporter, conn: &server::Connection, work: &Path, state: &Path, target: &str) {
     let _ = r
         .step("cleanup", "Destroy the test VM", async {
-            terraform::destroy(&work.join("terraform").join(target), state, &conn.tf_vars, &conn.tf_env, |l| r.progress("cleanup", "Destroy the test VM", l)).await?;
+            terraform::destroy(&work.join("terraform").join(target), state, &conn.tf_vars, &conn.tf_env, |l| r.progress("cleanup", "Destroy the test VM", l))
+                .await?;
             Ok(((), Some("removed".into())))
         })
         .await;

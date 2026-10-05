@@ -123,9 +123,7 @@ async fn docker_workloads() -> Vec<Workload> {
 async fn vm_workloads(app: &AppHandle) -> Vec<Workload> {
     // Timed: `vagrant global-status` talks to VirtualBox, which can be wedged. Without a limit a
     // polled call would hang and stack up one blocked process per tick.
-    let Ok(out) =
-        run_env_timed("vagrant", &["global-status", "--prune", "--machine-readable"], None, &[], std::time::Duration::from_secs(30)).await
-    else {
+    let Ok(out) = run_env_timed("vagrant", &["global-status", "--prune", "--machine-readable"], None, &[], std::time::Duration::from_secs(30)).await else {
         return Vec::new();
     };
     let labs = labs_dir(app).ok();

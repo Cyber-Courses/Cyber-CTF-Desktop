@@ -13,8 +13,7 @@ use crate::error::{Error, Result};
 /// The lab's spec, checked (fields and the files it names).
 pub fn spec(dir: &Path) -> Result<Spec> {
     let spec = isoloom_core::load(dir).map_err(|e| Error::Invalid(format!("this lab's isoloom.yml: {e}")))?;
-    let problems: Vec<String> =
-        isoloom_core::validate(&spec).into_iter().chain(isoloom_core::validate_files(&spec, dir)).map(|p| p.to_string()).collect();
+    let problems: Vec<String> = isoloom_core::validate(&spec).into_iter().chain(isoloom_core::validate_files(&spec, dir)).map(|p| p.to_string()).collect();
     if !problems.is_empty() {
         return Err(Error::Invalid(format!("this lab's isoloom.yml has mistakes:\n{}", problems.join("\n"))));
     }
@@ -90,11 +89,8 @@ pub fn inputs_json(spec: &Spec, env: &[(String, String)]) -> Option<String> {
     if spec.inputs.is_empty() {
         return None;
     }
-    let map: serde_json::Map<String, serde_json::Value> = spec
-        .inputs
-        .iter()
-        .filter_map(|name| env.iter().find(|(k, _)| k == name).map(|(_, v)| (name.clone(), serde_json::Value::String(v.clone()))))
-        .collect();
+    let map: serde_json::Map<String, serde_json::Value> =
+        spec.inputs.iter().filter_map(|name| env.iter().find(|(k, _)| k == name).map(|(_, v)| (name.clone(), serde_json::Value::String(v.clone())))).collect();
     Some(serde_json::Value::Object(map).to_string())
 }
 
