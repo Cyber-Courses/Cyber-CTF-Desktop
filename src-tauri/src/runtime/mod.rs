@@ -95,6 +95,11 @@ pub async fn start(
         };
     };
 
+    // GCP labs run in the account's labs project: make sure it exists (one free billing slot).
+    if server::connection(app, host)?.provider == providers::Provider::Gcp {
+        log("Checking the Cyber CTF labs project on Google Cloud…".into());
+        server::gcp::labs_project(app, host).await?;
+    }
     let conn = server::connection(app, host)?;
     // Mark first, so a half-created lab can still be destroyed on the same host.
     server::mark_lab(dir, Some(host))?;

@@ -64,6 +64,9 @@ pub struct HostProfile {
     /// cost passes it. None / 0 = no limit.
     #[serde(default)]
     pub monthly_limit: Option<f64>,
+    /// GCP: the project every lab of this account runs in (created once, see `gcp`).
+    #[serde(default)]
+    pub gcp_project: Option<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -164,6 +167,7 @@ impl TestResult {
 }
 
 mod contract;
+pub mod gcp;
 mod reachability;
 mod store;
 
@@ -381,7 +385,14 @@ pub fn server_save(app: AppHandle, input: HostInput) -> Result<HostProfile> {
         Some(_) => return Err(Error::Invalid("unknown server host".into())),
         None => new_id(),
     };
+    // GCP keeps its labs project across edits, unless the billing account changed.
+    let gcp_project = store
+        .hosts
+        .iter()
+        .find(|h| h.id == id && h.provider == Provider::Gcp && input.provider == Provider::Gcp && h.username == username)
+        .and_then(|h| h.gcp_project.clone());
     let profile = HostProfile {
+        gcp_project,
         id: id.clone(),
         name: clean(&input.name, "name", 64)?,
         provider: input.provider,
@@ -500,7 +511,18 @@ pub async fn server_test(app: AppHandle, id: String) -> Result<TestResult> {
     if host.provider == Provider::Proxmox && super::proxmox::is_token(&host.username) {
         super::ssh::ensure_key(&app).await?;
     }
-    Ok(test_host(&host, &password).await)
+    let mut result = test_host(&host, &password).await;
+    // GCP: the labs project (created on the first test), which needs a free billing slot.
+    if host.provider == Provider::Gcp && result.ok {
+        match gcp::labs_project(&app, &id).await {
+            Ok(p) => result.checks.push(Check::ok("Labs project", format!("Labs run in the project {p}."))),
+            Err(e) => {
+                result.checks.push(Check::fail("Labs project", e.to_string()));
+                result.ok = false;
+            }
+        }
+    }
+    Ok(result)
 }
 
 /// The launcher's SSH public key (generated on first use). Token-auth Proxmox hosts must
@@ -565,6 +587,7 @@ mod tests {
 
     fn profile(provider: Provider) -> HostProfile {
         HostProfile {
+            gcp_project: None,
             id: "ab12".into(),
             name: "Lab".into(),
             provider,

@@ -287,6 +287,7 @@ mod tests {
         let var = |k: &str| std::env::var(k).ok();
         let host = var("CYBERCTF_TEST_PVE_HOST").expect("CYBERCTF_TEST_PVE_HOST");
         let profile = |username: &str, bridge: &str| HostProfile {
+            gcp_project: None,
             id: "t".into(),
             name: "t".into(),
             provider: crate::runtime::providers::Provider::Proxmox,

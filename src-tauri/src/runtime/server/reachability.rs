@@ -223,14 +223,7 @@ pub(super) async fn test_gcp(h: &HostProfile) -> TestResult {
     let args = ["billing", "accounts", "describe", h.username.as_str(), "--format", "value(displayName)"];
     match crate::exec::run("gcloud", &args, None).await {
         Ok(name) => {
-            checks
-                .push(Check::ok("Billing account", format!("Signed in; billing account \"{}\". Each lab creates its own project linked to it.", name.trim())));
-            // Per-lab projects draw on the billing account's project quota (a hard account limit);
-            // flag it so a later "quota exceeded" at launch isn't a surprise.
-            checks.push(Check::warn(
-                "Project quota",
-                "Each lab creates a new GCP project, which uses your billing account's project quota. If launches fail with \"quota exceeded\", request an increase.",
-            ));
+            checks.push(Check::ok("Billing account", format!("Signed in; billing account \"{}\".", name.trim())));
         }
         Err(Error::CommandFailed { stderr, .. }) => {
             let not_in = stderr.contains("gcloud auth")

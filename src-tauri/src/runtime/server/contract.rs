@@ -112,11 +112,17 @@ pub fn terraform_vars(h: &HostProfile, password: &str) -> Vec<(String, String)> 
             };
             vars.push((name.into(), t.clone()));
         }
-        // GCP creates a project per lab, linked to this billing account and (optionally) org.
+        // GCP: the account's labs project (see `gcp`), else a project per lab from the billing
+        // account (the module creates and deletes it).
         if h.provider == Provider::Gcp {
-            vars.push(("billing_account".into(), h.username.clone()));
-            if let Some(org) = &h.node {
-                vars.push(("org_id".into(), org.clone()));
+            match &h.gcp_project {
+                Some(p) => vars.push(("project".into(), p.clone())),
+                None => {
+                    vars.push(("billing_account".into(), h.username.clone()));
+                    if let Some(org) = &h.node {
+                        vars.push(("org_id".into(), org.clone()));
+                    }
+                }
             }
         }
         // OCI deploys into a compartment (the tenancy root works).
