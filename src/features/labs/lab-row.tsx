@@ -63,7 +63,6 @@ export function LabRow({
   onOpen,
   onStart,
   onStop,
-  showDescription = true,
   solved = false,
   setup = null,
 }: {
@@ -77,7 +76,6 @@ export function LabRow({
   onOpen: () => void;
   onStart: () => void;
   onStop: () => void;
-  showDescription?: boolean;
   /** The player already solved it (website evidence). */
   solved?: boolean;
   /** What this machine is missing to run it (see lab-readiness), or null. */
@@ -112,8 +110,6 @@ export function LabRow({
           <span className="truncate">· {lab.category}</span>
         </div>
       </div>
-
-      {showDescription && lab.description && <p className="hidden flex-1 truncate text-[0.78125rem] text-muted-foreground lg:block">{lab.description}</p>}
 
       <div className="ml-auto flex shrink-0 items-center gap-3">
         {rt && (
