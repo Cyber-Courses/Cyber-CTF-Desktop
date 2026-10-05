@@ -191,13 +191,18 @@ pub async fn oci_config() -> OciConfig {
 
 /// The active gcloud account email, or None if the CLI isn't signed in. Reliable even when
 /// `projects list` is empty or the Resource Manager API is off, so the UI can show "signed in".
+/// An account whose sign-in expired (Workspace reauthentication) still shows as active in
+/// `auth list` while every call fails: it counts as signed out, so the UI offers to sign in
+/// again instead of showing an empty billing list.
 #[tauri::command]
 pub async fn gcp_account() -> Option<String> {
-    run("gcloud", &["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"], None)
+    let email = run("gcloud", &["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"], None)
         .await
         .ok()
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+        .filter(|s| !s.is_empty())?;
+    run("gcloud", &["auth", "print-access-token", "--quiet"], None).await.ok()?;
+    Some(email)
 }
 
 /// The GCP billing accounts the signed-in user can see (`gcloud billing accounts list`), so they

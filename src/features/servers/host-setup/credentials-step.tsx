@@ -168,23 +168,34 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             </div>
           ) : gcpEmail ? (
             <>
-              {gcpBilling.length > 0 ? (
-                <Field label="Billing account" hint="each lab's project is billed here">
-                  <Select value={v.username} onChange={(e) => set("username", e.target.value)}>
-                    {!v.username && <option value="">Choose a billing account…</option>}
-                    {gcpBilling.map((b) => (
-                      <option key={b.id} value={b.id} disabled={!b.open}>
-                        {b.name ? `${b.name} (${b.id})` : b.id}
-                        {b.open ? "" : " — closed"}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              ) : (
-                <Field label="Billing account" hint="none listed; type the id">
-                  <Input {...text("username")} placeholder="0X0X0X-0X0X0X-0X0X0X" />
-                </Field>
-              )}
+              {/* The sign-in and the billing account it gives access to, together. */}
+              <div className="space-y-2.5 rounded-lg border border-border px-3 py-2.5">
+                <div className="flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
+                  <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+                  <span className="truncate text-emerald-500">Signed in as {gcpEmail}.</span>
+                  <button type="button" onClick={signIn} disabled={signingIn} className="ml-auto shrink-0 underline-offset-2 hover:underline disabled:opacity-50">
+                    {signingIn ? "Signing in…" : "Switch account"}
+                  </button>
+                </div>
+                {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" />}
+                {gcpBilling.length > 0 ? (
+                  <Field label="Billing account" hint="each lab's project is billed here">
+                    <Select value={v.username} onChange={(e) => set("username", e.target.value)}>
+                      {!v.username && <option value="">Choose a billing account…</option>}
+                      {gcpBilling.map((b) => (
+                        <option key={b.id} value={b.id} disabled={!b.open}>
+                          {b.name ? `${b.name} (${b.id})` : b.id}
+                          {b.open ? "" : " (closed)"}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                ) : (
+                  <Field label="Billing account" hint="none listed for this account; type the id">
+                    <Input {...text("username")} placeholder="0X0X0X-0X0X0X-0X0X0X" />
+                  </Field>
+                )}
+              </div>
               <Field label="Organization">
                 <Select value={v.node ?? ""} onChange={(e) => set("node", e.target.value || null)}>
                   <option value="">No organization (personal account)</option>
@@ -195,28 +206,21 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
                   ))}
                 </Select>
               </Field>
-              <div className="flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
-                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
-                <span className="truncate text-emerald-500">Signed in as {gcpEmail}.</span>
-                <button type="button" onClick={signIn} disabled={signingIn} className="ml-auto shrink-0 underline-offset-2 hover:underline disabled:opacity-50">
-                  {signingIn ? "Signing in…" : "Switch account"}
-                </button>
-              </div>
             </>
           ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem]">
-                <span className="text-muted-foreground">Sign in with the gcloud CLI to list your billing accounts.</span>
+            <div className="space-y-2.5 rounded-lg border border-border px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2 text-[0.75rem]">
+                <span className="text-muted-foreground">Sign in with the gcloud CLI to list your billing accounts (signing in again also renews an expired sign-in).</span>
                 <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
                   {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (gcloud)
                 </Button>
               </div>
+              {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" />}
               <Field label="Billing account" hint="or type the id">
                 <Input {...text("username")} placeholder="0X0X0X-0X0X0X-0X0X0X" />
               </Field>
-            </>
+            </div>
           )}
-          {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" />}
         </div>
       ) : v.useCliCreds ? (
         <div className="space-y-3">
