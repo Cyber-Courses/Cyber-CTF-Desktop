@@ -40,6 +40,7 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
           {ATTACK_PRESETS.map((p) => (
             <RadioRow
               key={p.image}
+              compact
               selected={!customOpen && image === p.image}
               onSelect={() => {
                 setCustomOpen(false);
@@ -64,7 +65,7 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
               }
             />
           ))}
-          <RadioRow selected={customOpen} onSelect={() => setCustomOpen(true)} title="Custom image" subtitle="Any Docker image or registry tag.">
+          <RadioRow compact selected={customOpen} onSelect={() => setCustomOpen(true)} title="Custom image" subtitle="Any Docker image or registry tag.">
             {customOpen && (
               <form
                 className="mt-2.5 flex items-center gap-2"

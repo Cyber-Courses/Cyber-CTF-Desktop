@@ -98,4 +98,8 @@ pub struct LabStatus {
     pub expires_at: Option<u64>,
     /// Where it runs; set by the runtime dispatcher (None from the per-runtime probes).
     pub place: Option<Place>,
+    /// The engine or hypervisor it runs on: "docker", or a Vagrant provider id ("virtualbox",
+    /// "vmware_desktop", "parallels", ...), or a server/cloud provider. "On this machine" alone
+    /// is misleading for a VM lab: this says which hypervisor to look in.
+    pub provider: Option<String>,
 }

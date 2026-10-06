@@ -2,6 +2,7 @@
 //! at its root; the files of the target it runs on are generated under its `.isoloom/` (see
 //! `lab`). The UI only ever passes a lab id and a runtime; paths and commands are built here.
 
+mod discover;
 mod docker;
 mod exegol;
 pub mod lab;
@@ -24,29 +25,49 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// the UI reads it to rehydrate the "this lab is starting" state after a window reload: the map
 /// lives in this long-lived process, so a reloaded webview that lost its own deploy state can ask
 /// which labs are still deploying and show that instead of a bare Start button.
-fn deploying() -> &'static Mutex<HashMap<String, usize>> {
-    static D: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
+fn deploying() -> &'static Mutex<HashMap<String, (Action, usize)>> {
+    static D: OnceLock<Mutex<HashMap<String, (Action, usize)>>> = OnceLock::new();
     D.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// What is in flight for a lab: a start (provisioning) or a stop (teardown). Told apart so the
+/// UI never calls a lab being stopped "deploying".
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Action {
+    Start,
+    Stop,
 }
 
 /// Total start/stop operations in flight, across all labs.
 pub fn active_deploys() -> usize {
-    deploying().lock().map(|m| m.values().sum()).unwrap_or(0)
+    deploying().lock().map(|m| m.values().map(|(_, n)| n).sum()).unwrap_or(0)
 }
 
-/// The labs with an operation in flight, deduplicated.
+/// The labs being started right now (in this process), deduplicated.
 pub fn deploying_labs() -> Vec<String> {
-    deploying().lock().map(|m| m.keys().cloned().collect()).unwrap_or_default()
+    labs_with(Action::Start)
 }
 
-/// Marks its lab as deploying for as long as it is alive (RAII), so the mark is always cleared
-/// even if the operation errors or is cancelled.
+/// The labs being stopped right now (in this process), deduplicated.
+pub fn stopping_labs() -> Vec<String> {
+    labs_with(Action::Stop)
+}
+
+fn labs_with(action: Action) -> Vec<String> {
+    deploying().lock().map(|m| m.iter().filter(|(_, (a, _))| *a == action).map(|(id, _)| id.clone()).collect()).unwrap_or_default()
+}
+
+/// Marks its lab as starting or stopping for as long as it is alive (RAII), so the mark is always
+/// cleared even if the operation errors or is cancelled.
 struct DeployGuard(String);
 
 impl DeployGuard {
-    fn new(id: &str) -> Self {
+    fn new(id: &str, action: Action) -> Self {
         if let Ok(mut m) = deploying().lock() {
-            *m.entry(id.to_string()).or_insert(0) += 1;
+            let e = m.entry(id.to_string()).or_insert((action, 0));
+            // The latest operation names the state (a stop right after a start is "stopping").
+            e.0 = action;
+            e.1 += 1;
         }
         Self(id.to_string())
     }
@@ -55,7 +76,7 @@ impl DeployGuard {
 impl Drop for DeployGuard {
     fn drop(&mut self) {
         let Ok(mut m) = deploying().lock() else { return };
-        if let Some(c) = m.get_mut(&self.0) {
+        if let Some((_, c)) = m.get_mut(&self.0) {
             *c -= 1;
             if *c == 0 {
                 m.remove(&self.0);
@@ -123,7 +144,7 @@ pub async fn start(
 ) -> Result<()> {
     let lock = lab_lock(id);
     let _guard = lock.lock().await;
-    let _deploy = DeployGuard::new(id);
+    let _deploy = DeployGuard::new(id, Action::Start);
     let Some(host) = host else {
         server::mark_lab(dir, None)?;
         // A lab runs in one place at a time: if it's already up here, refuse (a second copy
@@ -445,7 +466,7 @@ async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl
 /// it can re-check expiry under the same lock before tearing a lab down (the tokio lock is not
 /// reentrant, so it must not call `stop`, which would deadlock).
 async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
-    let _deploy = DeployGuard::new(id);
+    let _deploy = DeployGuard::new(id, Action::Stop);
     let conn = server::lab_connection(app, dir)?;
     let result = match (runtime, conn) {
         (Runtime::Docker, None) if local_vm(dir).is_some() => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,
@@ -471,7 +492,7 @@ async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Resu
             // Shown like a remote lab (the attack box lives in the VM, reached over SSH).
             Runtime::Docker if let Some(p) = local_vm(dir) => {
                 let status = vm::status(&lab::vagrant_dir(dir, runtime), &[]).await?;
-                Ok(LabStatus { host: Some(format!("{} VM on this machine", vm_label(&p))), place: Some(Place::LocalVm), ..status })
+                Ok(LabStatus { host: Some(format!("{} VM on this machine", vm_label(&p))), place: Some(Place::LocalVm), provider: Some(p.clone()), ..status })
             }
             Runtime::Docker => Ok(LabStatus { place: Some(Place::Container), ..docker::status(dir, id).await? }),
             Runtime::Vm => Ok(LabStatus { place: Some(Place::LocalVm), ..vm::status(&lab::vagrant_dir(dir, runtime), &[]).await? }),
@@ -482,7 +503,7 @@ async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Resu
         None => vm::status(&lab::vagrant_dir(dir, runtime), &c.env).await?,
     };
     let place = if c.provider.is_cloud() { Place::Cloud } else { Place::Server };
-    Ok(LabStatus { host: Some(c.name), place: Some(place), ..status })
+    Ok(LabStatus { host: Some(c.name), place: Some(place), provider: Some(c.provider.id().to_string()), ..status })
 }
 
 /// Destroys cloud labs whose auto-stop time has passed, to end billing: on Azure an OS
@@ -553,6 +574,9 @@ pub async fn lab_stop(app: AppHandle, id: String, runtime: Runtime, logs: Channe
     let log = move |line: String| {
         let _ = logs.send(line);
     };
+    // A deploy still running in its worker process is stopped first, so the teardown never races
+    // a `vagrant up` or `compose up` that would recreate what it removes.
+    crate::deploy_worker::kill(&app, &id);
     stop(&app, &dir, &id, runtime, log).await
 }
 
@@ -567,6 +591,15 @@ pub async fn stop_lab(app: &AppHandle, id: &str, runtime: Runtime) -> Result<()>
 pub async fn lab_status(app: AppHandle, id: String, runtime: Runtime) -> Result<LabStatus> {
     let dir = lab_dir(&app, &id)?;
     status(&app, &dir, &id, runtime).await
+}
+
+/// The ids of labs running on this machine right now, found by scanning Docker and Vagrant
+/// directly. Unlike `lab_status` (one lab at a time, from its dir and Compose file), this is a
+/// single infrastructure scan, so the UI recovers which labs are up even after a crash or restart
+/// — and a lab whose per-lab status probe is momentarily failing still shows as running.
+#[tauri::command]
+pub async fn running_labs(app: AppHandle) -> Vec<String> {
+    discover::running_lab_ids(&app).await
 }
 
 /// Runs a lab's exploitability check: does the intended exploit path still work? Lets a

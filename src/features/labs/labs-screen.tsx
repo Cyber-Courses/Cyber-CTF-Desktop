@@ -35,7 +35,7 @@ export function Labs({
   openLab: { slug: string | null; tick: number };
 }) {
   const { labs, error, statuses, completed, refreshStatus } = useLabs(loggedIn);
-  const { busy, activeLab, logs, times, launch, stop } = useLabActions(refreshStatus);
+  const { runs, launch, stop } = useLabActions(refreshStatus);
   // Opened straight from the slug the navigation carried, so a lab opened from Overview, the
   // command palette or a deep link shows its page on the first render instead of flashing the
   // list first.
@@ -121,16 +121,16 @@ export function Labs({
       <LabDetail
         lab={detail}
         status={statuses[detail.id]}
-        busy={busy === detail.id}
-        logs={activeLab === detail.id ? logs : []}
-        times={activeLab === detail.id ? times : []}
+        busy={!!runs[detail.id]?.busy}
+        logs={runs[detail.id]?.logs ?? []}
+        times={runs[detail.id]?.times ?? []}
         loggedIn={loggedIn}
         onLogin={onLogin}
         hostArch={hostArch}
         onBack={() => setDetailSlug(null)}
         readyVms={readyVms}
         dockerRunning={report ? report.dockerRunning : null}
-        onStart={(t) => launch(detail, t.kind === "host" ? t.id : null, t.kind === "local-vm" ? t.provider : undefined)}
+        onStart={(t) => launch(detail, t.kind === "host" ? t.id : null, t.kind === "local-vm" ? t.provider : undefined, report)}
         onStop={() => stop(detail)}
       />
     );
@@ -141,7 +141,7 @@ export function Labs({
       key={lab.id}
       lab={lab}
       status={statuses[lab.id]}
-      busy={busy === lab.id}
+      busy={!!runs[lab.id]?.busy}
       loggedIn={loggedIn}
       onLogin={onLogin}
       hostArch={hostArch}

@@ -280,7 +280,7 @@ pub fn status(state: &Path) -> LabStatus {
     } else {
         Vec::new()
     };
-    LabStatus { running: created, machines, networks: Vec::new(), url: None, host: None, expires_at: expires_at.filter(|_| created), place: None }
+    LabStatus { running: created, machines, networks: Vec::new(), url: None, host: None, expires_at: expires_at.filter(|_| created), place: None, provider: None }
 }
 
 /// The state holds a lab host: Isoloom modules output its `ip`.

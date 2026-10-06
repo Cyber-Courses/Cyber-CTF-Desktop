@@ -49,17 +49,15 @@ function declaredType(kind: string): ServiceType {
 }
 
 /** The card's service rows. Declared services (compose labels) each get a row with their
- *  ports; container ports none of them claims stay on a plain row (they're still facts).
- *  With nothing declared, one row: the image, its look, every port. */
+ *  ports. Container ports none of them claims are left out: they are the image's own EXPOSE
+ *  defaults (a MySQL image exposes 3306/33060 even when the lab's database listens on 3207),
+ *  not lab services, and listing them as "other ports" only sends the player to doors that
+ *  aren't open. With nothing declared, one row: the image, its look, every port. */
 export function serviceRows(m: Machine, ports: Port[], fallback: ServiceType): ServiceRow[] {
   const declared = m.services ?? [];
   if (declared.length === 0) return [{ title: m.image || serviceMeta[fallback].label, type: fallback, label: serviceMeta[fallback].label, ports }];
   const byTarget = (n: number) => ports.find((p) => (p.target || p.published) === n) ?? { published: 0, target: n };
-  const rows: ServiceRow[] = declared.map((d) => ({ title: d.name, type: declaredType(d.kind), label: d.kind || "service", ports: d.ports.map(byTarget) }));
-  const claimed = new Set(declared.flatMap((d) => d.ports));
-  const rest = ports.filter((p) => !claimed.has(p.target || p.published));
-  if (rest.length) rows.push({ title: "other ports", type: "service", label: "not declared", ports: rest });
-  return rows;
+  return declared.map((d) => ({ title: d.name, type: declaredType(d.kind), label: d.kind || "service", ports: d.ports.map(byTarget) }));
 }
 
 export function serviceType(image: string, name: string): ServiceType {

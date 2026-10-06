@@ -98,6 +98,7 @@ export function HypervisorRow({
         <RadioList label="Hypervisor for VM labs" className="mt-3">
           {ready.length > 1 && (
             <RadioRow
+              compact
               selected={effective === null}
               onSelect={() => choose(null)}
               title="Automatic"
@@ -107,6 +108,7 @@ export function HypervisorRow({
           {ready.map((h) => (
             <RadioRow
               key={h.provider}
+              compact
               selected={effective === h.provider || (ready.length === 1 && effective === null)}
               onSelect={() => choose(h.provider)}
               title={

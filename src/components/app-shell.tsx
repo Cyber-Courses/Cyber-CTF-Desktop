@@ -18,7 +18,7 @@ import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { apiQuery, authLogin, authStatus, machineWorkloads, openSettings, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
-import { useDeployingLabs } from "@/lib/deploy-store";
+import { useDeployingLabs, useStoppingLabs } from "@/lib/deploy-store";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
@@ -133,6 +133,7 @@ export function AppShell() {
   // click away wherever you are. Deploys come from the backend (so they survive a reload); the
   // running set is polled from this machine's workloads.
   const deploying = useDeployingLabs();
+  const stopping = useStoppingLabs();
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     let alive = true;
@@ -148,8 +149,8 @@ export function AppShell() {
     };
   }, []);
   const activeLabs = palLabs
-    .filter((l) => deploying.has(l.id) || runningIds.has(l.id))
-    .map((l) => ({ ...l, deploying: deploying.has(l.id) }));
+    .filter((l) => deploying.has(l.id) || stopping.has(l.id) || runningIds.has(l.id))
+    .map((l) => ({ ...l, deploying: deploying.has(l.id), stopping: stopping.has(l.id) }));
 
   const paletteCommands: Command[] = [
     { id: "find-lab", label: "Find a lab", hint: "search", icon: Search, keywords: "labs search ctf", run: findALab },
@@ -254,14 +255,29 @@ export function AppShell() {
                   <span
                     className={cn(
                       "grid size-7 shrink-0 place-items-center rounded-md border",
-                      l.deploying ? "border-learn/25 bg-learn/10 text-learn" : "border-emerald-500/25 bg-emerald-500/10 text-emerald-500",
+                      l.deploying || l.stopping ? "border-learn/25 bg-learn/10 text-learn" : "border-emerald-500/25 bg-emerald-500/10 text-emerald-500",
                     )}
                   >
-                    {l.deploying ? <Spinner className="size-3.5" /> : <FlaskConical className="size-3.5" />}
+                    {l.deploying || l.stopping ? <Spinner className="size-3.5" /> : <FlaskConical className="size-3.5" />}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[0.78125rem] font-medium text-foreground">{l.title}</span>
-                    <span className="block truncate text-[0.65625rem] text-muted-foreground">{l.deploying ? "Deploying…" : "Running"}</span>
+                    <span className="flex items-center gap-1.5 truncate text-[0.65625rem] text-muted-foreground">
+                      {l.stopping ? (
+                        "Stopping…"
+                      ) : l.deploying ? (
+                        "Deploying…"
+                      ) : (
+                        <>
+                          {/* A live dot: the lab is up right now, not a stale entry. */}
+                          <span className="relative flex size-1.5 shrink-0">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+                            <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
+                          </span>
+                          Running
+                        </>
+                      )}
+                    </span>
                   </span>
                 </button>
               ))}

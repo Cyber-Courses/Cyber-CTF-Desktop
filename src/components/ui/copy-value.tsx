@@ -1,0 +1,34 @@
+"use client";
+
+import { useState } from "react";
+import { Check, Copy } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+/** A value with a one-click copy. Shows a check for a moment after copying. `label` is what is
+ *  displayed when it should differ from the copied `text` (e.g. show `:56235`, copy the full
+ *  `http://127.0.0.1:56235`). */
+export function CopyValue({ text, label, className }: { text: string; label?: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      title={`Copy ${text}`}
+      onClick={() =>
+        navigator.clipboard
+          ?.writeText(text)
+          .then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          })
+          .catch(() => {})
+      }
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded border border-border px-1.5 py-0.5 font-mono text-[0.71875rem] text-foreground transition-colors hover:bg-foreground/[0.04]",
+        className,
+      )}
+    >
+      <span className="break-all">{label ?? text}</span>
+      {copied ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3 text-muted-foreground" />}
+    </button>
+  );
+}

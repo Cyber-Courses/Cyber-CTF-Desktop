@@ -1,0 +1,199 @@
+//! Finding labs that are actually running on this machine, by asking the engines themselves:
+//! Docker for its running containers, and the hypervisors (VirtualBox, Parallels, VMware) for
+//! their running VMs. Never a cache or a marker: Vagrant's global index, for one, keeps saying
+//! "running" long after the VMs are gone. Each lab is deployed under a predictable name, a
+//! Compose project `cyberctf-<id>` or VMs named `<lab> · <machine>` (the lab's isoloom name),
+//! so one scan recovers which labs are up even after a crash or restart, when the in-memory
+//! "deploying" set and the status cache are gone.
+
+use std::collections::{BTreeSet, HashMap};
+use std::path::Path;
+
+use tauri::{AppHandle, Manager};
+
+use crate::exec::run_read;
+
+/// The Compose project prefix every lab's containers carry (`cyberctf-<id>`).
+const PROJECT_PREFIX: &str = "cyberctf-";
+/// Between the lab's name and the machine's in a VM name (`minilab · dc01`).
+const VM_NAME_SEP: &str = " · ";
+
+/// Lab ids from the Compose project labels of running containers. Input is one project name per
+/// line (`docker ps --format '{{.Label "com.docker.compose.project"}}'`); containers with no such
+/// label print a blank line, which is skipped. Only `cyberctf-` projects count, and an exact
+/// `<id>` is taken (an attack-box or other sidecar without the label never appears).
+pub(crate) fn lab_ids_from_docker_projects(out: &str) -> Vec<String> {
+    let mut ids = BTreeSet::new();
+    for line in out.lines() {
+        let project = line.trim();
+        if let Some(id) = project.strip_prefix(PROJECT_PREFIX)
+            && is_lab_id(id)
+        {
+            ids.insert(id.to_string());
+        }
+    }
+    ids.into_iter().collect()
+}
+
+/// The `name:` of an isoloom.yml: the prefix of the lab's VM names.
+pub(crate) fn isoloom_name(yaml: &str) -> Option<String> {
+    yaml.lines().find_map(|l| {
+        let v = l.strip_prefix("name:")?.trim().trim_matches(|c| c == '"' || c == '\'');
+        (!v.is_empty()).then(|| v.to_string())
+    })
+}
+
+/// Installed labs by isoloom name, from `labs/<id>/isoloom.yml`.
+pub(crate) fn lab_names(labs_dir: &Path) -> HashMap<String, String> {
+    let mut by_name = HashMap::new();
+    let Ok(entries) = std::fs::read_dir(labs_dir) else { return by_name };
+    for e in entries.flatten() {
+        let Some(id) = e.file_name().to_str().map(str::to_string) else { continue };
+        if !is_lab_id(&id) {
+            continue;
+        }
+        if let Ok(yaml) = std::fs::read_to_string(e.path().join("isoloom.yml"))
+            && let Some(name) = isoloom_name(&yaml)
+        {
+            by_name.insert(name, id);
+        }
+    }
+    by_name
+}
+
+/// The lab ids of running VMs named `<lab> · <machine>`, for the labs in `by_name`. A VM of an
+/// unknown lab (or one named differently) is not ours and is ignored.
+pub(crate) fn lab_ids_from_vm_names<'a>(names: impl Iterator<Item = &'a str>, by_name: &HashMap<String, String>) -> Vec<String> {
+    let mut ids = BTreeSet::new();
+    for name in names {
+        if let Some((lab, _machine)) = name.split_once(VM_NAME_SEP)
+            && let Some(id) = by_name.get(lab)
+        {
+            ids.insert(id.clone());
+        }
+    }
+    ids.into_iter().collect()
+}
+
+/// VM names from `VBoxManage list runningvms` (`"<name>" {<uuid>}` per line).
+pub(crate) fn vbox_vm_names(out: &str) -> Vec<String> {
+    out.lines()
+        .filter_map(|l| {
+            let l = l.trim();
+            let rest = l.strip_prefix('"')?;
+            let end = rest.find('"')?;
+            Some(rest[..end].to_string())
+        })
+        .collect()
+}
+
+/// Lab ids from `vmrun list` (one running `.vmx` path per line after a count header): a lab's
+/// VM lives under `.../labs/<id>/...`.
+pub(crate) fn lab_ids_from_vmrun(out: &str) -> Vec<String> {
+    let mut ids = BTreeSet::new();
+    for line in out.lines() {
+        if let Some(id) = id_after_labs(line.trim()) {
+            ids.insert(id);
+        }
+    }
+    ids.into_iter().collect()
+}
+
+/// The `<id>` in a path like `/Users/x/labs/<id>/.isoloom/vagrant/...`.
+fn id_after_labs(path: &str) -> Option<String> {
+    let rest = path.split("/labs/").nth(1)?;
+    let id = rest.split('/').next()?;
+    is_lab_id(id).then(|| id.to_string())
+}
+
+/// A plausible lab id: non-empty, bounded, and only the characters an id is built from. Keeps a
+/// stray token (or an attacker project like `cyberctf-<id>-attack`, which is not an id) out.
+fn is_lab_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// The ids of labs running on this machine right now, asked of Docker and of each hypervisor.
+/// Best effort: an engine that is absent or errors simply contributes nothing. Read-only and
+/// timed (never hangs the caller), so it is safe to poll.
+pub async fn running_lab_ids(app: &AppHandle) -> Vec<String> {
+    let mut ids = BTreeSet::new();
+    // Docker: the Compose project of every running container. A failure here is worth a warning
+    // (the engine is missing or broken); an empty result is simply "nothing running".
+    match run_read(
+        "docker",
+        &["ps", "--filter", "label=com.docker.compose.project", "--format", "{{.Label \"com.docker.compose.project\"}}"],
+        None,
+    )
+    .await
+    {
+        Ok(out) => ids.extend(lab_ids_from_docker_projects(&out)),
+        Err(e) => log::warn!("running-labs scan: docker ps failed: {e}"),
+    }
+    // Hypervisors: their running VMs, named after the installed labs. Each hypervisor may simply
+    // not be installed; that is not a problem for the scan.
+    let by_name = app.path().app_data_dir().map(|d| lab_names(&d.join("labs"))).unwrap_or_default();
+    if !by_name.is_empty() {
+        if let Ok(out) = run_read("VBoxManage", &["list", "runningvms"], None).await {
+            let names = vbox_vm_names(&out);
+            ids.extend(lab_ids_from_vm_names(names.iter().map(String::as_str), &by_name));
+        }
+        if let Ok(out) = run_read("prlctl", &["list", "--running", "--no-header", "-o", "name"], None).await {
+            ids.extend(lab_ids_from_vm_names(out.lines().map(str::trim), &by_name));
+        }
+    }
+    if let Ok(out) = run_read("vmrun", &["list"], None).await {
+        ids.extend(lab_ids_from_vmrun(&out));
+    }
+    let ids: Vec<String> = ids.into_iter().collect();
+    log::debug!("running-labs scan: {} running lab(s) {:?}", ids.len(), ids);
+    ids
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    #[test]
+    fn docker_projects_keep_only_cyberctf_labs_stripped_and_unique() {
+        let out = "cyberctf-invoice-portal-api\n\ncyberctf-invoice-portal-api\nother-project\ncyberctf-goad-light\n";
+        // Blank lines (containers with no compose label) and foreign projects are dropped; the
+        // prefix is stripped and duplicates (web + database of one lab) collapse to one id.
+        assert_eq!(
+            super::lab_ids_from_docker_projects(out),
+            vec!["goad-light".to_string(), "invoice-portal-api".to_string()]
+        );
+    }
+
+    #[test]
+    fn docker_ignores_an_attack_sidecar_without_the_compose_label() {
+        // A sidecar run outside Compose prints a blank line (no project label), so it never shows.
+        assert_eq!(super::lab_ids_from_docker_projects("\n\n"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn isoloom_name_reads_the_labs_name() {
+        assert_eq!(super::isoloom_name("version: 1\nname: minilab\nnetworks:\n").as_deref(), Some("minilab"));
+        assert_eq!(super::isoloom_name("name: \"goad light\"\n").as_deref(), Some("goad light"));
+        assert_eq!(super::isoloom_name("version: 1\n"), None);
+    }
+
+    #[test]
+    fn running_vms_map_back_to_installed_labs_by_name() {
+        // Regression: the scan used to trust `vagrant global-status`, a cache that kept saying
+        // "running" after the VMs were gone. Only a VM the hypervisor lists, named after an
+        // installed lab, counts.
+        let by_name: HashMap<String, String> = [("minilab".to_string(), "bf08e551".to_string())].into();
+        let out = "\"WindowsServer2019_1791271622558_72151\" {a4dc}\n\"minilab · dc01\" {0185}\n\"minilab · ws01\" {3eeb}\n\"other · box\" {1111}\n";
+        let names = super::vbox_vm_names(out);
+        assert_eq!(names.len(), 4);
+        // Two VMs of one lab collapse to one id; a box import and an unknown lab's VM are ignored.
+        assert_eq!(super::lab_ids_from_vm_names(names.iter().map(String::as_str), &by_name), vec!["bf08e551".to_string()]);
+    }
+
+    #[test]
+    fn vmrun_paths_name_the_lab_by_its_folder() {
+        let out = "Total running VMs: 1\n/Users/x/Library/App/labs/goad-light/.isoloom/vagrant/.vagrant/machines/dc01/vmware_desktop/x.vmx\n";
+        assert_eq!(super::lab_ids_from_vmrun(out), vec!["goad-light".to_string()]);
+        assert_eq!(super::lab_ids_from_vmrun("Total running VMs: 0\n"), Vec::<String>::new());
+    }
+}

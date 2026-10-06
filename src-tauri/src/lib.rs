@@ -1,6 +1,7 @@
 mod account;
 mod cloud;
 mod config;
+mod deploy_worker;
 mod error;
 mod exec;
 mod labs;
@@ -20,16 +21,65 @@ static FORCE_QUIT: AtomicBool = AtomicBool::new(false);
 /// Whether leaving now would interrupt a lab deploy. The UI reads this (and the handlers below
 /// use it) to warn before quitting: an interrupted cloud apply can leave billable resources.
 #[tauri::command]
-fn deploy_in_progress() -> bool {
-    runtime::active_deploys() > 0
+fn deploy_in_progress(app: tauri::AppHandle) -> bool {
+    runtime::active_deploys() > 0 || !deploy_worker::running(&app).is_empty()
 }
 
 /// The labs currently starting or stopping. The UI reads this on load to rehydrate the "this lab
 /// is starting" state after a window reload: the deploy keeps running in this process even when
 /// the webview reloaded and lost its own in-memory deploy state.
+/// A window height of `wanted` logical pixels, or as much as the primary screen can show (with
+/// room for the menu bar and dock) when that is less, so a tall dialog fits its content on a big
+/// display and still opens fully on a small laptop screen, where its body scrolls instead.
+pub(crate) fn window_height_fitting(app: &tauri::AppHandle, wanted: f64) -> f64 {
+    let available = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.size().height as f64 / m.scale_factor() - 80.0)
+        .unwrap_or(wanted);
+    wanted.min(available).max(480.0)
+}
+
 #[tauri::command]
-fn deploying_labs() -> Vec<String> {
-    runtime::deploying_labs()
+fn deploying_labs(app: tauri::AppHandle) -> Vec<String> {
+    // Deploys running in this process (the fallback) and in detached worker processes.
+    let mut ids = runtime::deploying_labs();
+    for id in deploy_worker::running(&app) {
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    ids
+}
+
+/// The labs being stopped right now, so the UI says "Stopping", never "Deploying", for a teardown.
+#[tauri::command]
+fn stopping_labs() -> Vec<String> {
+    runtime::stopping_labs()
+}
+
+/// The log so far of a lab's deploy in its worker process, so a reloaded or relaunched app can
+/// re-attach to a deploy still in progress.
+#[tauri::command]
+fn lab_deploy_log(app: tauri::AppHandle, id: String) -> std::result::Result<String, String> {
+    deploy_worker::log_so_far(&app, &id).map_err(|e| e.to_string())
+}
+
+/// Quit by finishing in the background: the windows go away now; the process exits once the
+/// in-app deploys (the fallback when no worker could be started) are done.
+#[tauri::command]
+fn linger_quit(app: tauri::AppHandle) {
+    for (_, w) in app.webview_windows() {
+        let _ = w.hide();
+    }
+    tauri::async_runtime::spawn(async move {
+        while runtime::active_deploys() > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+        FORCE_QUIT.store(true, Ordering::SeqCst);
+        app.exit(0);
+    });
 }
 
 /// The user chose to quit anyway from the "a lab is still deploying" prompt: stop intercepting
@@ -48,7 +98,10 @@ fn open_settings_window(app: &tauri::AppHandle) -> tauri::Result<()> {
         let _ = existing.set_focus();
         return Ok(());
     }
-    let mut builder = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html?window=settings".into()))
+    // The root page in Settings mode. Not `index.html?...`: in `tauri dev` that resolves against
+    // the Next dev server, which has no `/index.html` route (a 404 page), while the root serves
+    // in both dev and the static export.
+    let mut builder = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("?window=settings".into()))
         .title("Settings")
         .inner_size(760.0, 640.0)
         .min_inner_size(560.0, 480.0)
@@ -87,6 +140,19 @@ fn intercept_quit(app: &tauri::AppHandle) -> bool {
 pub fn run() {
     // Before anything else: GUI launches don't get the shell PATH (docker, vagrant, ovftool).
     platform::env_path::augment();
+    // One context (the embedded config and assets) for whichever role this process plays.
+    let context = tauri::generate_context!();
+    // `cyberctf-desktop deploy --job <file>`: this process is a deploy worker, not the app. It
+    // runs one lab's deploy headless and exits; the app that started it only follows its log, so
+    // quitting the app never cuts a deploy short.
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("deploy")
+        && args.get(2).map(String::as_str) == Some("--job")
+        && let Some(job) = args.get(3)
+    {
+        deploy_worker::worker_main(std::path::PathBuf::from(job), context);
+        return;
+    }
     tauri::Builder::default()
         // First: a cyberctf:// link opened while the app runs goes to that window
         // (Windows/Linux would otherwise start a second instance).
@@ -206,6 +272,7 @@ pub fn run() {
             runtime::lab_start,
             runtime::lab_stop,
             runtime::lab_status,
+            runtime::running_labs,
             runtime::lab_check,
             runtime::exegol_status,
             runtime::exegol_start,
@@ -224,10 +291,13 @@ pub fn run() {
             runtime::server::server_open_setup,
             deploy_in_progress,
             deploying_labs,
+            stopping_labs,
+            lab_deploy_log,
+            linger_quit,
             force_quit,
             open_settings,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building Cyber CTF")
         .run(|app, event| {
             // Cmd+Q, the Quit menu item and a system shutdown come through here, not the window

@@ -281,8 +281,11 @@ pub async fn machine_open_setup(app: AppHandle, step: Option<String>) -> Result<
     };
     let mut builder = WebviewWindowBuilder::new(&app, LABEL, WebviewUrl::App(url.into()))
         .title("Set up this machine")
-        .inner_size(720.0, 760.0)
-        .min_inner_size(560.0, 560.0)
+        // Tall enough for the longest step (the attack-machine toolset choice pushed its buttons
+        // below the fold at 760), clamped to the screen so it never opens off-screen; the body
+        // scrolls if a step is still taller. The minimum keeps a shrunk window usable.
+        .inner_size(760.0, crate::window_height_fitting(&app, 920.0))
+        .min_inner_size(640.0, crate::window_height_fitting(&app, 760.0))
         .resizable(true);
     #[cfg(target_os = "macos")]
     {

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { forceQuit } from "@/lib/tauri";
+import { forceQuit, lingerQuit } from "@/lib/tauri";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 
 /**
@@ -35,14 +35,26 @@ export function QuitGuard() {
           <div className="min-w-0">
             <p id="quit-guard-title" className="text-sm font-semibold text-foreground">A lab is still deploying</p>
             <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">
-              {count > 1 ? `${count} labs are` : "A lab is"} setting up. Quitting now can leave machines half-created, and a lab on a
-              cloud account keeps billing until it is torn down. Let it finish, or stop the lab first.
+              {count > 1 ? `${count} labs are` : "A lab is"} setting up inside the app. Quitting now can leave machines half-created, and a
+              lab on a cloud account keeps billing until it is torn down. Let it finish in the background (the app closes
+              by itself when it is done), keep waiting, or stop the lab first.
             </p>
           </div>
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={() => setCount(null)}>
             Keep waiting
+          </Button>
+          <Button
+            variant="learn"
+            size="sm"
+            disabled={quitting}
+            onClick={() => {
+              setQuitting(true);
+              void lingerQuit().catch(() => setQuitting(false));
+            }}
+          >
+            Finish in background
           </Button>
           <Button
             variant="destructive"

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { apiQuery, labStatus, type LabStatus, type Provider, type Runtime } from "@/lib/tauri";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { apiQuery, labStatus, runningLabs, type LabStatus, type Provider, type Runtime } from "@/lib/tauri";
 
 export interface LabRuntimeInfo {
   runtime: Runtime;
@@ -43,6 +43,10 @@ export function useLabs(reloadKey: unknown = 0) {
   const [error, setError] = useState<string | null>(null);
   const [statuses, setStatuses] = useState<Record<string, LabStatus>>({});
   const [completed, setCompleted] = useState<Set<string>>(new Set());
+  // Labs the infrastructure scan (docker/vagrant) reports running. Authoritative for the running
+  // flag: a lab is shown running when the scan sees it even if its per-lab status probe is failing
+  // or hasn't run yet (e.g. right after a crash/restart).
+  const [scanRunning, setScanRunning] = useState<Set<string>>(new Set());
 
   // One status read per lab at a time: a slow read (a busy VirtualBox can take seconds) must not
   // let the poll interval stack a second, third, … read on top of it.
@@ -87,7 +91,44 @@ export function useLabs(reloadKey: unknown = 0) {
     return () => clearInterval(t);
   }, [labs, refreshStatus]);
 
-  return { labs, error, statuses, completed, refreshStatus };
+  // Reconcile what is actually running from the infrastructure itself (docker + vagrant), so a
+  // running lab is detected after a crash/restart, and a successful launch never falls back to a
+  // "Start lab" page just because its per-lab status probe briefly fails. The scan is ground
+  // truth; refreshStatus then fills in each running lab's machines and URL.
+  useEffect(() => {
+    let alive = true;
+    const scan = () =>
+      runningLabs()
+        .then((ids) => {
+          if (!alive) return;
+          setScanRunning(new Set(ids));
+          (labs ?? []).filter((l) => ids.includes(l.id)).forEach(refreshStatus);
+        })
+        .catch(() => {});
+    scan();
+    const t = setInterval(scan, 6000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [labs, refreshStatus]);
+
+  // The scan is authoritative for "running": OR it over each lab's probed status, so a lab the
+  // scan sees stays running even when its per-lab probe returns not-running or errors. A lab the
+  // scan does not see keeps its probed status (remote labs, stopped labs).
+  const mergedStatuses = useMemo(() => {
+    if (scanRunning.size === 0) return statuses;
+    const next: Record<string, LabStatus> = { ...statuses };
+    for (const id of scanRunning) {
+      const cur = next[id];
+      next[id] = cur
+        ? { ...cur, running: true }
+        : { running: true, machines: [], networks: [], url: null, host: null, expiresAt: null, place: null, provider: null };
+    }
+    return next;
+  }, [statuses, scanRunning]);
+
+  return { labs, error, statuses: mergedStatuses, completed, refreshStatus };
 }
 
 export const DIFFICULTY_LABEL = ["", "Easy", "Medium", "Hard"];

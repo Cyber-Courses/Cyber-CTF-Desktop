@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, ExternalLink, LogIn, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CopyValue } from "@/components/ui/copy-value";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
 import { AttackBoxPanel } from "@/features/labs/attack-box-panel";
@@ -16,7 +17,8 @@ import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on
 import { runPlaces } from "@/features/labs/lab-row";
 import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
-import { useDeployingLabs } from "@/lib/deploy-store";
+import { useDeployingLabs, useWorkerLog } from "@/lib/deploy-store";
+import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import { labAttackShell, exegolShell, serverList, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
@@ -72,6 +74,9 @@ export function LabDetail({
 
   // Labs the backend is still deploying, so a window reload recovers the "starting" state.
   const backendDeploying = useDeployingLabs();
+  // A deploy running in its worker process after this page reloaded (or the app relaunched): no
+  // local log of it, so follow the worker's log file instead.
+  const workerLines = useWorkerLog(lab.id, backendDeploying.has(lab.id) && !busy && logs.length === 0);
   const rt = lab.runtime;
   const native = rt?.architectures.includes(hostArch) ?? true;
   const running = status?.running ?? false;
@@ -82,8 +87,28 @@ export function LabDetail({
   const starting = deployingHere && !running;
   // Infrastructure exists but nothing is deploying and the lab isn't fully up: a run was cut off
   // (a crash or a restart mid-start). Offer to clean it up rather than a Start that would collide.
-  const interrupted = !deployingHere && !running && (status?.machines?.length ?? 0) > 0;
+  // Only machines that actually exist count as leftovers: a VM lab's status lists every declared
+  // machine, including ones Vagrant reports as `not_created`, and those are nothing to clean up
+  // (counting them showed "Stop & clean up" on a lab that was never started).
+  const leftovers = (status?.machines ?? []).filter((m) => m.state !== "not_created");
+  const interrupted = !deployingHere && !running && leftovers.length > 0;
   const url = status?.url;
+  // Where it actually runs: "on this machine" alone is misleading for a VM lab (which hypervisor
+  // do I open?), so name the engine or hypervisor the status reports.
+  const whereLabel = status?.provider ? (status.provider === "docker" ? "Docker" : (PROVIDER_LABELS[status.provider] ?? status.provider)) : null;
+  // Each published container port and the local address it is bound to, so the player sees the
+  // link between a service inside the lab (web :3206) and the port on this machine (:56235).
+  const binds = (status?.machines ?? []).flatMap((m) =>
+    m.ports.filter((p) => p.published > 0).map((p) => ({ machine: m.name, target: p.target, published: p.published })),
+  );
+  const bindHost = (() => {
+    if (!url) return "127.0.0.1";
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return "127.0.0.1";
+    }
+  })();
   // Machines that went down while the lab runs. Not while it's starting or stopping: machines
   // come up one after another then (a web server waits for its database), and that's normal.
   const down = deployingHere ? [] : (status?.machines ?? []).filter((m) => m.state !== "running");
@@ -169,16 +194,22 @@ export function LabDetail({
       ? (hosts.find((h) => h.id === runOn.id)?.name ?? "your server")
       : runOn.kind === "local-vm"
         ? "a VM on this machine"
-        : "this machine");
+        : whereLabel
+          ? `this machine · ${whereLabel}`
+          : "this machine");
+  // This session's own log of the run when it has one; else the worker's log file, for a deploy
+  // that kept running through a reload or relaunch.
+  const shownLogs = logs.length > 0 ? logs : workerLines;
+  const shownTimes = logs.length > 0 ? times : [];
   const deploy = (
     <Panel>
-      <DeploySteps lines={logs} times={times} busy={deployingHere} ready={running} where={destLabel} />
+      <DeploySteps lines={shownLogs} times={shownTimes} busy={deployingHere} ready={running} where={destLabel} />
     </Panel>
   );
   // The deploy panel is worth showing while a run is in progress, once the lab is up, or when
   // the last run failed. Once a lab is stopped the leftover "✓ Lab is running" logs are stale
   // (they'd otherwise read "Ready" with nothing running), so we don't show them.
-  const deployFailed = logs.some((l) => l.startsWith("✗"));
+  const deployFailed = shownLogs.some((l) => l.startsWith("✗"));
   const showDeploy = deployingHere || running || deployFailed;
 
   return (
@@ -197,6 +228,7 @@ export function LabDetail({
               <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-emerald-500">
                 <span className="size-1.5 rounded-full bg-emerald-500" />
                 Running on {status?.host ?? "this machine"}
+                {whereLabel && !status?.host && <span className="text-muted-foreground"> · {whereLabel}</span>}
               </span>
             ) : starting ? (
               <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-muted-foreground">
@@ -225,8 +257,8 @@ export function LabDetail({
           {running ? (
             <>
               {url && (
-                <Button variant="learn" onClick={() => openUrl(url).catch(() => {})}>
-                  <ExternalLink className="size-4" /> Open lab
+                <Button variant="learn" onClick={() => openUrl(url).catch(() => {})} title={`Open ${url} in your browser`}>
+                  <ExternalLink className="size-4" /> Open in browser
                 </Button>
               )}
               <Button variant="destructive" onClick={() => onStop()} disabled={busy}>
@@ -406,9 +438,36 @@ export function LabDetail({
               <div className="space-y-2 p-4 text-[0.75rem]">
                 <p className="text-muted-foreground">
                   Runs on <span className="text-foreground">{status?.host ?? "this machine"}</span>
+                  {whereLabel && !status?.host && (
+                    <>
+                      {" "}
+                      · <span className="text-foreground">{whereLabel}</span>
+                    </>
+                  )}
                 </p>
                 {status?.expiresAt && <AutoStop at={status.expiresAt} />}
-                {url && <p className="break-all font-mono text-[0.71875rem] text-foreground">{url}</p>}
+                {/* The bind spelled out: which service inside the lab answers on which address of
+                    this machine, with that local address one click away. */}
+                {binds.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {binds.map((b) => (
+                      <div key={`${b.machine}:${b.target}`} className="space-y-1">
+                        <p className="flex flex-wrap items-baseline gap-x-2">
+                          <span className="w-28 shrink-0 text-muted-foreground">Inside the lab</span>
+                          <span className="font-mono text-[0.71875rem] text-foreground">
+                            {b.machine} :{b.target}
+                          </span>
+                        </p>
+                        <p className="flex flex-wrap items-center gap-x-2">
+                          <span className="w-28 shrink-0 text-muted-foreground">On {status?.host ?? "this machine"}</span>
+                          <CopyValue text={`http://${bindHost}:${b.published}`} />
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  url && <p className="break-all font-mono text-[0.71875rem] text-foreground">{url}</p>
+                )}
               </div>
             </Panel>
           )}

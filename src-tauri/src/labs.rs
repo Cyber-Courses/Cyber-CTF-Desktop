@@ -157,14 +157,42 @@ pub async fn lab_launch(
     {
         return Err(Error::Invalid(format!("invalid attack-box image `{image}`")));
     }
-    let log = move |line: String| {
-        let _ = logs.send(line);
-    };
     let data =
         api::graphql("mutation ($id: ID!) { startLab(labId: $id) { labId runtime repository commit env { name value } } }", json!({ "id": lab_id }), true)
             .await?;
-    run(&app, data["startLab"].clone(), provider, host.as_deref(), attackbox_image.as_deref(), log).await?;
-    Ok(())
+    let startlab = data["startLab"].clone();
+    // The deploy runs in a detached worker process, so quitting (or crashing) this app never
+    // cuts a vagrant/docker/terraform run short; this command only follows the worker's log.
+    let job = crate::deploy_worker::Job {
+        lab_id: lab_id.clone(),
+        launch: startlab.clone(),
+        provider,
+        host: host.clone(),
+        attackbox_image: attackbox_image.clone(),
+    };
+    match crate::deploy_worker::spawn(&app, &job) {
+        Ok(spawned) => {
+            let follow = logs.clone();
+            crate::deploy_worker::tail(&spawned, move |line| {
+                let _ = follow.send(line);
+            })
+            .await
+        }
+        // Fallback: deploy in this process, on a detached task (a webview reload aborts this
+        // command future and the child is kill_on_drop, so inline would be cut short). The app
+        // then has to stay open until it finishes; the quit guard keeps it alive.
+        Err(e) => {
+            let _ = logs.send(format!("Deploying inside the app (a background worker couldn't be started: {e}). Keep the app open until it finishes."));
+            let handle = tauri::async_runtime::spawn(async move {
+                let log = move |line: String| {
+                    let _ = logs.send(line);
+                };
+                run(&app, startlab, provider, host.as_deref(), attackbox_image.as_deref(), log).await
+            });
+            handle.await.map_err(|e| Error::Invalid(format!("the deploy task did not finish: {e}")))??;
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]

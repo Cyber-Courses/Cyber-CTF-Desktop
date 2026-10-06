@@ -74,17 +74,39 @@ async fn remove_stale_networks(dir: &Path, project: &str, env: &[(String, String
     let filter = format!("label=com.docker.compose.project={project}");
     let Ok(listed) = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await else { return };
     for net in listed.lines().map(str::trim).filter(|n| !n.is_empty() && !wanted.iter().any(|w| w == n)) {
-        if let Ok(attached) = run("docker", &["network", "inspect", "-f", "{{range .Containers}}{{.Name}} {{end}}", net], None).await {
-            for c in attached.split_whitespace() {
-                let _ = run("docker", &["network", "disconnect", "-f", net, c], None).await;
-            }
-        }
-        let _ = run("docker", &["network", "rm", net], None).await;
+        remove_network(net).await;
     }
 }
 
 /// Removes containers, networks and volumes: the next start is a clean lab.
-pub async fn stop(dir: &Path, id: &str, log: impl FnMut(String)) -> Result<()> {
+pub async fn stop(dir: &Path, id: &str, mut log: impl FnMut(String)) -> Result<()> {
     let project = compose::project(id);
-    compose::stream(dir, &project, &["down", "--volumes", "--remove-orphans"], &[], log).await
+    // The attack box starts with the lab and is plugged into the lab network, but it is not a
+    // Compose service of the project (no project label), so `down --remove-orphans` leaves it
+    // there and then can't remove the network it still sits on ("Resource is still in use").
+    // That leftover network kept the lab's fixed subnet, so a later fresh start failed with
+    // "Pool overlaps". Take the attack box down first, so the network is free when Compose
+    // removes it.
+    let _ = crate::runtime::exegol::stop(id, &mut log).await;
+    let down = compose::stream(dir, &project, &["down", "--volumes", "--remove-orphans"], &[], &mut log).await;
+    // Belt and braces: whatever network of this lab is still around (something else plugged into
+    // it, or Compose gave up), unplug everything from it and remove it, so nothing holds the subnet.
+    let filter = format!("label=com.docker.compose.project={project}");
+    if let Ok(listed) = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await {
+        for net in listed.lines().map(str::trim).filter(|n| !n.is_empty()) {
+            remove_network(net).await;
+        }
+    }
+    down
+}
+
+/// Unplugs every container from `net` (force) and removes it. Best effort: a network that is
+/// already gone, or that something unrelated won't let go of, is left as is.
+async fn remove_network(net: &str) {
+    if let Ok(attached) = run("docker", &["network", "inspect", "-f", "{{range .Containers}}{{.Name}} {{end}}", net], None).await {
+        for c in attached.split_whitespace() {
+            let _ = run("docker", &["network", "disconnect", "-f", net, c], None).await;
+        }
+    }
+    let _ = run("docker", &["network", "rm", net], None).await;
 }
