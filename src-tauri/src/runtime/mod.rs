@@ -505,7 +505,7 @@ pub async fn reap_expired_labs(app: &AppHandle) {
 /// VM labs (their address is discovered differently) or when nothing is published.
 pub async fn primary_url(dir: &Path, id: &str, runtime: Runtime) -> Option<String> {
     match runtime {
-        Runtime::Docker if !dir.join(".cyberctf-host").exists() && local_vm(dir).is_none() => docker::primary_url(dir, id).await,
+        Runtime::Docker if !dir.join(server::HOST_MARKER).exists() && local_vm(dir).is_none() => docker::primary_url(dir, id).await,
         _ => None,
     }
 }

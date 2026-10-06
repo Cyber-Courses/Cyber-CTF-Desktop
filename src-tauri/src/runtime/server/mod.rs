@@ -21,7 +21,7 @@ use crate::error::{Error, Result};
 const STORE_FILE: &str = "server.json";
 /// Written into a VM lab's directory when it runs on a server host, so stop/status
 /// (which re-evaluate the Vagrantfile) get the same connection.
-const HOST_MARKER: &str = ".cyberctf-host";
+pub const HOST_MARKER: &str = ".cyberctf-host";
 const TEST_TIMEOUT: Duration = Duration::from_secs(6);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

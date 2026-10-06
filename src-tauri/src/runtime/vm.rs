@@ -37,13 +37,14 @@ pub async fn stop(dir: &Path, env: &[(String, String)], log: impl FnMut(String))
 /// rather than a genuine provisioning failure. Such a start can't succeed until the leftovers
 /// are cleared, so the caller clears them (`recover_local`) and tries once more.
 pub fn is_stale_state_error(line: &str) -> bool {
+    // Only hypervisor/Vagrant *startup* errors that a cleanup+retry can actually fix. Deliberately
+    // NOT the bare "already exists" / "already registered" / "name is already in use", which also
+    // appear in ordinary successful provisioner output ("group docker already exists", a user or
+    // network that already exists): matching those would destroy and re-provision a healthy VM.
     let l = line.to_ascii_lowercase();
-    l.contains("verr_already_exists")
-        || l.contains("could not rename")
+    l.contains("verr_already_exists") // VirtualBox: the target VM folder already exists
+        || l.contains("could not rename") // the import can't rename its folder to the taken name
         || l.contains("is locked") // Vagrant: "the machine is locked" (a dead process's lock)
-        || l.contains("already exists") // VBoxManage / vmware: a VM or folder of that name is left over
-        || l.contains("already registered")
-        || l.contains("name is already in use")
         || l.contains("different provider") // "an active machine was found with a different provider"
         || l.contains("single provider at a time")
 }
@@ -75,31 +76,36 @@ pub async fn reconcile_provider(dir: &Path, requested: Provider, env: &[(String,
     let _ = std::fs::remove_dir_all(dir.join(".vagrant"));
 }
 
-/// Normalizes a VM name or folder name for matching: lowercase, every run of non-alphanumerics
-/// collapsed to a single space. VirtualBox stores the VM under a sanitized folder name (the
-/// middot in "lab · dc01" becomes "lab - dc01"), so the registered name and the on-disk folder
-/// only match once separators are normalized away.
-fn norm(s: &str) -> String {
-    let spaced: String = s.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { ' ' }).collect();
-    spaced.split_whitespace().collect::<Vec<_>>().join(" ")
+/// The on-disk folder VirtualBox creates for a VM is a sanitized form of its name: the middot in
+/// "lab · dc01" becomes "lab - dc01". This returns the exact folder name candidates for a VM
+/// name, so an orphaned folder is matched EXACTLY (never by lossy normalization, which could
+/// collide with an unrelated VM like "lab-dc01").
+fn folder_candidates(name: &str) -> [String; 2] {
+    [name.to_string(), name.replace('\u{00b7}', "-")]
 }
 
 /// The VM names Isoloom wrote into the Vagrantfile, used to scope orphan cleanup strictly to
-/// this lab's own VMs. Every provider block names the VM as the first quoted string on a
-/// `v.name` / `v.guest_name` / `v.vmx["displayName"]` line.
+/// this lab's own VMs. Every provider block names the VM on a `v.name` / `v.guest_name` /
+/// `v.vmx["displayName"]` line, as the quoted string after the `=` (for `displayName` the key
+/// itself is quoted, so taking the value after `=` is what's correct, not the first quote).
 fn vm_names(dir: &Path) -> Vec<String> {
-    let text = std::fs::read_to_string(dir.join("Vagrantfile")).unwrap_or_default();
+    vm_names_from(&std::fs::read_to_string(dir.join("Vagrantfile")).unwrap_or_default())
+}
+
+fn vm_names_from(text: &str) -> Vec<String> {
     let mut names = Vec::new();
     for raw in text.lines() {
         let l = raw.trim();
         let is_name_line = l.starts_with("v.name") || l.starts_with("v.guest_name") || l.contains("displayName\"]");
-        if !is_name_line || !l.contains('=') {
+        let Some(eq) = l.find('=') else { continue };
+        if !is_name_line {
             continue;
         }
-        if let Some(open) = l.find('"')
-            && let Some(len) = l[open + 1..].find('"')
+        let after = &l[eq + 1..];
+        if let Some(open) = after.find('"')
+            && let Some(len) = after[open + 1..].find('"')
         {
-            let name = &l[open + 1..open + 1 + len];
+            let name = &after[open + 1..open + 1 + len];
             if !name.is_empty() {
                 names.push(name.to_string());
             }
@@ -126,10 +132,11 @@ async fn vbox_machine_folder() -> Option<PathBuf> {
     std::env::var_os("HOME").map(|h| PathBuf::from(h).join("VirtualBox VMs"))
 }
 
-/// Removes VirtualBox VMs and leftover machine folders that belong to this lab (name matches
-/// one of `wanted`) but that `vagrant destroy` can't reach: a VM a failed import half-created
-/// and never registered with Vagrant, or an orphaned folder that makes the next import fail
-/// with VERR_ALREADY_EXISTS. Strictly scoped by name, so unrelated VMs are never touched.
+/// Removes VirtualBox VMs and leftover machine folders that belong to this lab (name matches one
+/// of `wanted` EXACTLY) but that `vagrant destroy` can't reach: a VM a failed import half-created
+/// and never registered with Vagrant, or an orphaned folder that makes the next import fail with
+/// VERR_ALREADY_EXISTS. Exact-match only — a lossy match could delete an unrelated VM (e.g. a
+/// user's own "lab-dc01" vs this lab's "lab · dc01"), which `unregistervm --delete` can't undo.
 async fn recover_virtualbox(wanted: &HashSet<String>, log: &mut impl FnMut(String)) {
     // Registered VMs of ours that are still around: power off and delete (removes their files).
     if let Ok(out) = run("VBoxManage", &["list", "vms"], None).await {
@@ -141,21 +148,22 @@ async fn recover_virtualbox(wanted: &HashSet<String>, log: &mut impl FnMut(Strin
             }
             let uuid = line[open + 1..close].to_string();
             let name = line[..open].trim().trim_matches('"').to_string();
-            if wanted.contains(&norm(&name)) {
+            if wanted.contains(&name) {
                 log(format!("Removing a leftover VM left by a previous run: {name}"));
                 let _ = run("VBoxManage", &["controlvm", &uuid, "poweroff"], None).await;
                 let _ = run("VBoxManage", &["unregistervm", &uuid, "--delete"], None).await;
             }
         }
     }
-    // Unregistered leftover folders (the import failed before registering the VM): delete the
-    // directory so the next import can create it.
+    // Unregistered leftover folders (the import failed before registering the VM): delete only a
+    // folder whose name is EXACTLY one of our VMs' sanitized folder names.
+    let folders: HashSet<String> = wanted.iter().flat_map(|n| folder_candidates(n)).collect();
     if let Some(base) = vbox_machine_folder().await
         && let Ok(entries) = std::fs::read_dir(&base)
     {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_dir() && wanted.contains(&norm(&entry.file_name().to_string_lossy())) {
+            if path.is_dir() && folders.contains(entry.file_name().to_string_lossy().as_ref()) {
                 log(format!("Removing a leftover VM folder: {}", entry.file_name().to_string_lossy()));
                 let _ = std::fs::remove_dir_all(&path);
             }
@@ -163,12 +171,13 @@ async fn recover_virtualbox(wanted: &HashSet<String>, log: &mut impl FnMut(Strin
     }
 }
 
-/// Parallels equivalent of `recover_virtualbox` (best effort): `prlctl list` then delete ours.
+/// Parallels equivalent of `recover_virtualbox` (best effort, exact name match): `prlctl list`
+/// then delete ours.
 async fn recover_parallels(wanted: &HashSet<String>, log: &mut impl FnMut(String)) {
     let Ok(out) = run("prlctl", &["list", "-a", "--no-header", "-o", "name"], None).await else { return };
     for line in out.lines() {
         let name = line.trim();
-        if !name.is_empty() && wanted.contains(&norm(name)) {
+        if !name.is_empty() && wanted.contains(name) {
             log(format!("Removing a leftover VM left by a previous run: {name}"));
             let _ = run("prlctl", &["stop", name, "--kill"], None).await;
             let _ = run("prlctl", &["delete", name], None).await;
@@ -184,7 +193,7 @@ async fn recover_parallels(wanted: &HashSet<String>, log: &mut impl FnMut(String
 /// unrelated VMs on the machine.
 pub async fn recover_local(dir: &Path, provider: Provider, log: &mut impl FnMut(String)) {
     stop_bounded(dir, &[]).await;
-    let names: HashSet<String> = vm_names(dir).iter().map(|n| norm(n)).collect();
+    let names: HashSet<String> = vm_names(dir).into_iter().collect();
     if !names.is_empty() {
         match provider {
             Provider::Virtualbox => recover_virtualbox(&names, log).await,
@@ -225,7 +234,7 @@ pub async fn status(dir: &Path, env: &[(String, String)]) -> Result<LabStatus> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_status;
+    use super::{folder_candidates, is_stale_state_error, parse_status, vm_names_from};
 
     #[test]
     fn parses_machine_readable_status() {
@@ -237,5 +246,51 @@ mod tests {
         assert_eq!(machines.len(), 2);
         assert_eq!(machines[0].name, "pfsense-1");
         assert_eq!(machines[1].state, "poweroff");
+    }
+
+    #[test]
+    fn vm_names_reads_the_value_for_every_provider_block() {
+        // VirtualBox/Parallels/UTM use `v.name`, ESXi uses `v.guest_name`, VMware uses the quoted
+        // key `v.vmx["displayName"]` — the parser must take the VALUE after `=`, not the key.
+        let vf = r#"
+  config.vm.define "dc01" do |m|
+    m.vm.provider "virtualbox" do |v|
+      v.name = "minilab · dc01"
+    end
+    m.vm.provider "vmware_desktop" do |v|
+      v.vmx["displayName"] = "minilab · dc01"
+    end
+    m.vm.provider "vmware_esxi" do |v|
+      v.guest_name = "minilab-dc01"
+    end
+  end
+"#;
+        let names = vm_names_from(vf);
+        assert!(names.contains(&"minilab · dc01".to_string()), "got {names:?}");
+        assert!(names.contains(&"minilab-dc01".to_string()), "got {names:?}");
+        // The literal key must never be captured as a name.
+        assert!(!names.iter().any(|n| n == "displayName"), "captured the key: {names:?}");
+    }
+
+    #[test]
+    fn folder_candidates_cover_virtualbox_sanitization_exactly() {
+        // VirtualBox turns the middot into a hyphen for the on-disk folder; both are exact.
+        let c = folder_candidates("minilab · dc01");
+        assert!(c.contains(&"minilab · dc01".to_string()));
+        assert!(c.contains(&"minilab - dc01".to_string()));
+        // It must NOT produce a collapsed form that could match an unrelated "minilab-dc01".
+        assert!(!c.iter().any(|f| f == "minilab-dc01"));
+    }
+
+    #[test]
+    fn stale_state_matches_only_real_startup_errors() {
+        assert!(is_stale_state_error("VBoxManage: error: Details: code VERR_ALREADY_EXISTS"));
+        assert!(is_stale_state_error("Could not rename the directory"));
+        assert!(is_stale_state_error("the machine is locked! This means"));
+        assert!(is_stale_state_error("An active machine was found with a different provider"));
+        // Benign provisioner output must NOT trigger a destroy+retry of a healthy VM.
+        assert!(!is_stale_state_error("group 'docker' already exists"));
+        assert!(!is_stale_state_error("user 'vagrant' already exists, skipping"));
+        assert!(!is_stale_state_error("network lab already registered"));
     }
 }
