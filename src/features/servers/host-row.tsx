@@ -47,6 +47,9 @@ export function HostRow({
   const result = test && test !== "testing" ? test : null;
   const tone: Tone = test === "testing" || !test ? "muted" : result!.ok ? "ok" : "fail";
   const status = test === "testing" ? "Testing…" : !test ? "Not tested" : result!.ok ? "Online" : "Unreachable";
+  // The running-labs count is filesystem-only and can go stale when a host drops. Only trust it
+  // once the host answers as Online; an unreachable host must not report a phantom count.
+  const online = !!result && result.ok;
   const endpoint = `${KIND[host.provider].label} · ${host.username}@${host.host}:${host.port}${host.node ? ` · node ${host.node}` : ""}`;
   return (
     <div className="border-b border-border last:border-b-0">
@@ -84,7 +87,7 @@ export function HostRow({
                 </span>
               </>
             )}
-            {running > 0 && (
+            {online && running > 0 && (
               <span className="inline-flex items-center gap-1 font-medium text-learn">
                 <span className="size-1.5 rounded-full bg-learn" /> {running} lab{running > 1 ? "s" : ""} running
               </span>
