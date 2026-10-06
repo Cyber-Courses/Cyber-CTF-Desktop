@@ -16,7 +16,9 @@ import { LaunchConfirm } from "@/features/app/launch-confirm";
 import { Onboarding } from "@/features/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { apiQuery, authLogin, authStatus, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
+import { apiQuery, authLogin, authStatus, machineWorkloads, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
+import { useDeployingLabs } from "@/lib/deploy-store";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 type Tab = "home" | "labs" | "machine" | "setup" | "server" | "cloud" | "events" | "settings";
@@ -55,7 +57,7 @@ export function AppShell() {
   const [ready, setReady] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // A light lab list for the command palette (jump straight to a lab), refreshed on auth change.
-  const [palLabs, setPalLabs] = useState<{ slug: string; title: string; category: string }[]>([]);
+  const [palLabs, setPalLabs] = useState<{ id: string; slug: string; title: string; category: string }[]>([]);
 
   const check = () =>
     systemCheck()
@@ -114,10 +116,32 @@ export function AppShell() {
 
   // Labs for the palette: load once the app is ready and whenever sign-in changes.
   useEffect(() => {
-    apiQuery<{ labs: { slug: string; title: string; category: string }[] }>("{ labs(sort: [{ title: ASC }]) { slug title category } }")
+    apiQuery<{ labs: { id: string; slug: string; title: string; category: string }[] }>("{ labs(sort: [{ title: ASC }]) { id slug title category } }")
       .then((d) => setPalLabs(d.labs))
       .catch(() => setPalLabs([]));
   }, [auth?.loggedIn]);
+
+  // Labs running or starting right now, shown as their own entries in the sidebar so one is a
+  // click away wherever you are. Deploys come from the backend (so they survive a reload); the
+  // running set is polled from this machine's workloads.
+  const deploying = useDeployingLabs();
+  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let alive = true;
+    const read = () =>
+      machineWorkloads()
+        .then((w) => alive && setRunningIds(new Set(w.map((x) => x.id).filter((id) => id !== "selftest"))))
+        .catch(() => {});
+    read();
+    const t = setInterval(read, 8000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
+  const activeLabs = palLabs
+    .filter((l) => deploying.has(l.id) || runningIds.has(l.id))
+    .map((l) => ({ ...l, deploying: deploying.has(l.id) }));
 
   const paletteCommands: Command[] = [
     { id: "find-lab", label: "Find a lab", hint: "search", icon: Search, keywords: "labs search ctf", run: findALab },
@@ -207,6 +231,30 @@ export function AppShell() {
               </div>
             );
           })}
+
+          {activeLabs.length > 0 && (
+            <div className="pt-1">
+              <div className="my-2 h-px bg-border" />
+              <p className="px-2.5 pb-1 text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground/60">Running</p>
+              {activeLabs.map((l) => (
+                <button
+                  key={l.id}
+                  onClick={() => navigate("labs", l.slug)}
+                  title={l.deploying ? "Starting" : "Running"}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[0.4375rem] text-[0.8125rem] text-muted-foreground transition-colors hover:bg-[#141414] hover:text-foreground"
+                >
+                  {l.deploying ? (
+                    <Spinner className="size-4 shrink-0" />
+                  ) : (
+                    <span className="size-4 shrink-0 self-center">
+                      <span className="block size-2 translate-x-1 translate-y-1 rounded-full bg-emerald-500" />
+                    </span>
+                  )}
+                  <span className="flex-1 truncate text-left">{l.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </nav>
 
         <div className="space-y-2.5 border-t border-border px-3.5 py-3">

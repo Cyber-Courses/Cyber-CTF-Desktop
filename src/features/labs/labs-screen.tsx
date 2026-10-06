@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { useRequestedLab } from "@/lib/deep-link";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Spinner } from "@/components/ui/spinner";
 import { Panel, RailLabel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LabRow } from "@/features/labs/lab-row";
@@ -35,7 +36,10 @@ export function Labs({
 }) {
   const { labs, error, statuses, completed, refreshStatus } = useLabs(loggedIn);
   const { busy, activeLab, logs, times, launch, stop } = useLabActions(refreshStatus);
-  const [detailSlug, setDetailSlug] = useState<string | null>(null);
+  // Opened straight from the slug the navigation carried, so a lab opened from Overview, the
+  // command palette or a deep link shows its page on the first render instead of flashing the
+  // list first.
+  const [detailSlug, setDetailSlug] = useState<string | null>(() => openLab.slug);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [runtime, setRuntime] = useState<RuntimeFilter>("all");
@@ -61,7 +65,7 @@ export function Labs({
   // External navigation (sidebar, command palette, Overview): act only when the nav tick
   // changes, so a labs refresh never ejects the user from a detail they opened from the list.
   // A slug opens it (once labs load); no slug returns to the list.
-  const lastTick = useRef(-1);
+  const lastTick = useRef(openLab.tick);
   useEffect(() => {
     if (openLab.tick === lastTick.current) return;
     // A slug that isn't in the catalogue yet: wait (don't consume the tick) until labs load.
@@ -103,6 +107,15 @@ export function Labs({
   if (error) return <EmptyState icon="alert" title="Can’t reach the lab catalogue" description="Check your connection or sign in, then try again." />;
 
   const detail = labs && detailSlug ? labs.find((l) => l.slug === detailSlug) : undefined;
+  // Opening a lab while the catalogue is still loading: show a placeholder, never the list, so
+  // there is no flash of the list before the lab page.
+  if (detailSlug && !detail && !labs) {
+    return (
+      <div className="flex items-center justify-center py-24 text-muted-foreground">
+        <Spinner className="size-5" />
+      </div>
+    );
+  }
   if (detail) {
     return (
       <LabDetail
