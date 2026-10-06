@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, Container, ExternalLink, LogIn, Monitor, Play, Square } from "lucide-react";
+import { ArrowLeft, ExternalLink, LogIn, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
@@ -384,10 +384,6 @@ export function LabDetail({
             <Panel>
               <PanelHeader title="About" />
               <div className="space-y-3.5 p-4 text-[0.75rem]">
-                <div className="flex items-center gap-2 text-foreground">
-                  {isDocker ? <Container className="size-4 text-muted-foreground" /> : <Monitor className="size-4 text-muted-foreground" />}
-                  <span>{isDocker ? "Runs as containers" : "Runs as virtual machines"}</span>
-                </div>
                 <div>
                   <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">Where it runs</p>
                   <div className="space-y-1.5">
