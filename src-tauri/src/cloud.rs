@@ -262,3 +262,37 @@ pub async fn aws_login(profile: Option<String>, logs: Channel<String>) -> Result
     on_line(format!("$ aws {}", args.join(" ")));
     stream("aws", &args, None, &[], on_line).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{month_period, ymd_from_secs};
+
+    #[test]
+    fn civil_date_from_unix_timestamp() {
+        // Epoch.
+        assert_eq!(ymd_from_secs(0), (1970, 1, 1));
+        // A known instant: 2021-01-01 00:00:00 UTC = 1609459200.
+        assert_eq!(ymd_from_secs(1_609_459_200), (2021, 1, 1));
+        // Leap day: 2020-02-29 12:00:00 UTC = 1582977600.
+        assert_eq!(ymd_from_secs(1_582_977_600), (2020, 2, 29));
+        // End of a year: 2023-12-31 23:59:59 UTC = 1704067199.
+        assert_eq!(ymd_from_secs(1_704_067_199), (2023, 12, 31));
+        // The day before epoch (negative seconds).
+        assert_eq!(ymd_from_secs(-1), (1969, 12, 31));
+    }
+
+    #[test]
+    fn month_period_spans_the_first_to_an_exclusive_end() {
+        // Cost Explorer wants Start=<1st of this month>,End=<tomorrow> (End exclusive).
+        let p = month_period();
+        assert!(p.starts_with("Start="), "{p}");
+        let (start, end) = p.split_once(",End=").unwrap();
+        let start = start.strip_prefix("Start=").unwrap();
+        // Start is always day 01 of a month; both are YYYY-MM-DD.
+        assert!(start.ends_with("-01"), "{start}");
+        assert_eq!(start.len(), 10);
+        assert_eq!(end.len(), 10);
+        // End is strictly after Start (this month has at least one day so far).
+        assert!(end > start, "end {end} should be after start {start}");
+    }
+}

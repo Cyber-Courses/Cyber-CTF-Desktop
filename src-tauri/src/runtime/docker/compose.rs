@@ -124,7 +124,7 @@ pub(super) fn config_has_service(json: &str, name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{host_ports_from_config, parse_ps};
+    use super::{config_has_service, host_ports_from_config, parse_ps, project, serving_services_from_config};
 
     #[test]
     fn reads_published_host_ports_from_config() {
@@ -136,11 +136,98 @@ mod tests {
     }
 
     #[test]
+    fn host_ports_handles_string_number_and_out_of_range() {
+        // published may be a JSON string or a number; 0 and anything above u16::MAX are dropped,
+        // and a service with no ports contributes nothing.
+        let json = r#"{"services":{
+            "a":{"ports":[{"published":"80","target":80}]},
+            "b":{"ports":[{"published":8443,"target":8443}]},
+            "c":{"ports":[{"published":0,"target":5000},{"published":"0","target":5001}]},
+            "d":{"ports":[{"published":70000,"target":9}]},
+            "e":{"ports":[{"published":"notaport","target":9}]},
+            "init":{}
+        }}"#;
+        let mut ports = host_ports_from_config(json);
+        ports.sort();
+        assert_eq!(ports, vec![80, 8443]);
+    }
+
+    #[test]
+    fn host_ports_tolerates_garbage_and_missing_services() {
+        assert!(host_ports_from_config("not json").is_empty());
+        assert!(host_ports_from_config("{}").is_empty());
+        assert!(host_ports_from_config(r#"{"services":{}}"#).is_empty());
+    }
+
+    #[test]
+    fn serving_services_are_those_that_publish_a_port() {
+        let json = r#"{"services":{
+            "web":{"ports":[{"published":"80","target":80}]},
+            "db":{"ports":[{"published":5432,"target":5432}]},
+            "init":{},
+            "worker":{"ports":[]}
+        }}"#;
+        let mut names = serving_services_from_config(json);
+        names.sort();
+        // init (no `ports`) and worker (empty `ports`) are one-shot/background, not serving.
+        assert_eq!(names, vec!["db", "web"]);
+        assert!(serving_services_from_config("{}").is_empty());
+        assert!(serving_services_from_config("garbage").is_empty());
+    }
+
+    #[test]
+    fn config_has_service_checks_presence() {
+        let json = r#"{"services":{"web":{},"db":{}}}"#;
+        assert!(config_has_service(json, "web"));
+        assert!(config_has_service(json, "db"));
+        assert!(!config_has_service(json, "cache"));
+        assert!(!config_has_service("{}", "web"));
+        assert!(!config_has_service("not json", "web"));
+    }
+
+    #[test]
+    fn project_name_is_namespaced_per_lab() {
+        assert_eq!(project("sqli"), "cyberctf-sqli");
+        assert_ne!(project("a"), project("b"));
+    }
+
+    #[test]
     fn parses_both_compose_output_formats() {
         let lines = "{\"Service\":\"web\",\"State\":\"running\"}\n{\"Service\":\"db\",\"State\":\"exited\"}\n";
         let array = "[{\"Service\":\"web\",\"State\":\"running\"}]";
         assert_eq!(parse_ps(lines).len(), 2);
         assert_eq!(parse_ps(array)[0].service, "web");
         assert!(parse_ps("").is_empty());
+    }
+
+    #[test]
+    fn parse_ps_ndjson_skips_blank_and_malformed_lines() {
+        // NDJSON with surrounding whitespace, a blank line, and one unparseable line.
+        let out = "  \n{\"Service\":\"web\",\"State\":\"running\",\"Health\":\"healthy\"}\n\n{bogus}\n{\"Service\":\"db\",\"State\":\"exited\"}\n";
+        let entries = parse_ps(out);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].service, "web");
+        assert_eq!(entries[0].health, "healthy");
+        assert_eq!(entries[1].state, "exited");
+    }
+
+    #[test]
+    fn parse_ps_array_with_leading_whitespace() {
+        let out = "\n   [{\"Service\":\"web\",\"State\":\"running\"}]  ";
+        assert_eq!(parse_ps(out).len(), 1);
+        // A broken array yields nothing rather than panicking.
+        assert!(parse_ps("[not valid").is_empty());
+    }
+
+    #[test]
+    fn parse_ps_reads_publishers_and_defaults_missing_fields() {
+        let out = r#"[{"Service":"web","State":"running","Publishers":[{"PublishedPort":8080,"TargetPort":80,"Protocol":"tcp"}]}]"#;
+        let e = parse_ps(out);
+        assert_eq!(e[0].publishers.len(), 1);
+        assert_eq!(e[0].publishers[0].published_port, 8080);
+        assert_eq!(e[0].publishers[0].target_port, 80);
+        // Image/Name/Health default to empty when absent.
+        assert_eq!(e[0].image, "");
+        assert_eq!(e[0].name, "");
     }
 }

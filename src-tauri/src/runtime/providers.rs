@@ -284,4 +284,88 @@ mod tests {
             assert_eq!(serde_json::to_value(p).unwrap(), p.id());
         }
     }
+
+    #[test]
+    fn parse_plugins_handles_blank_versions_and_indentation() {
+        // Built-in-only output, trailing detail lines, blank lines, and non-plugin noise.
+        let out = "\nvagrant-vmware-desktop (3.0.4, global)\n  - Version Constraint: > 0\nvagrant-qemu (0.3.3)\nsomething-else (1.0.0)\n\n";
+        assert_eq!(parse_plugins(out), vec!["vagrant-vmware-desktop", "vagrant-qemu"]);
+        assert!(parse_plugins("").is_empty());
+        assert!(parse_plugins("No plugins installed.\n").is_empty());
+    }
+
+    #[test]
+    fn parse_plugins_accepts_both_hyphen_and_underscore_prefixes() {
+        let out = "vagrant-libvirt (0.12.2)\nvagrant_utm (0.1.3)\n";
+        assert_eq!(parse_plugins(out), vec!["vagrant-libvirt", "vagrant_utm"]);
+    }
+
+    #[test]
+    fn all_detectable_providers_exclude_clouds() {
+        // ALL is the locally detectable catalogue; cloud and AWS-family are never detected.
+        for p in Provider::ALL {
+            assert!(!matches!(p, Provider::Aws | Provider::Azure | Provider::Gcp | Provider::DigitalOcean | Provider::Linode | Provider::Oci));
+        }
+        assert_eq!(Provider::ALL.len(), 9);
+    }
+
+    #[test]
+    fn remote_and_cloud_classification() {
+        // Servers are remote but not cloud; the billed accounts are both.
+        for server in [Provider::VmwareEsxi, Provider::Proxmox] {
+            assert!(server.is_remote() && !server.is_cloud());
+        }
+        for cloud in [Provider::Aws, Provider::Azure, Provider::Gcp, Provider::DigitalOcean, Provider::Linode, Provider::Oci] {
+            assert!(cloud.is_remote() && cloud.is_cloud());
+        }
+        // Local hypervisors are neither.
+        for local in [Provider::Virtualbox, Provider::Hyperv, Provider::Parallels, Provider::Libvirt, Provider::Qemu, Provider::Utm] {
+            assert!(!local.is_remote() && !local.is_cloud());
+        }
+    }
+
+    #[test]
+    fn built_in_providers_need_no_plugin_and_clouds_have_none() {
+        assert_eq!(Provider::Virtualbox.plugin(), None);
+        assert_eq!(Provider::Hyperv.plugin(), None);
+        // Each non-builtin local/remote-hypervisor provider names a plugin.
+        for p in [Provider::VmwareDesktop, Provider::Parallels, Provider::Libvirt, Provider::Qemu, Provider::Utm, Provider::VmwareEsxi, Provider::Proxmox] {
+            assert!(p.plugin().is_some(), "{:?}", p);
+        }
+        // Cloud providers are not Vagrant providers, so no plugin.
+        for p in [Provider::Aws, Provider::Azure, Provider::Gcp, Provider::DigitalOcean, Provider::Linode, Provider::Oci] {
+            assert_eq!(p.plugin(), None, "{:?}", p);
+        }
+    }
+
+    #[test]
+    fn ids_are_unique_and_round_trip_through_serde() {
+        let all = [
+            Provider::Virtualbox,
+            Provider::VmwareDesktop,
+            Provider::Hyperv,
+            Provider::Parallels,
+            Provider::Libvirt,
+            Provider::Qemu,
+            Provider::Utm,
+            Provider::VmwareEsxi,
+            Provider::Proxmox,
+            Provider::Aws,
+            Provider::Azure,
+            Provider::Gcp,
+            Provider::DigitalOcean,
+            Provider::Linode,
+            Provider::Oci,
+        ];
+        let mut ids: Vec<&str> = all.iter().map(|p| p.id()).collect();
+        let count = ids.len();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), count, "provider ids must be unique");
+        // id() is the serde wire name, and it round-trips back to the same provider.
+        for p in all {
+            let round: Provider = serde_json::from_value(serde_json::Value::String(p.id().to_string())).unwrap();
+            assert_eq!(round, p);
+        }
+    }
 }

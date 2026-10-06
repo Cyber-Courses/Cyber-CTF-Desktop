@@ -451,3 +451,29 @@ pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
         _ => TestResult { ok: true, reachable: true, authenticated: None, latency_ms, message: "Reachable".into(), checks: Vec::new() },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::budget_unverifiable_message;
+
+    #[test]
+    fn budget_message_calls_out_an_expired_session_first() {
+        // Auth-shaped failures win, whatever else is in the text.
+        for err in ["The security token included in the request is expired", "Unable to locate credentials", "Error loading SSO Token", "InvalidClientTokenId"]
+        {
+            assert_eq!(budget_unverifiable_message(err), "the AWS session has expired or isn't signed in.", "{err}");
+        }
+    }
+
+    #[test]
+    fn budget_message_explains_cost_explorer_when_disabled() {
+        let msg = budget_unverifiable_message("Cost Explorer is not enabled for this account");
+        assert!(msg.contains("Cost Explorer isn't enabled"), "{msg}");
+    }
+
+    #[test]
+    fn budget_message_falls_back_to_the_last_line() {
+        let msg = budget_unverifiable_message("something odd\nthe real reason here");
+        assert!(msg.contains("the real reason here"), "{msg}");
+    }
+}

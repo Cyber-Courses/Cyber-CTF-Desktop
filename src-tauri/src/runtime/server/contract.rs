@@ -229,3 +229,161 @@ pub fn lab_connection(app: &AppHandle, dir: &Path) -> Result<Option<Connection>>
         Err(_) => Ok(None),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn profile(provider: Provider) -> HostProfile {
+        HostProfile {
+            gcp_project: None,
+            id: "ab12".into(),
+            name: "Lab".into(),
+            provider,
+            host: "10.0.0.5".into(),
+            port: 8006,
+            username: "root".into(),
+            datastore: None,
+            network: None,
+            node: None,
+            insecure_tls: false,
+            auto_stop_hours: None,
+            use_cli_creds: false,
+            aws_profile: None,
+            monthly_limit: None,
+        }
+    }
+
+    fn get<'a>(env: &'a [(String, String)], k: &str) -> Option<&'a str> {
+        env.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str())
+    }
+
+    #[test]
+    fn host_for_url_brackets_ipv6_only() {
+        assert_eq!(host_for_url("10.0.0.5"), "10.0.0.5");
+        assert_eq!(host_for_url("pve.lan"), "pve.lan");
+        assert_eq!(host_for_url("fd00::5"), "[fd00::5]");
+    }
+
+    #[test]
+    fn aws_terraform_env_uses_keys_or_cli_profile() {
+        let mut h = profile(Provider::Aws);
+        h.host = "eu-west-3".into();
+        h.username = "AKIA...".into();
+        let env = terraform_env(&h, "secret");
+        assert_eq!(get(&env, "AWS_ACCESS_KEY_ID"), Some("AKIA..."));
+        assert_eq!(get(&env, "AWS_SECRET_ACCESS_KEY"), Some("secret"));
+        assert_eq!(get(&env, "AWS_REGION"), Some("eu-west-3"));
+        // CLI-credential mode passes only the region and profile, never keys.
+        h.use_cli_creds = true;
+        h.aws_profile = Some("work".into());
+        let env = terraform_env(&h, "secret");
+        assert!(get(&env, "AWS_ACCESS_KEY_ID").is_none());
+        assert_eq!(get(&env, "AWS_REGION"), Some("eu-west-3"));
+        assert_eq!(get(&env, "AWS_PROFILE"), Some("work"));
+    }
+
+    #[test]
+    fn token_cloud_terraform_env_passes_the_token() {
+        let mut h = profile(Provider::DigitalOcean);
+        assert_eq!(get(&terraform_env(&h, "dop_v1_abc"), "DIGITALOCEAN_TOKEN"), Some("dop_v1_abc"));
+        h.provider = Provider::Linode;
+        assert_eq!(get(&terraform_env(&h, "lin_tok"), "LINODE_TOKEN"), Some("lin_tok"));
+        // Azure's env only carries the subscription id; GCP carries nothing (ADC).
+        h.provider = Provider::Azure;
+        h.username = "sub-id".into();
+        assert_eq!(get(&terraform_env(&h, ""), "ARM_SUBSCRIPTION_ID"), Some("sub-id"));
+        h.provider = Provider::Gcp;
+        assert!(terraform_env(&h, "").is_empty());
+    }
+
+    #[test]
+    fn cloud_terraform_vars_carry_region_and_auto_stop_minutes() {
+        let mut h = profile(Provider::Aws);
+        h.host = "eu-west-3".into();
+        h.auto_stop_hours = Some(3);
+        h.datastore = Some("t3.small".into());
+        let vars = terraform_vars(&h, "sec");
+        assert_eq!(get(&vars, "region"), Some("eu-west-3"));
+        assert_eq!(get(&vars, "auto_stop_hours"), Some("3"));
+        assert_eq!(get(&vars, "auto_stop_minutes"), Some("180"));
+        // AWS size var is instance_type.
+        assert_eq!(get(&vars, "instance_type"), Some("t3.small"));
+        // No auto_stop_hours set falls back to the default.
+        h.auto_stop_hours = None;
+        let vars = terraform_vars(&h, "sec");
+        assert_eq!(get(&vars, "auto_stop_hours"), Some(DEFAULT_AUTO_STOP_HOURS.to_string().as_str()));
+    }
+
+    #[test]
+    fn cloud_size_var_name_differs_per_provider() {
+        let size = |p: Provider, var: &str| {
+            let mut h = profile(p);
+            h.datastore = Some("sz".into());
+            h.host = match p {
+                Provider::Azure => "westeurope".into(),
+                Provider::Gcp => "europe-west1".into(),
+                Provider::DigitalOcean => "fra1".into(),
+                Provider::Linode => "eu-central".into(),
+                _ => "eu-west-3".into(),
+            };
+            assert_eq!(get(&terraform_vars(&h, ""), var), Some("sz"), "{p:?}");
+        };
+        size(Provider::Azure, "size");
+        size(Provider::DigitalOcean, "size");
+        size(Provider::Gcp, "machine_type");
+        size(Provider::Linode, "type");
+        size(Provider::Aws, "instance_type");
+    }
+
+    #[test]
+    fn gcp_vars_prefer_existing_project_else_billing_account() {
+        let mut h = profile(Provider::Gcp);
+        h.host = "europe-west1".into();
+        h.username = "0X0X0X-0X0X0X-0X0X0X".into();
+        h.node = Some("123456789012".into());
+        // No project yet: pass billing account and org.
+        let vars = terraform_vars(&h, "");
+        assert_eq!(get(&vars, "billing_account"), Some("0X0X0X-0X0X0X-0X0X0X"));
+        assert_eq!(get(&vars, "org_id"), Some("123456789012"));
+        assert!(get(&vars, "project").is_none());
+        // An established project is reused instead.
+        h.gcp_project = Some("cyberctf-labs-xyz".into());
+        let vars = terraform_vars(&h, "");
+        assert_eq!(get(&vars, "project"), Some("cyberctf-labs-xyz"));
+        assert!(get(&vars, "billing_account").is_none());
+    }
+
+    #[test]
+    fn oci_vars_carry_the_compartment() {
+        let mut h = profile(Provider::Oci);
+        h.host = "eu-frankfurt-1".into();
+        h.username = "ocid1.compartment.oc1..aaaa".into();
+        assert_eq!(get(&terraform_vars(&h, ""), "compartment_id"), Some("ocid1.compartment.oc1..aaaa"));
+    }
+
+    #[test]
+    fn proxmox_password_vars_build_the_endpoint_and_connection() {
+        let mut h = profile(Provider::Proxmox);
+        h.username = "root@pam".into();
+        h.node = Some("pve".into());
+        let vars = terraform_vars(&h, "pw");
+        assert_eq!(get(&vars, "proxmox_endpoint"), Some("https://10.0.0.5:8006/"));
+        assert_eq!(get(&vars, "proxmox_username"), Some("root@pam"));
+        assert_eq!(get(&vars, "proxmox_password"), Some("pw"));
+        assert_eq!(get(&vars, "node"), Some("pve"));
+        // A password setup carries no api token var.
+        assert!(get(&vars, "proxmox_api_token").is_none());
+    }
+
+    #[test]
+    fn proxmox_token_vars_use_api_token_and_ssh_user() {
+        let mut h = profile(Provider::Proxmox);
+        h.username = "root@pam!cyberctf".into();
+        let vars = terraform_vars(&h, "sec");
+        assert_eq!(get(&vars, "proxmox_username"), Some("root@pam"));
+        assert_eq!(get(&vars, "proxmox_api_token"), Some("root@pam!cyberctf=sec"));
+        assert_eq!(get(&vars, "proxmox_ssh_username"), Some("root"));
+        assert!(get(&vars, "proxmox_password").is_none());
+    }
+}
