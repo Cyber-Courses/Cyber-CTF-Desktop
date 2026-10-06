@@ -13,8 +13,7 @@ use crate::error::{Error, Result};
 /// The lab's spec, checked (fields and the files it names).
 pub fn spec(dir: &Path) -> Result<Spec> {
     let spec = isoloom_core::load(dir).map_err(|e| Error::Invalid(format!("this lab's isoloom.yml: {e}")))?;
-    let problems: Vec<String> =
-        isoloom_core::validate(&spec).into_iter().chain(isoloom_core::validate_files(&spec, dir)).map(|p| p.to_string()).collect();
+    let problems: Vec<String> = isoloom_core::validate(&spec).into_iter().chain(isoloom_core::validate_files(&spec, dir)).map(|p| p.to_string()).collect();
     if !problems.is_empty() {
         return Err(Error::Invalid(format!("this lab's isoloom.yml has mistakes:\n{}", problems.join("\n"))));
     }
@@ -90,11 +89,8 @@ pub fn inputs_json(spec: &Spec, env: &[(String, String)]) -> Option<String> {
     if spec.inputs.is_empty() {
         return None;
     }
-    let map: serde_json::Map<String, serde_json::Value> = spec
-        .inputs
-        .iter()
-        .filter_map(|name| env.iter().find(|(k, _)| k == name).map(|(_, v)| (name.clone(), serde_json::Value::String(v.clone()))))
-        .collect();
+    let map: serde_json::Map<String, serde_json::Value> =
+        spec.inputs.iter().filter_map(|name| env.iter().find(|(k, _)| k == name).map(|(_, v)| (name.clone(), serde_json::Value::String(v.clone())))).collect();
     Some(serde_json::Value::Object(map).to_string())
 }
 
@@ -154,6 +150,36 @@ mod tests {
         assert_eq!(terraform_to_destroy(&dir, Runtime::Docker, "azure").unwrap(), dir.join("deploy/terraform/azure"));
         std::fs::create_dir_all(dir.join(".isoloom")).unwrap();
         assert_eq!(terraform_to_destroy(&dir, Runtime::Docker, "azure").unwrap(), dir.join(".isoloom/cloud-docker/azure"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn vagrant_dir_and_target_differ_for_docker_and_vm() {
+        let d = Path::new("/l");
+        assert_eq!(vagrant_dir(d, Runtime::Docker), PathBuf::from("/l/.isoloom/docker-vm"));
+        assert_eq!(vagrant_dir(d, Runtime::Vm), PathBuf::from("/l/.isoloom/vagrant"));
+        assert_eq!(vagrant_target(Runtime::Docker), Target::DockerVm);
+        assert_eq!(vagrant_target(Runtime::Vm), Target::Vagrant);
+    }
+
+    #[test]
+    fn terraform_to_destroy_uses_isoloom_when_no_legacy_folder() {
+        // A fresh lab with no deploy/terraform/<tf> falls through to the Isoloom module.
+        let dir = std::env::temp_dir().join(format!("cyberctf-nolegacy-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(terraform_to_destroy(&dir, Runtime::Docker, "aws").unwrap(), dir.join(".isoloom/cloud-docker/aws"));
+        // Even with .isoloom absent, a missing legacy folder still yields the Isoloom path.
+        assert_eq!(terraform_to_destroy(&dir, Runtime::Vm, "proxmox").unwrap(), dir.join(".isoloom/proxmox"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn inputs_json_is_none_when_the_spec_declares_no_inputs() {
+        let dir = lab(
+            "version: 1\nname: t\nnetworks:\n  lab: { cidr: 10.30.0.0/24 }\nmachines:\n  web:\n    networks: { lab: 10 }\n    services: [{ port: 80, http: true }]\n    docker: { image: nginx:1.27 }\n",
+        );
+        let spec = spec(&dir).unwrap();
+        assert_eq!(inputs_json(&spec, &[("X".to_string(), "y".to_string())]), None);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

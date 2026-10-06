@@ -664,4 +664,146 @@ mod tests {
             assert!(!valid_host(bad), "{bad}");
         }
     }
+
+    #[test]
+    fn host_ids_are_short_hex() {
+        assert!(valid_id("ab12cd34"));
+        assert!(valid_id("0"));
+        // Hex is case-insensitive (new_id emits lowercase, but uppercase is still a valid id).
+        assert!(valid_id("AB12"));
+        for bad in ["", "xyz", "ab 12", "ab-12", &"a".repeat(33)] {
+            assert!(!valid_id(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn default_ports_per_provider() {
+        assert_eq!(default_port(Provider::Proxmox), 8006);
+        assert_eq!(default_port(Provider::VmwareEsxi), 22);
+        for cloud in [Provider::Aws, Provider::Azure, Provider::Gcp, Provider::DigitalOcean, Provider::Linode, Provider::Oci] {
+            assert_eq!(default_port(cloud), 443, "{cloud:?}");
+        }
+    }
+
+    #[test]
+    fn terraform_target_only_for_terraform_providers() {
+        assert_eq!(terraform_target(Provider::Proxmox), Some("proxmox"));
+        assert_eq!(terraform_target(Provider::Aws), Some("aws"));
+        assert_eq!(terraform_target(Provider::Oci), Some("oci"));
+        // ESXi and local hypervisors run through Vagrant, not Terraform.
+        assert_eq!(terraform_target(Provider::VmwareEsxi), None);
+        assert_eq!(terraform_target(Provider::Virtualbox), None);
+    }
+
+    #[test]
+    fn azure_location_and_subscription() {
+        assert!(valid_azure_location("westeurope"));
+        assert!(valid_azure_location("swedencentral"));
+        for bad in ["", "West Europe", "west-europe", &"a".repeat(33)] {
+            assert!(!valid_azure_location(bad), "{bad}");
+        }
+        assert!(valid_subscription("00000000-0000-0000-0000-000000000000"));
+        assert!(valid_subscription("12345678-9abc-def0-1234-56789abcdef0"));
+        for bad in ["", "12345678-9abc-def0-1234", "12345678-9abc-def0-1234-56789abcdefg", "123456789abcdef0123456789abcdef0"] {
+            assert!(!valid_subscription(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn gcp_region_billing_and_org() {
+        assert!(valid_gcp_region("europe-west1"));
+        assert!(valid_gcp_region("us-central1"));
+        for bad in ["", "europewest1", "Europe-West1", &"a-".repeat(20)] {
+            assert!(!valid_gcp_region(bad), "{bad}");
+        }
+        assert!(valid_billing_account("0X0X0X-0X0X0X-0X0X0X"));
+        assert!(valid_billing_account("ABCDEF-123456-7890AB"));
+        for bad in ["", "0x0x0x-0x0x0x-0x0x0x", "0X0X0X-0X0X0X", "0X0X0-0X0X0X-0X0X0X"] {
+            assert!(!valid_billing_account(bad), "{bad}");
+        }
+        // Org id is digits, or empty for a personal account.
+        assert!(valid_org_id(""));
+        assert!(valid_org_id("123456789012"));
+        assert!(!valid_org_id("12ab"));
+        assert!(!valid_org_id(&"1".repeat(33)));
+    }
+
+    #[test]
+    fn digitalocean_linode_regions_and_tokens() {
+        assert!(valid_do_region("fra1"));
+        assert!(valid_do_region("nyc3"));
+        for bad in ["a", "ab", "NYC3", "fra-1", &"a".repeat(9)] {
+            assert!(!valid_do_region(bad), "{bad}");
+        }
+        assert!(valid_linode_region("eu-central"));
+        assert!(valid_linode_region("us-east"));
+        for bad in ["", "ab", "9region", "EU-east", &"a".repeat(21)] {
+            assert!(!valid_linode_region(bad), "{bad}");
+        }
+        // Tokens: 40..=200 chars of [A-Za-z0-9_].
+        assert!(valid_do_token(&"a".repeat(40)));
+        assert!(valid_do_token(&format!("dop_v1_{}", "9".repeat(64))));
+        assert!(!valid_do_token(&"a".repeat(39)));
+        assert!(!valid_do_token(&"a".repeat(201)));
+        assert!(!valid_do_token(&format!("{}!", "a".repeat(40))));
+    }
+
+    #[test]
+    fn oci_region_and_ocid() {
+        assert!(valid_oci_region("eu-frankfurt-1"));
+        assert!(valid_oci_region("us-ashburn-1"));
+        for bad in ["eu", "EU-frankfurt-1", "1region", &"a".repeat(25)] {
+            assert!(!valid_oci_region(bad), "{bad}");
+        }
+        assert!(valid_ocid("ocid1.tenancy.oc1..aaaaaaaabbbbbbbb"));
+        assert!(valid_ocid("ocid1.compartment.oc1..aaaa_bbbb-cccc"));
+        for bad in ["", "tenancy.oc1..aaaa", "ocid1.x", &format!("ocid1.{}", "a".repeat(260))] {
+            assert!(!valid_ocid(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn clean_trims_and_rejects_bad_values() {
+        assert_eq!(clean("  lab  ", "name", 64).unwrap(), "lab");
+        assert!(clean("", "name", 64).is_err());
+        assert!(clean("   ", "name", 64).is_err());
+        assert!(clean("toolong", "name", 3).is_err());
+        assert!(clean("line\nbreak", "name", 64).is_err());
+    }
+
+    #[test]
+    fn clean_opt_maps_blank_to_none() {
+        assert_eq!(clean_opt(None, "x").unwrap(), None);
+        assert_eq!(clean_opt(Some("  ".to_string()), "x").unwrap(), None);
+        assert_eq!(clean_opt(Some(" vmbr1 ".to_string()), "x").unwrap(), Some("vmbr1".to_string()));
+        assert!(clean_opt(Some("bad\tvalue".to_string()), "x").is_err());
+    }
+
+    #[test]
+    fn host_profile_json_round_trips() {
+        let p = profile(Provider::Proxmox);
+        let json = serde_json::to_string(&p).unwrap();
+        let back: HostProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, p);
+        // Optional fields default when absent (older server.json files).
+        let minimal = r#"{"id":"ab12","name":"L","provider":"proxmox","host":"10.0.0.5","port":8006,"username":"root@pam"}"#;
+        let m: HostProfile = serde_json::from_str(minimal).unwrap();
+        assert_eq!(m.datastore, None);
+        assert!(!m.insecure_tls);
+        assert_eq!(m.monthly_limit, None);
+    }
+
+    #[test]
+    fn test_result_from_checks_summarises_first_failure() {
+        let fail = vec![Check::ok("A", "a ok"), Check::fail("B", "b broke"), Check::warn("C", "c warn")];
+        let r = TestResult::from_checks(fail, Some(5));
+        assert!(!r.ok);
+        assert_eq!(r.authenticated, Some(false));
+        assert_eq!(r.message, "b broke");
+        // All-pass: ok, message is the first passing detail.
+        let pass = vec![Check::ok("A", "a ok"), Check::warn("C", "c warn")];
+        let r = TestResult::from_checks(pass, None);
+        assert!(r.ok && r.authenticated == Some(true));
+        assert_eq!(r.message, "a ok");
+    }
 }

@@ -224,7 +224,100 @@ pub async fn primary_url(dir: &Path, id: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::compose::parse_ps;
-    use super::{declared_services, first_published_url, parse_inspect, parse_networks, tcp_ports};
+    use super::{declared_services, first_published_url, is_datastore, parse_inspect, parse_networks, short_network, tcp_ports};
+
+    #[test]
+    fn datastores_are_recognised_by_service_or_image() {
+        let ps = |svc: &str, image: &str| parse_ps(&format!(r#"[{{"Service":"{svc}","Image":"{image}","State":"running"}}]"#)).pop().unwrap();
+        // By well-known image substrings.
+        assert!(is_datastore(&ps("x", "mysql:8.0")));
+        assert!(is_datastore(&ps("cache", "redis:7")));
+        assert!(is_datastore(&ps("store", "mongo:6")));
+        assert!(is_datastore(&ps("search", "docker.elastic.co/elasticsearch:8")));
+        // By the conventional service names.
+        assert!(is_datastore(&ps("db", "custom-image")));
+        assert!(is_datastore(&ps("database", "custom-image")));
+        // A plain web app is not a datastore.
+        assert!(!is_datastore(&ps("web", "invoice_web")));
+        assert!(!is_datastore(&ps("app", "nginx:1.27")));
+    }
+
+    #[test]
+    fn open_url_skips_a_lone_datastore_even_on_a_low_port() {
+        // Only a database is up, publishing the low port 22-like case: Open must stay None.
+        let out = r#"[{"Service":"db","Image":"postgres:16","State":"running","Publishers":[{"PublishedPort":22,"Protocol":"tcp"}]}]"#;
+        assert_eq!(first_published_url(&parse_ps(out)), None);
+    }
+
+    #[test]
+    fn open_url_ignores_udp_and_unpublished_ports() {
+        let out = r#"[{"Service":"web","Image":"app","State":"running","Publishers":[
+            {"PublishedPort":53,"Protocol":"udp"},
+            {"PublishedPort":0,"Protocol":"tcp"},
+            {"PublishedPort":8080,"Protocol":"tcp"}]}]"#;
+        // The udp port and the unpublished one are skipped; the tcp web port wins.
+        assert_eq!(first_published_url(&parse_ps(out)).as_deref(), Some("http://127.0.0.1:8080"));
+    }
+
+    #[test]
+    fn short_network_strips_only_this_labs_project_prefix() {
+        assert_eq!(short_network("sqli", "cyberctf-sqli_dmz"), "dmz");
+        // A different lab's prefix (or none) is left untouched.
+        assert_eq!(short_network("sqli", "cyberctf-other_dmz"), "cyberctf-other_dmz");
+        assert_eq!(short_network("sqli", "bridge"), "bridge");
+    }
+
+    #[test]
+    fn declared_services_maps_isoloom_http_to_web_and_keeps_tcp_name() {
+        let labels = [
+            ("isoloom.service.portal".to_string(), "http:80,443".to_string()),
+            ("isoloom.service.shell".to_string(), "tcp:22".to_string()),
+            ("com.docker.compose.service".to_string(), "app".to_string()),
+        ]
+        .into();
+        let s = declared_services(&labels);
+        let got: Vec<(&str, &str, Vec<u16>)> = s.iter().map(|s| (s.name.as_str(), s.kind.as_str(), s.ports.clone())).collect();
+        // isoloom http -> "web"; isoloom tcp -> the service's own name; sorted by name.
+        assert_eq!(got, vec![("portal", "web", vec![80, 443]), ("shell", "shell", vec![22])]);
+    }
+
+    #[test]
+    fn declared_services_uses_the_declared_kind_for_cyberctf_labels() {
+        let labels = [("cyberctf.service.cache".to_string(), "redis:6379".to_string())].into();
+        let s = declared_services(&labels);
+        assert_eq!((s[0].name.as_str(), s[0].kind.as_str(), s[0].ports.clone()), ("cache", "redis", vec![6379]));
+    }
+
+    #[test]
+    fn declared_services_skips_malformed_ports_and_zero() {
+        let labels = [("isoloom.service.db".to_string(), "database:abc,0,5432".to_string())].into();
+        let s = declared_services(&labels);
+        // Only the valid, non-zero port survives; bad ones are dropped, never guessed.
+        assert_eq!(s[0].ports, vec![5432]);
+    }
+
+    #[test]
+    fn networks_fall_back_to_the_ipv6_subnet_when_no_ipv4() {
+        // A network reported with only an IPv6 subnet keeps it rather than showing nothing.
+        let out = "cyberctf-x_v6only\tfd00::/64 \ttrue\n";
+        let n = parse_networks("x", out);
+        assert_eq!(n[0].name, "v6only");
+        assert_eq!(n[0].subnet, "fd00::/64");
+        assert!(n[0].internal);
+    }
+
+    #[test]
+    fn tcp_ports_keeps_distinct_pairs_and_drops_udp() {
+        let out = r#"[{"Service":"x","State":"running","Publishers":[
+            {"TargetPort":80,"PublishedPort":8080,"Protocol":"tcp"},
+            {"TargetPort":80,"PublishedPort":8080,"Protocol":"tcp"},
+            {"TargetPort":443,"PublishedPort":8443,"Protocol":"tcp"},
+            {"TargetPort":53,"PublishedPort":5353,"Protocol":"udp"},
+            {"TargetPort":0,"PublishedPort":0,"Protocol":"tcp"}]}]"#;
+        let ports = tcp_ports(&parse_ps(out)[0].publishers);
+        // The duplicate tcp pair is listed once, udp is dropped, and the all-zero entry is dropped.
+        assert_eq!(ports.iter().map(|p| (p.published, p.target)).collect::<Vec<_>>(), vec![(8080, 80), (8443, 443)]);
+    }
 
     #[test]
     fn finds_the_first_published_tcp_port() {

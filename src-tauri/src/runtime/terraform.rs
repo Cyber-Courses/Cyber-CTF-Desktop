@@ -25,6 +25,32 @@ fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
+/// The non-secret run record written beside the state at apply time, so a later destroy can be
+/// replayed without the launch spec: the connection/key variables plus, for auto-stopping cloud
+/// hosts, the computed `expires_at` (seconds since epoch; `now` is the current time).
+fn run_record(vars: &[(String, String)], now: u64) -> serde_json::Map<String, Value> {
+    let mut run: serde_json::Map<String, Value> = vars
+        .iter()
+        .filter(|(k, _)| matches!(k.as_str(), "ssh_public_key" | "ssh_private_key_file" | "allowed_cidr"))
+        .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+        .collect();
+    // When the lab host stops itself (cloud auto-stop), so status can tell.
+    if let Some(hours) = vars.iter().find(|(k, _)| k == "auto_stop_hours").and_then(|(_, v)| v.parse::<u64>().ok()).filter(|h| *h > 0) {
+        run.insert(EXPIRES_AT.into(), Value::from(now + hours * 3600));
+    }
+    run
+}
+
+/// Lab variables restored from the run record for a destroy. Strings only: the lab variables
+/// the provider needs again (`expires_at` is a number and is skipped). A missing or malformed
+/// record yields nothing, never an error.
+fn saved_vars(run_json: &str) -> Vec<(String, String)> {
+    match serde_json::from_str::<Value>(run_json) {
+        Ok(Value::Object(run)) => run.into_iter().filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string()))).collect(),
+        _ => Vec::new(),
+    }
+}
+
 async fn terraform(module: &Path, state: &Path, env: &[(String, String)], command: &str, log: impl FnMut(String)) -> Result<()> {
     if !module.join("main.tf").is_file() {
         return Err(Error::Invalid(format!("this lab has no Terraform module at {}", module.display())));
@@ -53,15 +79,7 @@ async fn terraform_host(dir: &Path, state: &Path, env: &[(String, String)], comm
 pub async fn apply(module: &Path, state: &Path, vars: &[(String, String)], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
     std::fs::create_dir_all(state)?;
     // Remember the non-secret variables, so a later destroy has them without the launch spec.
-    let mut run: serde_json::Map<String, Value> = vars
-        .iter()
-        .filter(|(k, _)| matches!(k.as_str(), "ssh_public_key" | "ssh_private_key_file" | "allowed_cidr"))
-        .map(|(k, v)| (k.clone(), Value::String(v.clone())))
-        .collect();
-    // When the lab host stops itself (cloud auto-stop), so status can tell.
-    if let Some(hours) = vars.iter().find(|(k, _)| k == "auto_stop_hours").and_then(|(_, v)| v.parse::<u64>().ok()).filter(|h| *h > 0) {
-        run.insert(EXPIRES_AT.into(), Value::from(now() + hours * 3600));
-    }
+    let run = run_record(vars, now());
     std::fs::write(state.join(RUN_FILE), serde_json::to_string(&run).unwrap_or_default())?;
     let mut log = log;
     let vars = with_ssh_key(vars, ssh::launcher_key());
@@ -167,15 +185,8 @@ pub async fn destroy(module: &Path, state: &Path, vars: &[(String, String)], env
         return Ok(());
     }
     let mut all: Vec<(String, String)> = vars.to_vec();
-    if let Ok(raw) = std::fs::read_to_string(state.join(RUN_FILE))
-        && let Ok(Value::Object(run)) = serde_json::from_str::<Value>(&raw)
-    {
-        for (k, v) in run {
-            // Strings only: lab variables (expires_at is a number).
-            if let Some(v) = v.as_str() {
-                all.push((k, v.to_string()));
-            }
-        }
+    if let Ok(raw) = std::fs::read_to_string(state.join(RUN_FILE)) {
+        all.extend(saved_vars(&raw));
     }
     // Modules validate the SSH key even to destroy (older runs didn't save it): the launcher's.
     if !all.iter().any(|(k, _)| k == "ssh_public_key")
@@ -287,6 +298,113 @@ mod tests {
         assert!(with_ssh_key(&token, key.clone()).contains(&("proxmox_ssh_private_key_file".into(), "/k/id_ed25519".into())));
         let password = vec![("proxmox_password".to_string(), "p".to_string())];
         assert_eq!(with_ssh_key(&password, key), password);
+    }
+
+    #[test]
+    fn run_record_keeps_only_connection_vars_and_expiry() {
+        let vars = vec![
+            ("ssh_public_key".to_string(), "ssh-ed25519 AAAA".to_string()),
+            ("ssh_private_key_file".to_string(), "/k/id".to_string()),
+            ("allowed_cidr".to_string(), "1.2.3.0/24".to_string()),
+            ("proxmox_password".to_string(), "secret".to_string()),
+            ("region".to_string(), "eu-west-3".to_string()),
+            ("auto_stop_hours".to_string(), "4".to_string()),
+        ];
+        let run = run_record(&vars, 1_000);
+        // Secrets and lab-specific vars are not persisted; the connection keys are.
+        assert_eq!(run.get("ssh_public_key").and_then(|v| v.as_str()), Some("ssh-ed25519 AAAA"));
+        assert_eq!(run.get("ssh_private_key_file").and_then(|v| v.as_str()), Some("/k/id"));
+        assert_eq!(run.get("allowed_cidr").and_then(|v| v.as_str()), Some("1.2.3.0/24"));
+        assert!(run.get("proxmox_password").is_none());
+        assert!(run.get("region").is_none());
+        // 4 hours past the given `now`.
+        assert_eq!(run.get(EXPIRES_AT).and_then(|v| v.as_u64()), Some(1_000 + 4 * 3600));
+    }
+
+    #[test]
+    fn run_record_omits_expiry_when_auto_stop_absent_or_zero() {
+        assert!(run_record(&[], 1_000).get(EXPIRES_AT).is_none());
+        let zero = vec![("auto_stop_hours".to_string(), "0".to_string())];
+        assert!(run_record(&zero, 1_000).get(EXPIRES_AT).is_none());
+    }
+
+    #[test]
+    fn saved_vars_round_trips_connection_vars_and_skips_numbers() {
+        let vars = vec![
+            ("ssh_public_key".to_string(), "ssh-ed25519 AAAA".to_string()),
+            ("allowed_cidr".to_string(), "1.2.3.0/24".to_string()),
+            ("auto_stop_hours".to_string(), "4".to_string()),
+        ];
+        let json = serde_json::to_string(&run_record(&vars, 1_000)).unwrap();
+        let mut restored = saved_vars(&json);
+        restored.sort();
+        // expires_at is a number and is not restored as a variable.
+        assert_eq!(restored, vec![("allowed_cidr".to_string(), "1.2.3.0/24".to_string()), ("ssh_public_key".to_string(), "ssh-ed25519 AAAA".to_string())]);
+    }
+
+    #[test]
+    fn saved_vars_tolerates_garbage_and_non_objects() {
+        assert!(saved_vars("").is_empty());
+        assert!(saved_vars("not json").is_empty());
+        assert!(saved_vars("[1,2,3]").is_empty());
+        assert!(saved_vars(r#"{"expires_at":123}"#).is_empty());
+    }
+
+    #[test]
+    fn has_instance_needs_a_nonempty_ip_output() {
+        assert!(has_instance(&serde_json::json!({"ip": {"value": "10.0.0.9"}})));
+        // State with resources but no ip output (or an empty one) is not a live instance.
+        assert!(!has_instance(&serde_json::json!({"ip": {"value": ""}})));
+        assert!(!has_instance(&serde_json::json!({"other": {"value": "x"}})));
+        assert!(!has_instance(&Value::Null));
+    }
+
+    #[test]
+    fn output_reads_nonempty_string_values_only() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-tf-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // No state file yet.
+        assert_eq!(output(&dir, "ip"), None);
+        std::fs::write(dir.join("terraform.tfstate"), r#"{"outputs":{"ip":{"value":"10.0.0.9"},"empty":{"value":""},"ready_file":{"value":"/run/ready"}}}"#)
+            .unwrap();
+        assert_eq!(output(&dir, "ip").as_deref(), Some("10.0.0.9"));
+        assert_eq!(output(&dir, "ready_file").as_deref(), Some("/run/ready"));
+        assert_eq!(output(&dir, "empty"), None);
+        assert_eq!(output(&dir, "missing"), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn ssh_endpoint_defaults_the_user_and_needs_an_ip() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-tf-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(ssh_endpoint(&dir), None);
+        std::fs::write(dir.join("terraform.tfstate"), r#"{"outputs":{"ip":{"value":"10.0.0.9"}}}"#).unwrap();
+        assert_eq!(ssh_endpoint(&dir), Some(("10.0.0.9".to_string(), "isoloom".to_string())));
+        std::fs::write(dir.join("terraform.tfstate"), r#"{"outputs":{"ip":{"value":"10.0.0.9"},"ssh_user":{"value":"ubuntu"}}}"#).unwrap();
+        assert_eq!(ssh_endpoint(&dir), Some(("10.0.0.9".to_string(), "ubuntu".to_string())));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn expired_is_true_only_with_an_instance_past_its_stop_time() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-tf-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // No state: not expired.
+        assert!(!expired(&dir));
+        std::fs::write(dir.join("terraform.tfstate"), r#"{"outputs":{"ip":{"value":"10.0.0.9"}}}"#).unwrap();
+        // Instance but no run.json (no auto-stop): never expires.
+        assert!(!expired(&dir));
+        // Future stop time: not expired yet (unlike status, which also shows it running).
+        std::fs::write(dir.join(RUN_FILE), format!(r#"{{"expires_at":{}}}"#, now() + 3600)).unwrap();
+        assert!(!expired(&dir));
+        // Past stop time: expired, so the reaper destroys it.
+        std::fs::write(dir.join(RUN_FILE), r#"{"expires_at":1}"#).unwrap();
+        assert!(expired(&dir));
+        // Expiry past but the instance is already gone (no ip): nothing to reap.
+        std::fs::write(dir.join("terraform.tfstate"), r#"{"outputs":{}}"#).unwrap();
+        assert!(!expired(&dir));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

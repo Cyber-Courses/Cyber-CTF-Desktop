@@ -236,15 +236,12 @@ async fn azure_capacity_check(h: &HostProfile) -> Check {
     }
     let family = entry["family"].as_str().unwrap_or_default().to_lowercase();
     let usage = crate::exec::run("az", &["vm", "list-usage", "--subscription", &h.username, "-l", region, "-o", "json"], None).await;
-    let free = usage
-        .ok()
-        .and_then(|o| serde_json::from_str::<Vec<serde_json::Value>>(&o).ok())
-        .and_then(|u| {
-            u.into_iter().find(|x| x["name"]["value"].as_str().map(str::to_lowercase).as_deref() == Some(family.as_str())).map(|x| {
-                let n = |v: &serde_json::Value| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64()).unwrap_or(0);
-                n(&x["limit"]) - n(&x["currentValue"])
-            })
-        });
+    let free = usage.ok().and_then(|o| serde_json::from_str::<Vec<serde_json::Value>>(&o).ok()).and_then(|u| {
+        u.into_iter().find(|x| x["name"]["value"].as_str().map(str::to_lowercase).as_deref() == Some(family.as_str())).map(|x| {
+            let n = |v: &serde_json::Value| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64()).unwrap_or(0);
+            n(&x["limit"]) - n(&x["currentValue"])
+        })
+    });
     match free {
         Some(f) if f >= 2 => Check::ok("VM size", format!("{size} is available in {region} ({f} cores of quota free).")),
         Some(_) => Check::fail(
@@ -452,5 +449,31 @@ pub(super) async fn test_host(h: &HostProfile, password: &str) -> TestResult {
             TestResult { ok: r.ok, reachable: true, authenticated: r.authenticated, latency_ms, message: r.message, checks: Vec::new() }
         }
         _ => TestResult { ok: true, reachable: true, authenticated: None, latency_ms, message: "Reachable".into(), checks: Vec::new() },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::budget_unverifiable_message;
+
+    #[test]
+    fn budget_message_calls_out_an_expired_session_first() {
+        // Auth-shaped failures win, whatever else is in the text.
+        for err in ["The security token included in the request is expired", "Unable to locate credentials", "Error loading SSO Token", "InvalidClientTokenId"]
+        {
+            assert_eq!(budget_unverifiable_message(err), "the AWS session has expired or isn't signed in.", "{err}");
+        }
+    }
+
+    #[test]
+    fn budget_message_explains_cost_explorer_when_disabled() {
+        let msg = budget_unverifiable_message("Cost Explorer is not enabled for this account");
+        assert!(msg.contains("Cost Explorer isn't enabled"), "{msg}");
+    }
+
+    #[test]
+    fn budget_message_falls_back_to_the_last_line() {
+        let msg = budget_unverifiable_message("something odd\nthe real reason here");
+        assert!(msg.contains("the real reason here"), "{msg}");
     }
 }

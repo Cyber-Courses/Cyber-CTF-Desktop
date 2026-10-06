@@ -312,6 +312,57 @@ mod tests {
         assert_ne!(a, b);
     }
 
+    fn tokens(access: &str, refresh: Option<&str>, id: Option<&str>, expires_in: Option<u64>) -> TokenResponse {
+        TokenResponse { access_token: access.to_string(), refresh_token: refresh.map(str::to_string), id_token: id.map(str::to_string), expires_in }
+    }
+
+    fn session(refresh: Option<&str>, name: Option<&str>, email: Option<&str>) -> Session {
+        Session {
+            access_token: "old-access".into(),
+            refresh_token: refresh.map(str::to_string),
+            expires_at: 0,
+            name: name.map(str::to_string),
+            email: email.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn session_from_carries_over_the_refresh_token_when_none_returned() {
+        let prev = session(Some("keep-me"), None, None);
+        // Refresh grant that returns no new refresh token: keep the previous one.
+        let s = session_from(tokens("new-access", None, None, Some(3600)), Some(&prev));
+        assert_eq!(s.access_token, "new-access");
+        assert_eq!(s.refresh_token.as_deref(), Some("keep-me"));
+        // A rotated refresh token replaces the old one.
+        let s = session_from(tokens("new-access", Some("rotated"), None, Some(3600)), Some(&prev));
+        assert_eq!(s.refresh_token.as_deref(), Some("rotated"));
+    }
+
+    #[test]
+    fn session_from_keeps_previous_profile_without_a_new_id_token() {
+        let prev = session(Some("r"), Some("Camille"), Some("c@cyberctf.fr"));
+        // No id_token in a refresh response: display name/email carry over.
+        let s = session_from(tokens("a", None, None, Some(60)), Some(&prev));
+        assert_eq!(s.name.as_deref(), Some("Camille"));
+        assert_eq!(s.email.as_deref(), Some("c@cyberctf.fr"));
+        // A fresh id_token overrides the carried-over profile.
+        let payload = URL_SAFE_NO_PAD.encode(br#"{"name":"Noor","email":"n@cyberctf.fr"}"#);
+        let s = session_from(tokens("a", None, Some(&format!("h.{payload}.s")), Some(60)), Some(&prev));
+        assert_eq!(s.name.as_deref(), Some("Noor"));
+        assert_eq!(s.email.as_deref(), Some("n@cyberctf.fr"));
+    }
+
+    #[test]
+    fn session_from_defaults_expiry_and_has_no_previous_on_first_login() {
+        // First login (no previous session) and a missing expires_in: default 3600s lifetime.
+        let before = now();
+        let s = session_from(tokens("a", Some("r"), None, None), None);
+        assert!(s.expires_at >= before + 3600);
+        assert_eq!(s.refresh_token.as_deref(), Some("r"));
+        assert_eq!(s.name, None);
+        assert_eq!(s.email, None);
+    }
+
     #[test]
     fn reads_display_claims_from_id_token() {
         let payload = URL_SAFE_NO_PAD.encode(br#"{"sub":"u1","name":"Camille","email":"c@cyberctf.fr"}"#);
