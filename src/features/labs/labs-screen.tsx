@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { useRequestedLab } from "@/lib/deep-link";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -24,14 +24,14 @@ export function Labs({
   onLogin,
   hostArch,
   report,
-  openSlug,
+  openLab,
 }: {
   loggedIn: boolean;
   /** Logs in from a lab (a logged-out Start). */
   onLogin?: () => Promise<void>;
   hostArch: string;
   report?: SystemReport | null;
-  openSlug?: string | null;
+  openLab: { slug: string | null; tick: number };
 }) {
   const { labs, error, statuses, completed, refreshStatus } = useLabs(loggedIn);
   const { busy, activeLab, logs, times, launch, stop } = useLabActions(refreshStatus);
@@ -58,13 +58,23 @@ export function Labs({
       .catch(() => setServers([]));
   }, []);
 
-  // Open a lab's detail from a deep link or from another screen (Overview).
+  // External navigation (sidebar, command palette, Overview): act only when the nav tick
+  // changes, so a labs refresh never ejects the user from a detail they opened from the list.
+  // A slug opens it (once labs load); no slug returns to the list.
+  const lastTick = useRef(-1);
   useEffect(() => {
-    const slug = openSlug || requested;
-    // Syncs an external request (deep link, Overview) into local navigation state.
+    if (openLab.tick === lastTick.current) return;
+    // A slug that isn't in the catalogue yet: wait (don't consume the tick) until labs load.
+    if (openLab.slug && !labs?.some((l) => l.slug === openLab.slug)) return;
+    lastTick.current = openLab.tick;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (slug && labs?.some((l) => l.slug === slug)) setDetailSlug(slug);
-  }, [openSlug, requested, labs]);
+    setDetailSlug(openLab.slug);
+  }, [openLab, labs]);
+  // A deep link (cyberctf://lab/<slug>) opens that lab once the catalogue is loaded.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (requested && labs?.some((l) => l.slug === requested)) setDetailSlug(requested);
+  }, [requested, labs]);
 
   const isRunning = (l: Lab) => !!statuses[l.id]?.running;
 

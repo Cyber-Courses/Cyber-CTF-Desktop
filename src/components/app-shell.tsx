@@ -48,7 +48,7 @@ const TITLES: Record<Tab, string> = {
 
 export function AppShell() {
   const [tab, setTab] = useState<Tab>("home");
-  const [openLab, setOpenLab] = useState<string | null>(null);
+  const [openLab, setOpenLab] = useState<{ slug: string | null; tick: number }>({ slug: null, tick: 0 });
   const [report, setReport] = useState<SystemReport | null>(null);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [onboarded, setOnboarded] = useState(true);
@@ -80,16 +80,16 @@ export function AppShell() {
     // Setup now lives inside the Machine dashboard; "setup" just lands on Machine.
     if (next === "setup") {
       setTab("machine");
-      setOpenLab(null);
+      setOpenLab((o) => ({ slug: null, tick: o.tick + 1 }));
       return;
     }
     setTab(next);
-    setOpenLab(slug ?? null);
+    setOpenLab((o) => ({ slug: slug ?? null, tick: o.tick + 1 }));
   }
 
   function findALab() {
     setTab("labs");
-    setOpenLab(null);
+    setOpenLab((o) => ({ slug: null, tick: o.tick + 1 }));
     requestAnimationFrame(() => document.querySelector<HTMLInputElement>("[data-lab-search]")?.focus());
   }
 
@@ -250,7 +250,7 @@ function Screen({
   tab: Tab;
   report: SystemReport | null;
   auth: AuthStatus | null;
-  openLab: string | null;
+  openLab: { slug: string | null; tick: number };
   onRefresh: () => void | Promise<void>;
   onNavigate: (t: Tab, slug?: string) => void;
   onAuthChange: (status: AuthStatus) => void;
@@ -279,7 +279,7 @@ function Screen({
       onLogin={async () => onAuthChange(await authLogin())}
       hostArch={report.arch}
       report={report}
-      openSlug={openLab}
+      openLab={openLab}
     />
   ) : (
     <p className="text-sm text-muted-foreground">Loading…</p>
