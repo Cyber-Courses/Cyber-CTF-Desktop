@@ -22,9 +22,13 @@ export function useLabCheck(labId: string, { running, downCount, enabled }: { ru
     done.current = true;
     // The check's own state changes are the point; it runs in the background.
     setCheck("checking");
+    let alive = true;
     labCheck(labId, "DOCKER")
-      .then(setCheck)
-      .catch((e) => setCheck({ available: true, ok: false, output: String(e) }));
+      .then((c) => alive && setCheck(c))
+      .catch((e) => alive && setCheck({ available: true, ok: false, output: String(e) }));
+    return () => {
+      alive = false;
+    };
   }, [labId, running, downCount, enabled]);
   return [check, () => setCheck(null)] as const;
 }

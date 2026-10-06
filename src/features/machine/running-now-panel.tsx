@@ -18,12 +18,14 @@ export function RunningNowPanel({ refreshKey }: { refreshKey: unknown }) {
   // One workloads read at a time: the read shells out to docker/vagrant and can be slow, so the
   // 8s poll must not stack reads on top of one still in flight.
   const loading = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => () => void (alive.current = false), []);
   const load = useCallback(() => {
     if (loading.current) return;
     loading.current = true;
     machineWorkloads()
-      .then(setWorkloads)
-      .catch(() => setWorkloads([]))
+      .then((w) => alive.current && setWorkloads(w))
+      .catch(() => alive.current && setWorkloads([]))
       .finally(() => {
         loading.current = false;
       });

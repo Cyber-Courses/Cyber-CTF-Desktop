@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRight, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
@@ -19,10 +19,12 @@ export function DownloadsPanel() {
   const [confirmClean, setConfirmClean] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const [freed, setFreed] = useState<number | null>(null);
+  const alive = useRef(true);
+  useEffect(() => () => void (alive.current = false), []);
   const load = useCallback(() => {
     machineStorage([getAttackImage()])
-      .then(setStorage)
-      .catch(() => setStorage({ images: [], boxes: [] }));
+      .then((s) => alive.current && setStorage(s))
+      .catch(() => alive.current && setStorage({ images: [], boxes: [] }));
   }, []);
   useEffect(() => {
     load();
