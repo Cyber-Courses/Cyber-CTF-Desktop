@@ -2,14 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowRight, Cloud, Container, Cpu, ExternalLink, Globe, MemoryStick, Play, RotateCcw, Server, TriangleAlert } from "lucide-react";
+import { ArrowRight, Cloud, Cpu, ExternalLink, MemoryStick, Play, RotateCcw, Server, TriangleAlert } from "lucide-react";
 import { Panel, RailLabel } from "@/components/ui/panel";
 import { Meter } from "@/components/ui/meter";
-import { Spinner } from "@/components/ui/spinner";
 import { LabRow } from "@/features/labs/lab-row";
 import { useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
-import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
 import { getLastRun } from "@/lib/last-run";
 import { formatAgo } from "@/lib/format";
 import { assessRam } from "@/features/home/capacity";
@@ -55,7 +53,7 @@ export function HomeScreen({
   onNavigate: (tab: Tab, slug?: string) => void;
 }) {
   const { labs, statuses, refreshStatus } = useLabs(auth?.loggedIn ?? false);
-  const { busy, activeLab, launch, stop } = useLabActions(refreshStatus);
+  const { busy, launch, stop } = useLabActions(refreshStatus);
   const [metrics, setMetrics] = useState<MachineMetrics | null>(null);
   // "Now" for the "last run" labels, taken once per visit.
   const [now] = useState(() => Date.now());
@@ -74,16 +72,8 @@ export function HomeScreen({
     };
   }, []);
 
-  // The player's active hosted session (run by Cyber CTF), shown alongside local labs.
-  const hosted = useHostedLabs();
-  const hostedActive = !!hosted.session && !["FAILED", "STOPPED", "EXPIRED"].includes(hosted.session.state);
-  const hostedRunning = hosted.session?.state === "RUNNING";
-  const hostedLab = hosted.session && labs ? (labs.find((l) => l.id === hosted.session!.labId) ?? null) : null;
-
   const dockerReady = report ? report.docker.installed && report.dockerRunning : false;
   const running = (labs ?? []).filter((l) => statuses[l.id]?.running);
-  // A lab currently deploying on this machine (not yet running), shown at the top of "Running now".
-  const deploying = busy && activeLab ? ((labs ?? []).find((l) => l.id === activeLab && !statuses[l.id]?.running) ?? null) : null;
   const preview = (labs ?? []).slice(0, 6);
 
   // "Jump back in": recently launched labs (local history), most recent first, not already running.
@@ -178,109 +168,6 @@ export function HomeScreen({
                 tone={report?.dockerRunning ? "ok" : "warn"}
               />
               <StatusRow name="Containers" value={metrics ? `${metrics.containers}` : dockerReady ? "0" : "—"} tone="mut" />
-            </Panel>
-          </div>
-
-          <div>
-            <RailLabel
-              right={
-                running.length + (hostedActive ? 1 : 0) + (deploying ? 1 : 0) > 0 ? (
-                  <span className="inline-flex items-center gap-1 text-[0.6875rem] font-medium text-emerald-500">
-                    <span className="size-1.5 rounded-full bg-emerald-500" />
-                    {running.length + (hostedActive ? 1 : 0) + (deploying ? 1 : 0)}
-                  </span>
-                ) : undefined
-              }
-            >
-              Running now
-            </RailLabel>
-            <Panel>
-              {deploying && (
-                <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 last:border-b-0">
-                  <span className="grid size-7 shrink-0 place-items-center rounded-md border border-learn/25 bg-learn/10 text-learn">
-                    <Spinner className="size-3.5" />
-                  </span>
-                  <button onClick={() => onNavigate("labs", deploying.slug)} className="min-w-0 flex-1 text-left">
-                    <p className="truncate text-[0.78125rem] font-medium hover:text-learn">{deploying.title}</p>
-                    <p className="truncate text-[0.65625rem] text-muted-foreground">Deploying…</p>
-                  </button>
-                </div>
-              )}
-              {hostedActive && (
-                <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 last:border-b-0">
-                  <span
-                    className={cn(
-                      "grid size-7 shrink-0 place-items-center rounded-md border",
-                      hostedRunning ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-500" : "border-learn/25 bg-learn/10 text-learn",
-                    )}
-                  >
-                    <Globe className="size-3.5" />
-                  </span>
-                  <button onClick={() => hostedLab && onNavigate("labs", hostedLab.slug)} className="min-w-0 flex-1 text-left">
-                    <p className="truncate text-[0.78125rem] font-medium hover:text-learn">{hostedLab?.title ?? "Hosted lab"}</p>
-                    <p className="flex items-center gap-1 truncate text-[0.65625rem] text-muted-foreground">
-                      {hostedRunning ? (
-                        "Hosted by Cyber CTF"
-                      ) : (
-                        <>
-                          <Spinner className="size-2.5" /> Starting on Cyber CTF…
-                        </>
-                      )}
-                    </p>
-                  </button>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {hostedRunning && hosted.session?.endpoints[0] && (
-                      <button
-                        onClick={() => openUrl(hosted.session!.endpoints[0].url).catch(() => {})}
-                        className="rounded-md border border-learn bg-learn px-2 py-1 text-[0.6875rem] font-medium text-[#140b2e] hover:bg-learn/90"
-                      >
-                        Open
-                      </button>
-                    )}
-                    <button
-                      onClick={() => void hosted.stop()}
-                      className="rounded-md border border-border bg-card px-2 py-1 text-[0.6875rem] text-foreground hover:border-ring/60"
-                    >
-                      Stop
-                    </button>
-                  </div>
-                </div>
-              )}
-              {running.length === 0 && !hostedActive && !deploying ? (
-                <p className="px-3.5 py-4 text-[0.78125rem] text-muted-foreground">Nothing running yet. Start a lab to see it here.</p>
-              ) : (
-                running.map((lab) => {
-                  const url = statuses[lab.id]?.url;
-                  return (
-                    <div key={lab.id} className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 last:border-b-0">
-                      <span className="grid size-7 shrink-0 place-items-center rounded-md border border-emerald-500/25 bg-emerald-500/10 text-emerald-500">
-                        <Container className="size-3.5" />
-                      </span>
-                      <button onClick={() => onNavigate("labs", lab.slug)} className="min-w-0 flex-1 text-left">
-                        <p className="truncate text-[0.78125rem] font-medium hover:text-learn">{lab.title}</p>
-                        {url && <p className="truncate font-mono text-[0.65625rem] text-muted-foreground">{url.replace("http://", "")}</p>}
-                      </button>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        {url && (
-                          <button
-                            onClick={() => openUrl(url).catch(() => {})}
-                            className="rounded-md border border-learn bg-learn px-2 py-1 text-[0.6875rem] font-medium text-[#140b2e] hover:bg-learn/90"
-                          >
-                            Open
-                          </button>
-                        )}
-                        <button
-                          onClick={() => stop(lab)}
-                          disabled={busy === lab.id}
-                          className="rounded-md border border-border bg-card px-2 py-1 text-[0.6875rem] text-foreground hover:border-ring/60 disabled:opacity-40"
-                        >
-                          {busy === lab.id ? "…" : "Stop"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
             </Panel>
           </div>
         </div>

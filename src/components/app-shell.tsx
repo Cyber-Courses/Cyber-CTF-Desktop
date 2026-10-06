@@ -16,8 +16,9 @@ import { LaunchConfirm } from "@/features/app/launch-confirm";
 import { Onboarding } from "@/features/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { apiQuery, authLogin, authStatus, machineWorkloads, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
+import { apiQuery, authLogin, authStatus, machineWorkloads, serverList, systemCheck, type AuthStatus, type ServerHost, type SystemReport } from "@/lib/tauri";
 import { useDeployingLabs } from "@/lib/deploy-store";
+import { CLOUDS } from "@/features/labs/run-on";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
@@ -143,6 +144,17 @@ export function AppShell() {
     .filter((l) => deploying.has(l.id) || runningIds.has(l.id))
     .map((l) => ({ ...l, deploying: deploying.has(l.id) }));
 
+  // Configured servers and cloud accounts, so the sidebar can show a count on each once the
+  // player has set at least one up.
+  const [hosts, setHosts] = useState<ServerHost[]>([]);
+  useEffect(() => {
+    serverList()
+      .then((l) => setHosts(l.hosts))
+      .catch(() => setHosts([]));
+  }, [tab]);
+  const serverCount = hosts.filter((h) => !CLOUDS.has(h.provider)).length;
+  const cloudCount = hosts.filter((h) => CLOUDS.has(h.provider)).length;
+
   const paletteCommands: Command[] = [
     { id: "find-lab", label: "Find a lab", hint: "search", icon: Search, keywords: "labs search ctf", run: findALab },
     ...NAV.filter((n) => !n.soon).map((n) => ({
@@ -222,6 +234,12 @@ export function AppShell() {
                 >
                   <n.icon className="size-4 shrink-0" />
                   <span className="flex-1 text-left">{n.label}</span>
+                  {((n.id === "server" && serverCount > 0) || (n.id === "cloud" && cloudCount > 0)) && (
+                    <span className="inline-flex items-center gap-1 text-[0.6875rem] font-medium text-emerald-500">
+                      <span className="size-1.5 rounded-full bg-emerald-500" />
+                      {n.id === "server" ? serverCount : cloudCount}
+                    </span>
+                  )}
                   {n.soon && (
                     <span className="rounded border border-border px-1.5 text-[0.5625rem] font-medium uppercase tracking-wide text-muted-foreground/70">
                       Soon
@@ -235,22 +253,25 @@ export function AppShell() {
           {activeLabs.length > 0 && (
             <div className="pt-1">
               <div className="my-2 h-px bg-border" />
-              <p className="px-2.5 pb-1 text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground/60">Running</p>
+              <p className="px-2.5 pb-1 text-[0.6875rem] font-medium text-muted-foreground/70">Running</p>
               {activeLabs.map((l) => (
                 <button
                   key={l.id}
                   onClick={() => navigate("labs", l.slug)}
-                  title={l.deploying ? "Starting" : "Running"}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[0.4375rem] text-[0.8125rem] text-muted-foreground transition-colors hover:bg-[#141414] hover:text-foreground"
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[#141414]"
                 >
-                  {l.deploying ? (
-                    <Spinner className="size-4 shrink-0" />
-                  ) : (
-                    <span className="size-4 shrink-0 self-center">
-                      <span className="block size-2 translate-x-1 translate-y-1 rounded-full bg-emerald-500" />
-                    </span>
-                  )}
-                  <span className="flex-1 truncate text-left">{l.title}</span>
+                  <span
+                    className={cn(
+                      "grid size-7 shrink-0 place-items-center rounded-md border",
+                      l.deploying ? "border-learn/25 bg-learn/10 text-learn" : "border-emerald-500/25 bg-emerald-500/10 text-emerald-500",
+                    )}
+                  >
+                    {l.deploying ? <Spinner className="size-3.5" /> : <FlaskConical className="size-3.5" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[0.78125rem] font-medium text-foreground">{l.title}</span>
+                    <span className="block truncate text-[0.65625rem] text-muted-foreground">{l.deploying ? "Deploying…" : "Running"}</span>
+                  </span>
                 </button>
               ))}
             </div>
