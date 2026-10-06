@@ -300,6 +300,14 @@ export function MachineScreen({
           ))}
           <DetailRow name={report.pkgManager.name} value={report.pkgManager.installed ? "installed" : "not installed"} bad={!report.pkgManager.installed} />
         </Panel>
+        {report.targets.length > 0 && (
+          <Panel className="mt-2.5">
+            <PanelHeader title="Where labs can run (Isoloom)" />
+            {report.targets.map((t) => (
+              <DetailRow key={`${t.target}/${t.cloud ?? ""}`} name={t.cloud ? `${t.target} · ${t.cloud}` : t.target} value={t.summary} bad={!t.ready} />
+            ))}
+          </Panel>
+        )}
       </details>
     </div>
   );

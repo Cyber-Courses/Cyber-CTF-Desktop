@@ -92,6 +92,42 @@ pub struct SystemReport {
     /// this architecture: x86-only boxes (e.g. pfSense) cannot run on ARM hosts
     /// with a local hypervisor, but can on a remote x86 host.
     pub vm_providers: Vec<ProviderStatus>,
+    /// What Isoloom says this machine can run, target by target (`isoloom targets --host`):
+    /// the tools and credentials each one needs, found or missing.
+    pub targets: Vec<TargetReadiness>,
+}
+
+/// One Isoloom target on this machine.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TargetReadiness {
+    /// The target id: `docker`, `vagrant`, `proxmox`, `cloud-vm`, ...
+    pub target: String,
+    /// The cloud, for the cloud targets (`aws`, `azure`, ...).
+    pub cloud: Option<String>,
+    pub ready: bool,
+    /// One line: what was found, or what is missing.
+    pub summary: String,
+    /// Each thing found (plain) or missing (starts with `!`).
+    pub notes: Vec<String>,
+}
+
+/// Isoloom's own view of the host, off the async runtime (it runs the tools).
+async fn isoloom_targets() -> Vec<TargetReadiness> {
+    tokio::task::spawn_blocking(|| {
+        isoloom_core::host::all()
+            .into_iter()
+            .map(|r| TargetReadiness {
+                target: r.target.id().to_string(),
+                cloud: r.cloud.clone(),
+                ready: r.ready,
+                summary: r.summary(),
+                notes: r.notes.clone(),
+            })
+            .collect()
+    })
+    .await
+    .unwrap_or_default()
 }
 
 /// Name the running engine from the daemon's OS string and the active CLI context.
@@ -189,8 +225,8 @@ pub async fn system_check() -> SystemReport {
         probe("gcloud", &["--version"]),
         probe("terraform", &["version"]),
     );
-    let (vm_providers, docker_engines_running, ovftool) =
-        tokio::join!(providers::detect(vagrant.installed), running_engines(), probe("ovftool", &["--version"]));
+    let (vm_providers, docker_engines_running, ovftool, targets) =
+        tokio::join!(providers::detect(vagrant.installed), running_engines(), probe("ovftool", &["--version"]), isoloom_targets());
     let docker_engine = match &daemon {
         Ok(os) => Some(docker_engine(os.trim()).await),
         Err(_) => None,
@@ -209,6 +245,7 @@ pub async fn system_check() -> SystemReport {
         ovftool,
         cloud_clis: CloudClis { aws, azure, gcloud },
         vm_providers,
+        targets,
     }
 }
 

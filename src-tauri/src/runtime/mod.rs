@@ -8,6 +8,7 @@ pub mod lab;
 mod model;
 pub mod providers;
 mod proxmox;
+mod registry;
 pub mod server;
 pub mod server_selftest;
 mod ssh;
@@ -145,6 +146,7 @@ pub async fn start(
                 if let Err(e) = attack_box_vagrant(&vagrant, &spec, env, &mut log).await {
                     log(format!("The lab is running, but its attack box didn't start: {e}. Open the lab shell to retry it."));
                 }
+                registry::record(dir, &spec, lab::vagrant_target(runtime), None);
                 welcome(&spec, &mut log);
                 Ok(())
             }
@@ -153,6 +155,7 @@ pub async fn start(
                 mark_local_vm(dir, None)?;
                 docker::start(dir, id, env, &mut log).await?;
                 exegol::rejoin(id).await;
+                registry::record(dir, &spec, isoloom_core::Target::Docker, None);
                 welcome(&spec, &mut log);
                 Ok(())
             }
@@ -164,6 +167,7 @@ pub async fn start(
                 let spec = lab::prepare(dir, lab::vagrant_target(runtime))?;
                 warn_if_low_memory(&spec, &mut log);
                 start_local_vm(&lab::vagrant_dir(dir, runtime), provider, env, &mut log).await?;
+                registry::record(dir, &spec, lab::vagrant_target(runtime), None);
                 welcome(&spec, &mut log);
                 Ok(())
             }
@@ -228,6 +232,7 @@ pub async fn start(
             if runtime == Runtime::Docker {
                 attack_box_remote(app, id, &spec, env, &mut log).await?;
             }
+            registry::record(dir, &spec, target, provider.is_cloud().then_some(tf));
             welcome(&spec, &mut log);
             Ok(())
         }
@@ -245,6 +250,7 @@ pub async fn start(
             {
                 log(format!("The lab is running, but its attack box didn't start: {e}. Open the lab shell to retry it."));
             }
+            registry::record(dir, &spec, lab::vagrant_target(runtime), None);
             welcome(&spec, &mut log);
             Ok(())
         }
@@ -477,6 +483,7 @@ async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, lo
     if result.is_ok() {
         server::mark_lab(dir, None)?;
         mark_local_vm(dir, None)?;
+        registry::forget(dir);
     }
     result
 }
