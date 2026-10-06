@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Container, Cpu, HardDrive, MemoryStick, Wrench } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
@@ -29,12 +29,26 @@ const WANT_FREE = { docker: 2e9, vm: 8e9 };
 
 export function MachineScreen({
   report,
+  onRefresh,
   onNavigate,
 }: {
   report: SystemReport;
   onRefresh: () => void | Promise<void>;
   onNavigate: (tab: "cloud" | "server") => void;
 }) {
+  // Re-read the machine when the window regains focus: the user may have just installed Docker or
+  // a hypervisor in the setup window (or externally), and the setup status would otherwise stay
+  // stale until a restart. A ref keeps the handler current without re-subscribing each render.
+  const refresh = useRef(onRefresh);
+  useEffect(() => {
+    refresh.current = onRefresh;
+  }, [onRefresh]);
+  useEffect(() => {
+    const onFocus = () => void refresh.current();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
   // Live usage, with the last minute of history for the sparklines.
   const [m, setM] = useState<MachineMetrics | null>(null);
   const [hist, setHist] = useState<{ cpu: number[]; mem: number[]; disk: number[] }>({ cpu: [], mem: [], disk: [] });
