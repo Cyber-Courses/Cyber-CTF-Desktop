@@ -1,6 +1,7 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { deployingLabs } from "@/lib/tauri";
 
 /**
  * The live state of lab start/stop, kept outside the React tree so it survives navigating
@@ -60,4 +61,31 @@ function subscribe(cb: () => void) {
 
 export function useDeploy(): DeployState {
   return useSyncExternalStore(subscribe, () => state, () => state);
+}
+
+/**
+ * The lab ids the backend is starting or stopping right now, polled from the long-lived Rust
+ * process. The in-memory store above is lost when the window reloads (a dev rebuild, a crash, or
+ * fast-refresh), but the deploy keeps running; reading this lets a screen show "this lab is
+ * starting" again instead of a bare Start button (which would invite a colliding second start).
+ */
+export function useDeployingLabs(pollMs = 4000): Set<string> {
+  const [ids, setIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let alive = true;
+    const read = () =>
+      deployingLabs()
+        .then((l) => alive && setIds(new Set(l)))
+        .catch(() => {});
+    read();
+    const t = setInterval(read, pollMs);
+    const onFocus = () => read();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      alive = false;
+      clearInterval(t);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [pollMs]);
+  return ids;
 }

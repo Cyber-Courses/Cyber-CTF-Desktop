@@ -16,32 +16,51 @@ mod vm;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// How many lab start/stop operations are provisioning right now (across all labs). The app
-/// reads this to warn before quitting mid-deploy: interrupting a cloud `terraform apply` can
-/// leave billable resources behind, and a VM/Docker run half-created.
-static ACTIVE_DEPLOYS: AtomicUsize = AtomicUsize::new(0);
-
-pub fn active_deploys() -> usize {
-    ACTIVE_DEPLOYS.load(AtomicOrdering::SeqCst)
+/// The labs with a start/stop operation provisioning right now, each with its in-flight count (a
+/// lab can be re-entered). The app reads this to warn before quitting mid-deploy (interrupting a
+/// cloud `terraform apply` leaves billable resources behind, a VM/Docker run half-created), and
+/// the UI reads it to rehydrate the "this lab is starting" state after a window reload: the map
+/// lives in this long-lived process, so a reloaded webview that lost its own deploy state can ask
+/// which labs are still deploying and show that instead of a bare Start button.
+fn deploying() -> &'static Mutex<HashMap<String, usize>> {
+    static D: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
+    D.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Increments the active-deploy count for as long as it is alive (RAII), so the count is always
-/// restored even if the operation errors or is cancelled.
-struct DeployGuard;
+/// Total start/stop operations in flight, across all labs.
+pub fn active_deploys() -> usize {
+    deploying().lock().map(|m| m.values().sum()).unwrap_or(0)
+}
+
+/// The labs with an operation in flight, deduplicated.
+pub fn deploying_labs() -> Vec<String> {
+    deploying().lock().map(|m| m.keys().cloned().collect()).unwrap_or_default()
+}
+
+/// Marks its lab as deploying for as long as it is alive (RAII), so the mark is always cleared
+/// even if the operation errors or is cancelled.
+struct DeployGuard(String);
 
 impl DeployGuard {
-    fn new() -> Self {
-        ACTIVE_DEPLOYS.fetch_add(1, AtomicOrdering::SeqCst);
-        Self
+    fn new(id: &str) -> Self {
+        if let Ok(mut m) = deploying().lock() {
+            *m.entry(id.to_string()).or_insert(0) += 1;
+        }
+        Self(id.to_string())
     }
 }
 
 impl Drop for DeployGuard {
     fn drop(&mut self) {
-        ACTIVE_DEPLOYS.fetch_sub(1, AtomicOrdering::SeqCst);
+        let Ok(mut m) = deploying().lock() else { return };
+        if let Some(c) = m.get_mut(&self.0) {
+            *c -= 1;
+            if *c == 0 {
+                m.remove(&self.0);
+            }
+        }
     }
 }
 
@@ -104,7 +123,7 @@ pub async fn start(
 ) -> Result<()> {
     let lock = lab_lock(id);
     let _guard = lock.lock().await;
-    let _deploy = DeployGuard::new();
+    let _deploy = DeployGuard::new(id);
     let Some(host) = host else {
         server::mark_lab(dir, None)?;
         // A lab runs in one place at a time: if it's already up here, refuse (a second copy
@@ -426,7 +445,7 @@ async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl
 /// it can re-check expiry under the same lock before tearing a lab down (the tokio lock is not
 /// reentrant, so it must not call `stop`, which would deadlock).
 async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
-    let _deploy = DeployGuard::new();
+    let _deploy = DeployGuard::new(id);
     let conn = server::lab_connection(app, dir)?;
     let result = match (runtime, conn) {
         (Runtime::Docker, None) if local_vm(dir).is_some() => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,

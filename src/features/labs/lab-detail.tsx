@@ -16,6 +16,7 @@ import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on
 import { runPlaces } from "@/features/labs/lab-row";
 import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
+import { useDeployingLabs } from "@/lib/deploy-store";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import { labAttackShell, exegolShell, serverList, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
@@ -69,14 +70,23 @@ export function LabDetail({
     return () => window.removeEventListener("keydown", onKey);
   }, [onBack]);
 
+  // Labs the backend is still deploying, so a window reload recovers the "starting" state.
+  const backendDeploying = useDeployingLabs();
   const rt = lab.runtime;
   const native = rt?.architectures.includes(hostArch) ?? true;
   const running = status?.running ?? false;
-  const starting = busy && !running;
+  // A deploy this session started sets `busy`; one still running after a window reload (which
+  // loses the in-memory deploy state) is recovered from the backend, so the page shows "Starting"
+  // instead of a bare Start button that would invite a colliding second start.
+  const deployingHere = busy || backendDeploying.has(lab.id);
+  const starting = deployingHere && !running;
+  // Infrastructure exists but nothing is deploying and the lab isn't fully up: a run was cut off
+  // (a crash or a restart mid-start). Offer to clean it up rather than a Start that would collide.
+  const interrupted = !deployingHere && !running && (status?.machines?.length ?? 0) > 0;
   const url = status?.url;
   // Machines that went down while the lab runs. Not while it's starting or stopping: machines
   // come up one after another then (a web server waits for its database), and that's normal.
-  const down = busy ? [] : (status?.machines ?? []).filter((m) => m.state !== "running");
+  const down = deployingHere ? [] : (status?.machines ?? []).filter((m) => m.state !== "running");
   const isDocker = rt?.runtime !== "VM";
   const remote = !!status?.host;
 
@@ -162,14 +172,14 @@ export function LabDetail({
         : "this machine");
   const deploy = (
     <Panel>
-      <DeploySteps lines={logs} times={times} busy={busy} ready={running} where={destLabel} />
+      <DeploySteps lines={logs} times={times} busy={deployingHere} ready={running} where={destLabel} />
     </Panel>
   );
   // The deploy panel is worth showing while a run is in progress, once the lab is up, or when
   // the last run failed. Once a lab is stopped the leftover "✓ Lab is running" logs are stale
   // (they'd otherwise read "Ready" with nothing running), so we don't show them.
   const deployFailed = logs.some((l) => l.startsWith("✗"));
-  const showDeploy = busy || running || deployFailed;
+  const showDeploy = deployingHere || running || deployFailed;
 
   return (
     <div className="animate-rise-in space-y-5">
@@ -232,6 +242,18 @@ export function LabDetail({
           ) : starting ? (
             <Button variant="learn" disabled>
               <Spinner className="size-4" /> Starting… <StartTimer />
+            </Button>
+          ) : interrupted ? (
+            // Machines exist but nothing is deploying and the lab isn't fully up: a previous run
+            // was interrupted (e.g. the app restarted mid-start). Clean it up before a fresh start.
+            <Button variant="destructive" onClick={() => onStop()} disabled={busy} title="A previous start was interrupted; stop and clean it up, then start again">
+              {busy ? (
+                "Cleaning up…"
+              ) : (
+                <>
+                  <Square className="size-3.5" /> Stop &amp; clean up
+                </>
+              )}
             </Button>
           ) : !loggedIn && onLogin ? (
             // Logged out: say so on the button and log in from it, rather than a greyed-out Start.
@@ -338,7 +360,11 @@ export function LabDetail({
           ) : busy || starting ? null : (
             <Panel>
               <PanelHeader title="Network" />
-              <p className="px-4 py-10 text-center text-[0.78125rem] text-muted-foreground">Start the lab to see its machines and network.</p>
+              <p className="px-4 py-10 text-center text-[0.78125rem] text-muted-foreground">
+                {interrupted
+                  ? "A previous start was interrupted and left machines behind. Use “Stop & clean up”, then start again."
+                  : "Start the lab to see its machines and network."}
+              </p>
             </Panel>
           )}
 

@@ -109,5 +109,9 @@ export function labLaunch(labId: string, provider: Provider | null, host: string
 /** Whether leaving now would interrupt a lab deploy (a cloud apply keeps billing if cut off). */
 export const deployInProgress = () => invoke<boolean>("deploy_in_progress");
 
+/** The lab ids currently starting or stopping in the backend. Read on load to rehydrate the
+ *  "starting" state after a window reload, which loses the in-memory deploy store. */
+export const deployingLabs = () => invoke<string[]>("deploying_labs");
+
 /** Quit the app even though a deploy is in progress (the user confirmed from the warning). */
 export const forceQuit = () => invoke<void>("force_quit");

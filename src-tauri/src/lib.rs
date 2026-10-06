@@ -24,6 +24,14 @@ fn deploy_in_progress() -> bool {
     runtime::active_deploys() > 0
 }
 
+/// The labs currently starting or stopping. The UI reads this on load to rehydrate the "this lab
+/// is starting" state after a window reload: the deploy keeps running in this process even when
+/// the webview reloaded and lost its own in-memory deploy state.
+#[tauri::command]
+fn deploying_labs() -> Vec<String> {
+    runtime::deploying_labs()
+}
+
 /// The user chose to quit anyway from the "a lab is still deploying" prompt: stop intercepting
 /// and exit.
 #[tauri::command]
@@ -175,6 +183,7 @@ pub fn run() {
             runtime::server_selftest::server_selftest,
             runtime::server::server_open_setup,
             deploy_in_progress,
+            deploying_labs,
             force_quit,
         ])
         .build(tauri::generate_context!())
