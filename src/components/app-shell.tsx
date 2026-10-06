@@ -16,7 +16,8 @@ import { LaunchConfirm } from "@/features/app/launch-confirm";
 import { Onboarding } from "@/features/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { apiQuery, authLogin, authStatus, machineWorkloads, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { apiQuery, authLogin, authStatus, machineWorkloads, openSettings, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { useDeployingLabs } from "@/lib/deploy-store";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -54,6 +55,8 @@ export function AppShell() {
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [onboarded, setOnboarded] = useState(true);
   const [ready, setReady] = useState(false);
+  // This webview is the dedicated Settings window (opened by `open_settings` with ?window=settings).
+  const [settingsWindow, setSettingsWindow] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // A light lab list for the command palette (jump straight to a lab), refreshed on auth change.
   const [palLabs, setPalLabs] = useState<{ id: string; slug: string; title: string; category: string }[]>([]);
@@ -63,13 +66,19 @@ export function AppShell() {
       .then(setReport)
       .catch(() => setReport(null));
   useEffect(() => {
+    try {
+      // Reads the window marker once on mount (window isn't available during render).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSettingsWindow(new URLSearchParams(window.location.search).get("window") === "settings");
+    } catch {
+      /* ignore */
+    }
     check();
     authStatus()
       .then(setAuth)
       .catch(() => setAuth({ loggedIn: false, name: null, email: null }));
     try {
       // Reads a per-machine flag once on mount (localStorage isn't available during render).
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOnboarded(localStorage.getItem(ONBOARDED_KEY) === "1");
     } catch {
       setOnboarded(true);
@@ -179,6 +188,8 @@ export function AppShell() {
   }
 
   if (!ready) return <div className="h-dvh bg-background" />;
+  // Settings runs standalone in its own window: no sidebar, no onboarding, just the screen.
+  if (settingsWindow) return <SettingsWindowView auth={auth} onAuthChange={setAuth} />;
   if (!onboarded) return <Onboarding onComplete={completeOnboarding} />;
 
   const CurrentIcon = NAV.find((n) => n.id === tab)?.icon ?? MonitorCog;
@@ -260,11 +271,8 @@ export function AppShell() {
 
         <div className="space-y-1.5 border-t border-border px-3 py-3">
           <button
-            onClick={() => navigate("settings")}
-            className={cn(
-              "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[0.4375rem] text-[0.8125rem] transition-colors",
-              tab === "settings" ? "bg-[#1a1a1a] text-foreground" : "text-muted-foreground hover:bg-[#141414] hover:text-foreground",
-            )}
+            onClick={() => openSettings().catch(() => {})}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[0.4375rem] text-[0.8125rem] text-muted-foreground transition-colors hover:bg-[#141414] hover:text-foreground"
           >
             <Cog className="size-4 shrink-0" />
             <span className="flex-1 text-left">Settings</span>
@@ -301,6 +309,29 @@ export function AppShell() {
 
 function ComingSoon({ icon, title, description }: { icon: "server" | "cloud" | "sparkles"; title: string; description: string }) {
   return <EmptyState icon={icon} title={`${title} is on the way`} description={description} />;
+}
+
+// Settings rendered on its own in the dedicated `settings` window: just the titlebar band and
+// the screen. The "set up a hypervisor" link lives in the main window, so onNavigate closes here.
+function SettingsWindowView({ auth, onAuthChange }: { auth: AuthStatus | null; onAuthChange: (status: AuthStatus) => void }) {
+  const close = () =>
+    getCurrentWindow()
+      .close()
+      .catch(() => {});
+  return (
+    <main className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+      <div data-tauri-drag-region className="h-9 shrink-0" />
+      <div data-tauri-drag-region className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
+        <Cog className="size-4 text-muted-foreground" />
+        <span className="text-[0.8125rem] font-medium text-foreground">Settings</span>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[70rem] px-5 py-5">
+          <SettingsScreen auth={auth} onAuthChange={onAuthChange} onNavigate={close} />
+        </div>
+      </div>
+    </main>
+  );
 }
 
 function Screen({

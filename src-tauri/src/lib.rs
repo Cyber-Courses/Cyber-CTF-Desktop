@@ -40,6 +40,36 @@ fn force_quit(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// Opens Settings in its own window (label `settings`), focusing it if already open. The window
+/// loads the main entry with `?window=settings` so the frontend renders only the settings screen.
+fn open_settings_window(app: &tauri::AppHandle) -> tauri::Result<()> {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+    if let Some(existing) = app.get_webview_window("settings") {
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+    let mut builder = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html?window=settings".into()))
+        .title("Settings")
+        .inner_size(760.0, 640.0)
+        .min_inner_size(560.0, 480.0)
+        .resizable(true);
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+    }
+    if let Some(main) = app.get_webview_window("main") {
+        builder = builder.parent(&main)?;
+    }
+    builder.build()?;
+    Ok(())
+}
+
+/// Opens the Settings window. Used by the sidebar footer and the app-menu item.
+#[tauri::command]
+fn open_settings(app: tauri::AppHandle) -> std::result::Result<(), String> {
+    open_settings_window(&app).map_err(|e| e.to_string())
+}
+
 /// If a deploy is in progress (and the user hasn't already confirmed), keep the app open and ask
 /// the frontend to confirm. Returns true when the quit was intercepted.
 fn intercept_quit(app: &tauri::AppHandle) -> bool {
@@ -85,10 +115,14 @@ pub fn run() {
         .menu(|handle| {
             #[cfg(target_os = "macos")]
             {
-                use tauri::menu::{AboutMetadata, MenuBuilder, PredefinedMenuItem, SubmenuBuilder};
+                use tauri::menu::{AboutMetadata, MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
                 let about = AboutMetadata { name: Some("Cyber CTF".into()), version: Some(env!("CARGO_PKG_VERSION").into()), ..Default::default() };
+                // Standard Preferences slot: Cmd+, opens Settings in its own window (see on_menu_event).
+                let settings = MenuItem::with_id(handle, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
                 let app_menu = SubmenuBuilder::new(handle, "Cyber CTF")
                     .item(&PredefinedMenuItem::about(handle, Some("About Cyber CTF"), Some(about))?)
+                    .separator()
+                    .item(&settings)
                     .separator()
                     .services()
                     .separator()
@@ -105,6 +139,12 @@ pub fn run() {
             #[cfg(not(target_os = "macos"))]
             {
                 tauri::menu::Menu::default(handle)
+            }
+        })
+        // App-menu clicks: "Settings…" opens the settings window.
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == "settings" {
+                let _ = open_settings_window(app);
             }
         })
         .setup(|app| {
@@ -185,6 +225,7 @@ pub fn run() {
             deploy_in_progress,
             deploying_labs,
             force_quit,
+            open_settings,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Cyber CTF")
