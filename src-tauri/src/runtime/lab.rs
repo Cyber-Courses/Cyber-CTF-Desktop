@@ -1,7 +1,12 @@
 //! A lab's Isoloom side: every lab describes itself with an `isoloom.yml` at its root, and the
-//! launcher generates the files of the target it runs on under the lab's `.isoloom/` (Compose,
-//! Vagrant, Terraform) right before running them. Nothing is read from the lab besides the
-//! spec and the files it names, so a lab is portable to every target Isoloom supports.
+//! launcher generates the files of the target it runs on under the lab's output folder
+//! (Compose, Vagrant, Terraform) right before running them. Nothing is read from the lab
+//! besides the spec and the files it names, so a lab is portable to every target Isoloom
+//! supports.
+//!
+//! Each installed lab is an Isoloom *instance* (a number, kept in `.cyberctf-instance`): its
+//! Docker networks move to their own blocks and its names get a suffix, so two labs that
+//! declare the same addresses run at once. The generated files then live in `.isoloom-<n>/`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -21,18 +26,54 @@ pub fn spec(dir: &Path) -> Result<Spec> {
     Ok(spec)
 }
 
+/// The lab's Isoloom instance number (see the module), when it has one.
+pub const INSTANCE_MARKER: &str = ".cyberctf-instance";
+
+pub fn instance(dir: &Path) -> Option<u8> {
+    std::fs::read_to_string(dir.join(INSTANCE_MARKER)).ok()?.trim().parse().ok().filter(|n| (1..=isoloom_core::instance::MAX).contains(n))
+}
+
+/// Gives the lab an instance number if it has none: the lowest one no other installed lab
+/// under `labs` holds. Returns the lab's number.
+pub fn ensure_instance(labs: &Path, dir: &Path) -> Result<u8> {
+    if let Some(n) = instance(dir) {
+        return Ok(n);
+    }
+    let taken: Vec<u8> =
+        std::fs::read_dir(labs).map(|entries| entries.filter_map(|e| e.ok()).filter_map(|e| instance(&e.path())).collect()).unwrap_or_default();
+    let n = (1..=isoloom_core::instance::MAX)
+        .find(|n| !taken.contains(n))
+        .ok_or_else(|| Error::Invalid("too many labs installed at once (99 instances)".into()))?;
+    std::fs::write(dir.join(INSTANCE_MARKER), n.to_string())?;
+    Ok(n)
+}
+
+/// Where the lab's generated files are: `.isoloom-<n>/` for an instance, else `.isoloom/`.
+pub fn out(dir: &Path) -> PathBuf {
+    dir.join(isoloom_core::instance::output_dir(instance(dir)))
+}
+
 /// Generates `target`'s files into the lab (overwriting the previous ones), and returns the
-/// spec. Fails with Isoloom's own reason when the lab can't run there (e.g. Windows machines
-/// on a target without Windows images).
+/// spec as this lab's instance of it. Fails with Isoloom's own reason when the lab can't run
+/// there (e.g. Windows machines on a target without Windows images).
 pub fn prepare(dir: &Path, target: Target) -> Result<Spec> {
     let spec = spec(dir)?;
+    let n = instance(dir);
+    let spec = match n {
+        Some(n) => isoloom_core::instance::apply(&spec, n).map_err(|e| Error::Invalid(format!("this lab as instance {n}: {e}")))?,
+        None => spec,
+    };
     let files = isoloom_core::generate(&spec, target).map_err(|e| Error::Invalid(format!("this lab can't run there: {e}")))?;
     for f in files {
-        let path = dir.join(&f.path);
+        let (path, contents) = match n {
+            Some(n) => isoloom_core::instance::relocate(&f.path, &f.contents, n),
+            None => (f.path, f.contents),
+        };
+        let path = dir.join(path);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, f.contents)?;
+        std::fs::write(path, contents)?;
     }
     Ok(spec)
 }
@@ -69,14 +110,17 @@ pub fn topology(spec: &Spec) -> (HashMap<String, Vec<Interface>>, Vec<Network>) 
 }
 
 /// The lab's `message:` (where to start, the first step) with its placeholders filled from
-/// the resolved spec; shown once the lab is up. None when the lab has none, or it names a
-/// value the spec doesn't have (the lab's own mistake, not worth failing a launch over).
-pub fn message(spec: &Spec) -> Option<String> {
-    isoloom_core::resolved::render_message(spec, None).ok().flatten().map(|m| m.trim_end().to_string())
+/// the resolved spec (`spec` as `prepare` returned it); shown once the lab is up. None when
+/// the lab has none, or it names a value the spec doesn't have (the lab's own mistake, not
+/// worth failing a launch over).
+pub fn message(dir: &Path, spec: &Spec) -> Option<String> {
+    isoloom_core::resolved::render_message(spec, instance(dir)).ok().flatten().map(|m| m.trim_end().to_string())
 }
 
 /// The lab's Compose file (local Docker, and inside "Docker on one VM").
-pub const COMPOSE_FILE: &str = ".isoloom/docker/compose.yml";
+pub fn compose_file(dir: &Path) -> PathBuf {
+    out(dir).join("docker/compose.yml")
+}
 
 /// The Compose file's service running the lab's checks (profile `check`).
 pub const CHECK_SERVICE: &str = "isoloom-check";
@@ -85,8 +129,8 @@ pub const CHECK_SERVICE: &str = "isoloom-check";
 /// VM per machine for VM labs.
 pub fn vagrant_dir(dir: &Path, runtime: Runtime) -> PathBuf {
     match runtime {
-        Runtime::Docker => dir.join(".isoloom/docker-vm"),
-        Runtime::Vm => dir.join(".isoloom/vagrant"),
+        Runtime::Docker => out(dir).join("docker-vm"),
+        Runtime::Vm => out(dir).join("vagrant"),
     }
 }
 
@@ -101,13 +145,14 @@ pub fn vagrant_target(runtime: Runtime) -> Target {
 /// The Terraform module and its Isoloom target for a server or cloud (`tf` is the launcher's
 /// Terraform target: `proxmox`, `aws`, `azure`, `gcp`, `digitalocean`, `linode`, `oci`).
 pub fn terraform(dir: &Path, runtime: Runtime, tf: &str) -> Result<(PathBuf, Target)> {
+    let out = out(dir);
     Ok(match (runtime, tf) {
-        (Runtime::Docker, "proxmox") => (dir.join(".isoloom/docker-vm/proxmox"), Target::DockerVm),
-        (Runtime::Vm, "proxmox") => (dir.join(".isoloom/proxmox"), Target::Proxmox),
-        (Runtime::Docker, cloud) => (dir.join(".isoloom/cloud-docker").join(cloud), Target::CloudDocker),
+        (Runtime::Docker, "proxmox") => (out.join("docker-vm/proxmox"), Target::DockerVm),
+        (Runtime::Vm, "proxmox") => (out.join("proxmox"), Target::Proxmox),
+        (Runtime::Docker, cloud) => (out.join("cloud-docker").join(cloud), Target::CloudDocker),
         // Isoloom generates a cloud-vm module per cloud it can model the lab on; a cloud a lab
         // doesn't support has no module, and the run surfaces that when the directory is missing.
-        (Runtime::Vm, cloud) => (dir.join(".isoloom/cloud-vm").join(cloud), Target::CloudVm),
+        (Runtime::Vm, cloud) => (out.join("cloud-vm").join(cloud), Target::CloudVm),
     })
 }
 
@@ -116,7 +161,7 @@ pub fn terraform(dir: &Path, runtime: Runtime, tf: &str) -> Result<(PathBuf, Tar
 /// `deploy/terraform/<target>` module, so those resources can still be removed.
 pub fn terraform_to_destroy(dir: &Path, runtime: Runtime, tf: &str) -> Result<PathBuf> {
     let legacy = dir.join("deploy/terraform").join(tf);
-    if !dir.join(".isoloom").is_dir() && legacy.is_dir() {
+    if !out(dir).is_dir() && legacy.is_dir() {
         return Ok(legacy);
     }
     Ok(terraform(dir, runtime, tf)?.0)
@@ -149,7 +194,7 @@ mod tests {
     fn generates_the_targets_files_into_the_lab() {
         let dir = lab(SPEC);
         prepare(&dir, Target::Docker).unwrap();
-        let compose = std::fs::read_to_string(dir.join(COMPOSE_FILE)).unwrap();
+        let compose = std::fs::read_to_string(compose_file(&dir)).unwrap();
         assert!(compose.contains("isoloom.service.80"));
         prepare(&dir, Target::CloudDocker).unwrap();
         assert!(dir.join(".isoloom/cloud-docker/aws/main.tf").is_file());
@@ -224,8 +269,29 @@ mod tests {
         );
         assert_eq!(ifaces["web"].iter().map(|i| (i.network.as_str(), i.ip.as_str())).collect::<Vec<_>>(), [("lab", "10.30.0.10"), ("back", "10.31.0.10")]);
         assert_eq!(ifaces["db"].len(), 1);
-        assert_eq!(message(&spec).as_deref(), Some("Start at http://localhost:8080/ (web is 10.30.0.10)."));
+        assert_eq!(message(&dir, &spec).as_deref(), Some("Start at http://localhost:8080/ (web is 10.30.0.10)."));
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_instance_gets_its_own_files_and_blocks() {
+        let labs = std::env::temp_dir().join(format!("cyberctf-labs-{}", rand::random::<u32>()));
+        let (a, b) = (labs.join("a"), labs.join("b"));
+        for d in [&a, &b] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("isoloom.yml"), SPEC).unwrap();
+        }
+        assert_eq!(ensure_instance(&labs, &a).unwrap(), 1);
+        assert_eq!(ensure_instance(&labs, &b).unwrap(), 2);
+        assert_eq!(ensure_instance(&labs, &a).unwrap(), 1, "kept");
+        let spec = prepare(&b, Target::Docker).unwrap();
+        assert_eq!(spec.name, "t-2");
+        assert_eq!(compose_file(&b), b.join(".isoloom-2/docker/compose.yml"));
+        let compose = std::fs::read_to_string(compose_file(&b)).unwrap();
+        assert!(compose.contains("10.32.0.0/24"), "the Docker block moved: {compose}");
+        assert!(!b.join(".isoloom").exists());
+        assert_eq!(vagrant_dir(&b, Runtime::Vm), b.join(".isoloom-2/vagrant"));
+        std::fs::remove_dir_all(labs).unwrap();
     }
 
     #[test]

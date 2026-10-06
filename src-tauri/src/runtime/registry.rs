@@ -12,7 +12,14 @@ fn key(dir: &Path) -> PathBuf {
 
 /// Records the lab as running on `target` (and, for the clouds, in which one).
 pub fn record(dir: &Path, spec: &Spec, target: Target, cloud: Option<&str>) {
-    let entry = registry::Entry { name: spec.name.clone(), dir: key(dir), target, instance: None, cloud: cloud.map(str::to_string), started: registry::now() };
+    let entry = registry::Entry {
+        name: spec.name.clone(),
+        dir: key(dir),
+        target,
+        instance: super::lab::instance(dir),
+        cloud: cloud.map(str::to_string),
+        started: registry::now(),
+    };
     let _ = registry::load().and_then(|mut reg| {
         reg.upsert(entry);
         registry::save(&reg)
