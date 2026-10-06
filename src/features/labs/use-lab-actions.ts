@@ -15,7 +15,7 @@ import { appendDeployLog, beginDeploy, endDeploy, useDeploy } from "@/lib/deploy
  * opens Settings) and comes back. UI reads `busy` / `activeLab` / `logs`.
  */
 export function useLabActions(refresh: (lab: Lab) => void) {
-  const { busy, activeLab, logs } = useDeploy();
+  const { busy, activeLab, logs, times } = useDeploy();
 
   /**
    * `host` = a server host id to run a VM lab on, null for this machine. Omitted, VM labs
@@ -78,7 +78,7 @@ export function useLabActions(refresh: (lab: Lab) => void) {
     [refresh],
   );
 
-  return { busy, activeLab, logs, launch, stop };
+  return { busy, activeLab, logs, times, launch, stop };
 }
 
 /** The default server host id, if one is set and the lab supports its hypervisor. */

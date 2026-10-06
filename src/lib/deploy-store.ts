@@ -15,9 +15,12 @@ export type DeployState = {
   activeLab: string | null;
   /** The streamed log lines of `activeLab`. */
   logs: string[];
+  /** The arrival time (ms) of each log line, parallel to `logs`. Kept here (not in the
+   *  component) so the deploy step timings survive leaving and returning to the lab page. */
+  times: number[];
 };
 
-let state: DeployState = { busy: null, activeLab: null, logs: [] };
+let state: DeployState = { busy: null, activeLab: null, logs: [], times: [] };
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -32,13 +35,13 @@ export function setDeploy(next: Partial<DeployState>) {
 
 /** Begin a run for `labId`: clears the previous logs. */
 export function beginDeploy(labId: string) {
-  state = { busy: labId, activeLab: labId, logs: [] };
+  state = { busy: labId, activeLab: labId, logs: [], times: [] };
   emit();
 }
 
-/** Append a log line for the active run. */
+/** Append a log line for the active run, timestamped on arrival. */
 export function appendDeployLog(line: string) {
-  state = { ...state, logs: [...state.logs, line] };
+  state = { ...state, logs: [...state.logs, line], times: [...state.times, Date.now()] };
   emit();
 }
 

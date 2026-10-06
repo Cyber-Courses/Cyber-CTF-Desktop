@@ -34,7 +34,7 @@ export function Labs({
   openSlug?: string | null;
 }) {
   const { labs, error, statuses, completed, refreshStatus } = useLabs(loggedIn);
-  const { busy, activeLab, logs, launch, stop } = useLabActions(refreshStatus);
+  const { busy, activeLab, logs, times, launch, stop } = useLabActions(refreshStatus);
   const [detailSlug, setDetailSlug] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -100,6 +100,7 @@ export function Labs({
         status={statuses[detail.id]}
         busy={busy === detail.id}
         logs={activeLab === detail.id ? logs : []}
+        times={activeLab === detail.id ? times : []}
         loggedIn={loggedIn}
         onLogin={onLogin}
         hostArch={hostArch}

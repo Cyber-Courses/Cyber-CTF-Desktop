@@ -28,6 +28,7 @@ export function LabDetail({
   status,
   busy,
   logs,
+  times,
   loggedIn,
   onLogin,
   hostArch,
@@ -41,6 +42,7 @@ export function LabDetail({
   status?: LabStatus;
   busy: boolean;
   logs: string[];
+  times: number[];
   loggedIn: boolean;
   /** Logged out: the start button logs in instead of being greyed out. */
   onLogin?: () => Promise<void>;
@@ -160,7 +162,7 @@ export function LabDetail({
         : "this machine");
   const deploy = (
     <Panel>
-      <DeploySteps lines={logs} busy={busy} ready={running} where={destLabel} />
+      <DeploySteps lines={logs} times={times} busy={busy} ready={running} where={destLabel} />
     </Panel>
   );
   // The deploy panel is worth showing while a run is in progress, once the lab is up, or when

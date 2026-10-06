@@ -103,8 +103,11 @@ function useTimedLines(lines: string[]): Timed[] {
   return timed;
 }
 
-export function DeploySteps({ lines, busy, ready, where }: { lines: string[]; busy: boolean; ready: boolean; where?: string }) {
-  const timed = useTimedLines(lines);
+export function DeploySteps({ lines, times, busy, ready, where }: { lines: string[]; times?: number[]; busy: boolean; ready: boolean; where?: string }) {
+  const fallback = useTimedLines(lines);
+  // Prefer the per-line timestamps kept in the deploy store (they survive leaving and returning
+  // to the page, so the step durations don't reset); fall back to local timing if absent.
+  const timed: Timed[] = times && times.length === lines.length ? lines.map((line, i) => ({ line, at: times[i] })) : fallback;
   const [open, setOpen] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [now, setNow] = useState(() => Date.now());
