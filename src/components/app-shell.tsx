@@ -147,6 +147,12 @@ export function AppShell() {
     setOnboarded(true);
     setTab("labs");
     check();
+    // Pick up a sign-in done during onboarding: the shell's auth was read once at mount (before
+    // onboarding), so re-read the persisted session, otherwise the app stays "offline" until a
+    // restart even though the user just signed in.
+    authStatus()
+      .then(setAuth)
+      .catch(() => {});
   }
 
   if (!ready) return <div className="h-dvh bg-background" />;
