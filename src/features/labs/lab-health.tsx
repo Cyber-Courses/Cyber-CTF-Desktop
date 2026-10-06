@@ -25,7 +25,7 @@ export function useLabCheck(labId: string, { running, downCount, enabled }: { ru
     let alive = true;
     labCheck(labId, "DOCKER")
       .then((c) => alive && setCheck(c))
-      .catch((e) => alive && setCheck({ available: true, ok: false, output: String(e) }));
+      .catch((e) => alive && setCheck({ available: true, ok: false, output: String(e), results: [] }));
     return () => {
       alive = false;
     };
@@ -60,10 +60,25 @@ export function HealthBanner({
           </p>
         )}
         {check && check !== "checking" && check.available && (
-          <p className={cn("mt-0.5 flex items-center gap-1.5", check.ok ? "text-emerald-500" : "text-rose-400")}>
-            {check.ok ? <ShieldCheck className="size-3.5" /> : <ShieldAlert className="size-3.5" />}
-            {check.ok ? "Still solvable." : "It can no longer be solved. Reset it to get a clean lab."}
-          </p>
+          <>
+            <p className={cn("mt-0.5 flex items-center gap-1.5", check.ok ? "text-emerald-500" : "text-rose-400")}>
+              {check.ok ? <ShieldCheck className="size-3.5" /> : <ShieldAlert className="size-3.5" />}
+              {check.ok ? "Still solvable." : "It can no longer be solved. Reset it to get a clean lab."}
+            </p>
+            {!check.ok && check.results.some((r) => !r.ok) && (
+              <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                {check.results
+                  .filter((r) => !r.ok)
+                  .slice(0, 5)
+                  .map((r) => (
+                    <li key={`${r.from}/${r.name}`} className="truncate">
+                      {r.name}
+                      {r.reason ? `: ${r.reason}` : ""}
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
       <Button variant="outline" size="sm" onClick={onReset} disabled={busy || resetting}>

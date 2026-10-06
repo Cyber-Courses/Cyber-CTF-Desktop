@@ -145,13 +145,15 @@ pub async fn start(
                 if let Err(e) = attack_box_vagrant(&vagrant, &spec, env, &mut log).await {
                     log(format!("The lab is running, but its attack box didn't start: {e}. Open the lab shell to retry it."));
                 }
+                welcome(&spec, &mut log);
                 Ok(())
             }
             Runtime::Docker => {
-                lab::prepare(dir, isoloom_core::Target::Docker)?;
+                let spec = lab::prepare(dir, isoloom_core::Target::Docker)?;
                 mark_local_vm(dir, None)?;
-                docker::start(dir, id, env, log).await?;
+                docker::start(dir, id, env, &mut log).await?;
                 exegol::rejoin(id).await;
+                welcome(&spec, &mut log);
                 Ok(())
             }
             Runtime::Vm => {
@@ -161,7 +163,9 @@ pub async fn start(
                 }
                 let spec = lab::prepare(dir, lab::vagrant_target(runtime))?;
                 warn_if_low_memory(&spec, &mut log);
-                start_local_vm(&lab::vagrant_dir(dir, runtime), provider, env, &mut log).await
+                start_local_vm(&lab::vagrant_dir(dir, runtime), provider, env, &mut log).await?;
+                welcome(&spec, &mut log);
+                Ok(())
             }
         };
     };
@@ -224,6 +228,7 @@ pub async fn start(
             if runtime == Runtime::Docker {
                 attack_box_remote(app, id, &spec, env, &mut log).await?;
             }
+            welcome(&spec, &mut log);
             Ok(())
         }
         // ESXi: the same Vagrantfiles as on this machine, with the vmware_esxi provider.
@@ -240,7 +245,18 @@ pub async fn start(
             {
                 log(format!("The lab is running, but its attack box didn't start: {e}. Open the lab shell to retry it."));
             }
+            welcome(&spec, &mut log);
             Ok(())
+        }
+    }
+}
+
+/// The lab's own words once it is up (`message:` in its spec, addresses filled in): where to
+/// start and what to do first, as the last lines of the deploy log.
+fn welcome(spec: &isoloom_core::Spec, log: &mut impl FnMut(String)) {
+    if let Some(m) = lab::message(spec) {
+        for line in m.lines() {
+            log(line.to_string());
         }
     }
 }
@@ -576,7 +592,7 @@ pub async fn lab_check(app: AppHandle, id: String, runtime: Runtime) -> Result<d
     let dir = lab_dir(&app, &id)?;
     match runtime {
         Runtime::Docker if server::lab_connection(&app, &dir)?.is_none() => docker::check(&dir, &id).await,
-        _ => Ok(docker::Check { available: false, ok: false, output: String::new() }),
+        _ => Ok(docker::Check { available: false, ok: false, output: String::new(), results: Vec::new() }),
     }
 }
 

@@ -115,16 +115,9 @@ pub(super) fn serving_services_from_config(json: &str) -> Vec<String> {
     names
 }
 
-pub(super) fn config_has_service(json: &str, name: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(json)
-        .ok()
-        .and_then(|v| v.get("services").and_then(|s| s.as_object()).map(|m| m.contains_key(name)))
-        .unwrap_or(false)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{config_has_service, host_ports_from_config, parse_ps, project, serving_services_from_config};
+    use super::{host_ports_from_config, parse_ps, project, serving_services_from_config};
 
     #[test]
     fn reads_published_host_ports_from_config() {
@@ -173,16 +166,6 @@ mod tests {
         assert_eq!(names, vec!["db", "web"]);
         assert!(serving_services_from_config("{}").is_empty());
         assert!(serving_services_from_config("garbage").is_empty());
-    }
-
-    #[test]
-    fn config_has_service_checks_presence() {
-        let json = r#"{"services":{"web":{},"db":{}}}"#;
-        assert!(config_has_service(json, "web"));
-        assert!(config_has_service(json, "db"));
-        assert!(!config_has_service(json, "cache"));
-        assert!(!config_has_service("{}", "web"));
-        assert!(!config_has_service("not json", "web"));
     }
 
     #[test]

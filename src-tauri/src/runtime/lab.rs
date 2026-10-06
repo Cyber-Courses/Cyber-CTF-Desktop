@@ -3,11 +3,12 @@
 //! Vagrant, Terraform) right before running them. Nothing is read from the lab besides the
 //! spec and the files it names, so a lab is portable to every target Isoloom supports.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use isoloom_core::{Spec, Target};
 
-use super::Runtime;
+use super::{Interface, Network, Runtime};
 use crate::error::{Error, Result};
 
 /// The lab's spec, checked (fields and the files it names).
@@ -34,6 +35,44 @@ pub fn prepare(dir: &Path, target: Target) -> Result<Spec> {
         std::fs::write(path, f.contents)?;
     }
     Ok(spec)
+}
+
+/// Each machine's lab interfaces and the lab's networks, from Isoloom's resolved snapshot of
+/// the spec: addresses are static (declared in the lab), so the diagram of a VM lab comes from
+/// here, without reaching into the guests or reading the generated files.
+pub fn topology(spec: &Spec) -> (HashMap<String, Vec<Interface>>, Vec<Network>) {
+    let snapshot = isoloom_core::resolved::resolve(spec);
+    let networks: Vec<Network> = snapshot["networks"]
+        .as_object()
+        .map(|nets| {
+            nets.iter()
+                .map(|(name, n)| Network {
+                    name: name.clone(),
+                    subnet: n["cidr"].as_str().unwrap_or_default().to_string(),
+                    // No internet declared: its machines have no route out.
+                    internal: !n["internet"].as_bool().unwrap_or(true),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut ifaces: HashMap<String, Vec<Interface>> = HashMap::new();
+    if let Some(machines) = snapshot["machines"].as_object() {
+        for (name, m) in machines {
+            let list: Vec<Interface> = m["addresses"]
+                .as_object()
+                .map(|a| a.iter().filter_map(|(net, ip)| ip.as_str().map(|ip| Interface { network: net.clone(), ip: ip.to_string() })).collect())
+                .unwrap_or_default();
+            ifaces.insert(name.clone(), list);
+        }
+    }
+    (ifaces, networks)
+}
+
+/// The lab's `message:` (where to start, the first step) with its placeholders filled from
+/// the resolved spec; shown once the lab is up. None when the lab has none, or it names a
+/// value the spec doesn't have (the lab's own mistake, not worth failing a launch over).
+pub fn message(spec: &Spec) -> Option<String> {
+    isoloom_core::resolved::render_message(spec, None).ok().flatten().map(|m| m.trim_end().to_string())
 }
 
 /// The lab's Compose file (local Docker, and inside "Docker on one VM").
@@ -169,6 +208,23 @@ mod tests {
         assert_eq!(terraform_to_destroy(&dir, Runtime::Docker, "aws").unwrap(), dir.join(".isoloom/cloud-docker/aws"));
         // Even with .isoloom absent, a missing legacy folder still yields the Isoloom path.
         assert_eq!(terraform_to_destroy(&dir, Runtime::Vm, "proxmox").unwrap(), dir.join(".isoloom/proxmox"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn topology_and_message_come_from_the_resolved_spec() {
+        let dir = lab(
+            "version: 1\nname: t\nnetworks:\n  lab: { cidr: 10.30.0.0/24 }\n  back: { cidr: 10.31.0.0/24, internet: false }\nmachines:\n  web:\n    networks: { lab: 10, back: 10 }\n    services: [{ port: 80, http: true, publish: 8080 }]\n    docker: { image: nginx:1.27 }\n  db:\n    networks: { back: 20 }\n    docker: { image: redis:7 }\nmessage: |\n  Start at http://localhost:{{ machines.web.services.0.publish }}/ (web is {{ machines.web.addresses.lab }}).\n",
+        );
+        let spec = spec(&dir).unwrap();
+        let (ifaces, networks) = topology(&spec);
+        assert_eq!(
+            networks.iter().map(|n| (n.name.as_str(), n.subnet.as_str(), n.internal)).collect::<Vec<_>>(),
+            [("lab", "10.30.0.0/24", false), ("back", "10.31.0.0/24", true)]
+        );
+        assert_eq!(ifaces["web"].iter().map(|i| (i.network.as_str(), i.ip.as_str())).collect::<Vec<_>>(), [("lab", "10.30.0.10"), ("back", "10.31.0.10")]);
+        assert_eq!(ifaces["db"].len(), 1);
+        assert_eq!(message(&spec).as_deref(), Some("Start at http://localhost:8080/ (web is 10.30.0.10)."));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

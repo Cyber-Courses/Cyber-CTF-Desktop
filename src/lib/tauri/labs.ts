@@ -61,11 +61,22 @@ export function labStop(id: string, runtime: Runtime, onLog: (line: string) => v
 
 export const labStatus = (id: string, runtime: Runtime) => invoke<LabStatus>("lab_status", { id, runtime });
 
-/** Result of a lab's exploitability self-check (the lab's `check` service). */
+/** One check of a lab's self-verification. */
+export interface LabCheckResult {
+  name: string;
+  /** Where it ran: "from web", or "from the environment's networks". */
+  from: string;
+  ok: boolean;
+  /** Why it failed (empty when it passed). */
+  reason: string;
+}
+
+/** Result of a lab's self-verification: its own checks and the ones derived from its spec. */
 export interface LabCheck {
   available: boolean;
   ok: boolean;
   output: string;
+  results: LabCheckResult[];
 }
 
 /** Runs a lab's exploitability check: is the intended exploit path still solvable? */

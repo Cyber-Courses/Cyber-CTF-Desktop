@@ -227,9 +227,24 @@ fn parse_status(out: &str) -> Vec<Machine> {
 
 pub async fn status(dir: &Path, env: &[(String, String)]) -> Result<LabStatus> {
     let out = run_env_timed("vagrant", &["status", "--machine-readable"], Some(dir), env, STATUS_TIMEOUT).await?;
-    let machines = parse_status(&out);
+    let mut machines = parse_status(&out);
     let running = !machines.is_empty() && machines.iter().all(|m| m.state == "running");
-    Ok(LabStatus { running, machines, networks: Vec::new(), url: None, host: None, expires_at: None, place: None })
+    // The network diagram, as a Docker lab gets it: addresses are static (declared in the lab),
+    // so it comes from the lab's spec (`.isoloom/vagrant` sits two levels under the lab).
+    let networks = match dir.parent().and_then(Path::parent).and_then(|lab| super::lab::spec(lab).ok()) {
+        Some(spec) => {
+            let (mut ifaces, networks) = super::lab::topology(&spec);
+            for m in &mut machines {
+                if let Some(list) = ifaces.remove(&m.name) {
+                    m.ip = list.first().map(|i| i.ip.clone()).unwrap_or_default();
+                    m.interfaces = list;
+                }
+            }
+            networks
+        }
+        None => Vec::new(),
+    };
+    Ok(LabStatus { running, machines, networks, url: None, host: None, expires_at: None, place: None })
 }
 
 #[cfg(test)]
