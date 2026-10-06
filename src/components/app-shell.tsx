@@ -34,7 +34,6 @@ const NAV: { id: Tab; label: string; icon: LucideIcon; soon?: boolean; sep?: boo
   { id: "machine", label: "Machine", icon: MonitorCog, sep: true },
   { id: "server", label: "Servers", icon: Server },
   { id: "cloud", label: "Cloud", icon: Cloud },
-  { id: "settings", label: "Settings", icon: Cog, sep: true },
 ];
 
 const TITLES: Record<Tab, string> = {
@@ -259,9 +258,19 @@ export function AppShell() {
           )}
         </nav>
 
-        <div className="space-y-2.5 border-t border-border px-3.5 py-3">
+        <div className="space-y-1.5 border-t border-border px-3 py-3">
+          <button
+            onClick={() => navigate("settings")}
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[0.4375rem] text-[0.8125rem] transition-colors",
+              tab === "settings" ? "bg-[#1a1a1a] text-foreground" : "text-muted-foreground hover:bg-[#141414] hover:text-foreground",
+            )}
+          >
+            <Cog className="size-4 shrink-0" />
+            <span className="flex-1 text-left">Settings</span>
+          </button>
           <div
-            className="flex items-center gap-2 px-0.5 text-[0.71875rem] text-muted-foreground"
+            className="flex items-center gap-2 px-2.5 text-[0.71875rem] text-muted-foreground"
             title={auth?.loggedIn ? "Signed in: labs you launch from the website run on this machine." : "Sign in so labs launched from the website run on this machine."}
           >
             <span className={cn("size-1.5 rounded-full", auth?.loggedIn ? "bg-emerald-500" : "bg-muted-foreground/40")} />
