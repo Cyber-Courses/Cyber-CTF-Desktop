@@ -158,7 +158,7 @@ fn session_from(tokens: TokenResponse, previous: Option<&Session>) -> Session {
         access_token: tokens.access_token,
         // Refresh tokens may rotate; keep the old one if none is returned.
         refresh_token: tokens.refresh_token.or_else(|| previous.and_then(|p| p.refresh_token.clone())),
-        expires_at: now() + tokens.expires_in.unwrap_or(3600),
+        expires_at: now().saturating_add(tokens.expires_in.unwrap_or(3600)),
         name,
         email,
     }
@@ -172,9 +172,18 @@ pub async fn access_token() -> Result<String> {
     }
     let refresh = session.refresh_token.clone().ok_or_else(|| Error::Invalid("session expired, log in again".into()))?;
     let (client_id, api) = (config::client_id(), config::api_url());
-    let tokens = token_request(&[("grant_type", "refresh_token"), ("refresh_token", &refresh), ("client_id", &client_id), ("resource", &api)])
-        .await
-        .inspect_err(|_| clear_session())?;
+    let tokens = match token_request(&[("grant_type", "refresh_token"), ("refresh_token", &refresh), ("client_id", &client_id), ("resource", &api)]).await {
+        Ok(tokens) => tokens,
+        Err(e) => {
+            // Only drop the session when the server explicitly rejected the refresh token
+            // (OAuth `invalid_grant`). On a transient failure (network, 5xx) keep it, so a blip
+            // near expiry doesn't log the user out and stop the background agent.
+            if e.to_string().contains("invalid_grant") {
+                clear_session();
+            }
+            return Err(e);
+        }
+    };
     let renewed = session_from(tokens, Some(&session));
     save_session(&renewed)?;
     Ok(renewed.access_token)

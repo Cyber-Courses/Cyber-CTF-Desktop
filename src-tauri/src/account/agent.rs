@@ -7,11 +7,14 @@
 //! Phase 2a (here): presence + claim-and-run. The interactive surface (loopback
 //! co-location server, relay tunnel, terminal / noVNC) is Phase 2b.
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
+use tokio::sync::oneshot;
 
 use crate::account::api;
 use crate::account::auth;
@@ -118,6 +121,42 @@ fn random_hex() -> String {
 }
 
 /// Claims one pending session and runs its lab on this machine.
+/// Cloud-launch confirmations awaiting the user's answer, keyed by session id. The agent inserts
+/// a sender and awaits it; `confirm_launch` (from the UI) resolves it.
+fn pending_confirmations() -> &'static Mutex<HashMap<String, oneshot::Sender<bool>>> {
+    static P: OnceLock<Mutex<HashMap<String, oneshot::Sender<bool>>>> = OnceLock::new();
+    P.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// The user's answer to a cloud-launch confirmation, from the UI.
+#[tauri::command]
+pub fn confirm_launch(session_id: String, approve: bool) {
+    if let Ok(mut map) = pending_confirmations().lock()
+        && let Some(tx) = map.remove(&session_id)
+    {
+        let _ = tx.send(approve);
+    }
+}
+
+/// Asks the user to confirm a website launch that would run on one of their cloud accounts
+/// (it costs money), by emitting an event the UI shows as a prompt and waiting for the answer.
+/// A timeout counts as a decline, so a missed prompt doesn't hang the session or spend money.
+async fn confirm_cloud_launch(app: &AppHandle, session_id: &str, repo: &str, commit: &str, target: &str) -> bool {
+    let (tx, rx) = oneshot::channel();
+    if let Ok(mut map) = pending_confirmations().lock() {
+        map.insert(session_id.to_string(), tx);
+    }
+    let _ = app.emit("launch-confirm", json!({ "sessionId": session_id, "repository": repo, "commit": commit, "target": target }));
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.set_focus();
+    }
+    let approved = matches!(tokio::time::timeout(Duration::from_secs(180), rx).await, Ok(Ok(true)));
+    if let Ok(mut map) = pending_confirmations().lock() {
+        map.remove(session_id);
+    }
+    approved
+}
+
 async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
     let data = api::graphql(
         "mutation ($id: ID!) { claimLaunch(sessionId: $id) { labId runtime repository commit target env { name value } } }",
@@ -137,6 +176,18 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
         ),
         None => (data["claimLaunch"]["runtime"] == "VM").then(|| server::default_host(app)).flatten(),
     };
+    // Running on a cloud account costs money, so a website launch onto one isn't auto-run: ask
+    // the user to confirm on this machine first (local and server targets still run unattended).
+    if let Some(id) = host.as_deref()
+        && server::host_provider(app, id).is_some_and(|p| p.is_cloud())
+    {
+        let target = server::host_name(app, id).unwrap_or_else(|| id.to_string());
+        let repo = data["claimLaunch"]["repository"].as_str().unwrap_or("");
+        let commit = data["claimLaunch"]["commit"].as_str().unwrap_or("");
+        if !confirm_cloud_launch(app, session_id, repo, commit, &target).await {
+            return Err(Error::Invalid(format!("Launch on {target} was not confirmed on this machine.")));
+        }
+    }
     let image = host.as_ref().map(|_| DEFAULT_ATTACK_IMAGE);
     let url = labs::run(app, data["claimLaunch"].clone(), None, host.as_deref(), image, |_line: String| {}).await?;
     // The lab is actually running on this machine now. If anything below fails (reporting back to

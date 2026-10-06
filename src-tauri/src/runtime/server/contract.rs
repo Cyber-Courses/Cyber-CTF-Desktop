@@ -194,6 +194,11 @@ pub fn host_name(app: &AppHandle, id: &str) -> Option<String> {
     load(app).ok()?.hosts.into_iter().find(|h| h.id == id).map(|h| h.name)
 }
 
+/// A host's provider, if it exists.
+pub fn host_provider(app: &AppHandle, id: &str) -> Option<Provider> {
+    load(app).ok()?.hosts.into_iter().find(|h| h.id == id).map(|h| h.provider)
+}
+
 /// The host marked as default, if any (used for VM labs launched from the website).
 pub fn default_host(app: &AppHandle) -> Option<String> {
     let store = load(app).ok()?;

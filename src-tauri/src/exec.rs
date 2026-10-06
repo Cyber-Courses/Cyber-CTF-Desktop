@@ -64,10 +64,12 @@ async fn run_inner(program: &'static str, args: &[&str], cwd: Option<&Path>, env
         std::io::ErrorKind::NotFound => Error::ToolMissing { tool: program },
         _ => Error::Io(e),
     };
+    // Kill the child if this future is dropped (cancellation), so a long tool (vagrant/docker/
+    // cloud CLI) isn't left orphaned.
+    cmd.kill_on_drop(true);
     let output = match timeout {
         None => cmd.output().await.map_err(to_err)?,
         Some(dur) => {
-            cmd.kill_on_drop(true);
             let child = cmd.spawn().map_err(to_err)?;
             match tokio::time::timeout(dur, child.wait_with_output()).await {
                 Ok(out) => out.map_err(to_err)?,
@@ -95,6 +97,9 @@ pub async fn stream(program: &'static str, args: &[&str], cwd: Option<&Path>, en
     let mut cmd = build(program, args);
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd.envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    // Kill the child (and, with it, the long-lived process we stream) if this future is dropped,
+    // rather than orphaning a vagrant/docker/terraform run.
+    cmd.kill_on_drop(true);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }

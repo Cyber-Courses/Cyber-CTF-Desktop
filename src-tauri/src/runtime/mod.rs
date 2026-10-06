@@ -61,7 +61,7 @@ pub enum Runtime {
     Vm,
 }
 
-fn validate_id(id: &str) -> Result<()> {
+pub fn validate_id(id: &str) -> Result<()> {
     let ok = !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     if ok { Ok(()) } else { Err(Error::Invalid(format!("invalid lab id `{id}`"))) }
 }

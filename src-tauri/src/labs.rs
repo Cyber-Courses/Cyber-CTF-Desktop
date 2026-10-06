@@ -74,6 +74,10 @@ fn extract(tarball: &[u8], dest: &Path) -> Result<()> {
 /// already installed. Extracts next to it, then swaps, so a failed download
 /// never leaves a half-installed lab.
 async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, log: &impl Fn(String)) -> Result<PathBuf> {
+    // The lab id comes from the backend and is used to build paths (join, remove_dir_all, rename).
+    // Validate it like every other id so a hostile/buggy response can't escape the labs dir with
+    // `..` or an absolute path. Reachable unattended through the agent, so this is the guard.
+    runtime::validate_id(lab_id)?;
     validate_source(repository, commit)?;
     let labs = app.path().app_data_dir().map_err(|e| Error::Invalid(e.to_string()))?.join("labs");
     let dir = labs.join(lab_id);

@@ -139,6 +139,7 @@ pub fn run() {
             account::auth::auth_logout,
             account::api::api_query,
             account::agent::agent_info,
+            account::agent::confirm_launch,
             platform::install::install_dependency,
             cloud::cloud_login,
             cloud::aws_cli_identity,

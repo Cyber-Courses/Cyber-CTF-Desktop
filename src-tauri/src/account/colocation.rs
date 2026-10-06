@@ -15,11 +15,34 @@ use crate::error::{Error, Result};
 /// Site origins allowed to read the probe. Loopback origins (dev) are allowed too.
 const ALLOWED_ORIGINS: [&str; 4] = ["https://www.cybercourses.com", "https://cybercourses.com", "https://www.cyberctf.org", "https://cyberctf.org"];
 
+/// A loopback dev origin, by exact host match (not a prefix): `http(s)://localhost` or
+/// `127.0.0.1`, with an optional numeric port. A prefix match would also accept
+/// `http://localhost.evil.com`.
+fn is_loopback_origin(origin: &str) -> bool {
+    let Some(rest) = origin.strip_prefix("http://").or_else(|| origin.strip_prefix("https://")) else {
+        return false;
+    };
+    // Reject anything with a path/extra; an Origin is scheme://host[:port] only.
+    if rest.contains('/') {
+        return false;
+    }
+    let (name, port) = rest.split_once(':').map_or((rest, None), |(n, p)| (n, Some(p)));
+    let host_ok = name == "localhost" || name == "127.0.0.1";
+    let port_ok = port.is_none_or(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
+    host_ok && port_ok
+}
+
 fn origin_allowed(origin: &str) -> bool {
-    ALLOWED_ORIGINS.contains(&origin)
-        || origin.starts_with("http://localhost")
-        || origin.starts_with("http://127.0.0.1")
-        || origin.starts_with("https://localhost")
+    ALLOWED_ORIGINS.contains(&origin) || is_loopback_origin(origin)
+}
+
+/// Constant-time string equality, so the token check doesn't leak via response timing.
+fn ct_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 fn header<'a>(req: &'a str, name: &str) -> Option<&'a str> {
@@ -56,20 +79,31 @@ fn build_response(req: &str, token: &str, nonce: &str) -> String {
         return reply("404 Not Found", "{\"error\":\"not_found\"}");
     }
     let given = query.split('&').find_map(|kv| kv.strip_prefix("token=")).unwrap_or("");
-    if given != token {
+    if !ct_eq(given, token) {
         return reply("403 Forbidden", "{\"error\":\"forbidden\"}");
     }
     reply("200 OK", &format!("{{\"nonce\":\"{nonce}\"}}"))
 }
 
-/// Starts the control server on a free loopback port and returns the port. It runs for the
-/// life of the process; a new launch starts a new one.
+/// The co-location server of the current launch. A new launch retires the previous one, so
+/// listeners (and their ports/tokens) don't accumulate for the life of the app.
+static CURRENT: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>> = std::sync::Mutex::new(None);
+
+/// Starts the control server on a free loopback port and returns the port. The previous
+/// launch's server is aborted (its one-time token is spent by then), so only the latest is live.
 pub async fn serve(token: String, nonce: String) -> Result<u16> {
     let listener = TcpListener::bind("127.0.0.1:0").await.map_err(Error::Io)?;
     let port = listener.local_addr().map_err(Error::Io)?.port();
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         loop {
-            let Ok((mut socket, _addr)): std::result::Result<(_, SocketAddr), _> = listener.accept().await else { continue };
+            let (mut socket, _addr): (_, SocketAddr) = match listener.accept().await {
+                Ok(pair) => pair,
+                // A persistent accept error (e.g. fd exhaustion) must not become a hot spin loop.
+                Err(_) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    continue;
+                }
+            };
             let (token, nonce) = (token.clone(), nonce.clone());
             tokio::spawn(async move {
                 let mut buf = [0u8; 2048];
@@ -81,6 +115,11 @@ pub async fn serve(token: String, nonce: String) -> Result<u16> {
             });
         }
     });
+    if let Ok(mut cur) = CURRENT.lock()
+        && let Some(old) = cur.replace(handle)
+    {
+        old.abort();
+    }
     Ok(port)
 }
 
@@ -117,5 +156,20 @@ mod tests {
     #[test]
     fn unknown_path_is_404() {
         assert!(build_response(&get("/secrets", "https://cybercourses.com"), "secret", "n").starts_with("HTTP/1.1 404"));
+    }
+
+    #[test]
+    fn loopback_origin_is_exact_not_a_prefix() {
+        use super::is_loopback_origin;
+        assert!(is_loopback_origin("http://localhost"));
+        assert!(is_loopback_origin("http://localhost:3000"));
+        assert!(is_loopback_origin("http://127.0.0.1:47290"));
+        assert!(is_loopback_origin("https://localhost"));
+        // Prefix-match escapes that must be rejected:
+        assert!(!is_loopback_origin("http://localhost.evil.com"));
+        assert!(!is_loopback_origin("http://127.0.0.1.evil.com"));
+        assert!(!is_loopback_origin("http://localhostXYZ"));
+        assert!(!is_loopback_origin("http://localhost/path"));
+        assert!(!is_loopback_origin("http://localhost:not-a-port"));
     }
 }
