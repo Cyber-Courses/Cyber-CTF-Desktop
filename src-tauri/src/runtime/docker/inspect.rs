@@ -10,12 +10,38 @@ use crate::error::Result;
 use crate::exec::run_read;
 use crate::runtime::{Interface, LabStatus, Machine, Network, Port, Service};
 
-/// True for services that aren't a web UI (databases, caches, brokers): the Open button
-/// must never point a browser at one.
+/// True for services that aren't a web UI (databases, caches, brokers, and non-HTTP network
+/// services like SSH/FTP/RDP): the Open button must never point a browser at one.
 fn is_datastore(e: &PsEntry) -> bool {
     let s = format!("{} {}", e.service, e.image).to_ascii_lowercase();
-    ["mysql", "mariadb", "postgres", "redis", "mongo", "memcached", "rabbitmq", "elastic", "mssql", "oracle"].iter().any(|k| s.contains(k))
-        || matches!(e.service.as_str(), "db" | "database")
+    [
+        "mysql",
+        "mariadb",
+        "postgres",
+        "redis",
+        "mongo",
+        "memcached",
+        "rabbitmq",
+        "elastic",
+        "mssql",
+        "oracle", // datastores
+        "sshd",
+        "openssh",
+        "vsftpd",
+        "proftpd",
+        "ftp",
+        "rdp",
+        "xrdp",
+        "vnc",
+        "telnet",
+        "smtp",
+        "postfix",
+        "bind9",
+        "dnsmasq", // non-web network services
+    ]
+    .iter()
+    .any(|k| s.contains(k))
+        || matches!(e.service.as_str(), "db" | "database" | "ssh" | "sftp" | "ftp" | "dns" | "smb" | "ldap")
 }
 
 /// The loopback URL of a running web service's first published TCP port, i.e. where the
@@ -187,6 +213,10 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
         .map(|e| {
             let ports = tcp_ports(&e.publishers);
             let Inspected { mut interfaces, services } = inspected.remove(&e.name).unwrap_or_default();
+            // A lab address is never on Docker's own networks; drop them unconditionally so that
+            // even when the lab-network probe came back empty (a transient inspect error), the
+            // machine IP can't fall back to a 172.x default-bridge address.
+            interfaces.retain(|i| !matches!(i.network.as_str(), "bridge" | "host" | "none"));
             if !lab_order.is_empty() {
                 interfaces.retain(|i| lab_order.contains(&i.network.as_str()));
                 interfaces.sort_by_key(|i| lab_order.iter().position(|n| *n == i.network).unwrap_or(usize::MAX));

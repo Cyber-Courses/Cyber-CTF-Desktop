@@ -166,8 +166,9 @@ fn write_proxmox_module(dir: &Path) -> Result<()> {
     std::fs::write(dir.join("main.tf"), PROXMOX_MAIN_TF)?;
     std::fs::write(dir.join("variables.tf"), PROXMOX_VARS_TF)?;
     std::fs::write(dir.join("outputs.tf"), PROXMOX_OUTPUTS_TF)?;
-    // The launcher runs `terraform init -lockfile=readonly`, so the module must ship a lock
-    // file (for every platform the launcher runs on) or init fails before anything happens.
+    // Ship a dependency lock so `terraform init` reuses the pinned provider versions/hashes
+    // (reproducible, and no surprise upgrade) rather than re-resolving them. Covers every
+    // platform the launcher runs on.
     std::fs::write(dir.join(".terraform.lock.hcl"), PROXMOX_LOCK_HCL)?;
     Ok(())
 }
