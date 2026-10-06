@@ -269,22 +269,8 @@ export function AppShell() {
           )}
         </nav>
 
-        <div className="space-y-1.5 border-t border-border px-3 py-3">
-          <button
-            onClick={() => openSettings().catch(() => {})}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[0.4375rem] text-[0.8125rem] text-muted-foreground transition-colors hover:bg-[#141414] hover:text-foreground"
-          >
-            <Cog className="size-4 shrink-0" />
-            <span className="flex-1 text-left">Settings</span>
-          </button>
-          <div
-            className="flex items-center gap-2 px-2.5 text-[0.71875rem] text-muted-foreground"
-            title={auth?.loggedIn ? "Signed in: labs you launch from the website run on this machine." : "Sign in so labs launched from the website run on this machine."}
-          >
-            <span className={cn("size-1.5 rounded-full", auth?.loggedIn ? "bg-emerald-500" : "bg-muted-foreground/40")} />
-            {auth?.loggedIn ? "This machine · online" : "This machine · offline"}
-          </div>
-          <Account status={auth} onChange={setAuth} />
+        <div className="border-t border-border px-3 py-3">
+          <Account status={auth} onChange={setAuth} online={!!auth?.loggedIn} onSettings={() => openSettings().catch(() => {})} />
         </div>
       </aside>
 
