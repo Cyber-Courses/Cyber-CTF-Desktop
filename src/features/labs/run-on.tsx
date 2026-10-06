@@ -9,6 +9,7 @@ import { KIND } from "@/features/servers/host-setup/constants";
 import { ProviderGlyph } from "@/features/servers/provider-glyph";
 import { HypervisorLogo } from "@/features/machine/hypervisor-logo";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export const CLOUDS = new Set(["aws", "azure", "gcp", "digitalocean", "linode", "oci"]);
 
@@ -26,9 +27,10 @@ export function RunOnDialog({ onClose, children, footer }: { onClose: () => void
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
-    ref.current?.focus();
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+  // Keep keyboard focus inside the dialog and restore it on close.
+  useFocusTrap(ref);
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]"

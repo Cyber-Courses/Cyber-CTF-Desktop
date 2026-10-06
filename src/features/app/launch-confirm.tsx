@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { confirmLaunch } from "@/lib/tauri";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 type Request = { sessionId: string; repository: string; commit: string; target: string };
 
@@ -16,11 +17,13 @@ type Request = { sessionId: string; repository: string; commit: string; target: 
 export function LaunchConfirm() {
   const [req, setReq] = useState<Request | null>(null);
   const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const off = listen<Request>("launch-confirm", (e) => setReq(e.payload));
     return () => void off.then((f) => f());
   }, []);
+  useFocusTrap(ref, !!req);
 
   if (!req) return null;
 
@@ -36,7 +39,7 @@ export function LaunchConfirm() {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]">
-      <div role="alertdialog" aria-modal="true" aria-label="Confirm a cloud lab launch" className="w-full max-w-[28rem] rounded-xl border border-border bg-card p-5 shadow-2xl shadow-black/50">
+      <div ref={ref} tabIndex={-1} role="alertdialog" aria-modal="true" aria-label="Confirm a cloud lab launch" className="w-full max-w-[28rem] rounded-xl border border-border bg-card p-5 shadow-2xl shadow-black/50 outline-none">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-learn/30 bg-learn/10 text-learn">
             <Cloud className="size-4" />
