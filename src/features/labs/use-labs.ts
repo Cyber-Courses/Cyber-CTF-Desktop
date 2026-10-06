@@ -59,17 +59,24 @@ export function useLabs(reloadKey: unknown = 0) {
   }, []);
 
   useEffect(() => {
+    // Cancelled when reloadKey changes (e.g. login toggles): a response in flight from the
+    // previous key must not resolve last and overwrite the newer catalogue.
+    let alive = true;
     apiQuery<{ labs: Lab[] }>(LABS_QUERY)
       .then((d) => {
+        if (!alive) return;
         setLabs(d.labs);
         setError(null);
         d.labs.forEach(refreshStatus);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => alive && setError(String(e)));
     // Best effort: logged out (or a backend without the query) just shows no progress.
     apiQuery<{ myCompletedLabs: string[] }>(COMPLETED_QUERY)
-      .then((d) => setCompleted(new Set(d.myCompletedLabs)))
-      .catch(() => setCompleted(new Set()));
+      .then((d) => alive && setCompleted(new Set(d.myCompletedLabs)))
+      .catch(() => alive && setCompleted(new Set()));
+    return () => {
+      alive = false;
+    };
   }, [reloadKey, refreshStatus]);
 
   // Poll local status so labs launched from the website (claimed + run by the agent)
