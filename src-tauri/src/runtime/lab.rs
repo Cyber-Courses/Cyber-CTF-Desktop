@@ -66,10 +66,9 @@ pub fn terraform(dir: &Path, runtime: Runtime, tf: &str) -> Result<(PathBuf, Tar
         (Runtime::Docker, "proxmox") => (dir.join(".isoloom/docker-vm/proxmox"), Target::DockerVm),
         (Runtime::Vm, "proxmox") => (dir.join(".isoloom/proxmox"), Target::Proxmox),
         (Runtime::Docker, cloud) => (dir.join(".isoloom/cloud-docker").join(cloud), Target::CloudDocker),
-        (Runtime::Vm, "aws") => (dir.join(".isoloom/cloud-vm/aws"), Target::CloudVm),
-        (Runtime::Vm, _) => {
-            return Err(Error::Invalid("VM labs run in the cloud on AWS only for now: or run them on this machine, an ESXi host or Proxmox.".into()));
-        }
+        // Isoloom generates a cloud-vm module per cloud it can model the lab on; a cloud a lab
+        // doesn't support has no module, and the run surfaces that when the directory is missing.
+        (Runtime::Vm, cloud) => (dir.join(".isoloom/cloud-vm").join(cloud), Target::CloudVm),
     })
 }
 
@@ -190,6 +189,8 @@ mod tests {
         assert_eq!(terraform(d, Runtime::Docker, "proxmox").unwrap().0, PathBuf::from("/l/.isoloom/docker-vm/proxmox"));
         assert_eq!(terraform(d, Runtime::Vm, "proxmox").unwrap().1, Target::Proxmox);
         assert_eq!(terraform(d, Runtime::Vm, "aws").unwrap(), (PathBuf::from("/l/.isoloom/cloud-vm/aws"), Target::CloudVm));
-        assert!(terraform(d, Runtime::Vm, "azure").is_err());
+        // Every cloud now has a cloud-vm module, not only AWS.
+        assert_eq!(terraform(d, Runtime::Vm, "azure").unwrap(), (PathBuf::from("/l/.isoloom/cloud-vm/azure"), Target::CloudVm));
+        assert_eq!(terraform(d, Runtime::Vm, "oci").unwrap(), (PathBuf::from("/l/.isoloom/cloud-vm/oci"), Target::CloudVm));
     }
 }
