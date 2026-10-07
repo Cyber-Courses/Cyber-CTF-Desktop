@@ -196,7 +196,11 @@ pub async fn start(
                 docker::start(dir, id, env, &mut log).await?;
                 exegol::rejoin(id).await;
                 registry::record(dir, &spec, isoloom_core::Target::Docker, None);
-                welcome(dir, &spec, &mut log);
+                // Its ports here are the ones picked at its first start, not the spec's.
+                let published = docker::published(dir, id, env).await;
+                if let Some(m) = lab::message_at(dir, &spec, &published) {
+                    m.lines().for_each(|l| log(l.to_string()));
+                }
                 Ok(())
             }
             Runtime::Vm => {

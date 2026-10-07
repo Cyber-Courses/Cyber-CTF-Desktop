@@ -108,6 +108,25 @@ pub(super) fn host_ports_from_config(json: &str) -> Vec<u16> {
     ports
 }
 
+/// Every published port as (service, container port, host port), from `docker compose config`
+/// (env resolved, pinned ports applied): where each of the lab's services answers on this machine.
+pub(super) fn published_from_config(json: &str) -> Vec<(String, u16, u16)> {
+    let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
+    let num =
+        |x: Option<&serde_json::Value>| x.and_then(|x| x.as_u64().or_else(|| x.as_str().and_then(|s| s.parse().ok()))).and_then(|n| u16::try_from(n).ok());
+    let mut out = Vec::new();
+    for (name, svc) in v.get("services").and_then(|s| s.as_object()).into_iter().flatten() {
+        for p in svc.get("ports").and_then(|p| p.as_array()).into_iter().flatten() {
+            if let (Some(target), Some(host)) = (num(p.get("target")), num(p.get("published")))
+                && host > 0
+            {
+                out.push((name.clone(), target, host));
+            }
+        }
+    }
+    out
+}
+
 /// Service names a compose file publishes a host port for, from `docker compose config`.
 /// These are the lab's serving containers (web/app), as opposed to one-shot init jobs.
 pub(super) fn serving_services_from_config(json: &str) -> Vec<String> {
@@ -156,7 +175,7 @@ pub(super) fn pinned_ports(json: &str, mut pick: impl FnMut() -> Option<u16>) ->
 
 #[cfg(test)]
 mod tests {
-    use super::{host_ports_from_config, parse_ps, pinned_ports, project, serving_services_from_config};
+    use super::{host_ports_from_config, parse_ps, pinned_ports, project, published_from_config, serving_services_from_config};
 
     #[test]
     fn pins_ephemeral_ports_and_keeps_fixed_ones() {
@@ -178,6 +197,13 @@ mod tests {
         // Nothing ephemeral, or no free port: no override.
         assert!(pinned_ports(r#"{"services":{"web":{"ports":[{"target":80,"published":"8080"}]}}}"#, || Some(1)).is_none());
         assert!(pinned_ports(r#"{"services":{"web":{"ports":[{"target":80}]}}}"#, || None).is_none());
+    }
+
+    #[test]
+    fn lists_published_ports_by_service() {
+        let json = r#"{"services":{"web":{"ports":[{"target":80,"published":"46709"},{"target":443}]},"db":{}}}"#;
+        assert_eq!(published_from_config(json), vec![("web".to_string(), 80, 46709)]);
+        assert!(published_from_config("not json").is_empty());
     }
 
     #[test]

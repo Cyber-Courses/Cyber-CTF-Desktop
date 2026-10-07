@@ -166,7 +166,26 @@ pub fn topology(spec: &Spec) -> (HashMap<String, Vec<Interface>>, Vec<Network>) 
 /// the lab has none, or it names a value the spec doesn't have (the lab's own mistake, not
 /// worth failing a launch over).
 pub fn message(dir: &Path, spec: &Spec) -> Option<String> {
-    isoloom_core::resolved::render_message(spec, instance(dir)).ok().flatten().map(|m| m.trim_end().to_string())
+    message_at(dir, spec, &[])
+}
+
+/// `message` with the host ports the lab really got: (machine, container port, host port). A
+/// local container lab publishes on ports picked at its first start, not the `publish:` values
+/// its spec declares, so a `{{ machines.web.services.0.publish }}` must say where it answers.
+pub fn message_at(dir: &Path, spec: &Spec, published: &[(String, u16, u16)]) -> Option<String> {
+    let text = spec.message.as_deref()?;
+    let mut snapshot = isoloom_core::resolved::resolve_with(spec, instance(dir));
+    for (machine, port, host) in published {
+        let services = snapshot.pointer_mut(&format!("/machines/{machine}/services")).and_then(|s| s.as_array_mut());
+        for s in services.into_iter().flatten().filter(|s| s["port"] == *port) {
+            s["publish"] = (*host).into();
+        }
+        let listed = snapshot.get_mut("published").and_then(|p| p.as_array_mut());
+        for p in listed.into_iter().flatten().filter(|p| p["machine"] == machine.as_str() && p["port"] == *port) {
+            p["host_port"] = (*host).into();
+        }
+    }
+    isoloom_core::resolved::fill(text, &snapshot).ok().map(|m| m.trim_end().to_string())
 }
 
 /// The lab's Compose file (local Docker, and inside "Docker on one VM").
@@ -322,6 +341,8 @@ mod tests {
         assert_eq!(ifaces["web"].iter().map(|i| (i.network.as_str(), i.ip.as_str())).collect::<Vec<_>>(), [("lab", "10.30.0.10"), ("back", "10.31.0.10")]);
         assert_eq!(ifaces["db"].len(), 1);
         assert_eq!(message(&dir, &spec).as_deref(), Some("Start at http://localhost:8080/ (web is 10.30.0.10)."));
+        // Run locally, the lab answers on the port picked at its first start: the message says so.
+        assert_eq!(message_at(&dir, &spec, &[("web".into(), 80, 46709)]).as_deref(), Some("Start at http://localhost:46709/ (web is 10.30.0.10)."));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
