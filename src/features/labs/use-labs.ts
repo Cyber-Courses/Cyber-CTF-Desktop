@@ -38,10 +38,23 @@ const COMPLETED_QUERY = `{ myCompletedLabs }`;
  * (running / machines / url). Shared by the Labs screen and the Home dashboard so both
  * reflect the same state. `reloadKey` re-fetches the catalogue when it changes.
  */
+// The last statuses read, kept across screens: a lab page opened again renders at once from them
+// (refreshed right away) instead of waiting on a fresh probe, which takes seconds on a busy machine.
+let lastStatuses: Record<string, LabStatus> = {};
+let lastProbed = new Set<string>();
+// The catalogue last loaded, for the same reloadKey (sign-in state): shown while it reloads.
+let lastCatalogue: { key: unknown; labs: Lab[] } | null = null;
+
 export function useLabs(reloadKey: unknown = 0) {
-  const [labs, setLabs] = useState<Lab[] | null>(null);
+  const [labs, setLabs] = useState<Lab[] | null>(() => {
+    const cached = lastCatalogue;
+    return cached && cached.key === reloadKey ? cached.labs : null;
+  });
   const [error, setError] = useState<string | null>(null);
-  const [statuses, setStatuses] = useState<Record<string, LabStatus>>({});
+  const [statuses, setStatusesState] = useState<Record<string, LabStatus>>(lastStatuses);
+  const setStatuses = useCallback((f: (m: Record<string, LabStatus>) => Record<string, LabStatus>) => {
+    setStatusesState((m) => (lastStatuses = f(m)));
+  }, []);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   // Labs the infrastructure scan (docker/vagrant) reports running. Authoritative for the running
   // flag: a lab is shown running when the scan sees it even if its per-lab status probe is failing
@@ -49,24 +62,30 @@ export function useLabs(reloadKey: unknown = 0) {
   const [scanRunning, setScanRunning] = useState<Set<string>>(new Set());
   // Labs whose status has been asked at least once (answered or not): a page can wait for its
   // first answer instead of rendering a "not started" lab that flips to running a beat later.
-  const [probed, setProbed] = useState<Set<string>>(new Set());
+  const [probed, setProbedState] = useState<Set<string>>(lastProbed);
+  const setProbed = useCallback((f: (p: Set<string>) => Set<string>) => {
+    setProbedState((p) => (lastProbed = f(p)));
+  }, []);
 
   // One status read per lab at a time: a slow read (a busy VirtualBox can take seconds) must not
   // let the poll interval stack a second, third, … read on top of it.
   const inFlight = useRef<Set<string>>(new Set());
-  const refreshStatus = useCallback((lab: Lab) => {
-    if (!lab.runtime || inFlight.current.has(lab.id)) return;
-    inFlight.current.add(lab.id);
-    labStatus(lab.id, lab.runtime.runtime)
-      .then((s) => setStatuses((m) => ({ ...m, [lab.id]: s })))
-      .catch(() => {
-        /* not installed / not running - leave status unknown */
-      })
-      .finally(() => {
-        inFlight.current.delete(lab.id);
-        setProbed((p) => (p.has(lab.id) ? p : new Set(p).add(lab.id)));
-      });
-  }, []);
+  const refreshStatus = useCallback(
+    (lab: Lab) => {
+      if (!lab.runtime || inFlight.current.has(lab.id)) return;
+      inFlight.current.add(lab.id);
+      labStatus(lab.id, lab.runtime.runtime)
+        .then((s) => setStatuses((m) => ({ ...m, [lab.id]: s })))
+        .catch(() => {
+          /* not installed / not running - leave status unknown */
+        })
+        .finally(() => {
+          inFlight.current.delete(lab.id);
+          setProbed((p) => (p.has(lab.id) ? p : new Set(p).add(lab.id)));
+        });
+    },
+    [setStatuses, setProbed],
+  );
 
   useEffect(() => {
     // Cancelled when reloadKey changes (e.g. login toggles): a response in flight from the
@@ -75,6 +94,7 @@ export function useLabs(reloadKey: unknown = 0) {
     apiQuery<{ labs: Lab[] }>(LABS_QUERY)
       .then((d) => {
         if (!alive) return;
+        lastCatalogue = { key: reloadKey, labs: d.labs };
         setLabs(d.labs);
         setError(null);
         d.labs.forEach(refreshStatus);
