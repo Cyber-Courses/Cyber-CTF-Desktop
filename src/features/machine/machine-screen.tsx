@@ -124,6 +124,12 @@ export function MachineScreen({
   const vmProvider = vmReadyList.find((p) => p.provider === preferred) ?? vmReadyList[0] ?? null;
   const vmApplicable = hypervisors.length > 0;
   const hasHypervisor = hypervisors.some((p) => p.hypervisor === true);
+  // A hypervisor with Vagrant and its plugin in place that still can't run (no /dev/kvm, not in
+  // the kvm group): its own reason, since installing Vagrant again wouldn't help.
+  const blocked = report.vagrant.installed
+    ? hypervisors.find((p) => p.hypervisor === true && (!p.plugin || p.pluginInstalled) && !p.available && p.reason)
+    : undefined;
+  const blockedReason = blocked?.reason ? `${blocked.reason.charAt(0).toUpperCase()}${blocked.reason.slice(1)}.` : null;
 
   const fix = (step: string) => machineOpenSetup(step).catch(() => {});
   const testBtn = (kind: LabKind) => (
@@ -243,6 +249,8 @@ export function MachineScreen({
                 {providerLabel(vmProvider)}
                 {vmReadyList.length > 1 && !preferred ? " (automatic, change in Settings)" : ""} · {testLine(last.vm)}
               </>
+            ) : blockedReason ? (
+              blockedReason
             ) : hasHypervisor ? (
               "Vagrant or the hypervisor's Vagrant plugin is missing."
             ) : (
@@ -264,6 +272,10 @@ export function MachineScreen({
                 )}
                 {testBtn("vm")}
               </>
+            ) : blockedReason ? (
+              <Button variant="outline" size="sm" onClick={() => onNavigate("server")}>
+                Use a server
+              </Button>
             ) : (
               <Button variant="learn" size="sm" onClick={() => fix(hasHypervisor ? "vagrant" : "vm")}>
                 Fix
