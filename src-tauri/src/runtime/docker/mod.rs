@@ -14,4 +14,4 @@ mod lifecycle;
 
 pub use check::{Check, check};
 pub use inspect::{primary_url, short_network, status};
-pub use lifecycle::{start, stop};
+pub use lifecycle::{park, resume, start, stop};

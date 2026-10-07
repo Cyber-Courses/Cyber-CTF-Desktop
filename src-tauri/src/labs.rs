@@ -108,6 +108,9 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
             std::fs::write(staging.join(marker), value)?;
         }
     }
+    // A paused copy of the previous version would be orphaned at the hypervisor once its
+    // folder (and Vagrant's record of it) is gone: take it down first.
+    runtime::clear_parked(&dir, lab_id, log).await;
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::rename(&staging, &dir)?;
     log("Lab installed".into());
@@ -163,36 +166,8 @@ pub async fn lab_launch(
     let startlab = data["startLab"].clone();
     // The deploy runs in a detached worker process, so quitting (or crashing) this app never
     // cuts a vagrant/docker/terraform run short; this command only follows the worker's log.
-    let job = crate::deploy_worker::Job {
-        lab_id: lab_id.clone(),
-        launch: startlab.clone(),
-        provider,
-        host: host.clone(),
-        attackbox_image: attackbox_image.clone(),
-    };
-    match crate::deploy_worker::spawn(&app, &job) {
-        Ok(spawned) => {
-            let follow = logs.clone();
-            crate::deploy_worker::tail(&spawned, move |line| {
-                let _ = follow.send(line);
-            })
-            .await
-        }
-        // Fallback: deploy in this process, on a detached task (a webview reload aborts this
-        // command future and the child is kill_on_drop, so inline would be cut short). The app
-        // then has to stay open until it finishes; the quit guard keeps it alive.
-        Err(e) => {
-            let _ = logs.send(format!("Deploying inside the app (a background worker couldn't be started: {e}). Keep the app open until it finishes."));
-            let handle = tauri::async_runtime::spawn(async move {
-                let log = move |line: String| {
-                    let _ = logs.send(line);
-                };
-                run(&app, startlab, provider, host.as_deref(), attackbox_image.as_deref(), log).await
-            });
-            handle.await.map_err(|e| Error::Invalid(format!("the deploy task did not finish: {e}")))??;
-            Ok(())
-        }
-    }
+    let job = crate::deploy_worker::Job { lab_id, op: crate::deploy_worker::Op::Launch, launch: startlab, provider, host, attackbox_image };
+    crate::deploy_worker::run_job(&app, job, logs).await
 }
 
 #[cfg(test)]

@@ -112,56 +112,60 @@ export function topology(machines: Machine[], networks: LabNetwork[], attacker: 
     edges.push(link("e-attach", `bridge-${entry}`, "__attacker", atkOn ? attack : "#5a5a5a", { animated: atkOn }));
   }
 
-  machines.forEach((m) => {
-    const ifaces = ifacesOf(m);
-    const type = serviceType(m.image, m.name);
-    const id = `svc-${m.name}`;
-    nodes.push({
-      id,
-      type: "computer",
-      position: { x: 0, y: 0 },
-      data: {
-        hostname: m.name,
-        image: m.image || serviceMeta[type].label,
-        type,
-        ifaces,
-        running: m.state === "running",
-        ports: uniquePorts(m.ports),
-        rows: serviceRows(m, uniquePorts(m.ports), type),
-      } satisfies ComputerData,
-    });
-    if (ifaces.length === 1) {
-      members.get(ifaces[0].network)!.push(id);
-      edges.push(link(`e-${ifaces[0].network}-${m.name}`, `bridge-${ifaces[0].network}`, id, GREY));
-    } else {
-      // A pivot plugs into its nearest network(s) and leads on into the deeper ones; each
-      // link carries its address on that network.
-      const near = Math.min(...ifaces.map((i) => d(i.network)));
-      ifaces.forEach((i) =>
-        edges.push(
-          d(i.network) === near
-            ? link(`e-${i.network}-${m.name}`, `zone-${i.network}`, id, GREY, { sideways: true, label: i.ip })
-            : link(`e-${m.name}-${i.network}`, id, `zone-${i.network}`, PIVOT, { sideways: true, label: i.ip }),
-        ),
-      );
-    }
-    // Localhost port bindings: a small node below, linked from the container it forwards to.
-    uniquePorts(m.ports)
-      .filter((p) => p.published > 0)
-      .forEach((p) => {
-        const hp = `hp-${m.name}-${p.published}`;
-        nodes.push({
-          id: hp,
-          type: "hostport",
-          position: { x: 0, y: 0 },
-          style: { width: ANCHOR, height: ANCHOR },
-          data: { port: p.published },
-          draggable: false,
-          selectable: false,
-        });
-        edges.push(link(`e-${hp}`, id, hp, GREEN, { dashed: true, label: "published" }));
+  // The provisioning controller is plumbing, not a target: it has no place on the map.
+  machines
+    .filter((m) => !m.infra)
+    .forEach((m) => {
+      const ifaces = ifacesOf(m);
+      const type = serviceType(m.image, m.name);
+      const id = `svc-${m.name}`;
+      nodes.push({
+        id,
+        type: "computer",
+        position: { x: 0, y: 0 },
+        data: {
+          hostname: m.name,
+          image: m.image || serviceMeta[type].label,
+          type,
+          ifaces,
+          running: m.state === "running",
+          state: m.state,
+          ports: uniquePorts(m.ports),
+          rows: serviceRows(m, uniquePorts(m.ports), type),
+        } satisfies ComputerData,
       });
-  });
+      if (ifaces.length === 1) {
+        members.get(ifaces[0].network)!.push(id);
+        edges.push(link(`e-${ifaces[0].network}-${m.name}`, `bridge-${ifaces[0].network}`, id, GREY));
+      } else {
+        // A pivot plugs into its nearest network(s) and leads on into the deeper ones; each
+        // link carries its address on that network.
+        const near = Math.min(...ifaces.map((i) => d(i.network)));
+        ifaces.forEach((i) =>
+          edges.push(
+            d(i.network) === near
+              ? link(`e-${i.network}-${m.name}`, `zone-${i.network}`, id, GREY, { sideways: true, label: i.ip })
+              : link(`e-${m.name}-${i.network}`, id, `zone-${i.network}`, PIVOT, { sideways: true, label: i.ip }),
+          ),
+        );
+      }
+      // Localhost port bindings: a small node below, linked from the container it forwards to.
+      uniquePorts(m.ports)
+        .filter((p) => p.published > 0)
+        .forEach((p) => {
+          const hp = `hp-${m.name}-${p.published}`;
+          nodes.push({
+            id: hp,
+            type: "hostport",
+            position: { x: 0, y: 0 },
+            style: { width: ANCHOR, height: ANCHOR },
+            data: { port: p.published },
+            draggable: false,
+            selectable: false,
+          });
+          edges.push(link(`e-${hp}`, id, hp, GREEN, { dashed: true, label: "published" }));
+        });
+    });
 
   ordered.forEach((n) => {
     const ids = members.get(n.name)!;

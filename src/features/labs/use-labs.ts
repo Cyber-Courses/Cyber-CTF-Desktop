@@ -47,6 +47,9 @@ export function useLabs(reloadKey: unknown = 0) {
   // flag: a lab is shown running when the scan sees it even if its per-lab status probe is failing
   // or hasn't run yet (e.g. right after a crash/restart).
   const [scanRunning, setScanRunning] = useState<Set<string>>(new Set());
+  // Labs whose status has been asked at least once (answered or not): a page can wait for its
+  // first answer instead of rendering a "not started" lab that flips to running a beat later.
+  const [probed, setProbed] = useState<Set<string>>(new Set());
 
   // One status read per lab at a time: a slow read (a busy VirtualBox can take seconds) must not
   // let the poll interval stack a second, third, … read on top of it.
@@ -59,7 +62,10 @@ export function useLabs(reloadKey: unknown = 0) {
       .catch(() => {
         /* not installed / not running - leave status unknown */
       })
-      .finally(() => inFlight.current.delete(lab.id));
+      .finally(() => {
+        inFlight.current.delete(lab.id);
+        setProbed((p) => (p.has(lab.id) ? p : new Set(p).add(lab.id)));
+      });
   }, []);
 
   useEffect(() => {
@@ -123,12 +129,12 @@ export function useLabs(reloadKey: unknown = 0) {
       const cur = next[id];
       next[id] = cur
         ? { ...cur, running: true }
-        : { running: true, machines: [], networks: [], url: null, host: null, expiresAt: null, place: null, provider: null };
+        : { running: true, parked: null, machines: [], networks: [], url: null, host: null, expiresAt: null, place: null, provider: null };
     }
     return next;
   }, [statuses, scanRunning]);
 
-  return { labs, error, statuses: mergedStatuses, completed, refreshStatus };
+  return { labs, error, statuses: mergedStatuses, completed, refreshStatus, probed };
 }
 
 export const DIFFICULTY_LABEL = ["", "Easy", "Medium", "Hard"];

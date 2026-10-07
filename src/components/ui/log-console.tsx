@@ -88,7 +88,11 @@ export function LogConsole({
       {open && (
         <pre ref={pre} className="max-h-40 overflow-auto p-3 font-mono text-xs leading-relaxed text-muted-foreground">
           {/* Tools print blank lines around their messages: trim them, keep one between paragraphs. */}
-          {lines.join("\n").replace(/^\s*\n+/, "").replace(/\n\s*\n(\s*\n)+/g, "\n\n").trimEnd()}
+          {lines
+            .join("\n")
+            .replace(/^\s*\n+/, "")
+            .replace(/\n\s*\n(\s*\n)+/g, "\n\n")
+            .trimEnd()}
         </pre>
       )}
     </div>

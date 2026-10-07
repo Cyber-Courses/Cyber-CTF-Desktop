@@ -285,7 +285,7 @@ export function useHostSetup({
     setSaving(true);
     setError(null);
     try {
-      const fallback = cloud ? CLOUD_DEFAULT_NAME[v.provider as CloudProvider] ?? v.host.trim() : v.host.trim();
+      const fallback = cloud ? (CLOUD_DEFAULT_NAME[v.provider as CloudProvider] ?? v.host.trim()) : v.host.trim();
       const h = await serverSave({ ...v, name: v.name.trim() || fallback });
       setSaved(h);
       onSaved(h);

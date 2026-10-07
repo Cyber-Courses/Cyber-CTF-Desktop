@@ -19,6 +19,8 @@ export interface LabMachine {
   interfaces: LabInterface[];
   /** Services the lab declares inside it (compose labels); empty when none are declared. */
   services: LabService[];
+  /** Lab plumbing (the provisioning controller), not a target: hidden, powered off once built. */
+  infra: boolean;
 }
 
 /** A service inside a machine, as the lab declares it (`cyberctf.service.<name>`). */
@@ -38,8 +40,14 @@ export interface LabNetwork {
   internal: boolean;
 }
 
+/** How a lab was parked: paused (state saved, resumes in seconds) or shut down (powered off). */
+export type Park = "pause" | "shutdown";
+
 export interface LabStatus {
   running: boolean;
+  /** Set when the launcher parked the lab and it is still down: its machines resume as they
+   *  were, so the page offers Resume rather than "clean up". */
+  parked: Park | null;
   machines: LabMachine[];
   /** The lab's network segments (Docker labs); empty when the runtime doesn't report them. */
   networks: LabNetwork[];
@@ -60,6 +68,26 @@ export function labStop(id: string, runtime: Runtime, onLog: (line: string) => v
   const logs = new Channel<string>();
   logs.onmessage = onLog;
   return invoke<void>("lab_stop", { id, runtime, logs });
+}
+
+/** Pauses or shuts a lab down, keeping its machines; `labResume` brings it back as it was. */
+export function labPark(id: string, runtime: Runtime, mode: Park, onLog: (line: string) => void) {
+  const logs = new Channel<string>();
+  logs.onmessage = onLog;
+  return invoke<void>("lab_park", { id, runtime, mode, logs });
+}
+
+/** Runs a VM lab's provisioners again on one machine (or all with `null`), in place. */
+export function labProvision(id: string, runtime: Runtime, machine: string | null, onLog: (line: string) => void) {
+  const logs = new Channel<string>();
+  logs.onmessage = onLog;
+  return invoke<void>("lab_provision", { id, runtime, machine, logs });
+}
+
+export function labResume(id: string, runtime: Runtime, onLog: (line: string) => void) {
+  const logs = new Channel<string>();
+  logs.onmessage = onLog;
+  return invoke<void>("lab_resume", { id, runtime, logs });
 }
 
 export const labStatus = (id: string, runtime: Runtime) => invoke<LabStatus>("lab_status", { id, runtime });
@@ -105,6 +133,20 @@ export function exegolStop(id: string, onLog: (line: string) => void) {
 /** Opens the OS terminal attached to the running attack box. */
 export const exegolShell = (id: string) => invoke<void>("exegol_shell", { id });
 
+/** The attack VM beside a VM lab (a Vagrant box), in the container attack box's status shape. */
+export const attackVmStatus = (id: string, boxName: string) => invoke<ExegolStatus>("attack_vm_status", { id, boxName });
+export function attackVmStart(id: string, boxName: string, onLog: (line: string) => void) {
+  const logs = new Channel<string>();
+  logs.onmessage = onLog;
+  return invoke<void>("attack_vm_start", { id, boxName, logs });
+}
+export function attackVmStop(id: string, onLog: (line: string) => void) {
+  const logs = new Channel<string>();
+  logs.onmessage = onLog;
+  return invoke<void>("attack_vm_stop", { id, logs });
+}
+export const attackVmShell = (id: string) => invoke<void>("attack_vm_shell", { id });
+
 /** Opens the attack box shell wherever the lab runs (local container, or SSH to a remote lab host). */
 export const labAttackShell = (id: string, runtime: Runtime) => invoke<void>("lab_attack_shell", { id, runtime });
 export function labLaunch(labId: string, provider: Provider | null, host: string | null, attackboxImage: string | null, onLog: (line: string) => void) {
@@ -122,6 +164,20 @@ export const deployingLabs = () => invoke<string[]>("deploying_labs");
 
 /** The lab ids being stopped right now (a teardown in flight is not a deploy). */
 export const stoppingLabs = () => invoke<string[]>("stopping_labs");
+
+/** The lab ids being paused or shut down right now (machines kept). */
+export const parkingLabs = () => invoke<string[]>("parking_labs");
+
+/** One operation in flight on a lab, with the step its log is at (sidebar). */
+export interface ActiveOperation {
+  labId: string;
+  op: "launch" | "resume" | "pause" | "shutdown" | "provision" | "attack_vm" | "stop";
+  machine: string | null;
+  step: string | null;
+}
+
+/** Every lab operation in flight right now: workers and in-process ones. */
+export const activeOperations = () => invoke<ActiveOperation[]>("active_operations");
 
 /** The log so far of a lab's latest deploy, which runs in a detached worker process. Lets a
  *  reloaded or relaunched app re-attach to a deploy still in progress. */

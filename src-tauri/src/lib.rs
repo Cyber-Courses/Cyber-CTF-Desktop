@@ -32,12 +32,7 @@ fn deploy_in_progress(app: tauri::AppHandle) -> bool {
 /// room for the menu bar and dock) when that is less, so a tall dialog fits its content on a big
 /// display and still opens fully on a small laptop screen, where its body scrolls instead.
 pub(crate) fn window_height_fitting(app: &tauri::AppHandle, wanted: f64) -> f64 {
-    let available = app
-        .primary_monitor()
-        .ok()
-        .flatten()
-        .map(|m| m.size().height as f64 / m.scale_factor() - 80.0)
-        .unwrap_or(wanted);
+    let available = app.primary_monitor().ok().flatten().map(|m| m.size().height as f64 / m.scale_factor() - 80.0).unwrap_or(wanted);
     wanted.min(available).max(480.0)
 }
 
@@ -45,7 +40,8 @@ pub(crate) fn window_height_fitting(app: &tauri::AppHandle, wanted: f64) -> f64 
 fn deploying_labs(app: tauri::AppHandle) -> Vec<String> {
     // Deploys running in this process (the fallback) and in detached worker processes.
     let mut ids = runtime::deploying_labs();
-    for id in deploy_worker::running(&app) {
+    // Worker keys with a dot are attack VM starts beside a lab, not the lab's own deploy.
+    for id in deploy_worker::running(&app).into_iter().filter(|k| !k.contains('.')) {
         if !ids.contains(&id) {
             ids.push(id);
         }
@@ -57,6 +53,60 @@ fn deploying_labs(app: tauri::AppHandle) -> Vec<String> {
 #[tauri::command]
 fn stopping_labs() -> Vec<String> {
     runtime::stopping_labs()
+}
+
+/// The labs being paused or shut down right now (machines kept), for the sidebar's label.
+#[tauri::command]
+fn parking_labs() -> Vec<String> {
+    runtime::parking_labs()
+}
+
+/// One operation in flight on a lab, for the sidebar: what it is and the step it is at.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ActiveOperation {
+    lab_id: String,
+    /// "launch", "resume", "pause", "shutdown", "provision", "attack_vm" or "stop".
+    op: &'static str,
+    /// The machine a provisioning run targets, when one.
+    machine: Option<String>,
+    /// The last meaningful line of the operation's log (detached workers only).
+    step: Option<String>,
+}
+
+/// Every lab operation in flight: the detached workers (with the step their log is at) and the
+/// in-process ones (a stop, or the fallback when no worker could start).
+#[tauri::command]
+fn active_operations(app: tauri::AppHandle) -> Vec<ActiveOperation> {
+    use deploy_worker::Op;
+    use runtime::{Action, Park};
+    let mut out: Vec<ActiveOperation> = deploy_worker::running_jobs(&app)
+        .into_iter()
+        .map(|(job, step)| {
+            let (op, machine) = match &job.op {
+                Op::Launch => ("launch", None),
+                Op::Resume { .. } => ("resume", None),
+                Op::Park { mode: Park::Pause, .. } => ("pause", None),
+                Op::Park { mode: Park::Shutdown, .. } => ("shutdown", None),
+                Op::Provision { machine, .. } => ("provision", machine.clone()),
+                Op::AttackVm { .. } => ("attack_vm", None),
+            };
+            ActiveOperation { lab_id: job.lab_id, op, machine, step }
+        })
+        .collect();
+    for (id, action) in runtime::active_actions() {
+        if out.iter().any(|o| o.lab_id == id) {
+            continue;
+        }
+        let op = match action {
+            Action::Start => "launch",
+            Action::Stop => "stop",
+            Action::Park => "pause",
+        };
+        out.push(ActiveOperation { lab_id: id, op, machine: None, step: None });
+    }
+    out.sort_by(|a, b| a.lab_id.cmp(&b.lab_id));
+    out
 }
 
 /// The log so far of a lab's deploy in its worker process, so a reloaded or relaunched app can
@@ -74,7 +124,10 @@ fn linger_quit(app: tauri::AppHandle) {
         let _ = w.hide();
     }
     tauri::async_runtime::spawn(async move {
-        while runtime::active_deploys() > 0 {
+        // Bounded: a wedged operation (a hung VBoxManage) must not keep an invisible app alive
+        // for good. Past the cap it exits anyway; a detached worker would have been unaffected.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60 * 60);
+        while runtime::active_deploys() > 0 && std::time::Instant::now() < deadline {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }
         FORCE_QUIT.store(true, Ordering::SeqCst);
@@ -123,12 +176,28 @@ fn open_settings(app: tauri::AppHandle) -> std::result::Result<(), String> {
     open_settings_window(&app).map_err(|e| e.to_string())
 }
 
-/// If a deploy is in progress (and the user hasn't already confirmed), keep the app open and ask
-/// the frontend to confirm. Returns true when the quit was intercepted.
+/// When the last quit prompt was shown, so a second quit right after it means "quit anyway":
+/// there must always be a way out that doesn't go through Activity Monitor or Task Manager.
+static QUIT_PROMPTED_AT: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+const QUIT_AGAIN_WINDOW: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// If an in-app operation is in progress (and the user hasn't already confirmed), keep the app
+/// open and ask the frontend to confirm. Returns true when the quit was intercepted. Detached
+/// workers never hold the app: they finish on their own. Nothing is intercepted when no window
+/// could show the prompt (the app already lingers hidden), nor on a second quit within a few
+/// seconds of the prompt: that is the user insisting.
 fn intercept_quit(app: &tauri::AppHandle) -> bool {
     if FORCE_QUIT.load(Ordering::SeqCst) || runtime::active_deploys() == 0 {
         return false;
     }
+    let visible = app.webview_windows().values().any(|w| w.is_visible().unwrap_or(false));
+    let mut prompted = QUIT_PROMPTED_AT.lock().unwrap_or_else(|e| e.into_inner());
+    let insisting = prompted.is_some_and(|t| t.elapsed() < QUIT_AGAIN_WINDOW);
+    if !visible || insisting {
+        FORCE_QUIT.store(true, Ordering::SeqCst);
+        return false;
+    }
+    *prompted = Some(std::time::Instant::now());
     let _ = app.emit("quit-blocked", runtime::active_deploys());
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.set_focus();
@@ -271,6 +340,9 @@ pub fn run() {
             labs::lab_launch,
             runtime::lab_start,
             runtime::lab_stop,
+            runtime::lab_park,
+            runtime::lab_resume,
+            runtime::lab_provision,
             runtime::lab_status,
             runtime::running_labs,
             runtime::lab_check,
@@ -278,6 +350,10 @@ pub fn run() {
             runtime::exegol_start,
             runtime::exegol_stop,
             runtime::exegol_shell,
+            runtime::attack_vm_status,
+            runtime::attack_vm_start,
+            runtime::attack_vm_stop,
+            runtime::attack_vm_shell,
             runtime::lab_attack_shell,
             runtime::server::server_list,
             runtime::server::server_save,
@@ -292,6 +368,8 @@ pub fn run() {
             deploy_in_progress,
             deploying_labs,
             stopping_labs,
+            parking_labs,
+            active_operations,
             lab_deploy_log,
             linger_quit,
             force_quit,

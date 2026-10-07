@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowRight, Cloud, Cpu, ExternalLink, MemoryStick, Play, RotateCcw, Server, TriangleAlert } from "lucide-react";
 import { Panel, RailLabel } from "@/components/ui/panel";
 import { Meter } from "@/components/ui/meter";
@@ -53,7 +52,7 @@ export function HomeScreen({
   onNavigate: (tab: Tab, slug?: string) => void;
 }) {
   const { labs, statuses, refreshStatus } = useLabs(auth?.loggedIn ?? false);
-  const { runs, launch, stop } = useLabActions(refreshStatus);
+  const { runs, launch, stop, resume } = useLabActions(refreshStatus);
   const [metrics, setMetrics] = useState<MachineMetrics | null>(null);
   // "Now" for the "last run" labels, taken once per visit.
   const [now] = useState(() => Date.now());
@@ -235,6 +234,7 @@ export function HomeScreen({
                     hostArch={report?.arch ?? ""}
                     onOpen={() => onNavigate("labs", lab.slug)}
                     onStop={() => stop(lab)}
+                    onResume={() => resume(lab)}
                   />
                 ))
               )}

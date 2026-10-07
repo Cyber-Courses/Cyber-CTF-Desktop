@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { type AgentInfo, type SystemReport } from "@/lib/tauri";
-import { getAttackImage, getVmProvider } from "@/lib/settings";
+import { getAttackBox, getAttackImage, getVmProvider } from "@/lib/settings";
 import { Row, Section } from "@/features/settings/settings-layout";
 import { ONBOARDED_KEY } from "@/features/settings/settings-screen";
 
@@ -62,6 +62,7 @@ export function AboutSection({ version, report, agent }: { version: string | nul
           }`
         : null,
       `Attack box: ${getAttackImage()}`,
+      `Attack VM: ${getAttackBox()}`,
       `VM provider: ${getVmProvider() ?? "automatic"}`,
       agent ? `Install ID: ${agent.installId}` : "Not signed in",
     ].filter(Boolean);

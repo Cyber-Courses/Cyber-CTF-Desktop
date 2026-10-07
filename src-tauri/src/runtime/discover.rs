@@ -66,7 +66,10 @@ pub(crate) fn lab_names(labs_dir: &Path) -> HashMap<String, String> {
 pub(crate) fn lab_ids_from_vm_names<'a>(names: impl Iterator<Item = &'a str>, by_name: &HashMap<String, String>) -> Vec<String> {
     let mut ids = BTreeSet::new();
     for name in names {
-        if let Some((lab, _machine)) = name.split_once(VM_NAME_SEP)
+        // The launcher's own attack VM (`<lab> · attacker`) runs beside the lab; on its own it
+        // doesn't mean the lab is up.
+        if let Some((lab, machine)) = name.split_once(VM_NAME_SEP)
+            && machine != "attacker"
             && let Some(id) = by_name.get(lab)
         {
             ids.insert(id.clone());
@@ -119,13 +122,7 @@ pub async fn running_lab_ids(app: &AppHandle) -> Vec<String> {
     let mut ids = BTreeSet::new();
     // Docker: the Compose project of every running container. A failure here is worth a warning
     // (the engine is missing or broken); an empty result is simply "nothing running".
-    match run_read(
-        "docker",
-        &["ps", "--filter", "label=com.docker.compose.project", "--format", "{{.Label \"com.docker.compose.project\"}}"],
-        None,
-    )
-    .await
-    {
+    match run_read("docker", &["ps", "--filter", "label=com.docker.compose.project", "--format", "{{.Label \"com.docker.compose.project\"}}"], None).await {
         Ok(out) => ids.extend(lab_ids_from_docker_projects(&out)),
         Err(e) => log::warn!("running-labs scan: docker ps failed: {e}"),
     }
@@ -158,10 +155,7 @@ mod tests {
         let out = "cyberctf-invoice-portal-api\n\ncyberctf-invoice-portal-api\nother-project\ncyberctf-goad-light\n";
         // Blank lines (containers with no compose label) and foreign projects are dropped; the
         // prefix is stripped and duplicates (web + database of one lab) collapse to one id.
-        assert_eq!(
-            super::lab_ids_from_docker_projects(out),
-            vec!["goad-light".to_string(), "invoice-portal-api".to_string()]
-        );
+        assert_eq!(super::lab_ids_from_docker_projects(out), vec!["goad-light".to_string(), "invoice-portal-api".to_string()]);
     }
 
     #[test]

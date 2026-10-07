@@ -73,8 +73,10 @@ function deriveSteps(timed: Timed[]): Step[] {
       else push("prepare", isPrepLine(l) ? "Prepare this machine" : "Start", t);
     } else if (target === "terraform") {
       if (/Initializing|terraform init|Installing|Finding .* versions|Reusing previous/.test(l)) push("tf-init", "Set up Terraform", t);
-      else if (/Creating\.\.\.|Creation complete|Still creating|Destroying|Apply complete|Plan:|will perform|Modif/.test(l)) push("tf-apply", "Create the infrastructure", t);
-      else if (/Waiting for the lab host|running:|install Docker|cloud-init|bootstrap|is ready|ready/i.test(l)) push("tf-ready", "Install and start the lab", t);
+      else if (/Creating\.\.\.|Creation complete|Still creating|Destroying|Apply complete|Plan:|will perform|Modif/.test(l))
+        push("tf-apply", "Create the infrastructure", t);
+      else if (/Waiting for the lab host|running:|install Docker|cloud-init|bootstrap|is ready|ready/i.test(l))
+        push("tf-ready", "Install and start the lab", t);
       else push(steps.at(-1)?.id ?? "tf-init", steps.at(-1)?.label ?? "Set up Terraform", t);
     } else if (target === "docker") {
       const p = DOCKER_PHASES.find((ph) => ph.match(l));

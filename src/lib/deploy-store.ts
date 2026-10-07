@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { deployingLabs, labDeployLog, stoppingLabs } from "@/lib/tauri";
+import { activeOperations, deployingLabs, labDeployLog, parkingLabs, stoppingLabs, type ActiveOperation } from "@/lib/tauri";
 
 /**
  * The live state of lab start/stop, kept outside the React tree so it survives navigating
@@ -111,20 +111,71 @@ export function useDeployingLabs(pollMs = 4000): Set<string> {
  * `useDeployingLabs`, so a lab being stopped reads "Stopping", never "Deploying".
  */
 export function useStoppingLabs(pollMs = 4000): Set<string> {
-  const [ids, setIds] = useState<Set<string>>(new Set());
+  return usePolledIds(stoppingLabs, pollMs);
+}
+
+/** The lab ids being paused or shut down right now (machines kept), so the sidebar says so. */
+export function useParkingLabs(pollMs = 4000): Set<string> {
+  return usePolledIds(parkingLabs, pollMs);
+}
+
+/** The sidebar's label for an operation, e.g. "Pausing…"; the machine when it targets one. */
+export function operationLabel(o: ActiveOperation): string {
+  switch (o.op) {
+    case "launch":
+      return "Deploying…";
+    case "resume":
+      return "Resuming…";
+    case "pause":
+      return "Pausing…";
+    case "shutdown":
+      return "Shutting down…";
+    case "provision":
+      return o.machine ? `Provisioning ${o.machine.replace(/^isoloom-/, "")}…` : "Provisioning…";
+    case "attack_vm":
+      return "Starting the attack VM…";
+    case "stop":
+      return "Stopping…";
+  }
+}
+
+/**
+ * Every operation in flight, by lab, with the step its log is at. Polled often (steps move
+ * every few seconds during a VM start), so the sidebar reads like a live progress line.
+ */
+export function useActiveOperations(pollMs = 2000): Map<string, ActiveOperation> {
+  const [ops, setOps] = useState<Map<string, ActiveOperation>>(new Map());
   useEffect(() => {
     let alive = true;
-    const read = () =>
-      stoppingLabs()
-        .then((l) => alive && setIds(new Set(l)))
+    const tick = () =>
+      activeOperations()
+        .then((l) => alive && setOps(new Map(l.map((o) => [o.labId, o]))))
         .catch(() => {});
-    read();
-    const t = setInterval(read, pollMs);
+    tick();
+    const t = setInterval(tick, pollMs);
     return () => {
       alive = false;
       clearInterval(t);
     };
   }, [pollMs]);
+  return ops;
+}
+
+function usePolledIds(read: () => Promise<string[]>, pollMs: number): Set<string> {
+  const [ids, setIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let alive = true;
+    const tick = () =>
+      read()
+        .then((l) => alive && setIds(new Set(l)))
+        .catch(() => {});
+    tick();
+    const t = setInterval(tick, pollMs);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [read, pollMs]);
   return ids;
 }
 

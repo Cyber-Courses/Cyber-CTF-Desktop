@@ -49,6 +49,33 @@ export function setAttackImage(image: string) {
   }
 }
 
+const ATTACK_BOX_KEY = "cyberctf.attackbox.box";
+
+/** Default attack VM beside VM labs: the official Kali Vagrant box (VirtualBox, VMware, Hyper-V). */
+export const DEFAULT_ATTACK_BOX = "kalilinux/rolling";
+
+/** Vagrant boxes for the attack VM; the field is free text so any `owner/name` box works. */
+export const ATTACK_VM_PRESETS: { box: string; label: string; note: string }[] = [
+  { box: "kalilinux/rolling", label: "Kali", note: "Official Kali box; it has the internet, add tools as you go" },
+  { box: "generic/debian12", label: "Debian 12", note: "A plain base to build your own toolset on" },
+];
+
+export function getAttackBox(): string {
+  try {
+    return localStorage.getItem(ATTACK_BOX_KEY) || DEFAULT_ATTACK_BOX;
+  } catch {
+    return DEFAULT_ATTACK_BOX;
+  }
+}
+
+export function setAttackBox(box: string) {
+  try {
+    localStorage.setItem(ATTACK_BOX_KEY, box.trim() || DEFAULT_ATTACK_BOX);
+  } catch {
+    /* ignore */
+  }
+}
+
 const VM_PROVIDER_KEY = "cyberctf.vm.provider";
 
 /** The hypervisor VM labs (and the VM test) run on, when several are installed. Null = automatic. */

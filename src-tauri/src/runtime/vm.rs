@@ -1,10 +1,11 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use super::model::Park;
 use super::providers::Provider;
 use super::{LabStatus, Machine};
 use crate::error::Result;
-use crate::exec::{run, run_env_timed, stream};
+use crate::exec::{run, run_env_timed, run_read, stream};
 
 /// A status read must never hang the status poll: a wedged VirtualBox (its global lock held by
 /// a stuck VBoxManage) would otherwise pile up one blocked `vagrant status` per poll tick.
@@ -21,13 +22,80 @@ async fn stop_bounded(dir: &Path, env: &[(String, String)]) {
     let _ = tokio::time::timeout(CLEANUP_TIMEOUT, stop(dir, env, |_l: String| {})).await;
 }
 
+/// Isoloom's provisioning controller: the machine that runs Ansible against the others. Not a
+/// target, so it is powered off once the lab is built, and booted again to provision or check.
+pub const CONTROLLER: &str = "isoloom-controller";
+
+fn has_controller(dir: &Path) -> bool {
+    std::fs::read_to_string(dir.join("Vagrantfile")).is_ok_and(|t| t.contains(&format!("config.vm.define \"{CONTROLLER}\"")))
+}
+
+/// Powers the controller off (state kept) once the lab is built: it has no part in the attack
+/// surface and would only cost memory. Best effort.
+async fn park_controller(dir: &Path, env: &[(String, String)], log: &mut impl FnMut(String)) {
+    if !has_controller(dir) {
+        return;
+    }
+    log("Powering off the setup machine (it comes back for provisioning and checks)…".into());
+    if let Err(e) = vagrant(dir, &["halt", CONTROLLER], env, &mut *log).await {
+        log(format!("The setup machine stays on: {e}"));
+    }
+}
+
+/// A VirtualBox VM whose saved state was cut off (a suspend killed midway, a host crash) is
+/// left `aborted-saved`, and VirtualBox then refuses every change to it ("the machine is not
+/// mutable"), which makes `vagrant up` fail on this folder's VMs for good. The saved state is
+/// worthless at that point: discard it, so the VM boots fresh from its disk. Best effort.
+pub(super) async fn discard_aborted_saved(dir: &Path, log: &mut impl FnMut(String)) {
+    for name in vm_names(dir) {
+        let Ok(info) = run_read("VBoxManage", &["showvminfo", &name, "--machinereadable"], None).await else { continue };
+        if info.lines().any(|l| l.trim() == "VMState=\"aborted-saved\"") {
+            log(format!("{name}: its saved state is unusable (it was cut off); discarding it so the VM boots fresh."));
+            let _ = run("VBoxManage", &["discardstate", &name], None).await;
+        }
+    }
+}
+
 /// `env` reaches the Vagrantfile and its provisioners (e.g. the evidence claim).
 pub async fn start(dir: &Path, provider: Provider, env: &[(String, String)], mut log: impl FnMut(String)) -> Result<()> {
+    discard_aborted_saved(dir, &mut log).await;
+    vagrant(dir, &["up", "--provider", provider.id()], env, &mut log).await?;
+    park_controller(dir, env, &mut log).await;
+    Ok(())
+}
+
+/// Runs the lab's setup again on its running machines, without rebuilding it: the repair for a
+/// machine whose setup was cut short (a domain join that timed out). With a controller, the
+/// setup is its Ansible play against every machine, so the controller is booted, the play rerun
+/// (after `machine`'s own steps, when one is named) and the controller powered off again.
+/// Without one, it is each machine's own provisioners (`vagrant provision [machine]`).
+pub async fn provision(dir: &Path, machine: Option<&str>, env: &[(String, String)], mut log: impl FnMut(String)) -> Result<()> {
+    if has_controller(dir) {
+        discard_aborted_saved(dir, &mut log).await;
+        log("Booting the setup machine…".into());
+        vagrant(dir, &["up", CONTROLLER, "--no-provision"], env, &mut log).await?;
+        if let Some(m) = machine.filter(|m| *m != CONTROLLER) {
+            vagrant(dir, &["provision", m], env, &mut log).await?;
+        }
+        log("Running the lab's setup play…".into());
+        let result = vagrant(dir, &["provision", CONTROLLER, "--provision-with", "ansible"], env, &mut log).await;
+        park_controller(dir, env, &mut log).await;
+        return result;
+    }
+    let mut args = vec!["provision"];
+    if let Some(m) = machine {
+        args.push(m);
+    }
+    vagrant(dir, &args, env, &mut log).await
+}
+
+/// A streamed Vagrant command whose failure leads with Ansible's own verdict.
+async fn vagrant(dir: &Path, args: &[&str], env: &[(String, String)], mut log: impl FnMut(String)) -> Result<()> {
     // When a provisioner's Ansible run fails, Vagrant only says "the SSH command responded with a
     // non-zero exit status"; the reason (`fatal: [ws01]: UNREACHABLE! ... winrm ... timed out`)
     // is hundreds of lines up in the stream. Keep Ansible's last verdict and lead the error with it.
     let mut verdict: Option<String> = None;
-    let result = stream("vagrant", &["up", "--provider", provider.id()], Some(dir), env, |line: String| {
+    let result = stream("vagrant", args, Some(dir), env, |line: String| {
         if let Some(v) = ansible_verdict(&line) {
             verdict = Some(v);
         }
@@ -40,6 +108,31 @@ pub async fn start(dir: &Path, provider: Provider, env: &[(String, String)], mut
         }
         (result, _) => result,
     }
+}
+
+/// Parks the lab's VMs without destroying them: `Pause` saves their state to disk (`vagrant
+/// suspend`, resumes in seconds), `Shutdown` powers them off cleanly (`vagrant halt`).
+pub async fn park(dir: &Path, mode: Park, env: &[(String, String)], mut log: impl FnMut(String)) -> Result<()> {
+    let verb = match mode {
+        Park::Pause => "suspend",
+        Park::Shutdown => "halt",
+    };
+    stream("vagrant", &[verb], Some(dir), env, &mut log).await
+}
+
+/// Brings parked VMs back: a saved VM resumes where it was, a powered-off one boots. Never
+/// provisions again (the lab was built already; a second Ansible run could change it), and
+/// stays on the provider the VMs were created with.
+pub async fn resume(dir: &Path, env: &[(String, String)], mut log: impl FnMut(String)) -> Result<()> {
+    discard_aborted_saved(dir, &mut log).await;
+    let provider = status(dir, env).await.ok().and_then(|s| s.provider);
+    let mut args = vec!["up", "--no-provision"];
+    if let Some(p) = provider.as_deref() {
+        args.extend(["--provider", p]);
+    }
+    stream("vagrant", &args, Some(dir), env, &mut log).await?;
+    park_controller(dir, env, &mut log).await;
+    Ok(())
 }
 
 /// Ansible's own account of a failure in a streamed Vagrant line (the `<machine>: ` prefix
@@ -139,11 +232,11 @@ fn folder_candidates(name: &str) -> [String; 2] {
 /// this lab's own VMs. Every provider block names the VM on a `v.name` / `v.guest_name` /
 /// `v.vmx["displayName"]` line, as the quoted string after the `=` (for `displayName` the key
 /// itself is quoted, so taking the value after `=` is what's correct, not the first quote).
-fn vm_names(dir: &Path) -> Vec<String> {
+pub(super) fn vm_names(dir: &Path) -> Vec<String> {
     vm_names_from(&std::fs::read_to_string(dir.join("Vagrantfile")).unwrap_or_default())
 }
 
-fn vm_names_from(text: &str) -> Vec<String> {
+pub(super) fn vm_names_from(text: &str) -> Vec<String> {
     let mut names = Vec::new();
     for raw in text.lines() {
         let l = raw.trim();
@@ -188,7 +281,7 @@ async fn vbox_machine_folder() -> Option<PathBuf> {
 /// and never registered with Vagrant, or an orphaned folder that makes the next import fail with
 /// VERR_ALREADY_EXISTS. Exact-match only — a lossy match could delete an unrelated VM (e.g. a
 /// user's own "lab-dc01" vs this lab's "lab · dc01"), which `unregistervm --delete` can't undo.
-async fn recover_virtualbox(wanted: &HashSet<String>, log: &mut impl FnMut(String)) {
+pub(super) async fn recover_virtualbox(wanted: &HashSet<String>, log: &mut impl FnMut(String)) {
     // Registered VMs of ours that are still around: power off and delete (removes their files).
     if let Ok(out) = run("VBoxManage", &["list", "vms"], None).await {
         for line in out.lines() {
@@ -228,7 +321,7 @@ async fn recover_virtualbox(wanted: &HashSet<String>, log: &mut impl FnMut(Strin
 
 /// Parallels equivalent of `recover_virtualbox` (best effort, exact name match): `prlctl list`
 /// then delete ours.
-async fn recover_parallels(wanted: &HashSet<String>, log: &mut impl FnMut(String)) {
+pub(super) async fn recover_parallels(wanted: &HashSet<String>, log: &mut impl FnMut(String)) {
     let Ok(out) = run("prlctl", &["list", "-a", "--no-header", "-o", "name"], None).await else { return };
     for line in out.lines() {
         let name = line.trim();
@@ -268,6 +361,7 @@ fn parse_status(out: &str) -> Vec<Machine> {
             let mut parts = line.splitn(4, ',');
             let (_ts, target, kind, data) = (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
             (kind == "state" && !target.is_empty()).then(|| Machine {
+                infra: target == CONTROLLER,
                 name: target.to_string(),
                 state: data.to_string(),
                 image: String::new(),
@@ -283,7 +377,9 @@ fn parse_status(out: &str) -> Vec<Machine> {
 pub async fn status(dir: &Path, env: &[(String, String)]) -> Result<LabStatus> {
     let out = run_env_timed("vagrant", &["status", "--machine-readable"], Some(dir), env, STATUS_TIMEOUT).await?;
     let mut machines = parse_status(&out);
-    let running = !machines.is_empty() && machines.iter().all(|m| m.state == "running");
+    // The lab is up when its targets are; the controller is powered off once they are built.
+    let targets = machines.iter().filter(|m| !m.infra);
+    let running = targets.clone().count() > 0 && targets.clone().all(|m| m.state == "running");
     // The network diagram for a VM lab, same as a Docker lab gets: addresses are static (declared
     // in the lab and written into the Vagrantfile), so the picture comes from the Vagrantfile
     // itself, with no need to reach into the guests.
@@ -308,17 +404,14 @@ pub async fn status(dir: &Path, env: &[(String, String)]) -> Result<LabStatus> {
         let (_ts, _target, kind, data) = (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
         (kind == "provider-name" && !data.is_empty()).then(|| data.to_string())
     });
-    Ok(LabStatus { running, machines, networks, url: None, host: None, expires_at: None, place: None, provider })
+    Ok(LabStatus { running, parked: None, machines, networks, url: None, host: None, expires_at: None, place: None, provider })
 }
 
 /// Each machine's lab interfaces and the lab's network segments, read from the generated
 /// Vagrantfile: a `config.vm.define "<machine>"` block, then its `private_network` lines with
 /// `ip:`, `netmask:` and the VirtualBox internal network `isoloom-<lab>-<net>` (`<net>` being the
 /// lab's own network name). The subnet is the address masked.
-fn vagrant_topology(
-    text: &str,
-    lab: &str,
-) -> (std::collections::HashMap<String, Vec<super::model::Interface>>, Vec<super::model::Network>) {
+pub(super) fn vagrant_topology(text: &str, lab: &str) -> (std::collections::HashMap<String, Vec<super::model::Interface>>, Vec<super::model::Network>) {
     let prefix = format!("isoloom-{lab}-");
     let mut ifaces: std::collections::HashMap<String, Vec<super::model::Interface>> = std::collections::HashMap::new();
     let mut networks: Vec<super::model::Network> = Vec::new();
@@ -381,6 +474,17 @@ mod tests {
         assert_eq!(machines.len(), 2);
         assert_eq!(machines[0].name, "pfsense-1");
         assert_eq!(machines[1].state, "poweroff");
+    }
+
+    #[test]
+    fn the_controller_is_infra_and_does_not_decide_whether_the_lab_runs() {
+        let out = "1,dc01,state,running\n1,ws01,state,running\n1,isoloom-controller,state,poweroff\n";
+        let machines = super::parse_status(out);
+        assert!(machines.iter().find(|m| m.name == "isoloom-controller").unwrap().infra);
+        assert!(!machines.iter().find(|m| m.name == "dc01").unwrap().infra);
+        // Every target is up while the (powered-off) controller is ignored.
+        let targets = machines.iter().filter(|m| !m.infra);
+        assert!(targets.clone().count() > 0 && targets.clone().all(|m| m.state == "running"));
     }
 
     #[test]

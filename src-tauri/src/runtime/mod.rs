@@ -2,6 +2,7 @@
 //! at its root; the files of the target it runs on are generated under its `.isoloom/` (see
 //! `lab`). The UI only ever passes a lab id and a runtime; paths and commands are built here.
 
+mod attack_vm;
 mod discover;
 mod docker;
 mod exegol;
@@ -36,6 +37,8 @@ fn deploying() -> &'static Mutex<HashMap<String, (Action, usize)>> {
 pub enum Action {
     Start,
     Stop,
+    /// Pausing or shutting the lab down, machines kept: neither a deploy nor a teardown.
+    Park,
 }
 
 /// Total start/stop operations in flight, across all labs.
@@ -51,6 +54,16 @@ pub fn deploying_labs() -> Vec<String> {
 /// The labs being stopped right now (in this process), deduplicated.
 pub fn stopping_labs() -> Vec<String> {
     labs_with(Action::Stop)
+}
+
+/// The labs being paused or shut down right now (in this process), deduplicated.
+pub fn parking_labs() -> Vec<String> {
+    labs_with(Action::Park)
+}
+
+/// Every in-process operation right now: the lab and what it is doing.
+pub fn active_actions() -> Vec<(String, Action)> {
+    deploying().lock().map(|m| m.iter().map(|(id, (a, _))| (id.clone(), *a)).collect()).unwrap_or_default()
 }
 
 fn labs_with(action: Action) -> Vec<String> {
@@ -91,7 +104,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::{Error, Result};
 
-pub use model::{Interface, LabStatus, Machine, Network, Place, Port, Service};
+pub use model::{Interface, LabStatus, Machine, Network, Park, Place, Port, Service};
 
 /// Mirrors `LabRuntime` in CyberBackend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -147,6 +160,12 @@ pub async fn start(
     let _deploy = DeployGuard::new(id, Action::Start);
     let Some(host) = host else {
         server::mark_lab(dir, None)?;
+        // A parked lab (paused or shut down) is one the player wants back as it was, not rebuilt:
+        // its stopped machines would otherwise read as leftovers and be cleared below.
+        if parked(dir).is_some() {
+            log("This lab is parked on this machine: resuming it as it was. Stop it first if you want a fresh copy.".into());
+            return resume_locked(app, dir, id, runtime, &mut log).await;
+        }
         // A lab runs in one place at a time: if it's already up here, refuse (a second copy
         // collides on its published host ports); if an earlier start left stopped or partial
         // infrastructure behind, clear it so this start is clean.
@@ -182,7 +201,17 @@ pub async fn start(
                 }
                 let spec = lab::prepare(dir, lab::vagrant_target(runtime))?;
                 warn_if_low_memory(&spec, &mut log);
-                start_local_vm(&lab::vagrant_dir(dir, runtime), provider, env, &mut log).await
+                let vagrant = lab::vagrant_dir(dir, runtime);
+                start_local_vm(&vagrant, provider, env, &mut log).await?;
+                // The lab's networks are internal to the hypervisor, so the learner's attack VM
+                // (their own box, chosen in Settings) goes beside it, on the same hypervisor. The
+                // lab is up at this point: a failing attacker is noted, not a failed deploy.
+                if let Some(b) = attack_vm_box(env)
+                    && let Err(e) = attack_vm::start(dir, &vagrant, provider, b, &mut log).await
+                {
+                    log(format!("The lab is running, but its attack VM didn't start: {e}. Start it from the lab page to retry."));
+                }
+                Ok(())
             }
         };
     };
@@ -370,6 +399,145 @@ fn local_vm(dir: &Path) -> Option<String> {
     std::fs::read_to_string(dir.join(LOCAL_VM_MARKER)).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
+/// Written when the launcher parks a lab (paused or shut down), so a later start resumes its
+/// machines instead of clearing them as leftovers; removed on resume and on stop.
+pub const PARKED_MARKER: &str = ".cyberctf-parked";
+
+fn mark_parked(dir: &Path, mode: Option<Park>) -> Result<()> {
+    match mode {
+        Some(m) => std::fs::write(dir.join(PARKED_MARKER), m.id())?,
+        None => {
+            let _ = std::fs::remove_file(dir.join(PARKED_MARKER));
+        }
+    }
+    Ok(())
+}
+
+fn parked(dir: &Path) -> Option<Park> {
+    std::fs::read_to_string(dir.join(PARKED_MARKER)).ok().and_then(|s| Park::from_id(&s))
+}
+
+/// Parks a lab running on this machine: its machines are kept and resume as they were, so a lab
+/// that took an hour to build comes back in seconds (paused) or a boot (shut down), not a rebuild.
+async fn park(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mode: Park, mut log: impl FnMut(String)) -> Result<()> {
+    let lock = lab_lock(id);
+    let _guard = lock.lock().await;
+    let _deploy = DeployGuard::new(id, Action::Park);
+    if server::lab_connection(app, dir)?.is_some() {
+        return Err(Error::Invalid("Pausing a lab on a server host isn't available yet. Stop it instead.".into()));
+    }
+    match runtime {
+        Runtime::Docker if local_vm(dir).is_some() => {
+            // Inside the VM the containers don't restart on their own after a power-off, so a
+            // container lab in a VM is paused (its state saved), never shut down.
+            if mode == Park::Shutdown {
+                return Err(Error::Invalid("A container lab running in a VM can be paused, not shut down.".into()));
+            }
+            vm::park(&lab::vagrant_dir(dir, runtime), mode, &[], &mut log).await?;
+        }
+        Runtime::Docker => docker::park(dir, id, &mut log).await?,
+        Runtime::Vm => {
+            if let Err(e) = attack_vm::park(dir, mode, &mut log).await {
+                log(format!("The attack VM didn't park: {e}"));
+            }
+            vm::park(&lab::vagrant_dir(dir, runtime), mode, &[], &mut log).await?;
+        }
+    }
+    mark_parked(dir, Some(mode))?;
+    log(match mode {
+        Park::Pause => "Lab paused. Resume it to pick up where you left off.".into(),
+        Park::Shutdown => "Lab shut down. Resume it to boot its machines again.".into(),
+    });
+    Ok(())
+}
+
+/// Brings a parked lab back, as it was.
+async fn resume(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mut log: impl FnMut(String)) -> Result<()> {
+    let lock = lab_lock(id);
+    let _guard = lock.lock().await;
+    let _deploy = DeployGuard::new(id, Action::Start);
+    resume_locked(app, dir, id, runtime, &mut log).await
+}
+
+/// The body of `resume`, for a caller already holding the lab lock (a start on a parked lab).
+/// Also the repair for a lab some machines of which went down (powered off by hand, or a cut
+/// resume): the machines already up are left alone, the others come back.
+async fn resume_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: &mut impl FnMut(String)) -> Result<()> {
+    if server::lab_connection(app, dir)?.is_some() {
+        return Err(Error::Invalid("This lab was parked on a server host; resuming there isn't available yet.".into()));
+    }
+    log("Resuming the lab…".into());
+    match runtime {
+        Runtime::Docker if local_vm(dir).is_some() => vm::resume(&lab::vagrant_dir(dir, runtime), &[], &mut *log).await?,
+        Runtime::Docker => docker::resume(dir, id, &mut *log).await?,
+        Runtime::Vm => {
+            vm::resume(&lab::vagrant_dir(dir, runtime), &[], &mut *log).await?;
+            if let Err(e) = attack_vm::resume(dir, &mut *log).await {
+                log(format!("The lab is back, but its attack VM didn't resume: {e}. Start it from the lab page."));
+            }
+        }
+    }
+    mark_parked(dir, None)?;
+    log("Lab resumed.".into());
+    Ok(())
+}
+
+/// Runs a VM lab's provisioners again on its running machines (one, or all): the repair for a
+/// machine whose provisioning was cut short, without rebuilding the lab. Inputs the lab declared
+/// (`isoloom.yml` `inputs`) were given at launch and aren't kept, so a lab that provisions from
+/// them gets none here; the labs so far declare none.
+async fn provision(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, machine: Option<&str>, mut log: impl FnMut(String)) -> Result<()> {
+    if runtime != Runtime::Vm {
+        return Err(Error::Invalid("Container labs aren't provisioned in place: use Reset for a clean copy.".into()));
+    }
+    let lock = lab_lock(id);
+    let _guard = lock.lock().await;
+    let _deploy = DeployGuard::new(id, Action::Start);
+    let conn = server::lab_connection(app, dir)?;
+    if conn.as_ref().is_some_and(|c| server::terraform_target(c.provider).is_some()) {
+        return Err(Error::Invalid("Re-running provisioning isn't available for labs on Proxmox or a cloud yet.".into()));
+    }
+    let env: Vec<(String, String)> = conn.map(|c| c.env).unwrap_or_default();
+    let vagrant = lab::vagrant_dir(dir, runtime);
+    let status = vm::status(&vagrant, &env).await?;
+    if !status.running {
+        return Err(Error::Invalid("Start (or resume) the lab first: provisioning runs on its running machines.".into()));
+    }
+    if let Some(m) = machine
+        && !status.machines.iter().any(|x| x.name == m)
+    {
+        return Err(Error::Invalid(format!("this lab has no machine `{m}`")));
+    }
+    log(match machine {
+        Some(m) => format!("Re-running provisioning on {m}…"),
+        None => "Re-running provisioning on every machine…".into(),
+    });
+    vm::provision(&vagrant, machine, &env, &mut log).await?;
+    log("Provisioning done.".into());
+    Ok(())
+}
+
+/// Destroys a parked lab's machines before the lab folder is replaced by a newer version of the
+/// lab (they'd otherwise be orphaned at the hypervisor, Vagrant having lost track of them).
+pub async fn clear_parked(dir: &Path, id: &str, log: &impl Fn(String)) {
+    if parked(dir).is_none() {
+        return;
+    }
+    log("A parked copy of an older version of this lab is here: removing it…".into());
+    let mut sink = |l: String| log(l);
+    if dir.join("docker-compose.yml").exists() || dir.join("compose.yml").exists() {
+        let _ = docker::stop(dir, id, &mut sink).await;
+    }
+    for rt in [Runtime::Docker, Runtime::Vm] {
+        let vdir = lab::vagrant_dir(dir, rt);
+        if vdir.join("Vagrantfile").exists() {
+            let _ = vm::stop(&vdir, &[], &mut sink).await;
+        }
+    }
+    attack_vm::stop(dir, &mut sink).await;
+    let _ = mark_parked(dir, None);
+}
+
 fn vm_label(provider: &str) -> &str {
     match provider {
         "virtualbox" => "VirtualBox",
@@ -384,6 +552,12 @@ fn vm_label(provider: &str) -> &str {
 /// The attack-box image the player picked, when one was (passed in the run env).
 fn attack_box_image(env: &[(String, String)]) -> Option<&str> {
     env.iter().find(|(k, _)| k == "CYBERCTF_ATTACKBOX_IMAGE").map(|(_, v)| v.as_str()).filter(|i| exegol::valid_image(i))
+}
+
+/// For a VM lab the same key carries the attack VM's Vagrant box (`owner/name`) instead of a
+/// container image.
+fn attack_vm_box(env: &[(String, String)]) -> Option<&str> {
+    env.iter().find(|(k, _)| k == "CYBERCTF_ATTACKBOX_IMAGE").map(|(_, v)| v.as_str()).filter(|b| attack_vm::valid_box(b))
 }
 
 /// Starts the attack box on a lab host running the lab's Compose file: a container named
@@ -465,13 +639,17 @@ async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl
 /// The body of `stop`, assuming the caller already holds the lab lock. The reaper uses this so
 /// it can re-check expiry under the same lock before tearing a lab down (the tokio lock is not
 /// reentrant, so it must not call `stop`, which would deadlock).
-async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
+async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mut log: impl FnMut(String)) -> Result<()> {
     let _deploy = DeployGuard::new(id, Action::Stop);
     let conn = server::lab_connection(app, dir)?;
     let result = match (runtime, conn) {
         (Runtime::Docker, None) if local_vm(dir).is_some() => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,
         (Runtime::Docker, None) => docker::stop(dir, id, log).await,
-        (Runtime::Vm, None) => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,
+        (Runtime::Vm, None) => {
+            // The learner's attack VM goes with the lab it was started beside.
+            attack_vm::stop(dir, &mut log).await;
+            vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await
+        }
         (_, Some(c)) if server::terraform_target(c.provider).is_some() => {
             let tf = server::terraform_target(c.provider).unwrap_or_default();
             let module = lab::terraform_to_destroy(dir, runtime, tf)?;
@@ -482,13 +660,14 @@ async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, lo
     if result.is_ok() {
         server::mark_lab(dir, None)?;
         mark_local_vm(dir, None)?;
+        mark_parked(dir, None)?;
     }
     result
 }
 
 async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Result<LabStatus> {
     let Some(c) = server::lab_connection(app, dir)? else {
-        return match runtime {
+        let s: Result<LabStatus> = match runtime {
             // Shown like a remote lab (the attack box lives in the VM, reached over SSH).
             Runtime::Docker if let Some(p) = local_vm(dir) => {
                 let status = vm::status(&lab::vagrant_dir(dir, runtime), &[]).await?;
@@ -497,6 +676,10 @@ async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Resu
             Runtime::Docker => Ok(LabStatus { place: Some(Place::Container), ..docker::status(dir, id).await? }),
             Runtime::Vm => Ok(LabStatus { place: Some(Place::LocalVm), ..vm::status(&lab::vagrant_dir(dir, runtime), &[]).await? }),
         };
+        let s = s?;
+        // Parked = the launcher parked it and it is still down; a lab someone started again by
+        // hand (or that is up for any reason) is simply running.
+        return Ok(LabStatus { parked: parked(dir).filter(|_| !s.running), ..s });
     };
     let status = match server::terraform_target(c.provider) {
         Some(tf) => terraform::status(&state_dir(app, id, tf)?),
@@ -575,9 +758,68 @@ pub async fn lab_stop(app: AppHandle, id: String, runtime: Runtime, logs: Channe
         let _ = logs.send(line);
     };
     // A deploy still running in its worker process is stopped first, so the teardown never races
-    // a `vagrant up` or `compose up` that would recreate what it removes.
+    // a `vagrant up` or `compose up` that would recreate what it removes; same for an attack VM
+    // start beside it.
     crate::deploy_worker::kill(&app, &id);
+    crate::deploy_worker::kill(&app, &crate::deploy_worker::attack_key(&id));
     stop(&app, &dir, &id, runtime, log).await
+}
+
+/// The bodies of the lab operations the deploy worker runs (`deploy_worker::execute`), by lab id.
+pub async fn park_lab(app: &AppHandle, id: &str, runtime: Runtime, mode: Park, log: impl FnMut(String)) -> Result<()> {
+    park(app, &lab_dir(app, id)?, id, runtime, mode, log).await
+}
+
+pub async fn resume_lab(app: &AppHandle, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
+    resume(app, &lab_dir(app, id)?, id, runtime, log).await
+}
+
+pub async fn provision_lab(app: &AppHandle, id: &str, runtime: Runtime, machine: Option<&str>, log: impl FnMut(String)) -> Result<()> {
+    provision(app, &lab_dir(app, id)?, id, runtime, machine, log).await
+}
+
+pub async fn start_attack_vm(app: &AppHandle, id: &str, box_name: &str, log: impl FnMut(String)) -> Result<()> {
+    let dir = lab_dir(app, id)?;
+    let vagrant = lab::vagrant_dir(&dir, Runtime::Vm);
+    let status = vm::status(&vagrant, &[]).await?;
+    // The lab's internal networks exist as soon as one of its VMs is up; the attacker needn't
+    // wait for the last machine to finish booting (and the UI may ask while that happens).
+    if !status.machines.iter().any(|m| m.state == "running") {
+        return Err(Error::Invalid("start the lab first: the attack VM joins its networks".into()));
+    }
+    let provider = status
+        .provider
+        .as_deref()
+        .and_then(providers::Provider::from_id)
+        .ok_or_else(|| Error::Invalid("couldn't tell which hypervisor the lab runs on".into()))?;
+    attack_vm::start(&dir, &vagrant, provider, box_name, log).await
+}
+
+/// Pauses (state saved) or shuts down (powered off) a lab on this machine, keeping its machines
+/// so it resumes as it was. Runs detached (a worker), like every lab operation.
+#[tauri::command]
+pub async fn lab_park(app: AppHandle, id: String, runtime: Runtime, mode: Park, logs: Channel<String>) -> Result<()> {
+    lab_dir(&app, &id)?;
+    crate::deploy_worker::run_job(&app, crate::deploy_worker::Job::on_lab(&id, crate::deploy_worker::Op::Park { runtime, mode }), logs).await
+}
+
+/// Runs a VM lab's provisioners again, on one machine (`machine`) or all of them.
+#[tauri::command]
+pub async fn lab_provision(app: AppHandle, id: String, runtime: Runtime, machine: Option<String>, logs: Channel<String>) -> Result<()> {
+    lab_dir(&app, &id)?;
+    if let Some(m) = &machine
+        && !(m.len() <= 64 && m.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'))
+    {
+        return Err(Error::Invalid(format!("invalid machine name `{m}`")));
+    }
+    crate::deploy_worker::run_job(&app, crate::deploy_worker::Job::on_lab(&id, crate::deploy_worker::Op::Provision { runtime, machine }), logs).await
+}
+
+/// Brings a parked lab back (or the machines of a lab that went down).
+#[tauri::command]
+pub async fn lab_resume(app: AppHandle, id: String, runtime: Runtime, logs: Channel<String>) -> Result<()> {
+    lab_dir(&app, &id)?;
+    crate::deploy_worker::run_job(&app, crate::deploy_worker::Job::on_lab(&id, crate::deploy_worker::Op::Resume { runtime }), logs).await
 }
 
 /// Stops a lab with no log sink, for a caller that only needs the teardown (the hosted agent
@@ -684,9 +926,48 @@ pub fn exegol_shell(id: String) -> Result<()> {
     exegol::shell(&id)
 }
 
+/// The attack VM beside a VM lab on this machine, in the container attack box's status shape.
+#[tauri::command]
+pub async fn attack_vm_status(app: AppHandle, id: String, box_name: String) -> Result<exegol::ExegolStatus> {
+    let dir = lab_dir(&app, &id)?;
+    if !attack_vm::valid_box(&box_name) {
+        return Err(Error::Invalid(format!("invalid attack VM box `{box_name}` (expected owner/name)")));
+    }
+    Ok(attack_vm::status(&dir, &box_name).await)
+}
+
+/// Starts the attack VM beside a running VM lab, on the lab's hypervisor (the first start
+/// downloads the box). Runs detached (a worker), so a quit or a rebuild never cuts it short.
+#[tauri::command]
+pub async fn attack_vm_start(app: AppHandle, id: String, box_name: String, logs: Channel<String>) -> Result<()> {
+    lab_dir(&app, &id)?;
+    if !attack_vm::valid_box(&box_name) {
+        return Err(Error::Invalid(format!("invalid attack VM box `{box_name}` (expected owner/name)")));
+    }
+    crate::deploy_worker::run_job(&app, crate::deploy_worker::Job::on_lab(&id, crate::deploy_worker::Op::AttackVm { box_name }), logs).await
+}
+
+#[tauri::command]
+pub async fn attack_vm_stop(app: AppHandle, id: String, logs: Channel<String>) -> Result<()> {
+    let dir = lab_dir(&app, &id)?;
+    let log = move |line: String| {
+        let _ = logs.send(line);
+    };
+    // A start still downloading or booting it is stopped first, so the removal is final.
+    crate::deploy_worker::kill(&app, &crate::deploy_worker::attack_key(&id));
+    attack_vm::stop(&dir, log).await;
+    Ok(())
+}
+
+/// Opens the player's terminal on an SSH session into the attack VM.
+#[tauri::command]
+pub fn attack_vm_shell(app: AppHandle, id: String) -> Result<()> {
+    attack_vm::shell(&lab_dir(&app, &id)?)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{local_vm, mark_local_vm, providers::Provider, validate_id};
+    use super::{PARKED_MARKER, Park, local_vm, mark_local_vm, mark_parked, parked, providers::Provider, validate_id};
 
     /// A real lab through the launcher's Docker path (opt-in, needs Docker):
     ///   CYBERCTF_TEST_LAB=~/code/invoice-portal-api cargo test docker_lab_end_to_end -- --ignored --nocapture
@@ -724,6 +1005,24 @@ mod tests {
         assert_eq!(local_vm(&dir).as_deref(), Some("virtualbox"));
         mark_local_vm(&dir, None).unwrap();
         assert_eq!(local_vm(&dir), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn parked_marker_round_trips_and_ignores_garbage() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-parked-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(parked(&dir), None);
+        mark_parked(&dir, Some(Park::Pause)).unwrap();
+        assert_eq!(parked(&dir), Some(Park::Pause));
+        mark_parked(&dir, Some(Park::Shutdown)).unwrap();
+        assert_eq!(parked(&dir), Some(Park::Shutdown));
+        // A marker nothing wrote (or a corrupt one) never counts as parked: start then cleans up.
+        std::fs::write(dir.join(PARKED_MARKER), "halted?").unwrap();
+        assert_eq!(parked(&dir), None);
+        mark_parked(&dir, None).unwrap();
+        assert_eq!(parked(&dir), None);
+        assert!(!dir.join(PARKED_MARKER).exists());
         std::fs::remove_dir_all(dir).unwrap();
     }
 

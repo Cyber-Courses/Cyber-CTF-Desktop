@@ -4,7 +4,18 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { ATTACK_PRESETS, DEFAULT_ATTACK_IMAGE, getAttackImage, getAutoAttackBox, setAttackImage, setAutoAttackBox } from "@/lib/settings";
+import {
+  ATTACK_PRESETS,
+  ATTACK_VM_PRESETS,
+  DEFAULT_ATTACK_BOX,
+  DEFAULT_ATTACK_IMAGE,
+  getAttackBox,
+  getAttackImage,
+  getAutoAttackBox,
+  setAttackBox,
+  setAttackImage,
+  setAutoAttackBox,
+} from "@/lib/settings";
 import { Row } from "@/features/settings/settings-layout";
 import { RadioList, RadioRow } from "@/components/ui/radio-row";
 import { formatBytes } from "@/lib/format";
@@ -92,9 +103,11 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
         </RadioList>
       </Row>
 
+      <AttackVmRow onSaved={onSaved} />
+
       <Row
         title="Start the attack box with the lab"
-        description="Starts it as soon as a local container lab is up. You can still start or stop it from the lab."
+        description="Starts it as soon as a lab is up on this machine: the container on a container lab, the VM beside a VM lab. You can still start or stop it from the lab."
         control={
           <Switch
             aria-label="Start the attack box with the lab"
@@ -108,5 +121,85 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
         }
       />
     </>
+  );
+}
+
+/** The attack VM beside VM labs: the learner's own Vagrant box, on the lab's hypervisor. */
+function AttackVmRow({ onSaved }: { onSaved: () => void }) {
+  const [box, setBox] = useState(() => getAttackBox());
+  const isPreset = ATTACK_VM_PRESETS.some((p) => p.box === box);
+  const [customOpen, setCustomOpen] = useState(!isPreset);
+  const [draft, setDraft] = useState(isPreset ? "" : box);
+
+  function choose(next: string) {
+    const value = next.trim() || DEFAULT_ATTACK_BOX;
+    setAttackBox(value);
+    setBox(value);
+    onSaved();
+  }
+
+  const customDirty = draft.trim() !== "" && draft.trim() !== box;
+
+  return (
+    <Row
+      stacked
+      title="Attack VM for VM labs"
+      description="A VM lab’s networks live inside the hypervisor, so your attacker is a VM beside it: this Vagrant box, plugged into every lab network, with the internet to install tools. The first start downloads the box."
+    >
+      <RadioList label="Attack VM box" className="mt-3">
+        {ATTACK_VM_PRESETS.map((p) => (
+          <RadioRow
+            key={p.box}
+            compact
+            selected={!customOpen && box === p.box}
+            onSelect={() => {
+              setCustomOpen(false);
+              choose(p.box);
+            }}
+            title={
+              <>
+                {p.label}
+                {p.box === DEFAULT_ATTACK_BOX && <Badge>Default</Badge>}
+              </>
+            }
+            subtitle={
+              <>
+                <span className="font-mono">{p.box}</span> <span className="text-muted-foreground/60">·</span> {p.note}
+              </>
+            }
+          />
+        ))}
+        <RadioRow
+          compact
+          selected={customOpen}
+          onSelect={() => setCustomOpen(true)}
+          title="Custom box"
+          subtitle="Any Vagrant Cloud box (owner/name) built for your hypervisor."
+        >
+          {customOpen && (
+            <form
+              className="mt-2.5 flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (customDirty) choose(draft);
+              }}
+            >
+              <input
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                spellCheck={false}
+                placeholder="owner/name"
+                className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 font-mono text-xs text-foreground outline-none focus:border-ring"
+              />
+              <Button type="submit" variant="outline" size="sm" disabled={!customDirty} onClick={(e) => e.stopPropagation()}>
+                Save
+              </Button>
+            </form>
+          )}
+        </RadioRow>
+      </RadioList>
+    </Row>
   );
 }

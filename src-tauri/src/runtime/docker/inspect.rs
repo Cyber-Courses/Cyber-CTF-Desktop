@@ -191,11 +191,7 @@ fn is_running(entries: &[compose::PsEntry]) -> bool {
 /// died is degraded, not fine. One-shot init jobs publish nothing, so `serving` never lists them
 /// and their normal exit is ignored here.
 fn down_serving(entries: &[compose::PsEntry], serving: &[String]) -> Vec<(String, String)> {
-    entries
-        .iter()
-        .filter(|e| e.state != "running" && serving.iter().any(|s| s == &e.service))
-        .map(|e| (e.service.clone(), e.state.clone()))
-        .collect()
+    entries.iter().filter(|e| e.state != "running" && serving.iter().any(|s| s == &e.service)).map(|e| (e.service.clone(), e.state.clone())).collect()
 }
 
 pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
@@ -242,7 +238,7 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
             // A running container that fails its compose healthcheck is surfaced as unhealthy,
             // so the UI greys it like a dead one instead of showing a broken lab as fine.
             let state = if e.health == "unhealthy" { "unhealthy".to_string() } else { e.state };
-            Machine { name: e.service, state, image: e.image, ip, ports, interfaces, services }
+            Machine { name: e.service, state, image: e.image, ip, ports, interfaces, services, infra: false }
         })
         .collect();
     for (service, state) in down {
@@ -255,10 +251,11 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
                 ports: Vec::new(),
                 interfaces: Vec::new(),
                 services: Vec::new(),
+                infra: false,
             });
         }
     }
-    Ok(LabStatus { running, machines, networks, url, host: None, expires_at: None, place: None, provider: Some("docker".to_string()) })
+    Ok(LabStatus { running, parked: None, machines, networks, url, host: None, expires_at: None, place: None, provider: Some("docker".to_string()) })
 }
 
 /// Where the lab is reachable on this machine (its first published port), once running.
@@ -298,10 +295,12 @@ mod tests {
     #[test]
     fn a_serving_container_that_died_is_reported_down_while_others_run() {
         // web died but the database is up: running (something is up) yet degraded, so web is listed.
-        let entries = parse_ps(r#"[
+        let entries = parse_ps(
+            r#"[
             {"Service":"web","State":"exited"},
             {"Service":"database","State":"running"},
-            {"Service":"database-init-1","State":"exited"}]"#);
+            {"Service":"database-init-1","State":"exited"}]"#,
+        );
         assert!(is_running(&entries));
         assert_eq!(down_serving(&entries, &["web".into(), "database".into()]), vec![("web".to_string(), "exited".to_string())]);
     }

@@ -31,7 +31,16 @@ export type ZoneData = { label: string; detail?: string; tone?: "attack"; isolat
 type ServiceType = "database" | "web" | "cache" | "worker" | "ssh" | "service";
 /** One row of a machine card: a service and the ports it listens on. */
 export type ServiceRow = { title: string; type: ServiceType; label: string; ports: Port[] };
-export type ComputerData = { hostname: string; image: string; type: ServiceType; ifaces: LabInterface[]; running: boolean; ports: Port[]; rows: ServiceRow[] };
+export type ComputerData = {
+  hostname: string;
+  image: string;
+  type: ServiceType;
+  ifaces: LabInterface[];
+  running: boolean;
+  state: string;
+  ports: Port[];
+  rows: ServiceRow[];
+};
 
 export const serviceMeta: Record<ServiceType, { icon: LucideIcon; label: string; color: string }> = {
   database: { icon: Database, label: "database", color: "#56b6e6" },

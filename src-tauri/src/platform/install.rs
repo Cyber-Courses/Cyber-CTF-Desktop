@@ -148,13 +148,15 @@ async fn run_step(step: &Step, on_line: &mut impl FnMut(String)) -> Result<()> {
     if let Some(note) = &step.note {
         on_line(note.clone());
     }
-    let mut child =
-        Command::new(&step.program).args(&step.args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| {
-            match e.kind() {
-                std::io::ErrorKind::NotFound => Error::Invalid(format!("{} is not available on this machine.", step.program)),
-                _ => Error::Io(e),
-            }
-        })?;
+    let mut cmd = Command::new(&step.program);
+    cmd.args(&step.args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    // Installers that need a console of their own (winget, an .msi) still get none here: their
+    // output streams into the app's setup log instead of a window flashing on screen.
+    crate::exec::headless(&mut cmd);
+    let mut child = cmd.spawn().map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => Error::Invalid(format!("{} is not available on this machine.", step.program)),
+        _ => Error::Io(e),
+    })?;
     let mut out = BufReader::new(child.stdout.take().expect("piped stdout")).lines();
     let mut err = BufReader::new(child.stderr.take().expect("piped stderr")).lines();
     let (mut out_done, mut err_done) = (false, false);

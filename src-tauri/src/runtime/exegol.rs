@@ -7,7 +7,7 @@ use serde::Serialize;
 use crate::error::{Error, Result};
 use crate::exec::{run, run_read, stream};
 
-fn container(id: &str) -> String {
+pub fn container(id: &str) -> String {
     format!("cyberctf-{id}-attacker")
 }
 

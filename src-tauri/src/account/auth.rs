@@ -165,7 +165,19 @@ fn session_from(tokens: TokenResponse, previous: Option<&Session>) -> Session {
 }
 
 /// A valid access token for CyberBackend, refreshed if it expires within a minute.
+///
+/// One refresh at a time: at start-up the agent and the first API calls all find the same
+/// expired token and would each send the same refresh token. With refresh-token rotation the
+/// second one is rejected (`invalid_grant`), and that used to wipe the session: the app came
+/// back signed out after every restart past the token's lifetime. Callers queue here and re-read
+/// the session once they hold the lock, so the first refresh serves them all.
 pub async fn access_token() -> Result<String> {
+    static REFRESH: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+    let session = load_session().ok_or_else(|| Error::Invalid("not logged in".into()))?;
+    if session.expires_at > now() + 60 {
+        return Ok(session.access_token);
+    }
+    let _one_at_a_time = REFRESH.get_or_init(|| tokio::sync::Mutex::new(())).lock().await;
     let session = load_session().ok_or_else(|| Error::Invalid("not logged in".into()))?;
     if session.expires_at > now() + 60 {
         return Ok(session.access_token);

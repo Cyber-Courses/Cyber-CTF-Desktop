@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, RotateCcw, ShieldAlert, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Play, RotateCcw, ShieldAlert, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { labCheck, type LabCheck } from "@/lib/tauri";
@@ -40,12 +40,15 @@ export function HealthBanner({
   busy,
   resetting,
   onReset,
+  onResume,
 }: {
   down: string[];
   check: CheckState;
   busy: boolean;
   resetting: boolean;
   onReset: () => void;
+  /** VM labs: bring the down machines back as they are (no rebuild), before reaching for Reset. */
+  onResume?: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-3.5">
@@ -66,6 +69,11 @@ export function HealthBanner({
           </p>
         )}
       </div>
+      {onResume && (
+        <Button variant="outline" size="sm" onClick={onResume} disabled={busy || resetting} title="Start the machines that are down, keeping their state">
+          <Play className="size-3.5" /> Start them
+        </Button>
+      )}
       <Button variant="outline" size="sm" onClick={onReset} disabled={busy || resetting}>
         {resetting ? (
           <>

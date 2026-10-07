@@ -58,6 +58,24 @@ pub async fn start(dir: &Path, id: &str, env: &[(String, String)], log: impl FnM
     compose::stream(dir, &project, &["up", "-d", "--pull", "missing", "--wait", "--wait-timeout", "600"], env, log).await
 }
 
+/// Stops the lab's containers, keeping them, their networks and volumes: the lab resumes as it
+/// was (`compose start`), no rebuild. The attack box is stopped alongside, so it comes back too.
+pub async fn park(dir: &Path, id: &str, mut log: impl FnMut(String)) -> Result<()> {
+    let project = compose::project(id);
+    let _ = run("docker", &["stop", &crate::runtime::exegol::container(id)], None).await;
+    compose::stream(dir, &project, &["stop"], &[], &mut log).await
+}
+
+/// Starts the lab's parked containers again, and its attack box with them.
+pub async fn resume(dir: &Path, id: &str, mut log: impl FnMut(String)) -> Result<()> {
+    ensure_docker_up().await?;
+    let project = compose::project(id);
+    compose::stream(dir, &project, &["start"], &[], &mut log).await?;
+    let _ = run("docker", &["start", &crate::runtime::exegol::container(id)], None).await;
+    crate::runtime::exegol::rejoin(id).await;
+    Ok(())
+}
+
 /// Networks of this lab that its current Compose file no longer defines (left by an older
 /// version of the lab), so tools listing the lab's networks don't pick a dead one. Whatever
 /// is still plugged into one (the attack box) is unplugged first. Best effort.

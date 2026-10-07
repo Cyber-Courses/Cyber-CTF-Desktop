@@ -31,57 +31,49 @@ fn uses_docker_engine(program: &str) -> bool {
     program == "docker"
 }
 
+/// On Windows, every child of a windowed app gets a console window of its own unless told not
+/// to: the status polls (docker, vagrant, VBoxManage) would flash one on screen every few
+/// seconds. `CREATE_NO_WINDOW` keeps them headless; their output is piped anyway.
+#[cfg(windows)]
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Keeps a child process off the screen on Windows (no-op elsewhere).
+pub fn headless(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+/// `headless` for a blocking `std::process::Command` (only Windows code calls it).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn headless_std(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 fn build(program: &str, args: &[&str]) -> Command {
     #[cfg(windows)]
     if WINDOWS_CMD_SHIM.contains(&program) {
         let mut cmd = Command::new("cmd");
         cmd.arg("/C").arg(program).args(args);
+        headless(&mut cmd);
         return cmd;
     }
     let mut cmd = Command::new(program);
     cmd.args(args);
+    headless(&mut cmd);
     if uses_docker_engine(program) {
         for var in DOCKER_ENGINE_OVERRIDES {
             cmd.env_remove(var);
         }
     }
     cmd
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{uses_docker_engine, DOCKER_ENGINE_OVERRIDES};
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn timed_reads_capture_the_tools_output() {
-        // Regression: the timed path spawned without piping stdout, so `wait_with_output`
-        // returned "" for every status probe (docker ps, compose ps, vagrant status). Labs read
-        // as not running and a successful launch looked like it reset. A timed read must return
-        // what the tool printed, exactly like the untimed one.
-        let timed = super::run_read("sh", &["-c", "printf hi"], None).await.unwrap();
-        assert_eq!(timed, "hi");
-        let untimed = super::run("sh", &["-c", "printf hi"], None).await.unwrap();
-        assert_eq!(timed, untimed);
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn timed_reads_surface_stderr_on_failure() {
-        // A failing tool's message is piped too, so it reaches the error instead of vanishing.
-        let err = super::run_read("sh", &["-c", "echo boom >&2; exit 3"], None).await.unwrap_err();
-        assert!(matches!(err, super::Error::CommandFailed { ref stderr, .. } if stderr.contains("boom")), "{err:?}");
-    }
-
-    #[test]
-    fn only_docker_drops_inherited_engine_overrides() {
-        // Regression: an inherited DOCKER_HOST pointed the app at OrbStack while the user worked
-        // in Docker Desktop, so labs were deployed to and looked for in the wrong engine.
-        assert!(uses_docker_engine("docker"));
-        assert!(!uses_docker_engine("vagrant"));
-        assert!(!uses_docker_engine("terraform"));
-        assert_eq!(DOCKER_ENGINE_OVERRIDES, ["DOCKER_HOST", "DOCKER_CONTEXT"]);
-    }
 }
 
 /// Runs a program without a shell (arguments are never interpolated) and returns stdout.
@@ -196,4 +188,40 @@ pub async fn stream(program: &'static str, args: &[&str], cwd: Option<&Path>, en
         return Err(Error::CommandFailed { command: format!("{program} {}", args.join(" ")), stderr });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DOCKER_ENGINE_OVERRIDES, uses_docker_engine};
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn timed_reads_capture_the_tools_output() {
+        // Regression: the timed path spawned without piping stdout, so `wait_with_output`
+        // returned "" for every status probe (docker ps, compose ps, vagrant status). Labs read
+        // as not running and a successful launch looked like it reset. A timed read must return
+        // what the tool printed, exactly like the untimed one.
+        let timed = super::run_read("sh", &["-c", "printf hi"], None).await.unwrap();
+        assert_eq!(timed, "hi");
+        let untimed = super::run("sh", &["-c", "printf hi"], None).await.unwrap();
+        assert_eq!(timed, untimed);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn timed_reads_surface_stderr_on_failure() {
+        // A failing tool's message is piped too, so it reaches the error instead of vanishing.
+        let err = super::run_read("sh", &["-c", "echo boom >&2; exit 3"], None).await.unwrap_err();
+        assert!(matches!(err, super::Error::CommandFailed { ref stderr, .. } if stderr.contains("boom")), "{err:?}");
+    }
+
+    #[test]
+    fn only_docker_drops_inherited_engine_overrides() {
+        // Regression: an inherited DOCKER_HOST pointed the app at OrbStack while the user worked
+        // in Docker Desktop, so labs were deployed to and looked for in the wrong engine.
+        assert!(uses_docker_engine("docker"));
+        assert!(!uses_docker_engine("vagrant"));
+        assert!(!uses_docker_engine("terraform"));
+        assert_eq!(DOCKER_ENGINE_OVERRIDES, ["DOCKER_HOST", "DOCKER_CONTEXT"]);
+    }
 }

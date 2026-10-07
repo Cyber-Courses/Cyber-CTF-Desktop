@@ -22,20 +22,23 @@ type RuntimeFilter = "all" | "DOCKER" | "VM" | "CLOUD";
 
 export function Labs({
   loggedIn,
+  authReady = true,
   onLogin,
   hostArch,
   report,
   openLab,
 }: {
   loggedIn: boolean;
+  /** False until the sign-in state is known (the lab page waits for it). */
+  authReady?: boolean;
   /** Logs in from a lab (a logged-out Start). */
   onLogin?: () => Promise<void>;
   hostArch: string;
   report?: SystemReport | null;
   openLab: { slug: string | null; tick: number };
 }) {
-  const { labs, error, statuses, completed, refreshStatus } = useLabs(loggedIn);
-  const { runs, launch, stop } = useLabActions(refreshStatus);
+  const { labs, error, statuses, completed, refreshStatus, probed } = useLabs(loggedIn);
+  const { runs, launch, stop, park, resume, provision } = useLabActions(refreshStatus);
   // Opened straight from the slug the navigation carried, so a lab opened from Overview, the
   // command palette or a deep link shows its page on the first render instead of flashing the
   // list first.
@@ -99,10 +102,7 @@ export function Labs({
 
   // Running labs are pinned on top; the rest follow in one list, by title.
   const running = filtered.filter(isRunning);
-  const rest = useMemo(
-    () => filtered.filter((l) => !statuses[l.id]?.running).sort((a, b) => a.title.localeCompare(b.title)),
-    [filtered, statuses],
-  );
+  const rest = useMemo(() => filtered.filter((l) => !statuses[l.id]?.running).sort((a, b) => a.title.localeCompare(b.title)), [filtered, statuses]);
 
   if (error) return <EmptyState icon="alert" title="Can’t reach the lab catalogue" description="Check your connection or sign in, then try again." />;
 
@@ -132,6 +132,10 @@ export function Labs({
         dockerRunning={report ? report.dockerRunning : null}
         onStart={(t) => launch(detail, t.kind === "host" ? t.id : null, t.kind === "local-vm" ? t.provider : undefined, report)}
         onStop={() => stop(detail)}
+        onPark={(mode) => park(detail, mode)}
+        onResume={() => resume(detail)}
+        onProvision={(machine) => provision(detail, machine)}
+        ready={authReady && (!detail.runtime || probed.has(detail.id))}
       />
     );
   }
@@ -149,6 +153,7 @@ export function Labs({
       setup={isRunning(lab) ? null : setupNeeded(lab, report ?? null, servers)}
       onOpen={() => setDetailSlug(lab.slug)}
       onStop={() => stop(lab)}
+      onResume={() => resume(lab)}
     />
   );
 

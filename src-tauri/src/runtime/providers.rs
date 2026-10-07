@@ -77,6 +77,11 @@ impl Provider {
         }
     }
 
+    /// The provider with this id (as `id()` prints it), e.g. from Vagrant's `provider-name`.
+    pub fn from_id(id: &str) -> Option<Provider> {
+        Provider::ALL.iter().copied().find(|p| p.id() == id)
+    }
+
     /// Remote providers run VMs on another host and need connection settings.
     pub fn is_remote(self) -> bool {
         matches!(

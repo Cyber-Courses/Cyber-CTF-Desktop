@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback } from "react";
-import { serverList, labLaunch, labStop, type Provider } from "@/lib/tauri";
-import { getAttackImage, getVmProvider } from "@/lib/settings";
+import { serverList, labLaunch, labPark, labProvision, labResume, labStop, type Park, type Provider } from "@/lib/tauri";
+import { getAttackBox, getAttackImage, getAutoAttackBox, getVmProvider } from "@/lib/settings";
 import { notify } from "@/lib/notify";
 import type { Lab } from "@/features/labs/use-labs";
 import { setLastRun } from "@/lib/last-run";
@@ -29,7 +29,10 @@ export function useLabActions(refresh: (lab: Lab) => void) {
       host?: string | null,
       vmProvider?: Provider,
       /** The machine report, to pick a hypervisor that is actually installed here. */
-      report?: { vagrant: { installed: boolean }; vmProviders: { provider: Provider; remote: boolean; available: boolean; hypervisor?: boolean | null }[] } | null,
+      report?: {
+        vagrant: { installed: boolean };
+        vmProviders: { provider: Provider; remote: boolean; available: boolean; hypervisor?: boolean | null }[];
+      } | null,
     ) => {
       if (!lab.runtime) return;
       beginDeploy(lab.id);
@@ -67,9 +70,10 @@ export function useLabActions(refresh: (lab: Lab) => void) {
             `No hypervisor for this lab is installed on this machine (it runs on ${local.join(", ") || "none"}). Install one from the Machine page, or run it on a server.`,
           );
         }
-        // Remotely, or inside a local VM, the lab network isn't reachable from here: start
-        // the attack box next to the lab.
-        const attackbox = remote || inLocalVm ? getAttackImage() : null;
+        // The lab network isn't reachable from here, so an attack box goes next to the lab.
+        // Remotely or inside a local VM: the container attack box image. A VM lab here: the
+        // attack VM's Vagrant box, when Settings start the attack box with each lab.
+        const attackbox = remote || inLocalVm ? getAttackImage() : vm && getAutoAttackBox() ? getAttackBox() : null;
         await labLaunch(lab.id, provider, remote ? host! : null, attackbox, (line) => appendDeployLog(lab.id, line));
         appendDeployLog(lab.id, "✓ Lab is running");
         setLastRun(lab.id);
@@ -108,7 +112,63 @@ export function useLabActions(refresh: (lab: Lab) => void) {
     [refresh],
   );
 
-  return { runs, launch, stop };
+  /** Pause (state saved) or shut down (powered off) a lab, keeping its machines for `resume`. */
+  const park = useCallback(
+    async (lab: Lab, mode: Park) => {
+      if (!lab.runtime) return;
+      beginDeploy(lab.id);
+      try {
+        await labPark(lab.id, lab.runtime.runtime, mode, (line) => appendDeployLog(lab.id, line));
+        appendDeployLog(lab.id, mode === "pause" ? "✓ Lab paused" : "✓ Lab shut down");
+      } catch (e) {
+        appendDeployLog(lab.id, `✗ ${String(e)}`);
+      } finally {
+        endDeploy(lab.id);
+        refresh(lab);
+      }
+    },
+    [refresh],
+  );
+
+  /** Bring a parked lab back as it was: no rebuild, no new launch. */
+  const resume = useCallback(
+    async (lab: Lab) => {
+      if (!lab.runtime) return;
+      beginDeploy(lab.id);
+      try {
+        await labResume(lab.id, lab.runtime.runtime, (line) => appendDeployLog(lab.id, line));
+        appendDeployLog(lab.id, "✓ Lab is running");
+        setLastRun(lab.id);
+        notify("Lab ready", `${lab.title} is back.`);
+      } catch (e) {
+        appendDeployLog(lab.id, `✗ ${String(e)}`);
+      } finally {
+        endDeploy(lab.id);
+        refresh(lab);
+      }
+    },
+    [refresh],
+  );
+
+  /** Re-run a VM lab's provisioning on one machine (or all), streamed into its deploy log. */
+  const provision = useCallback(
+    async (lab: Lab, machine: string | null) => {
+      if (!lab.runtime) return;
+      beginDeploy(lab.id);
+      try {
+        await labProvision(lab.id, lab.runtime.runtime, machine, (line) => appendDeployLog(lab.id, line));
+        appendDeployLog(lab.id, machine ? `✓ ${machine} provisioned` : "✓ Lab provisioned");
+      } catch (e) {
+        appendDeployLog(lab.id, `✗ ${String(e)}`);
+      } finally {
+        endDeploy(lab.id);
+        refresh(lab);
+      }
+    },
+    [refresh],
+  );
+
+  return { runs, launch, stop, park, resume, provision };
 }
 
 /** The default server host id, if one is set and the lab supports its hypervisor. */
