@@ -1,5 +1,7 @@
 "use client";
 
+import { ErrorBoundary } from "@/components/error-screen";
+
 import Image from "next/image";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -251,7 +253,9 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                 <div>
                   <StepHeader icon={<meta.icon className="size-6 text-foreground" />} title={meta.title} description={meta.description} />
                   <div className="mt-8">
-                    <MachineStepBody step={step} report={report} setup={setup} />
+                    <ErrorBoundary resetKey={step} title="This step couldn’t load">
+                      <MachineStepBody step={step} report={report} setup={setup} />
+                    </ErrorBoundary>
                   </div>
                   <div className="mt-8 flex gap-2">
                     <Button variant="outline" className="flex-1" onClick={back} disabled={setup.busy}>
