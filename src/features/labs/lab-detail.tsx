@@ -24,7 +24,18 @@ import { useActiveOperations, useDeployingLabs, useWorkerLog } from "@/lib/deplo
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
-import { attackVmShell, labAttackShell, exegolShell, serverList, type Park, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
+import {
+  attackVmShell,
+  labAttackShell,
+  labTools,
+  exegolShell,
+  serverList,
+  type LabTool,
+  type Park,
+  type Provider,
+  type ServerHost,
+  type LabStatus,
+} from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 const VM_CLOUDS_NOT_YET = ["azure", "gcp", "digitalocean", "linode", "oci"];
@@ -226,6 +237,19 @@ export function LabDetail({
   const box = useAttackBox(lab.id, { running, holding: deployingHere, local: !remote, kind: isDocker ? "container" : "vm" });
   const exegol = box.status;
   const [check, clearCheck] = useLabCheck(lab.id, { running, downCount: down.length, enabled: isDocker });
+  // The lab's observers (`tools:` in its spec), read once it runs: static addresses, so the
+  // last answer stays good across a stop and a start.
+  const [tools, setTools] = useState<LabTool[]>([]);
+  useEffect(() => {
+    if (!running) return;
+    let alive = true;
+    labTools(lab.id, isDocker ? "DOCKER" : "VM")
+      .then((t) => alive && setTools(t))
+      .catch(() => alive && setTools([]));
+    return () => {
+      alive = false;
+    };
+  }, [lab.id, running, isDocker]);
 
   // Reset = stop and start again where it ran: a clean lab.
   async function reset() {
@@ -580,6 +604,21 @@ export function LabDetail({
                       : "The lab is shut down; its machines keep their state. Resume it to boot them again."
                     : "Start the lab to see its machines and network."}
               </p>
+            </Panel>
+          )}
+
+          {running && !busy && tools.length > 0 && (
+            <Panel>
+              <PanelHeader title="Observers" />
+              {tools.map((t) => (
+                <div key={t.name} className="flex flex-wrap items-baseline gap-x-3 border-b border-border px-3.5 py-2 text-[0.78125rem] last:border-b-0">
+                  <span className="font-medium">{t.name}</span>
+                  <span className="text-muted-foreground">
+                    {t.addresses.map((a) => `${a.network} ${a.ip}`).join(" · ")}
+                    {t.publish ? ` · http://127.0.0.1:${t.publish}` : ""}
+                  </span>
+                </div>
+              ))}
             </Panel>
           )}
 

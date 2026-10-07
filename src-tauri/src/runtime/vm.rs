@@ -380,14 +380,11 @@ pub async fn status(dir: &Path, env: &[(String, String)]) -> Result<LabStatus> {
     // The lab is up when its targets are; the controller is powered off once they are built.
     let targets = machines.iter().filter(|m| !m.infra);
     let running = targets.clone().count() > 0 && targets.clone().all(|m| m.state == "running");
-    // The network diagram for a VM lab, same as a Docker lab gets: addresses are static (declared
-    // in the lab and written into the Vagrantfile), so the picture comes from the Vagrantfile
-    // itself, with no need to reach into the guests.
-    let networks = match std::fs::read_to_string(dir.join("Vagrantfile")) {
-        Ok(text) => {
-            // VM names are "<lab> · <machine>"; the lab name scopes the internal-network names.
-            let lab = vm_names_from(&text).first().and_then(|n| n.split(" · ").next().map(str::to_string)).unwrap_or_default();
-            let (mut ifaces, networks) = vagrant_topology(&text, &lab);
+    // The network diagram, as a Docker lab gets it: addresses are static (declared in the lab),
+    // so it comes from the lab's spec (`.isoloom/vagrant` sits two levels under the lab).
+    let networks = match dir.parent().and_then(Path::parent).and_then(|lab| super::lab::spec(lab).ok()) {
+        Some(spec) => {
+            let (mut ifaces, networks) = super::lab::topology(&spec);
             for m in &mut machines {
                 if let Some(list) = ifaces.remove(&m.name) {
                     m.ip = list.first().map(|i| i.ip.clone()).unwrap_or_default();
@@ -396,7 +393,7 @@ pub async fn status(dir: &Path, env: &[(String, String)]) -> Result<LabStatus> {
             }
             networks
         }
-        Err(_) => Vec::new(),
+        None => Vec::new(),
     };
     // The hypervisor Vagrant runs them on (`provider-name` lines), e.g. "virtualbox".
     let provider = out.lines().find_map(|line| {

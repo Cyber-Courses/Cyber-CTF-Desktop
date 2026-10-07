@@ -63,6 +63,12 @@ async fn pin_ports(dir: &Path, project: &str, env: &[(String, String)]) {
     }
 }
 
+/// Where the lab's services answer on this machine: (service, container port, host port) for
+/// every published port, the pinned ones included. Empty when Compose can't be read.
+pub async fn published(dir: &Path, id: &str, env: &[(String, String)]) -> Vec<(String, u16, u16)> {
+    compose::output_env(dir, &compose::project(id), &["config", "--format", "json"], env).await.map(|c| compose::published_from_config(&c)).unwrap_or_default()
+}
+
 pub async fn start(dir: &Path, id: &str, env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
     // A stopped engine otherwise surfaces as a raw daemon-connection error much later.
     ensure_docker_up().await?;

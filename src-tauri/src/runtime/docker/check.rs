@@ -1,34 +1,78 @@
-//! The lab's exploitability self-check: the lab's Isoloom `checks:`, run by the Compose file's
-//! `isoloom-check` service (profile `check`) on the lab networks.
+//! The lab's self-check: its Isoloom `checks:` (the lab's own scripts and declared probes, and
+//! the ones Isoloom derives from `services` and `reach`), run by the Compose file's check
+//! runners (profile `check`), one per position, read into a per-check table.
 
 use std::path::Path;
+
+use isoloom_core::checks::{self, Line};
 
 use super::compose;
 use crate::error::Result;
 
-/// Result of a lab's self-verification (the `check` service).
+/// One check's outcome.
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckResult {
+    pub name: String,
+    /// Where it ran: "from web", or "from the environment's networks".
+    pub from: String,
+    pub ok: bool,
+    /// Why it failed (empty when it passed).
+    pub reason: String,
+}
+
+/// Result of a lab's self-verification.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Check {
-    /// The lab ships a `check` service, so verification is possible.
+    /// The lab has checks (its own, or derived from its spec), so verification is possible.
     pub available: bool,
-    /// The check passed: the challenge is still in a solvable state.
+    /// Every check passed: the lab behaves, and the challenge is still in a solvable state.
     pub ok: bool,
-    /// The check's combined output (why it failed, when it did).
+    /// The runners' combined output.
     pub output: String,
+    /// Every check, in the order it ran.
+    pub results: Vec<CheckResult>,
 }
 
-/// Runs the lab's `check` service (compose `check` profile): a container on the lab network
-/// that asserts the intended exploit path still works, so a learner who broke their box is
-/// told to reset it instead of fighting a lab that can no longer be solved. Exit 0 = solvable.
+/// Runs every check runner of the lab (compose `check` profile): containers on the lab's
+/// networks that assert what the lab declares and that the intended exploit path still
+/// works, so a learner who broke their box is told to reset it instead of fighting a lab that
+/// can no longer be solved.
 pub async fn check(dir: &Path, id: &str) -> Result<Check> {
-    let project = compose::project(id);
-    let service = crate::runtime::lab::CHECK_SERVICE;
-    let config = compose::output(dir, &project, &["--profile", "check", "config", "--format", "json"]).await.ok();
-    if !config.as_deref().map(|c| compose::config_has_service(c, service)).unwrap_or(false) {
-        return Ok(Check { available: false, ok: false, output: String::new() });
+    let spec = crate::runtime::lab::spec(dir)?;
+    let plan = checks::plan(&spec);
+    if plan.is_empty() {
+        return Ok(Check { available: false, ok: false, output: String::new(), results: Vec::new() });
     }
+    let default = checks::default_position(&spec);
+    let project = compose::project(id);
     let mut lines: Vec<String> = Vec::new();
-    let res = compose::stream(dir, &project, &["--profile", "check", "run", "--rm", "--no-deps", service], &[], |l| lines.push(l)).await;
-    Ok(Check { available: true, ok: res.is_ok(), output: lines.join("\n") })
+    let mut results: Vec<CheckResult> = Vec::new();
+    let mut ran = true;
+    for (pos, group) in checks::by_position(&spec, &plan) {
+        let service =
+            if pos == default { crate::runtime::lab::CHECK_SERVICE.to_string() } else { format!("{}-{}", crate::runtime::lab::CHECK_SERVICE, pos.id()) };
+        let from = pos.label();
+        let before = results.len();
+        let res = compose::stream(dir, &project, &["--profile", "check", "run", "--rm", "--no-deps", &service], &[], |l| {
+            match checks::parse_line(&l) {
+                Some(Line::Pass(name)) => results.push(CheckResult { name, from: from.clone(), ok: true, reason: String::new() }),
+                Some(Line::Fail(name, why)) => results.push(CheckResult { name, from: from.clone(), ok: false, reason: why }),
+                Some(Line::End(..)) | None => {}
+            }
+            lines.push(l);
+        })
+        .await;
+        // A runner that stopped before reporting: the checks it owned, failed with that reason.
+        let reported = results.len() - before;
+        for c in group.iter().skip(reported) {
+            results.push(CheckResult { name: c.name.clone(), from: from.clone(), ok: false, reason: "the runner stopped before this check".into() });
+        }
+        if res.is_err() {
+            ran = false;
+        }
+    }
+    let ok = ran && results.iter().all(|r| r.ok);
+    Ok(Check { available: true, ok, output: lines.join("\n"), results })
 }

@@ -83,6 +83,7 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
     let dir = labs.join(lab_id);
     let marker = dir.join(".cyberctf-commit");
     if std::fs::read_to_string(&marker).is_ok_and(|c| c.trim() == commit) {
+        runtime::lab::ensure_instance(&labs, &dir)?;
         return Ok(dir);
     }
 
@@ -103,7 +104,7 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
     std::fs::write(staging.join(".cyberctf-repository"), repository)?;
     // Keep where the lab runs, so a lab still up on a server host or in a local VM can be
     // stopped there.
-    for marker in [".cyberctf-host", runtime::LOCAL_VM_MARKER] {
+    for marker in [".cyberctf-host", runtime::LOCAL_VM_MARKER, runtime::lab::INSTANCE_MARKER] {
         if let Ok(value) = std::fs::read(dir.join(marker)) {
             std::fs::write(staging.join(marker), value)?;
         }
@@ -113,6 +114,8 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
     runtime::clear_parked(&dir, lab_id, log).await;
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::rename(&staging, &dir)?;
+    // Its own room on this machine (networks, names), so it runs beside the other labs.
+    runtime::lab::ensure_instance(&labs, &dir)?;
     log("Lab installed".into());
     Ok(dir)
 }

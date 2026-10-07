@@ -53,6 +53,21 @@ export interface SystemReport {
   ovftool: Tool;
   cloudClis: { aws: Tool; azure: Tool; gcloud: Tool };
   vmProviders: ProviderStatus[];
+  /** What Isoloom says this machine can run, target by target. */
+  targets: TargetReadiness[];
+}
+
+/** One Isoloom target on this machine: the tools and credentials it needs, found or missing. */
+export interface TargetReadiness {
+  /** `docker`, `vagrant`, `proxmox`, `cloud-vm`, ... */
+  target: string;
+  /** The cloud, for the cloud targets. */
+  cloud: string | null;
+  ready: boolean;
+  /** One line: what was found, or what is missing. */
+  summary: string;
+  /** Each thing found (plain) or missing (starts with `!`). */
+  notes: string[];
 }
 
 export const systemCheck = () => invoke<SystemReport>("system_check");

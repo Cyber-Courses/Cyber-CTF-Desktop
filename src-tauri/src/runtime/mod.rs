@@ -10,6 +10,7 @@ pub mod lab;
 mod model;
 pub mod providers;
 mod proxmox;
+mod registry;
 pub mod server;
 pub mod server_selftest;
 mod ssh;
@@ -185,13 +186,21 @@ pub async fn start(
                 if let Err(e) = attack_box_vagrant(&vagrant, &spec, env, &mut log).await {
                     log(format!("The lab is running, but its attack box didn't start: {e}. Open the lab shell to retry it."));
                 }
+                registry::record(dir, &spec, lab::vagrant_target(runtime), None);
+                welcome(dir, &spec, &mut log);
                 Ok(())
             }
             Runtime::Docker => {
-                lab::prepare(dir, isoloom_core::Target::Docker)?;
+                let spec = lab::prepare(dir, isoloom_core::Target::Docker)?;
                 mark_local_vm(dir, None)?;
-                docker::start(dir, id, env, log).await?;
+                docker::start(dir, id, env, &mut log).await?;
                 exegol::rejoin(id).await;
+                registry::record(dir, &spec, isoloom_core::Target::Docker, None);
+                // Its ports here are the ones picked at its first start, not the spec's.
+                let published = docker::published(dir, id, env).await;
+                if let Some(m) = lab::message_at(dir, &spec, &published) {
+                    m.lines().for_each(|l| log(l.to_string()));
+                }
                 Ok(())
             }
             Runtime::Vm => {
@@ -203,6 +212,8 @@ pub async fn start(
                 warn_if_low_memory(&spec, &mut log);
                 let vagrant = lab::vagrant_dir(dir, runtime);
                 start_local_vm(&vagrant, provider, env, &mut log).await?;
+                registry::record(dir, &spec, lab::vagrant_target(runtime), None);
+                welcome(dir, &spec, &mut log);
                 // The lab's networks are internal to the hypervisor, so the learner's attack VM
                 // (their own box, chosen in Settings) goes beside it, on the same hypervisor. The
                 // lab is up at this point: a failing attacker is noted, not a failed deploy.
@@ -274,6 +285,8 @@ pub async fn start(
             if runtime == Runtime::Docker {
                 attack_box_remote(app, id, &spec, env, &mut log).await?;
             }
+            registry::record(dir, &spec, target, provider.is_cloud().then_some(tf));
+            welcome(dir, &spec, &mut log);
             Ok(())
         }
         // ESXi: the same Vagrantfiles as on this machine, with the vmware_esxi provider.
@@ -290,7 +303,19 @@ pub async fn start(
             {
                 log(format!("The lab is running, but its attack box didn't start: {e}. Open the lab shell to retry it."));
             }
+            registry::record(dir, &spec, lab::vagrant_target(runtime), None);
+            welcome(dir, &spec, &mut log);
             Ok(())
+        }
+    }
+}
+
+/// The lab's own words once it is up (`message:` in its spec, addresses filled in): where to
+/// start and what to do first, as the last lines of the deploy log.
+fn welcome(dir: &Path, spec: &isoloom_core::Spec, log: &mut impl FnMut(String)) {
+    if let Some(m) = lab::message(dir, spec) {
+        for line in m.lines() {
+            log(line.to_string());
         }
     }
 }
@@ -660,6 +685,7 @@ async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mu
     if result.is_ok() {
         server::mark_lab(dir, None)?;
         mark_local_vm(dir, None)?;
+        registry::forget(dir);
         mark_parked(dir, None)?;
     }
     result
@@ -835,6 +861,15 @@ pub async fn lab_status(app: AppHandle, id: String, runtime: Runtime) -> Result<
     status(&app, &dir, &id, runtime).await
 }
 
+/// The observers a lab puts beside itself (`tools:` in its spec), at their addresses where it
+/// runs (container addresses for a container lab, wherever its Compose file runs).
+#[tauri::command]
+pub async fn lab_tools(app: AppHandle, id: String, runtime: Runtime) -> Result<Vec<lab::Observer>> {
+    let dir = lab_dir(&app, &id)?;
+    let spec = lab::instanced(&dir)?;
+    Ok(lab::tools(&spec, runtime == Runtime::Docker))
+}
+
 /// The ids of labs running on this machine right now, found by scanning Docker and Vagrant
 /// directly. Unlike `lab_status` (one lab at a time, from its dir and Compose file), this is a
 /// single infrastructure scan, so the UI recovers which labs are up even after a crash or restart
@@ -851,7 +886,7 @@ pub async fn lab_check(app: AppHandle, id: String, runtime: Runtime) -> Result<d
     let dir = lab_dir(&app, &id)?;
     match runtime {
         Runtime::Docker if server::lab_connection(&app, &dir)?.is_none() => docker::check(&dir, &id).await,
-        _ => Ok(docker::Check { available: false, ok: false, output: String::new() }),
+        _ => Ok(docker::Check { available: false, ok: false, output: String::new(), results: Vec::new() }),
     }
 }
 

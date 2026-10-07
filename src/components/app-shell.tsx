@@ -168,6 +168,9 @@ export function AppShell() {
   // What each busy lab is doing and the step it is at, for a live line under its name.
   const ops = useActiveOperations();
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+  // Read again as soon as an operation starts or ends: a lab just shut down otherwise kept its
+  // "Running" line until the next poll.
+  const busyKey = [...deploying, ...ops.keys()].sort().join(",");
   useEffect(() => {
     let alive = true;
     const read = () =>
@@ -180,7 +183,7 @@ export function AppShell() {
       alive = false;
       clearInterval(t);
     };
-  }, []);
+  }, [busyKey]);
   const activeLabs = palLabs
     .filter((l) => deploying.has(l.id) || ops.has(l.id) || runningIds.has(l.id))
     .map((l) => ({ ...l, op: ops.get(l.id) ?? (deploying.has(l.id) ? { labId: l.id, op: "launch" as const, machine: null, step: null } : null) }));

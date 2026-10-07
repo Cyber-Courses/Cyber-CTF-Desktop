@@ -220,8 +220,8 @@ pub async fn machine_workload_stop(app: AppHandle, kind: String, id: String) -> 
             let dirs: Vec<PathBuf> = if id == "selftest" {
                 vec![selftest::work_dir(&app, "vm")?]
             } else {
-                let lab = labs_dir(&app)?.join(&id);
-                vec![lab.join(".isoloom/vagrant"), lab.join(".isoloom/docker-vm")]
+                let out = crate::runtime::lab::out(&labs_dir(&app)?.join(&id));
+                vec![out.join("vagrant"), out.join("docker-vm")]
             };
             let dirs: Vec<PathBuf> = dirs.into_iter().filter(|d| d.join("Vagrantfile").is_file()).collect();
             if dirs.is_empty() {
@@ -257,7 +257,8 @@ pub struct Storage {
 /// Images an installed Docker lab's compose file references.
 async fn lab_images(dir: &Path, id: &str) -> Vec<String> {
     let project = format!("cyberctf-{id}");
-    run("docker", &["compose", "-p", &project, "-f", crate::runtime::lab::COMPOSE_FILE, "config", "--images"], Some(dir))
+    let file = crate::runtime::lab::compose_file(dir).display().to_string();
+    run("docker", &["compose", "-p", &project, "-f", &file, "config", "--images"], Some(dir))
         .await
         .map(|o| o.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
         .unwrap_or_default()
@@ -305,11 +306,12 @@ async fn wanted(app: &AppHandle, extra_images: &[String]) -> (BTreeSet<String>, 
     let mut boxes = BTreeSet::new();
     for (id, dir) in installed_labs(app) {
         // The lab's generated files (written when it last ran on that target).
-        if dir.join(crate::runtime::lab::COMPOSE_FILE).is_file() {
+        if crate::runtime::lab::compose_file(&dir).is_file() {
             images.extend(lab_images(&dir, &id).await);
         }
-        boxes.extend(vagrantfile_boxes(&dir.join(".isoloom/vagrant/Vagrantfile")));
-        boxes.extend(vagrantfile_boxes(&dir.join(".isoloom/docker-vm/Vagrantfile")));
+        let out = crate::runtime::lab::out(&dir);
+        boxes.extend(vagrantfile_boxes(&out.join("vagrant/Vagrantfile")));
+        boxes.extend(vagrantfile_boxes(&out.join("docker-vm/Vagrantfile")));
     }
     let arm = std::env::consts::ARCH == "aarch64";
     for p in [Provider::Virtualbox, Provider::VmwareDesktop, Provider::Parallels, Provider::Utm, Provider::Libvirt, Provider::Qemu, Provider::Hyperv] {

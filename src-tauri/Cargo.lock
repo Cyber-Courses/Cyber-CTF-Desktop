@@ -2208,8 +2208,8 @@ dependencies = [
 
 [[package]]
 name = "isoloom-core"
-version = "0.7.2"
-source = "git+https://github.com/isoloom/isoloom?rev=e84502a#e84502a069d8713506a8e5308c1b2a40d73fae95"
+version = "0.8.0"
+source = "git+https://github.com/isoloom/isoloom?rev=d05fee8#d05fee833b6c6e111790b109395de48aa437baad"
 dependencies = [
  "hcl-rs",
  "indexmap 2.14.2",
@@ -4104,6 +4104,7 @@ version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
 dependencies = [
+ "indexmap 2.14.2",
  "itoa",
  "memchr",
  "serde",

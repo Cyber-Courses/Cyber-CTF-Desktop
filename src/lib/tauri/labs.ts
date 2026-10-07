@@ -96,12 +96,36 @@ export const labStatus = (id: string, runtime: Runtime) => invoke<LabStatus>("la
  *  Recovers running labs after a crash/restart, independent of any per-lab status probe. */
 export const runningLabs = () => invoke<string[]>("running_labs");
 
-/** Result of a lab's exploitability self-check (the lab's `check` service). */
+/** One check of a lab's self-verification. */
+export interface LabCheckResult {
+  name: string;
+  /** Where it ran: "from web", or "from the environment's networks". */
+  from: string;
+  ok: boolean;
+  /** Why it failed (empty when it passed). */
+  reason: string;
+}
+
+/** Result of a lab's self-verification: its own checks and the ones derived from its spec. */
 export interface LabCheck {
   available: boolean;
   ok: boolean;
   output: string;
+  results: LabCheckResult[];
 }
+
+/** An observer the lab puts beside itself (`tools:`): a toolbox or a capture box on every network, outside the lab's contract. */
+export interface LabTool {
+  name: string;
+  image: string | null;
+  /** Its address on each lab network, where the lab runs. */
+  addresses: { network: string; ip: string }[];
+  /** The loopback port its web UI is published on, when it has one. */
+  publish: number | null;
+}
+
+/** The lab's observers, at their addresses where it runs. */
+export const labTools = (id: string, runtime: Runtime) => invoke<LabTool[]>("lab_tools", { id, runtime });
 
 /** Runs a lab's exploitability check: is the intended exploit path still solvable? */
 export const labCheck = (id: string, runtime: Runtime) => invoke<LabCheck>("lab_check", { id, runtime });
