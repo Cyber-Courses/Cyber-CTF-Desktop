@@ -2208,8 +2208,8 @@ dependencies = [
 
 [[package]]
 name = "isoloom-core"
-version = "0.8.0"
-source = "git+https://github.com/isoloom/isoloom?rev=d05fee8#d05fee833b6c6e111790b109395de48aa437baad"
+version = "0.8.1"
+source = "git+https://github.com/isoloom/isoloom?rev=2db8a14#2db8a14150c189bf457013d9fe5a6f24b9efd852"
 dependencies = [
  "hcl-rs",
  "indexmap 2.14.2",
