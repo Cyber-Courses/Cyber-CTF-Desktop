@@ -30,15 +30,46 @@ async fn is_running(dir: &Path, project: &str) -> bool {
     }
 }
 
+async fn has_containers(dir: &Path, project: &str) -> bool {
+    match compose::output(dir, project, &["ps", "-a", "--format", "json"]).await {
+        Ok(out) => !compose::parse_ps(&out).is_empty(),
+        Err(_) => false,
+    }
+}
+
 async fn published_host_ports(dir: &Path, project: &str, env: &[(String, String)]) -> Result<Vec<u16>> {
     let out = compose::output_env(dir, project, &["config", "--format", "json"], env).await?;
     Ok(compose::host_ports_from_config(&out))
+}
+
+/// Picks free loopback host ports for the lab's ephemeral ones and pins them (see
+/// `compose::PORTS_FILE`), so a shut down / resume keeps the lab at the same address. Done on a
+/// fresh start only: the pins of containers that already exist must stay as they were created.
+async fn pin_ports(dir: &Path, project: &str, env: &[(String, String)]) {
+    let file = dir.join(compose::PORTS_FILE);
+    let _ = std::fs::remove_file(&file);
+    let Ok(config) = compose::output_env(dir, project, &["config", "--format", "json"], env).await else { return };
+    // Hold each port until all are picked, so the OS doesn't hand out the same one twice.
+    let mut held = Vec::new();
+    let pins = compose::pinned_ports(&config, || {
+        let l = std::net::TcpListener::bind(("127.0.0.1", 0)).ok()?;
+        let port = l.local_addr().ok()?.port();
+        held.push(l);
+        Some(port)
+    });
+    drop(held);
+    if let Some(pins) = pins {
+        let _ = std::fs::write(&file, pins);
+    }
 }
 
 pub async fn start(dir: &Path, id: &str, env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
     // A stopped engine otherwise surfaces as a raw daemon-connection error much later.
     ensure_docker_up().await?;
     let project = compose::project(id);
+    if !has_containers(dir, &project).await {
+        pin_ports(dir, &project, env).await;
+    }
     // Two labs can't share a host port. Unless this lab is already up (idempotent restart),
     // refuse up front with a clear message instead of a cryptic Docker bind error. With the
     // engine confirmed up, a failure reading the ports is a real Compose-config error worth
@@ -62,7 +93,9 @@ pub async fn start(dir: &Path, id: &str, env: &[(String, String)], log: impl FnM
 /// was (`compose start`), no rebuild. The attack box is stopped alongside, so it comes back too.
 pub async fn park(dir: &Path, id: &str, mut log: impl FnMut(String)) -> Result<()> {
     let project = compose::project(id);
-    let _ = run("docker", &["stop", &crate::runtime::exegol::container(id)], None).await;
+    // Nothing in the attack box needs a clean shutdown; -t 1 also covers boxes made before
+    // they ran with --init (their PID 1 ignores SIGTERM, so a plain stop waited 10 s).
+    let _ = run("docker", &["stop", "-t", "1", &crate::runtime::exegol::container(id)], None).await;
     compose::stream(dir, &project, &["stop"], &[], &mut log).await
 }
 
@@ -115,6 +148,8 @@ pub async fn stop(dir: &Path, id: &str, mut log: impl FnMut(String)) -> Result<(
             remove_network(net).await;
         }
     }
+    // The next start is a new lab: it picks its ports again.
+    let _ = std::fs::remove_file(dir.join(compose::PORTS_FILE));
     down
 }
 

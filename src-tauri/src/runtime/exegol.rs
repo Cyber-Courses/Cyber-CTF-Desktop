@@ -94,9 +94,10 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
     // Clear any previous attack box so a re-launch is clean.
     let _ = run("docker", &["rm", "-f", &name], None).await;
     log(format!("Starting the attack box on {attack_net}…"));
+    // --init: `sleep` as PID 1 ignores SIGTERM, so every `docker stop` waited out its timeout.
     stream(
         "docker",
-        &["run", "-d", "--name", &name, "--network", &attack_net, "--hostname", "attacker", "--cap-add", "NET_ADMIN", image, "sleep", "infinity"],
+        &["run", "-d", "--init", "--name", &name, "--network", &attack_net, "--hostname", "attacker", "--cap-add", "NET_ADMIN", image, "sleep", "infinity"],
         None,
         &[],
         &mut log,

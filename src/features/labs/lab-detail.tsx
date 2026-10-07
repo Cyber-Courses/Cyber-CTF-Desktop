@@ -4,10 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, ExternalLink, LogIn, Pause, Play, Power, RefreshCw, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CopyValue } from "@/components/ui/copy-value";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Tip } from "@/components/ui/tip";
 import { AttackBoxPanel } from "@/features/labs/attack-box-panel";
 import { DeploySteps } from "@/features/labs/deploy-steps";
 import { LabBrief } from "@/features/labs/lab-brief";
@@ -18,7 +20,7 @@ import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on
 import { runPlaces } from "@/features/labs/lab-row";
 import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
-import { useDeployingLabs, useWorkerLog } from "@/lib/deploy-store";
+import { useActiveOperations, useDeployingLabs, useWorkerLog } from "@/lib/deploy-store";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
@@ -26,6 +28,16 @@ import { attackVmShell, labAttackShell, exegolShell, serverList, type Park, type
 import { cn } from "@/lib/utils";
 
 const VM_CLOUDS_NOT_YET = ["azure", "gcp", "digitalocean", "linode", "oci"];
+
+// The header's status while something runs on the lab: the containers report "running" well
+// before a launch or resume is done, and until the end of a shut down or stop.
+const OPERATION_STATUS: Partial<Record<string, string>> = {
+  launch: "Starting",
+  resume: "Resuming",
+  pause: "Pausing",
+  shutdown: "Shutting down",
+  stop: "Stopping",
+};
 
 export function LabDetail({
   lab,
@@ -82,7 +94,7 @@ export function LabDetail({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       const el = document.activeElement as HTMLElement | null;
-      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable || el.closest("[role=dialog]"))) return;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable || el.closest("[role=dialog],[role=alertdialog]"))) return;
       onBack();
     };
     window.addEventListener("keydown", onKey);
@@ -110,6 +122,15 @@ export function LabDetail({
   const leftovers = (status?.machines ?? []).filter((m) => m.state !== "not_created");
   // Parked by the launcher: its stopped machines are expected, and come back on Resume.
   const parked = !running && !deployingHere ? (status?.parked ?? null) : null;
+  // What is in flight on this lab: the button this page clicked, else what the backend reports
+  // (a reload loses the former), else a stop when a built lab is being worked on, a launch if not.
+  const backendOp = useActiveOperations().get(lab.id)?.op;
+  const operation = deployingHere ? (acting ?? backendOp ?? (busy && (running || status?.parked) ? "stop" : "launch")) : null;
+  // The panel keeps showing the last run's log once it's over (a resume's, say): keep reading
+  // it as that operation.
+  const [lastOperation, setLastOperation] = useState<NonNullable<typeof operation>>("launch");
+  if (operation && operation !== lastOperation) setLastOperation(operation);
+  const tearingDown = operation === "stop" || operation === "shutdown" || operation === "pause";
   const interrupted = !deployingHere && !running && !parked && leftovers.length > 0;
   const act = async (what: "pause" | "shutdown" | "resume" | "provision") => {
     setActing(what);
@@ -160,6 +181,7 @@ export function LabDetail({
   // lists it first), else the first ready one its deploy/ supports. One option, not a catalogue.
   const localVms = isDocker ? readyVms.filter((p) => rt?.providers.includes(p)).slice(0, 1) : [];
   const [choosing, setChoosing] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   // Cyber CTF can also run it for the player: a hosted session with a public URL.
   const hostedOk = !!rt?.hosted;
   const hosted = useHostedLabs();
@@ -243,7 +265,14 @@ export function LabDetail({
   const shownTimes = logs.length > 0 ? times : [];
   const deploy = (
     <Panel>
-      <DeploySteps lines={shownLogs} times={shownTimes} busy={deployingHere} ready={running} where={destLabel} />
+      <DeploySteps
+        lines={shownLogs}
+        times={shownTimes}
+        busy={deployingHere}
+        ready={running && !tearingDown}
+        where={destLabel}
+        operation={operation ?? lastOperation}
+      />
     </Panel>
   );
   // The deploy panel is worth showing while a run is in progress, once the lab is up, or when
@@ -295,7 +324,11 @@ export function LabDetail({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-xl font-semibold tracking-tight">{lab.title}</h1>
-            {running ? (
+            {operation && OPERATION_STATUS[operation] ? (
+              <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-muted-foreground">
+                <Spinner className="size-3" /> {OPERATION_STATUS[operation]}
+              </span>
+            ) : running ? (
               <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-emerald-500">
                 <span className="size-1.5 rounded-full bg-emerald-500" />
                 Running on {status?.host ?? "this machine"}
@@ -339,62 +372,67 @@ export function LabDetail({
                 </Button>
               )}
               {canPause && (
-                <Button variant="outline" onClick={() => void act("pause")} disabled={busy} title="Save the machines' state; resume in seconds">
-                  {acting === "pause" ? (
-                    <>
-                      <Spinner className="size-4" /> Pausing…
-                    </>
-                  ) : (
-                    <>
-                      <Pause className="size-3.5" /> Pause
-                    </>
-                  )}
-                </Button>
+                <Tip key="pause" text="Save the machines' state; resume in seconds">
+                  <Button variant="outline" onClick={() => void act("pause")} disabled={busy}>
+                    {acting === "pause" ? (
+                      <>
+                        <Spinner className="size-4" /> Pausing…
+                      </>
+                    ) : (
+                      <>
+                        <Pause className="size-3.5" /> Pause
+                      </>
+                    )}
+                  </Button>
+                </Tip>
               )}
               {canShutdown && (
-                <Button
-                  variant="outline"
-                  onClick={() => void act("shutdown")}
-                  disabled={busy}
-                  title="Power the machines off; they keep their state and boot again on Resume"
-                >
-                  {acting === "shutdown" ? (
-                    <>
-                      <Spinner className="size-4" /> Shutting down…
-                    </>
+                <Tip key="shutdown" text="Power the machines off; they keep their state and boot again on Resume">
+                  <Button variant="outline" onClick={() => void act("shutdown")} disabled={busy}>
+                    {acting === "shutdown" ? (
+                      <>
+                        <Spinner className="size-4" /> Shutting down…
+                      </>
+                    ) : (
+                      <>
+                        <Power className="size-3.5" /> Shut down
+                      </>
+                    )}
+                  </Button>
+                </Tip>
+              )}
+              <Tip key="remove" text="Remove the machines; the next start rebuilds the lab from scratch">
+                <Button variant="destructive" onClick={() => setConfirmingRemove(true)} disabled={busy}>
+                  {operation === "stop" && !resetting ? (
+                    "Stopping…"
                   ) : (
                     <>
-                      <Power className="size-3.5" /> Shut down
+                      <Square className="size-3.5" /> Stop &amp; remove
                     </>
                   )}
                 </Button>
-              )}
-              <Button variant="destructive" onClick={() => onStop()} disabled={busy} title="Remove the machines; the next start rebuilds the lab from scratch">
-                {busy && !resetting && !acting ? (
-                  "Stopping…"
-                ) : (
-                  <>
-                    <Square className="size-3.5" /> Stop &amp; remove
-                  </>
-                )}
-              </Button>
+              </Tip>
             </>
           ) : parked && onResume ? (
             <>
-              <Button variant="learn" onClick={() => void act("resume")} disabled={busy} title="Bring the lab back as it was">
-                {busy ? (
-                  <>
-                    <Spinner className="size-4" /> Resuming…
-                  </>
-                ) : (
-                  <>
-                    <Play className="size-4" /> Resume
-                  </>
-                )}
-              </Button>
-              <Button variant="destructive" onClick={() => onStop()} disabled={busy} title="Remove the machines; the next start rebuilds the lab from scratch">
-                <Square className="size-3.5" /> Stop &amp; remove
-              </Button>
+              <Tip key="resume" text="Bring the lab back as it was">
+                <Button variant="learn" onClick={() => void act("resume")} disabled={busy}>
+                  {busy ? (
+                    <>
+                      <Spinner className="size-4" /> Resuming…
+                    </>
+                  ) : (
+                    <>
+                      <Play className="size-4" /> Resume
+                    </>
+                  )}
+                </Button>
+              </Tip>
+              <Tip key="remove-parked" text="Remove the machines; the next start rebuilds the lab from scratch">
+                <Button variant="destructive" onClick={() => setConfirmingRemove(true)} disabled={busy}>
+                  <Square className="size-3.5" /> Stop &amp; remove
+                </Button>
+              </Tip>
             </>
           ) : starting ? (
             <Button variant="learn" disabled>
@@ -553,7 +591,13 @@ export function LabDetail({
         <aside className="h-fit space-y-4 lg:sticky lg:top-2">
           {/* VM labs on a server host have no attacker yet (their networks live on that host). */}
           {(isDocker || !remote) && (
-            <AttackBoxPanel box={box} running={running} host={remote ? (status?.host ?? null) : null} onShell={openShell} shellReady={attackReady} />
+            <AttackBoxPanel
+              box={box}
+              running={running && !deployingHere}
+              host={remote ? (status?.host ?? null) : null}
+              onShell={openShell}
+              shellReady={attackReady}
+            />
           )}
 
           {/* Before it runs, the aside would otherwise be empty for a VM lab: say what the lab is
@@ -658,6 +702,20 @@ export function LabDetail({
           {!loggedIn && <p className="text-[0.71875rem] text-muted-foreground">Sign in to run labs on this machine.</p>}
         </aside>
       </div>
+      {confirmingRemove && (
+        <ConfirmDialog
+          title={`Remove ${lab.title}?`}
+          confirmLabel="Remove"
+          onCancel={() => setConfirmingRemove(false)}
+          onConfirm={() => {
+            setConfirmingRemove(false);
+            void onStop();
+          }}
+        >
+          Its machines and your attack box are deleted, with everything changed or saved on them. The next start rebuilds the lab from scratch.
+          {canShutdown && " To keep them, shut the lab down instead."}
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

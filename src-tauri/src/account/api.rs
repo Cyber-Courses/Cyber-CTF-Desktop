@@ -48,6 +48,6 @@ mod tests {
         assert!(data["challenges"].is_array());
         assert!(data["me"].is_null());
         let err = super::graphql("mutation { startLab(labId: \"x\") { labId } }", serde_json::Value::Null, true).await.unwrap_err();
-        assert_eq!(err.to_string(), "not logged in");
+        assert_eq!(err.to_string(), super::super::auth::SIGNED_OUT);
     }
 }
