@@ -271,9 +271,11 @@ pub fn run() {
                 let window_menu = SubmenuBuilder::new(handle, "Window").minimize().separator().close_window().build()?;
                 MenuBuilder::new(handle).items(&[&app_menu, &edit_menu, &window_menu]).build()
             }
+            // Linux and Windows: no menu bar. The default one drew a light strip above the dark
+            // UI and pushed the webview out of the window; Ctrl+, opens Settings from the page.
             #[cfg(not(target_os = "macos"))]
             {
-                tauri::menu::Menu::default(handle)
+                tauri::menu::Menu::new(handle)
             }
         })
         // App-menu clicks: "Settings…" opens the settings window.

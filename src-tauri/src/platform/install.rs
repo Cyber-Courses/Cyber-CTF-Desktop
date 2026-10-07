@@ -3,6 +3,7 @@
 //! UAC, Linux pkexec, or downloading the official app/installer for macOS casks and
 //! letting the tool's own installer run).
 
+#[cfg(target_os = "macos")]
 use std::path::Path;
 use std::process::Stdio;
 
