@@ -45,8 +45,17 @@ export function beginDeploy(labId: string) {
 
 /** Append a log line to `labId`'s run, timestamped on arrival. */
 export function appendDeployLog(labId: string, line: string) {
+  noteSignedOut(line);
   const prev = state.runs[labId] ?? EMPTY_RUN;
   setRun(labId, { ...prev, busy: true, logs: [...prev.logs, line], times: [...prev.times, Date.now()] });
+}
+
+/** Fired when an action failed because the session is gone; the shell re-reads the sign-in. */
+export const SIGNED_OUT_EVENT = "cyberctf:signed-out";
+
+/** The backend's "You're signed out…" / "…session expired…" errors (account/auth.rs). */
+export function noteSignedOut(text: string) {
+  if (typeof window !== "undefined" && /\bsigned out\b/i.test(text)) window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
 }
 
 /** End `labId`'s run (keeps its logs so the console stays readable). */

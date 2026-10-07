@@ -18,7 +18,7 @@ import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { apiQuery, authLogin, authStatus, machineWorkloads, openSettings, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
-import { operationLabel, useActiveOperations, useDeployingLabs } from "@/lib/deploy-store";
+import { operationLabel, SIGNED_OUT_EVENT, useActiveOperations, useDeployingLabs } from "@/lib/deploy-store";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
@@ -121,6 +121,26 @@ export function AppShell() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // The session can disappear under the app (signed out elsewhere, a refresh token revoked, the
+  // keychain locked or cleared). Re-read it when an action says so, when the window comes back,
+  // and now and then while signed in, so the sidebar and Start buttons don't claim a session
+  // that's gone.
+  const loggedIn = !!auth?.loggedIn;
+  useEffect(() => {
+    const reread = () =>
+      authStatus()
+        .then(setAuth)
+        .catch(() => {});
+    window.addEventListener(SIGNED_OUT_EVENT, reread);
+    window.addEventListener("focus", reread);
+    const t = loggedIn ? setInterval(reread, 30_000) : undefined;
+    return () => {
+      window.removeEventListener(SIGNED_OUT_EVENT, reread);
+      window.removeEventListener("focus", reread);
+      clearInterval(t);
+    };
+  }, [loggedIn]);
 
   // Labs for the palette: load once the app is ready and whenever sign-in changes.
   useEffect(() => {

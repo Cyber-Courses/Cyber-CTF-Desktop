@@ -156,6 +156,19 @@ impl Provider {
 
 const UTM_APP: &str = "/Applications/UTM.app";
 
+/// Why libvirt can't run VMs here although `virsh` is installed: vagrant-libvirt boots KVM
+/// guests, so it needs `/dev/kvm`, and the player must be allowed to open it.
+fn kvm_problem() -> Option<String> {
+    let dev = std::path::Path::new("/dev/kvm");
+    if !dev.exists() {
+        return Some("KVM isn't available on this machine (no /dev/kvm): turn on virtualization in the firmware, or use another hypervisor".into());
+    }
+    if std::fs::OpenOptions::new().read(true).write(true).open(dev).is_err() {
+        return Some("you can't use /dev/kvm yet: add yourself to the kvm and libvirt groups, then sign out and back in".into());
+    }
+    None
+}
+
 fn qemu_binary() -> &'static str {
     if std::env::consts::ARCH == "aarch64" { "qemu-system-aarch64" } else { "qemu-system-x86_64" }
 }
@@ -227,6 +240,8 @@ pub async fn detect(vagrant_installed: bool) -> Vec<ProviderStatus> {
             Some("Vagrant is not installed".to_string())
         } else if hypervisor == Some(false) {
             provider.probe().map(|(program, _)| format!("`{program}` was not found")).or_else(|| Some("not installed".to_string()))
+        } else if let Some(why) = (provider == Provider::Libvirt).then(kvm_problem).flatten() {
+            Some(why)
         } else if !plugin_installed {
             plugin.as_deref().map(|p| format!("Vagrant plugin `{p}` is not installed"))
         } else {
@@ -260,6 +275,11 @@ pub async fn ensure_usable(provider: Provider) -> std::result::Result<(), String
     if !hypervisor_ok {
         let what = provider.probe().map(|(p, _)| format!("`{p}` was not found")).unwrap_or_else(|| "its hypervisor isn't installed".into());
         return Err(format!("Can't run on {} here: {what}. Install it from the Machine page, then start the lab again.", provider.id()));
+    }
+    if provider == Provider::Libvirt
+        && let Some(why) = kvm_problem()
+    {
+        return Err(format!("Can't run on libvirt here: {why}."));
     }
     if let Some(needed) = provider.plugin() {
         let plugins = run("vagrant", &["plugin", "list"], None).await.map(|o| parse_plugins(&o)).unwrap_or_default();

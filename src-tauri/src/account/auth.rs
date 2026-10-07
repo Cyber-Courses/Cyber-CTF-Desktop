@@ -174,6 +174,10 @@ fn session_from(tokens: TokenResponse, previous: Option<&Session>) -> Session {
     }
 }
 
+/// What a call needing the account says when there is no session (never signed in, signed out,
+/// or the keychain lost it). The app matches on "signed out" to flip to its signed-out state.
+pub const SIGNED_OUT: &str = "You're signed out. Sign in again to continue.";
+
 /// A valid access token for CyberBackend, refreshed if it expires within a minute.
 ///
 /// One refresh at a time: at start-up the agent and the first API calls all find the same
@@ -183,16 +187,16 @@ fn session_from(tokens: TokenResponse, previous: Option<&Session>) -> Session {
 /// the session once they hold the lock, so the first refresh serves them all.
 pub async fn access_token() -> Result<String> {
     static REFRESH: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    let session = load_session().ok_or_else(|| Error::Invalid("not logged in".into()))?;
+    let session = load_session().ok_or_else(|| Error::Invalid(SIGNED_OUT.into()))?;
     if session.expires_at > now() + 60 {
         return Ok(session.access_token);
     }
     let _one_at_a_time = REFRESH.get_or_init(|| tokio::sync::Mutex::new(())).lock().await;
-    let session = load_session().ok_or_else(|| Error::Invalid("not logged in".into()))?;
+    let session = load_session().ok_or_else(|| Error::Invalid(SIGNED_OUT.into()))?;
     if session.expires_at > now() + 60 {
         return Ok(session.access_token);
     }
-    let refresh = session.refresh_token.clone().ok_or_else(|| Error::Invalid("session expired, log in again".into()))?;
+    let refresh = session.refresh_token.clone().ok_or_else(|| Error::Invalid("Your session expired: you're signed out. Sign in again to continue.".into()))?;
     let (client_id, api) = (config::client_id(), config::api_url());
     let tokens = match token_request(&[("grant_type", "refresh_token"), ("refresh_token", &refresh), ("client_id", &client_id), ("resource", &api)]).await {
         Ok(tokens) => tokens,
