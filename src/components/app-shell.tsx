@@ -133,6 +133,18 @@ export function AppShell() {
   // click away wherever you are. Deploys come from the backend (so they survive a reload); the
   // running set is polled from this machine's workloads.
   const deploying = useDeployingLabs();
+  // Ctrl+, opens Settings on Linux and Windows, where the menu bar (and its shortcut) is gone.
+  // macOS keeps Cmd+, in the app menu, so it is left to that there.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "," && !navigator.userAgent.includes("Mac")) {
+        e.preventDefault();
+        openSettings().catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   // What each busy lab is doing and the step it is at, for a live line under its name.
   const ops = useActiveOperations();
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());

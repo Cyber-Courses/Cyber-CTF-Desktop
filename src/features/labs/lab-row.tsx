@@ -148,7 +148,7 @@ export function LabRow({
         {/* Starting happens on the lab's own page, where you pick where to run; the row opens it. */}
 
         {rt && (
-          <span className="hidden items-center gap-1.5 text-[0.6875rem] text-muted-foreground xl:inline-flex">
+          <span className="hidden items-center gap-1.5 text-[0.6875rem] text-muted-foreground lg:inline-flex">
             {!native && <span className="text-amber-500">emulated</span>}
             <span className="inline-flex items-center gap-1">
               {/* Every place is shown: where it runs (emerald), where it can (accent), and where
@@ -158,7 +158,7 @@ export function LabRow({
                 const hint = inUse ? `Running on: ${status?.host ?? label}` : available ? `Can run on: ${label}` : `Not available: ${label}`;
                 return (
                   <span key={key} title={hint} aria-label={hint} className="inline-flex">
-                    <Icon className={cn("size-3", inUse ? "text-emerald-500" : available ? "text-learn" : "text-muted-foreground/30")} />
+                    <Icon className={cn("size-3", inUse ? "text-emerald-500" : available ? "text-learn" : "text-muted-foreground/60")} />
                   </span>
                 );
               })}

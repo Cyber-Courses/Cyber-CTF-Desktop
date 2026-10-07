@@ -27,6 +27,9 @@ const WANT_FREE = { docker: 2e9, vm: 8e9 };
 
 // ---------- screen ----------
 
+/** Under this much free space the Machine page warns: a lab image plus the attack box needs more. */
+const LOW_DISK_BYTES = 20 * 1024 ** 3;
+
 export function MachineScreen({
   report,
   onRefresh,
@@ -173,6 +176,17 @@ export function MachineScreen({
           history={hist.disk}
         />
       </Panel>
+
+      {/* Low disk: labs and the attack box are several GB each, so say so before a download fails. */}
+      {m && m.diskTotal > 0 && (diskPct >= 90 || m.diskTotal - m.diskUsed < LOW_DISK_BYTES) && (
+        <div role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-sm text-amber-200">
+          <p className="font-medium text-amber-300">Low disk space</p>
+          <p className="mt-1 text-[0.8125rem] text-amber-200/80">
+            Only {formatBytes(m.diskTotal - m.diskUsed)} free. The attack box alone is about 3.4 GB, and each lab image adds more. Free up space before you
+            start a lab.
+          </p>
+        </div>
+      )}
 
       {/* What can run */}
       <Panel>

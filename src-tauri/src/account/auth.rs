@@ -68,7 +68,17 @@ pub fn code_challenge(verifier: &str) -> String {
 
 #[cfg(not(debug_assertions))]
 fn entry() -> Result<keyring::Entry> {
-    keyring::Entry::new(config::KEYCHAIN_SERVICE, "session").map_err(|e| Error::Invalid(format!("keychain: {e}")))
+    keyring::Entry::new(config::KEYCHAIN_SERVICE, "session").map_err(keychain_error)
+}
+
+/// The keychain failing is the common Linux case: no Secret Service (GNOME Keyring, KWallet)
+/// running, or it is locked. Say what to do; the raw error stays in parentheses for support.
+#[cfg(not(debug_assertions))]
+fn keychain_error(e: keyring::Error) -> Error {
+    Error::Invalid(format!(
+        "Cyber CTF couldn't use the system keychain to keep your session. On Linux, start and unlock a keyring \
+         (GNOME Keyring or KWallet) and sign in again. ({e})"
+    ))
 }
 
 #[cfg(debug_assertions)]
@@ -103,7 +113,7 @@ fn save_session(session: &Session) -> Result<()> {
     }
     #[cfg(not(debug_assertions))]
     {
-        entry()?.set_password(&raw).map_err(|e| Error::Invalid(format!("keychain: {e}")))
+        entry()?.set_password(&raw).map_err(keychain_error)
     }
 }
 
@@ -280,10 +290,13 @@ pub async fn auth_login(app: AppHandle) -> Result<AuthStatus> {
         .append_pair("code_challenge", &code_challenge(&verifier))
         .append_pair("code_challenge_method", "S256")
         .append_pair("resource", &api);
-    app.opener().open_url(authorize.as_str(), None::<&str>).map_err(|e| Error::Invalid(format!("could not open the browser: {e}")))?;
+    app.opener()
+        .open_url(authorize.as_str(), None::<&str>)
+        .map_err(|_| Error::Invalid("No browser opened for sign-in. Set a default web browser for this account and try again.".into()))?;
 
-    let (code, returned_state) =
-        tokio::time::timeout(LOGIN_TIMEOUT, receive_callback(listener)).await.map_err(|_| Error::Invalid("login timed out".into()))??;
+    let (code, returned_state) = tokio::time::timeout(LOGIN_TIMEOUT, receive_callback(listener))
+        .await
+        .map_err(|_| Error::Invalid("Sign-in wasn't finished within 5 minutes, so it was cancelled. Try again.".into()))??;
     if returned_state != state {
         return Err(Error::Invalid("login state mismatch".into()));
     }
@@ -298,7 +311,9 @@ pub async fn auth_login(app: AppHandle) -> Result<AuthStatus> {
     ])
     .await?;
     let session = session_from(tokens, None);
-    save_session(&session)?;
+    // Signed in at cyber-auth, but the session can't be kept: say so, so the app doesn't look
+    // like the login was never accepted.
+    save_session(&session).map_err(|e| Error::Invalid(format!("You signed in, but the session wasn't saved. {e}")))?;
     Ok(AuthStatus { logged_in: true, name: session.name, email: session.email })
 }
 

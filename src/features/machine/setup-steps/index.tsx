@@ -13,7 +13,7 @@ import { SelfTest } from "@/features/machine/self-test";
 import { type SystemReport } from "@/lib/tauri";
 import { AttackStep } from "@/features/machine/setup-steps/attack-step";
 import { EngineStep } from "@/features/machine/setup-steps/engine-step";
-import { CmdRow, Num, Outcome, Requirement, Skipped } from "@/features/machine/setup-steps/parts";
+import { CmdRow, Log, Num, Outcome, Requirement, Skipped } from "@/features/machine/setup-steps/parts";
 import { MachineStep, hasHypervisor, isDockerReady } from "@/features/machine/setup-steps/steps";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
 import { VagrantStep, VmStep } from "@/features/machine/setup-steps/vm-steps";
@@ -64,29 +64,53 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
   }
 
   if (step === "virtualization") {
+    const installing = setup.installing === "wsl";
+    const tried = !installing && setup.logs.length > 0 && setup.logs[0].startsWith("Turning on WSL");
     return (
       <>
-        <ol className="space-y-3">
-          <Num n={1}>
-            Open <b>PowerShell</b> as Administrator (right-click → “Run as administrator”).
-          </Num>
-          <Num n={2}>
-            Run this, then reboot when it finishes:
-            <div className="mt-1.5">
-              <CmdRow cmd="wsl --install" />
-            </div>
-          </Num>
-          <Num n={3}>
-            If Docker later says virtualization is off: open “Turn Windows features on or off” and enable <b>Virtual Machine Platform</b> and{" "}
-            <b>Windows Subsystem for Linux</b>, and make sure virtualization is enabled in your BIOS/UEFI.
-          </Num>
-        </ol>
-        <button
-          onClick={() => openUrl("https://learn.microsoft.com/windows/wsl/install").catch(() => {})}
-          className="mt-4 inline-flex items-center gap-1.5 text-[0.75rem] text-learn hover:underline"
+        <p className="text-[0.8125rem] text-muted-foreground">
+          Cyber CTF turns on WSL 2 for you. Windows asks for permission once (the usual admin prompt), then needs a restart.
+        </p>
+        <Button
+          variant="learn"
+          className="mt-4"
+          disabled={setup.busy}
+          onClick={() => setup.install("wsl", "wsl", "Turning on WSL 2. Accept the Windows prompt to continue…")}
         >
-          <ExternalLink className="size-3.5" /> Microsoft’s WSL install guide
-        </button>
+          {installing ? "Turning on WSL 2…" : "Turn on WSL 2"}
+        </Button>
+        <div className="mt-3">
+          <Log setup={setup} />
+        </div>
+        {tried && (
+          <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[0.8125rem] text-amber-200">
+            Restart Windows to finish, then open Cyber CTF again to continue setup.
+          </p>
+        )}
+        <details className="mt-4 text-[0.78125rem] text-muted-foreground">
+          <summary className="cursor-pointer hover:text-foreground">Do it by hand instead</summary>
+          <ol className="mt-3 space-y-3">
+            <Num n={1}>
+              Open <b>PowerShell</b> as Administrator (right-click → “Run as administrator”).
+            </Num>
+            <Num n={2}>
+              Run this, then reboot when it finishes:
+              <div className="mt-1.5">
+                <CmdRow cmd="wsl --install" />
+              </div>
+            </Num>
+            <Num n={3}>
+              If Docker later says virtualization is off: open “Turn Windows features on or off” and enable <b>Virtual Machine Platform</b> and{" "}
+              <b>Windows Subsystem for Linux</b>, and make sure virtualization is enabled in your BIOS/UEFI.
+            </Num>
+          </ol>
+          <button
+            onClick={() => openUrl("https://learn.microsoft.com/windows/wsl/install").catch(() => {})}
+            className="mt-4 inline-flex items-center gap-1.5 text-[0.75rem] text-learn hover:underline"
+          >
+            <ExternalLink className="size-3.5" /> Microsoft’s WSL install guide
+          </button>
+        </details>
       </>
     );
   }
