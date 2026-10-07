@@ -201,7 +201,7 @@ export function LabDetail({
   // a local VM lab; a remote container lab's runs next to it on its host.
   // Not while the lab itself is starting, resuming or stopping: a resume brings the attack VM
   // back on its own, and a second `vagrant up` in its folder at the same time would collide.
-  const box = useAttackBox(lab.id, { running: running && !deployingHere, local: !remote, kind: isDocker ? "container" : "vm" });
+  const box = useAttackBox(lab.id, { running, holding: deployingHere, local: !remote, kind: isDocker ? "container" : "vm" });
   const exegol = box.status;
   const [check, clearCheck] = useLabCheck(lab.id, { running, downCount: down.length, enabled: isDocker });
 
