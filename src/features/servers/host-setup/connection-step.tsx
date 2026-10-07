@@ -17,7 +17,10 @@ export function ConnectionStep({ s }: { s: HostSetup }) {
   const [pubkey, setPubkey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
-    if (isToken && pubkey === null) serverPublicKey().then(setPubkey).catch(() => {});
+    if (isToken && pubkey === null)
+      serverPublicKey()
+        .then(setPubkey)
+        .catch(() => {});
   }, [isToken, pubkey]);
   const copyKey = async () => {
     if (!pubkey) return;

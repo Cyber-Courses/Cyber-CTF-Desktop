@@ -18,7 +18,7 @@ import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { apiQuery, authLogin, authStatus, machineWorkloads, openSettings, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
-import { useDeployingLabs } from "@/lib/deploy-store";
+import { operationLabel, SIGNED_OUT_EVENT, useActiveOperations, useDeployingLabs } from "@/lib/deploy-store";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
@@ -122,6 +122,26 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // The session can disappear under the app (signed out elsewhere, a refresh token revoked, the
+  // keychain locked or cleared). Re-read it when an action says so, when the window comes back,
+  // and now and then while signed in, so the sidebar and Start buttons don't claim a session
+  // that's gone.
+  const loggedIn = !!auth?.loggedIn;
+  useEffect(() => {
+    const reread = () =>
+      authStatus()
+        .then(setAuth)
+        .catch(() => {});
+    window.addEventListener(SIGNED_OUT_EVENT, reread);
+    window.addEventListener("focus", reread);
+    const t = loggedIn ? setInterval(reread, 30_000) : undefined;
+    return () => {
+      window.removeEventListener(SIGNED_OUT_EVENT, reread);
+      window.removeEventListener("focus", reread);
+      clearInterval(t);
+    };
+  }, [loggedIn]);
+
   // Labs for the palette: load once the app is ready and whenever sign-in changes.
   useEffect(() => {
     apiQuery<{ labs: { id: string; slug: string; title: string; category: string }[] }>("{ labs(sort: [{ title: ASC }]) { id slug title category } }")
@@ -133,6 +153,20 @@ export function AppShell() {
   // click away wherever you are. Deploys come from the backend (so they survive a reload); the
   // running set is polled from this machine's workloads.
   const deploying = useDeployingLabs();
+  // Ctrl+, opens Settings on Linux and Windows, where the menu bar (and its shortcut) is gone.
+  // macOS keeps Cmd+, in the app menu, so it is left to that there.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "," && !navigator.userAgent.includes("Mac")) {
+        e.preventDefault();
+        openSettings().catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  // What each busy lab is doing and the step it is at, for a live line under its name.
+  const ops = useActiveOperations();
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     let alive = true;
@@ -148,8 +182,8 @@ export function AppShell() {
     };
   }, []);
   const activeLabs = palLabs
-    .filter((l) => deploying.has(l.id) || runningIds.has(l.id))
-    .map((l) => ({ ...l, deploying: deploying.has(l.id) }));
+    .filter((l) => deploying.has(l.id) || ops.has(l.id) || runningIds.has(l.id))
+    .map((l) => ({ ...l, op: ops.get(l.id) ?? (deploying.has(l.id) ? { labId: l.id, op: "launch" as const, machine: null, step: null } : null) }));
 
   const paletteCommands: Command[] = [
     { id: "find-lab", label: "Find a lab", hint: "search", icon: Search, keywords: "labs search ctf", run: findALab },
@@ -254,14 +288,39 @@ export function AppShell() {
                   <span
                     className={cn(
                       "grid size-7 shrink-0 place-items-center rounded-md border",
-                      l.deploying ? "border-learn/25 bg-learn/10 text-learn" : "border-emerald-500/25 bg-emerald-500/10 text-emerald-500",
+                      l.op ? "border-learn/25 bg-learn/10 text-learn" : "border-emerald-500/25 bg-emerald-500/10 text-emerald-500",
                     )}
                   >
-                    {l.deploying ? <Spinner className="size-3.5" /> : <FlaskConical className="size-3.5" />}
+                    {l.op ? <Spinner className="size-3.5" /> : <FlaskConical className="size-3.5" />}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[0.78125rem] font-medium text-foreground">{l.title}</span>
-                    <span className="block truncate text-[0.65625rem] text-muted-foreground">{l.deploying ? "Deploying…" : "Running"}</span>
+                    <span className="flex items-center gap-1.5 truncate text-[0.65625rem] text-muted-foreground">
+                      {l.op ? (
+                        <span className="min-w-0">
+                          <span className="block truncate text-learn">{operationLabel(l.op)}</span>
+                          {/* The step the operation is at, re-entering as it changes. */}
+                          {l.op.step && (
+                            <span
+                              key={l.op.step}
+                              className="animate-fade-in block truncate font-mono text-[0.59375rem] text-muted-foreground/80"
+                              title={l.op.step}
+                            >
+                              {l.op.step}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <>
+                          {/* A live dot: the lab is up right now, not a stale entry. */}
+                          <span className="relative flex size-1.5 shrink-0">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+                            <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
+                          </span>
+                          Running
+                        </>
+                      )}
+                    </span>
                   </span>
                 </button>
               ))}
@@ -358,6 +417,7 @@ function Screen({
   return report ? (
     <Labs
       loggedIn={auth?.loggedIn ?? false}
+      authReady={auth !== null}
       onLogin={async () => onAuthChange(await authLogin())}
       hostArch={report.arch}
       report={report}

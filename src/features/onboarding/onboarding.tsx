@@ -1,5 +1,7 @@
 "use client";
 
+import { ErrorBoundary } from "@/components/error-screen";
+
 import Image from "next/image";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +21,21 @@ import { authLogin, authStatus, systemCheck, type AuthStatus, type SystemReport 
 import { cn } from "@/lib/utils";
 
 type OnboardingStep = "welcome" | "signin" | MachineStep | "done";
+
+/** Names for the progress line. VM steps are optional: Docker labs run without them. */
+const STEP_NAMES: Record<OnboardingStep, string> = {
+  welcome: "Welcome",
+  signin: "Sign in",
+  pkgmgr: "Package manager",
+  virtualization: "Virtualization",
+  docker: "Container engine",
+  "docker-test": "Container test",
+  attack: "Attack box",
+  vm: "Virtual machines (optional)",
+  vagrant: "Vagrant (optional)",
+  "vm-test": "VM test (optional)",
+  done: "Done",
+};
 
 function StepHeader({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
   return (
@@ -65,6 +82,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [report, setReport] = useState<SystemReport | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const refreshReport = () => {
     systemCheck()
@@ -90,10 +108,12 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
 
   async function login() {
     setLoggingIn(true);
+    setLoginError(null);
     try {
       setAuth(await authLogin());
-    } catch {
-      /* cancelled or failed - stay on this step */
+    } catch (e) {
+      // Stay on this step, and say why: a timeout, a missing browser or an unsaved session.
+      setLoginError(String(e));
     } finally {
       setLoggingIn(false);
     }
@@ -114,11 +134,16 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
         )}
       </div>
 
-      {/* Progress segments */}
-      <div className="mx-auto flex w-full max-w-lg gap-1.5 px-6 pt-1">
-        {steps.map((_, n) => (
-          <div key={n} className={cn("h-1 flex-1 rounded-full transition-colors", n <= i ? "bg-learn" : "bg-muted")} />
-        ))}
+      {/* Progress segments, with the step's name and position */}
+      <div className="mx-auto w-full max-w-lg px-6 pt-1">
+        <div className="flex gap-1.5">
+          {steps.map((_, n) => (
+            <div key={n} className={cn("h-1 flex-1 rounded-full transition-colors", n <= i ? "bg-learn" : "bg-muted")} />
+          ))}
+        </div>
+        <p className="mt-2 text-center text-xs text-muted-foreground">
+          Step {Math.min(i, steps.length - 1) + 1} of {steps.length} · {STEP_NAMES[step]}
+        </p>
       </div>
 
       <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-8">
@@ -185,13 +210,18 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                     <Button variant="learn" size="lg" className="w-full" onClick={login} disabled={loggingIn}>
                       {loggingIn ? (
                         <>
-                          <Spinner className="size-4" /> Waiting for the browser…
+                          <Spinner className="size-4" /> Waiting for the browser… (up to 5 minutes)
                         </>
                       ) : (
                         "Sign in"
                       )}
                     </Button>
                     <p className="mt-2 text-center text-xs text-muted-foreground">Opens cyberauth.co in your browser. You can also do this later.</p>
+                    {loginError && (
+                      <p role="alert" className="mt-3 rounded-lg border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-300">
+                        {loginError}
+                      </p>
+                    )}
                   </>
                 )}
               </div>
@@ -223,7 +253,9 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                 <div>
                   <StepHeader icon={<meta.icon className="size-6 text-foreground" />} title={meta.title} description={meta.description} />
                   <div className="mt-8">
-                    <MachineStepBody step={step} report={report} setup={setup} />
+                    <ErrorBoundary resetKey={step} title="This step couldn’t load">
+                      <MachineStepBody step={step} report={report} setup={setup} />
+                    </ErrorBoundary>
                   </div>
                   <div className="mt-8 flex gap-2">
                     <Button variant="outline" className="flex-1" onClick={back} disabled={setup.busy}>

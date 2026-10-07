@@ -1,5 +1,7 @@
 "use client";
 
+import { ErrorBoundary } from "@/components/error-screen";
+
 import { useState } from "react";
 import { ArrowLeft, Play, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -84,7 +86,9 @@ export function MachineSetup({
                   </div>
                 </div>
                 <div className="mt-6">
-                  {key === "ready" ? <SetupOutcome report={report} setup={setup} /> : <MachineStepBody step={key} report={report} setup={setup} />}
+                  <ErrorBoundary resetKey={key} title="This step couldn’t load">
+                    {key === "ready" ? <SetupOutcome report={report} setup={setup} /> : <MachineStepBody step={key} report={report} setup={setup} />}
+                  </ErrorBoundary>
                 </div>
                 <div className="mt-6 flex items-center justify-between gap-2 border-t border-border pt-4">
                   <div>

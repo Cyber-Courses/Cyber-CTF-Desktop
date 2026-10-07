@@ -77,7 +77,10 @@ export function Account({
           )}
         </Button>
         {onSettings && (
-          <button onClick={onSettings} className="flex w-full items-center justify-center gap-1.5 text-[0.71875rem] text-muted-foreground transition-colors hover:text-foreground">
+          <button
+            onClick={onSettings}
+            className="flex w-full items-center justify-center gap-1.5 text-[0.71875rem] text-muted-foreground transition-colors hover:text-foreground"
+          >
             <Cog className="size-3.5" /> Settings
           </button>
         )}

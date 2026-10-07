@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback } from "react";
-import { serverList, labLaunch, labStop, type Provider } from "@/lib/tauri";
-import { getAttackImage, getVmProvider } from "@/lib/settings";
+import { serverList, labLaunch, labPark, labProvision, labResume, labStop, type Park, type Provider } from "@/lib/tauri";
+import { getAttackBox, getAttackImage, getAutoAttackBox, getVmProvider } from "@/lib/settings";
 import { notify } from "@/lib/notify";
 import type { Lab } from "@/features/labs/use-labs";
 import { setLastRun } from "@/lib/last-run";
@@ -12,10 +12,11 @@ import { appendDeployLog, beginDeploy, endDeploy, useDeploy } from "@/lib/deploy
  * Start/stop actions for labs, shared across screens. The busy lab, its streamed log lines
  * and which lab they belong to live in a module store (deploy-store), so a deploy started
  * here keeps streaming and stays visible even after the labs screen unmounts (e.g. the user
- * opens Settings) and comes back. UI reads `busy` / `activeLab` / `logs`.
+ * opens Settings) and comes back. Keyed per lab, so two deploys at once keep separate logs; the
+ * UI reads each lab's run from `runs[labId]`.
  */
 export function useLabActions(refresh: (lab: Lab) => void) {
-  const { busy, activeLab, logs, times } = useDeploy();
+  const { runs } = useDeploy();
 
   /**
    * `host` = a server host id to run a VM lab on, null for this machine. Omitted, VM labs
@@ -23,7 +24,16 @@ export function useLabActions(refresh: (lab: Lab) => void) {
    * container lab in a VM on this machine (its deploy/vagrant lab host) on that hypervisor.
    */
   const launch = useCallback(
-    async (lab: Lab, host?: string | null, vmProvider?: Provider) => {
+    async (
+      lab: Lab,
+      host?: string | null,
+      vmProvider?: Provider,
+      /** The machine report, to pick a hypervisor that is actually installed here. */
+      report?: {
+        vagrant: { installed: boolean };
+        vmProviders: { provider: Provider; remote: boolean; available: boolean; hypervisor?: boolean | null }[];
+      } | null,
+    ) => {
       if (!lab.runtime) return;
       beginDeploy(lab.id);
       try {
@@ -31,17 +41,41 @@ export function useLabActions(refresh: (lab: Lab) => void) {
         if (vm && host === undefined) host = await defaultHostFor(lab);
         // Docker labs go to a server host only when one is picked explicitly.
         const remote = host != null;
-        // Locally: the hypervisor picked in Settings when the lab supports it, else the
-        // first provider the lab supports that isn't a remote hypervisor.
         const preferred = getVmProvider();
+        // Hypervisors ready on this machine (Vagrant + the tool), the Settings default first;
+        // unknown (undefined) until the machine report has loaded.
+        const ready: Provider[] | undefined = report
+          ? (() => {
+              const r = report.vagrant.installed
+                ? report.vmProviders.filter((p) => !p.remote && p.available && p.hypervisor !== false).map((p) => p.provider)
+                : [];
+              return preferred && r.includes(preferred) ? [preferred, ...r.filter((p) => p !== preferred)] : r;
+            })()
+          : undefined;
+        // Locally: a ready hypervisor among those the lab supports. Never the lab's first
+        // listed provider: the catalogue lists them alphabetically, and picking e.g. "parallels"
+        // on a VirtualBox machine fails at once with "prlctl was not found". With no report yet,
+        // fall back to the Settings preference, then the first supported one.
         const local: Provider[] = lab.runtime.providers.filter((p) => p !== "vmware_esxi" && p !== "proxmox");
         const inLocalVm = !vm && !remote && !!vmProvider;
-        const provider = inLocalVm ? vmProvider! : vm && !remote ? ((preferred && local.includes(preferred) ? preferred : local[0]) ?? null) : null;
-        // Remotely, or inside a local VM, the lab network isn't reachable from here: start
-        // the attack box next to the lab.
-        const attackbox = remote || inLocalVm ? getAttackImage() : null;
-        await labLaunch(lab.id, provider, remote ? host! : null, attackbox, (line) => appendDeployLog(line));
-        appendDeployLog("✓ Lab is running");
+        const provider = inLocalVm
+          ? vmProvider!
+          : vm && !remote
+            ? ready === undefined
+              ? ((preferred && local.includes(preferred) ? preferred : local[0]) ?? null)
+              : (ready.find((p) => local.includes(p)) ?? null)
+            : null;
+        if (vm && !remote && provider === null) {
+          throw new Error(
+            `No hypervisor for this lab is installed on this machine (it runs on ${local.join(", ") || "none"}). Install one from the Machine page, or run it on a server.`,
+          );
+        }
+        // The lab network isn't reachable from here, so an attack box goes next to the lab.
+        // Remotely or inside a local VM: the container attack box image. A VM lab here: the
+        // attack VM's Vagrant box, when Settings start the attack box with each lab.
+        const attackbox = remote || inLocalVm ? getAttackImage() : vm && getAutoAttackBox() ? getAttackBox() : null;
+        await labLaunch(lab.id, provider, remote ? host! : null, attackbox, (line) => appendDeployLog(lab.id, line));
+        appendDeployLog(lab.id, "✓ Lab is running");
         setLastRun(lab.id);
         notify(
           "Lab ready",
@@ -52,9 +86,9 @@ export function useLabActions(refresh: (lab: Lab) => void) {
               : `${lab.title} is running on this machine.`,
         );
       } catch (e) {
-        appendDeployLog(`✗ ${String(e)}`);
+        appendDeployLog(lab.id, `✗ ${String(e)}`);
       } finally {
-        endDeploy();
+        endDeploy(lab.id);
         refresh(lab);
       }
     },
@@ -66,19 +100,75 @@ export function useLabActions(refresh: (lab: Lab) => void) {
       if (!lab.runtime) return;
       beginDeploy(lab.id);
       try {
-        await labStop(lab.id, lab.runtime.runtime, (line) => appendDeployLog(line));
-        appendDeployLog("✓ Lab stopped");
+        await labStop(lab.id, lab.runtime.runtime, (line) => appendDeployLog(lab.id, line));
+        appendDeployLog(lab.id, "✓ Lab stopped");
       } catch (e) {
-        appendDeployLog(`✗ ${String(e)}`);
+        appendDeployLog(lab.id, `✗ ${String(e)}`);
       } finally {
-        endDeploy();
+        endDeploy(lab.id);
         refresh(lab);
       }
     },
     [refresh],
   );
 
-  return { busy, activeLab, logs, times, launch, stop };
+  /** Pause (state saved) or shut down (powered off) a lab, keeping its machines for `resume`. */
+  const park = useCallback(
+    async (lab: Lab, mode: Park) => {
+      if (!lab.runtime) return;
+      beginDeploy(lab.id);
+      try {
+        await labPark(lab.id, lab.runtime.runtime, mode, (line) => appendDeployLog(lab.id, line));
+        appendDeployLog(lab.id, mode === "pause" ? "✓ Lab paused" : "✓ Lab shut down");
+      } catch (e) {
+        appendDeployLog(lab.id, `✗ ${String(e)}`);
+      } finally {
+        endDeploy(lab.id);
+        refresh(lab);
+      }
+    },
+    [refresh],
+  );
+
+  /** Bring a parked lab back as it was: no rebuild, no new launch. */
+  const resume = useCallback(
+    async (lab: Lab) => {
+      if (!lab.runtime) return;
+      beginDeploy(lab.id);
+      try {
+        await labResume(lab.id, lab.runtime.runtime, (line) => appendDeployLog(lab.id, line));
+        appendDeployLog(lab.id, "✓ Lab is running");
+        setLastRun(lab.id);
+        notify("Lab ready", `${lab.title} is back.`);
+      } catch (e) {
+        appendDeployLog(lab.id, `✗ ${String(e)}`);
+      } finally {
+        endDeploy(lab.id);
+        refresh(lab);
+      }
+    },
+    [refresh],
+  );
+
+  /** Re-run a VM lab's provisioning on one machine (or all), streamed into its deploy log. */
+  const provision = useCallback(
+    async (lab: Lab, machine: string | null) => {
+      if (!lab.runtime) return;
+      beginDeploy(lab.id);
+      try {
+        await labProvision(lab.id, lab.runtime.runtime, machine, (line) => appendDeployLog(lab.id, line));
+        appendDeployLog(lab.id, machine ? `✓ ${machine} provisioned` : "✓ Lab provisioned");
+      } catch (e) {
+        appendDeployLog(lab.id, `✗ ${String(e)}`);
+      } finally {
+        endDeploy(lab.id);
+        refresh(lab);
+      }
+    },
+    [refresh],
+  );
+
+  return { runs, launch, stop, park, resume, provision };
 }
 
 /** The default server host id, if one is set and the lab supports its hypervisor. */

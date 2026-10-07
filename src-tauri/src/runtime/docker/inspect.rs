@@ -180,6 +180,20 @@ fn tcp_ports(publishers: &[Publisher]) -> Vec<Port> {
         .collect()
 }
 
+/// The lab counts as running when at least one container is up. Labs have one-shot init services
+/// (evidence claim, place-evidence) that exit 0 after their job, so requiring *every* service to be
+/// up would read a healthy lab as stopped right after it finishes starting.
+fn is_running(entries: &[compose::PsEntry]) -> bool {
+    entries.iter().any(|e| e.state == "running")
+}
+
+/// Serving containers (those that publish a port) that should be up but aren't: a lab whose web
+/// died is degraded, not fine. One-shot init jobs publish nothing, so `serving` never lists them
+/// and their normal exit is ignored here.
+fn down_serving(entries: &[compose::PsEntry], serving: &[String]) -> Vec<(String, String)> {
+    entries.iter().filter(|e| e.state != "running" && serving.iter().any(|s| s == &e.service)).map(|e| (e.service.clone(), e.state.clone())).collect()
+}
+
 pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     let project = compose::project(id);
     let out = compose::output(dir, &project, &["ps", "--all", "--format", "json"]).await?;
@@ -187,7 +201,7 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     // Labs have one-shot init services (e.g. evidence, place-evidence) that exit 0 after
     // doing their job, so the lab is "running" when at least one service is up, not when
     // every service is. Only the live services are reported to the UI.
-    let running = entries.iter().any(|e| e.state == "running");
+    let running = is_running(&entries);
     let url = if running { first_published_url(&entries) } else { None };
     let run_names: Vec<String> = entries.iter().filter(|e| e.state == "running").map(|e| e.name.clone()).collect();
     let mut inspected = inspect_containers(dir, id, &run_names).await;
@@ -200,8 +214,7 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     } else {
         Vec::new()
     };
-    let down: Vec<(String, String)> =
-        entries.iter().filter(|e| e.state != "running" && serving.iter().any(|s| s == &e.service)).map(|e| (e.service.clone(), e.state.clone())).collect();
+    let down: Vec<(String, String)> = down_serving(&entries, &serving);
     // The lab's own networks, in order: a container also sits on Docker's own bridges (the
     // default `bridge`, a publish bridge), whose 172.x address isn't the lab address, and
     // `docker inspect` lists them in random order. Keep only lab-network interfaces, in this
@@ -225,7 +238,7 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
             // A running container that fails its compose healthcheck is surfaced as unhealthy,
             // so the UI greys it like a dead one instead of showing a broken lab as fine.
             let state = if e.health == "unhealthy" { "unhealthy".to_string() } else { e.state };
-            Machine { name: e.service, state, image: e.image, ip, ports, interfaces, services }
+            Machine { name: e.service, state, image: e.image, ip, ports, interfaces, services, infra: false }
         })
         .collect();
     for (service, state) in down {
@@ -238,10 +251,11 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
                 ports: Vec::new(),
                 interfaces: Vec::new(),
                 services: Vec::new(),
+                infra: false,
             });
         }
     }
-    Ok(LabStatus { running, machines, networks, url, host: None, expires_at: None, place: None })
+    Ok(LabStatus { running, parked: None, machines, networks, url, host: None, expires_at: None, place: None, provider: Some("docker".to_string()) })
 }
 
 /// Where the lab is reachable on this machine (its first published port), once running.
@@ -254,7 +268,42 @@ pub async fn primary_url(dir: &Path, id: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::compose::parse_ps;
-    use super::{declared_services, first_published_url, is_datastore, parse_inspect, parse_networks, short_network, tcp_ports};
+    use super::{declared_services, down_serving, first_published_url, is_datastore, is_running, parse_inspect, parse_networks, short_network, tcp_ports};
+
+    // A compose `ps --all` line, as Docker Compose prints it.
+    const INIT_EXITED: &str = r#"[
+        {"Service":"web","State":"running"},
+        {"Service":"database","State":"running"},
+        {"Service":"database-init-1","State":"exited"}]"#;
+
+    #[test]
+    fn a_lab_is_running_when_its_one_shot_init_has_exited() {
+        // Regression: after a start the evidence init exits 0; the lab must still read as running
+        // (web + database up), not flip back to a "Start lab" page.
+        let entries = parse_ps(INIT_EXITED);
+        assert!(is_running(&entries));
+        // The exited init publishes nothing, so it is never counted as a down serving container.
+        assert_eq!(down_serving(&entries, &["web".into(), "database".into()]), vec![]);
+    }
+
+    #[test]
+    fn a_lab_with_only_a_finished_init_is_not_running() {
+        let entries = parse_ps(r#"[{"Service":"database-init-1","State":"exited"}]"#);
+        assert!(!is_running(&entries));
+    }
+
+    #[test]
+    fn a_serving_container_that_died_is_reported_down_while_others_run() {
+        // web died but the database is up: running (something is up) yet degraded, so web is listed.
+        let entries = parse_ps(
+            r#"[
+            {"Service":"web","State":"exited"},
+            {"Service":"database","State":"running"},
+            {"Service":"database-init-1","State":"exited"}]"#,
+        );
+        assert!(is_running(&entries));
+        assert_eq!(down_serving(&entries, &["web".into(), "database".into()]), vec![("web".to_string(), "exited".to_string())]);
+    }
 
     #[test]
     fn datastores_are_recognised_by_service_or_image() {

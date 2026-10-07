@@ -7,7 +7,7 @@ use serde::Serialize;
 use crate::error::{Error, Result};
 use crate::exec::{run, run_read, stream};
 
-fn container(id: &str) -> String {
+pub fn container(id: &str) -> String {
     format!("cyberctf-{id}-attacker")
 }
 
@@ -94,9 +94,10 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
     // Clear any previous attack box so a re-launch is clean.
     let _ = run("docker", &["rm", "-f", &name], None).await;
     log(format!("Starting the attack box on {attack_net}…"));
+    // --init: `sleep` as PID 1 ignores SIGTERM, so every `docker stop` waited out its timeout.
     stream(
         "docker",
-        &["run", "-d", "--name", &name, "--network", &attack_net, "--hostname", "attacker", "--cap-add", "NET_ADMIN", image, "sleep", "infinity"],
+        &["run", "-d", "--init", "--name", &name, "--network", &attack_net, "--hostname", "attacker", "--cap-add", "NET_ADMIN", image, "sleep", "infinity"],
         None,
         &[],
         &mut log,
@@ -182,9 +183,15 @@ pub fn open_terminal(command: &str) -> Result<()> {
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         let run = format!("clear; DOCKER_CLI_HINTS=false exec {command}");
-        for term in ["x-terminal-emulator", "gnome-terminal", "konsole", "xterm"] {
-            if std::process::Command::new(term).args(["-e", "sh", "-c", &run]).spawn().is_ok() {
-                return Ok(());
+        // gnome-terminal's `-e` takes one string, so it gets `--`; the others run what follows `-e`.
+        for (term, flag) in [("x-terminal-emulator", "-e"), ("gnome-terminal", "--"), ("konsole", "-e"), ("xterm", "-e")] {
+            let Ok(mut child) = std::process::Command::new(term).args([flag, "sh", "-c", &run]).spawn() else { continue };
+            // A terminal that can't start (e.g. zutty without its font) dies within a moment
+            // without a window, so give it that moment and fall through to the next one.
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            match child.try_wait() {
+                Ok(Some(status)) if !status.success() => continue,
+                _ => return Ok(()),
             }
         }
         Err(Error::Invalid(format!("couldn't open a terminal; run this yourself: {command}")))

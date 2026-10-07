@@ -67,11 +67,24 @@ impl Reporter {
                 Ok(v)
             }
             Err(e) => {
-                self.send(step, label, "fail", Some(e.to_string()));
+                self.send(step, label, "fail", Some(explain(&e.to_string())));
                 Err(e)
             }
         }
     }
+}
+
+/// A plain-language hint for the failures people actually hit, in front of the raw error (kept
+/// as the detail). Unknown errors pass through unchanged.
+fn explain(raw: &str) -> String {
+    let hint = if raw.contains("type=kvm") || raw.contains("preferred machine") {
+        "KVM isn't usable by this user. Check that /dev/kvm exists and that you are in the kvm and libvirt groups, then run the test again."
+    } else if raw.contains("Cannot connect to the Docker daemon") || raw.contains("docker.sock") {
+        "The container engine isn't reachable. Start Docker and check that your user can use it (the docker group), then run the test again."
+    } else {
+        return raw.to_string();
+    };
+    format!("{hint} Details: {raw}")
 }
 
 pub(crate) fn work_dir(app: &AppHandle, kind: &str) -> Result<PathBuf> {
@@ -448,4 +461,22 @@ async fn vm_steps(dir: &Path, preferred: Option<Provider>, r: &Reporter) -> Resu
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod explain_tests {
+    use super::explain;
+
+    #[test]
+    fn kvm_failure_gets_a_hint_and_keeps_the_details() {
+        let raw = "could not get preferred machine for /usr/bin/qemu-system-x86_64 type=kvm";
+        let out = explain(raw);
+        assert!(out.starts_with("KVM isn't usable"));
+        assert!(out.ends_with(raw));
+    }
+
+    #[test]
+    fn unknown_errors_pass_through_unchanged() {
+        assert_eq!(explain("something else broke"), "something else broke");
+    }
 }

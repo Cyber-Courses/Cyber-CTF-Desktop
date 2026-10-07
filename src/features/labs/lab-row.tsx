@@ -62,6 +62,7 @@ export function LabRow({
   hostArch,
   onOpen,
   onStop,
+  onResume,
   solved = false,
   setup = null,
 }: {
@@ -74,6 +75,8 @@ export function LabRow({
   hostArch: string;
   onOpen: () => void;
   onStop: () => void;
+  /** Brings a paused or shut-down lab back as it was. */
+  onResume?: () => void;
   /** The player already solved it (website evidence). */
   solved?: boolean;
   /** What this machine is missing to run it (see lab-readiness), or null. */
@@ -82,6 +85,7 @@ export function LabRow({
   const rt = lab.runtime;
   const native = rt?.architectures.includes(hostArch) ?? true;
   const running = status?.running ?? false;
+  const parked = !running && (status?.parked ?? null);
   const RuntimeIcon = rt?.runtime === "VM" ? Monitor : Container;
 
   return (
@@ -109,26 +113,9 @@ export function LabRow({
         </div>
       </div>
 
+      {/* Actions sit before the place icons, so the icons and the chevron stay put on every row
+          and a Stop or Resume button grows into the empty middle instead of shifting them. */}
       <div className="ml-auto flex shrink-0 items-center gap-3">
-        {rt && (
-          <span className="hidden items-center gap-1.5 text-[0.6875rem] text-muted-foreground xl:inline-flex">
-            {!native && <span className="text-amber-500">emulated</span>}
-            <span className="inline-flex items-center gap-1">
-              {/* Every place is shown: where it runs (emerald), where it can (accent), and where
-                  it can't (greyed), so the row reads as the full set of options at a glance. */}
-              {runPlaces(rt).map(({ key, icon: Icon, label, available }) => {
-                const inUse = running && status?.place === key;
-                const hint = inUse ? `Running on: ${status?.host ?? label}` : available ? `Can run on: ${label}` : `Not available: ${label}`;
-                return (
-                  <span key={key} title={hint} aria-label={hint} className="inline-flex">
-                    <Icon className={cn("size-3", inUse ? "text-emerald-500" : available ? "text-learn" : "text-muted-foreground/30")} />
-                  </span>
-                );
-              })}
-            </span>
-          </span>
-        )}
-
         {running ? (
           <>
             {status?.url && (
@@ -140,6 +127,15 @@ export function LabRow({
               {busy ? "Stopping…" : "Stop"}
             </RowButton>
           </>
+        ) : parked ? (
+          <>
+            <span className="text-[0.6875rem] text-muted-foreground">{parked === "pause" ? "Paused" : "Shut down"}</span>
+            {onResume && (
+              <RowButton tone="learn" onClick={onResume} disabled={busy} title="Bring it back as it was">
+                {busy ? "Resuming…" : "Resume"}
+              </RowButton>
+            )}
+          </>
         ) : setup ? (
           <RowButton onClick={() => machineOpenSetup().catch(() => {})} title="Open machine setup">
             <Wrench className="size-3" /> {setup}
@@ -150,6 +146,25 @@ export function LabRow({
           </RowButton>
         ) : null}
         {/* Starting happens on the lab's own page, where you pick where to run; the row opens it. */}
+
+        {rt && (
+          <span className="hidden items-center gap-1.5 text-[0.6875rem] text-muted-foreground lg:inline-flex">
+            {!native && <span className="text-amber-500">emulated</span>}
+            <span className="inline-flex items-center gap-1">
+              {/* Every place is shown: where it runs (emerald), where it can (accent), and where
+                  it can't (greyed), so the row reads as the full set of options at a glance. */}
+              {runPlaces(rt).map(({ key, icon: Icon, label, available }) => {
+                const inUse = running && status?.place === key;
+                const hint = inUse ? `Running on: ${status?.host ?? label}` : available ? `Can run on: ${label}` : `Not available: ${label}`;
+                return (
+                  <span key={key} title={hint} aria-label={hint} className="inline-flex">
+                    <Icon className={cn("size-3", inUse ? "text-emerald-500" : available ? "text-learn" : "text-muted-foreground/60")} />
+                  </span>
+                );
+              })}
+            </span>
+          </span>
+        )}
 
         <ChevronRight className="size-4 text-muted-foreground/50 transition-colors group-hover:text-foreground" />
       </div>

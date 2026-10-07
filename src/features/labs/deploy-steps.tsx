@@ -6,6 +6,19 @@ import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/ui/log-console";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
+import type { ActiveOperation } from "@/lib/tauri";
+
+type Operation = ActiveOperation["op"];
+
+// Operations on a lab that is already built: one step named after them, not the launch's
+// "Building" / "Preparing", which read as a new deploy while the lab was shutting down.
+const OPERATIONS: Partial<Record<Operation, { busy: string; step: string; done: string }>> = {
+  resume: { busy: "Resuming", step: "Bring the machines back", done: "Resumed" },
+  pause: { busy: "Pausing", step: "Save the machines' state", done: "Paused" },
+  shutdown: { busy: "Shutting down", step: "Power the machines off", done: "Shut down" },
+  stop: { busy: "Stopping", step: "Remove the machines", done: "Removed" },
+  attack_vm: { busy: "Starting", step: "Start the attack VM", done: "Started" },
+};
 
 /**
  * A lab's start-up as named steps with their durations, Vercel-build style. The steps are read
@@ -73,8 +86,10 @@ function deriveSteps(timed: Timed[]): Step[] {
       else push("prepare", isPrepLine(l) ? "Prepare this machine" : "Start", t);
     } else if (target === "terraform") {
       if (/Initializing|terraform init|Installing|Finding .* versions|Reusing previous/.test(l)) push("tf-init", "Set up Terraform", t);
-      else if (/Creating\.\.\.|Creation complete|Still creating|Destroying|Apply complete|Plan:|will perform|Modif/.test(l)) push("tf-apply", "Create the infrastructure", t);
-      else if (/Waiting for the lab host|running:|install Docker|cloud-init|bootstrap|is ready|ready/i.test(l)) push("tf-ready", "Install and start the lab", t);
+      else if (/Creating\.\.\.|Creation complete|Still creating|Destroying|Apply complete|Plan:|will perform|Modif/.test(l))
+        push("tf-apply", "Create the infrastructure", t);
+      else if (/Waiting for the lab host|running:|install Docker|cloud-init|bootstrap|is ready|ready/i.test(l))
+        push("tf-ready", "Install and start the lab", t);
       else push(steps.at(-1)?.id ?? "tf-init", steps.at(-1)?.label ?? "Set up Terraform", t);
     } else if (target === "docker") {
       const p = DOCKER_PHASES.find((ph) => ph.match(l));
@@ -103,7 +118,22 @@ function useTimedLines(lines: string[]): Timed[] {
   return timed;
 }
 
-export function DeploySteps({ lines, times, busy, ready, where }: { lines: string[]; times?: number[]; busy: boolean; ready: boolean; where?: string }) {
+export function DeploySteps({
+  lines,
+  times,
+  busy,
+  ready,
+  where,
+  operation = "launch",
+}: {
+  lines: string[];
+  times?: number[];
+  busy: boolean;
+  ready: boolean;
+  where?: string;
+  /** What the log is of: a launch (steps read from the output) or an operation on the built lab. */
+  operation?: Operation;
+}) {
   const fallback = useTimedLines(lines);
   // Prefer the per-line timestamps kept in the deploy store (they survive leaving and returning
   // to the page, so the step durations don't reset); fall back to local timing if absent.
@@ -123,7 +153,8 @@ export function DeploySteps({ lines, times, busy, ready, where }: { lines: strin
   const end = done?.at ?? failed?.at ?? (busy ? now : timed.at(-1)?.at);
 
   // The steps to show, built from the log per the detected target (Vagrant / Terraform / Docker).
-  const steps = deriveSteps(timed);
+  const op = OPERATIONS[operation];
+  const steps = op ? (timed.length > 0 ? [{ id: operation, label: op.step, rows: timed }] : []) : deriveSteps(timed);
   const lastSeen = steps.at(-1)?.id;
 
   return (
@@ -142,11 +173,15 @@ export function DeploySteps({ lines, times, busy, ready, where }: { lines: strin
             </span>
           ) : busy ? (
             <span className="flex items-center gap-1.5 text-muted-foreground">
-              <Spinner className="size-3.5" /> Building
+              <Spinner className="size-3.5" /> {op?.busy ?? "Building"}
             </span>
-          ) : ready || done ? (
+          ) : ready || (done && !op) ? (
             <span className="flex items-center gap-1.5 text-emerald-500">
               <span className="size-1.5 rounded-full bg-emerald-500" /> Ready
+            </span>
+          ) : op && timed.length > 0 ? (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Check className="size-3.5 text-emerald-500" /> {op.done}
             </span>
           ) : null}
           {start && end && <span className="font-mono tabular-nums text-muted-foreground">{formatDuration(end - start)}</span>}
@@ -195,7 +230,7 @@ export function DeploySteps({ lines, times, busy, ready, where }: { lines: strin
             </li>
           );
         })}
-        {done && (
+        {done && !op && (
           <li className="flex items-center gap-2.5 px-3.5 py-2 text-[0.78125rem]">
             <span className="flex size-4 shrink-0 items-center justify-center">
               <Check className="size-3.5 text-emerald-500" />
@@ -208,7 +243,7 @@ export function DeploySteps({ lines, times, busy, ready, where }: { lines: strin
             <span className="flex size-4 shrink-0 items-center justify-center">
               <Circle className="size-2" />
             </span>
-            Preparing…
+            {op ? `${op.busy}…` : "Preparing…"}
           </li>
         )}
       </ul>

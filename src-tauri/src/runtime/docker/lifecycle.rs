@@ -30,15 +30,46 @@ async fn is_running(dir: &Path, project: &str) -> bool {
     }
 }
 
+async fn has_containers(dir: &Path, project: &str) -> bool {
+    match compose::output(dir, project, &["ps", "-a", "--format", "json"]).await {
+        Ok(out) => !compose::parse_ps(&out).is_empty(),
+        Err(_) => false,
+    }
+}
+
 async fn published_host_ports(dir: &Path, project: &str, env: &[(String, String)]) -> Result<Vec<u16>> {
     let out = compose::output_env(dir, project, &["config", "--format", "json"], env).await?;
     Ok(compose::host_ports_from_config(&out))
+}
+
+/// Picks free loopback host ports for the lab's ephemeral ones and pins them (see
+/// `compose::PORTS_FILE`), so a shut down / resume keeps the lab at the same address. Done on a
+/// fresh start only: the pins of containers that already exist must stay as they were created.
+async fn pin_ports(dir: &Path, project: &str, env: &[(String, String)]) {
+    let file = dir.join(compose::PORTS_FILE);
+    let _ = std::fs::remove_file(&file);
+    let Ok(config) = compose::output_env(dir, project, &["config", "--format", "json"], env).await else { return };
+    // Hold each port until all are picked, so the OS doesn't hand out the same one twice.
+    let mut held = Vec::new();
+    let pins = compose::pinned_ports(&config, || {
+        let l = std::net::TcpListener::bind(("127.0.0.1", 0)).ok()?;
+        let port = l.local_addr().ok()?.port();
+        held.push(l);
+        Some(port)
+    });
+    drop(held);
+    if let Some(pins) = pins {
+        let _ = std::fs::write(&file, pins);
+    }
 }
 
 pub async fn start(dir: &Path, id: &str, env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
     // A stopped engine otherwise surfaces as a raw daemon-connection error much later.
     ensure_docker_up().await?;
     let project = compose::project(id);
+    if !has_containers(dir, &project).await {
+        pin_ports(dir, &project, env).await;
+    }
     // Two labs can't share a host port. Unless this lab is already up (idempotent restart),
     // refuse up front with a clear message instead of a cryptic Docker bind error. With the
     // engine confirmed up, a failure reading the ports is a real Compose-config error worth
@@ -58,6 +89,26 @@ pub async fn start(dir: &Path, id: &str, env: &[(String, String)], log: impl FnM
     compose::stream(dir, &project, &["up", "-d", "--pull", "missing", "--wait", "--wait-timeout", "600"], env, log).await
 }
 
+/// Stops the lab's containers, keeping them, their networks and volumes: the lab resumes as it
+/// was (`compose start`), no rebuild. The attack box is stopped alongside, so it comes back too.
+pub async fn park(dir: &Path, id: &str, mut log: impl FnMut(String)) -> Result<()> {
+    let project = compose::project(id);
+    // Nothing in the attack box needs a clean shutdown; -t 1 also covers boxes made before
+    // they ran with --init (their PID 1 ignores SIGTERM, so a plain stop waited 10 s).
+    let _ = run("docker", &["stop", "-t", "1", &crate::runtime::exegol::container(id)], None).await;
+    compose::stream(dir, &project, &["stop"], &[], &mut log).await
+}
+
+/// Starts the lab's parked containers again, and its attack box with them.
+pub async fn resume(dir: &Path, id: &str, mut log: impl FnMut(String)) -> Result<()> {
+    ensure_docker_up().await?;
+    let project = compose::project(id);
+    compose::stream(dir, &project, &["start"], &[], &mut log).await?;
+    let _ = run("docker", &["start", &crate::runtime::exegol::container(id)], None).await;
+    crate::runtime::exegol::rejoin(id).await;
+    Ok(())
+}
+
 /// Networks of this lab that its current Compose file no longer defines (left by an older
 /// version of the lab), so tools listing the lab's networks don't pick a dead one. Whatever
 /// is still plugged into one (the attack box) is unplugged first. Best effort.
@@ -74,17 +125,41 @@ async fn remove_stale_networks(dir: &Path, project: &str, env: &[(String, String
     let filter = format!("label=com.docker.compose.project={project}");
     let Ok(listed) = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await else { return };
     for net in listed.lines().map(str::trim).filter(|n| !n.is_empty() && !wanted.iter().any(|w| w == n)) {
-        if let Ok(attached) = run("docker", &["network", "inspect", "-f", "{{range .Containers}}{{.Name}} {{end}}", net], None).await {
-            for c in attached.split_whitespace() {
-                let _ = run("docker", &["network", "disconnect", "-f", net, c], None).await;
-            }
-        }
-        let _ = run("docker", &["network", "rm", net], None).await;
+        remove_network(net).await;
     }
 }
 
 /// Removes containers, networks and volumes: the next start is a clean lab.
-pub async fn stop(dir: &Path, id: &str, log: impl FnMut(String)) -> Result<()> {
+pub async fn stop(dir: &Path, id: &str, mut log: impl FnMut(String)) -> Result<()> {
     let project = compose::project(id);
-    compose::stream(dir, &project, &["down", "--volumes", "--remove-orphans"], &[], log).await
+    // The attack box starts with the lab and is plugged into the lab network, but it is not a
+    // Compose service of the project (no project label), so `down --remove-orphans` leaves it
+    // there and then can't remove the network it still sits on ("Resource is still in use").
+    // That leftover network kept the lab's fixed subnet, so a later fresh start failed with
+    // "Pool overlaps". Take the attack box down first, so the network is free when Compose
+    // removes it.
+    let _ = crate::runtime::exegol::stop(id, &mut log).await;
+    let down = compose::stream(dir, &project, &["down", "--volumes", "--remove-orphans"], &[], &mut log).await;
+    // Belt and braces: whatever network of this lab is still around (something else plugged into
+    // it, or Compose gave up), unplug everything from it and remove it, so nothing holds the subnet.
+    let filter = format!("label=com.docker.compose.project={project}");
+    if let Ok(listed) = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await {
+        for net in listed.lines().map(str::trim).filter(|n| !n.is_empty()) {
+            remove_network(net).await;
+        }
+    }
+    // The next start is a new lab: it picks its ports again.
+    let _ = std::fs::remove_file(dir.join(compose::PORTS_FILE));
+    down
+}
+
+/// Unplugs every container from `net` (force) and removes it. Best effort: a network that is
+/// already gone, or that something unrelated won't let go of, is left as is.
+async fn remove_network(net: &str) {
+    if let Ok(attached) = run("docker", &["network", "inspect", "-f", "{{range .Containers}}{{.Name}} {{end}}", net], None).await {
+        for c in attached.split_whitespace() {
+            let _ = run("docker", &["network", "disconnect", "-f", net, c], None).await;
+        }
+    }
+    let _ = run("docker", &["network", "rm", net], None).await;
 }

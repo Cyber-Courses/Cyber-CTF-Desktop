@@ -179,7 +179,7 @@ function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
           <span className="mono">{data.hostname}</span>
         </div>
         <span className="running">
-          <i /> {data.running ? "running" : "stopped"}
+          <i /> {stateLabel(data.state, data.running)}
         </span>
       </div>
       {pivot ? (
@@ -207,3 +207,11 @@ function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
 }
 
 export const nodeTypes = { zone: ZoneNode, bridge: BridgeNode, attacker: AttackerNode, computer: ComputerNode, hostport: HostPortNode, uplink: UplinkNode };
+
+/** A machine's state as a word: Vagrant's `saved`/`paused` and `poweroff`, Docker's `exited`. */
+function stateLabel(state: string, running: boolean): string {
+  if (running) return "running";
+  if (state === "saved" || state === "paused") return "paused";
+  if (state === "poweroff" || state === "exited" || state === "stopped") return "off";
+  return state || "stopped";
+}

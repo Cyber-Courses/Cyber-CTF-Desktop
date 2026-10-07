@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowRight, Cloud, Cpu, ExternalLink, MemoryStick, Play, RotateCcw, Server, TriangleAlert } from "lucide-react";
 import { Panel, RailLabel } from "@/components/ui/panel";
 import { Meter } from "@/components/ui/meter";
@@ -53,7 +52,7 @@ export function HomeScreen({
   onNavigate: (tab: Tab, slug?: string) => void;
 }) {
   const { labs, statuses, refreshStatus } = useLabs(auth?.loggedIn ?? false);
-  const { busy, launch, stop } = useLabActions(refreshStatus);
+  const { runs, launch, stop, resume } = useLabActions(refreshStatus);
   const [metrics, setMetrics] = useState<MachineMetrics | null>(null);
   // "Now" for the "last run" labels, taken once per visit.
   const [now] = useState(() => Date.now());
@@ -188,11 +187,11 @@ export function HomeScreen({
                       <p className="text-[0.65625rem] text-muted-foreground">last run {formatAgo(ts, now)}</p>
                     </button>
                     <button
-                      onClick={() => launch(lab)}
-                      disabled={busy === lab.id || !(auth?.loggedIn ?? false) || !lab.runtime}
+                      onClick={() => launch(lab, undefined, undefined, report)}
+                      disabled={!!runs[lab.id]?.busy || !(auth?.loggedIn ?? false) || !lab.runtime}
                       className="inline-flex shrink-0 items-center gap-1 rounded-md border border-learn bg-learn px-2 py-1 text-[0.6875rem] font-medium text-[#140b2e] hover:bg-learn/90 disabled:opacity-40"
                     >
-                      {busy === lab.id ? (
+                      {runs[lab.id]?.busy ? (
                         "…"
                       ) : (
                         <>
@@ -230,11 +229,12 @@ export function HomeScreen({
                     key={lab.id}
                     lab={lab}
                     status={statuses[lab.id]}
-                    busy={busy === lab.id}
+                    busy={!!runs[lab.id]?.busy}
                     loggedIn={auth?.loggedIn ?? false}
                     hostArch={report?.arch ?? ""}
                     onOpen={() => onNavigate("labs", lab.slug)}
                     onStop={() => stop(lab)}
+                    onResume={() => resume(lab)}
                   />
                 ))
               )}

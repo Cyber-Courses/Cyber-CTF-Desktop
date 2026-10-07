@@ -9,8 +9,8 @@ import { formatElapsed } from "@/lib/format";
  * Auto-scrolling terminal for streamed command output: black body, and a header with a
  * title, a live elapsed timer, and a collapse toggle. The timer ticks while `running` and
  * freezes when it ends, so the header doubles as done / failed feedback (failure is a final
- * line starting with ✗). The component is remounted per run by its parent, so its timer
- * state resets naturally.
+ * line starting with ✗). The timer restarts each time `running` turns on, so a parent can
+ * keep it mounted across runs.
  */
 export function LogConsole({
   lines,
@@ -39,10 +39,15 @@ export function LogConsole({
   }, [lines, open]);
 
   // Fold away a successful run when asked (its header still says it's done); keep failures open.
+  // A new run restarts the timer and unfolds: callers that keep the console mounted between
+  // runs (e.g. after a failure) would otherwise count from the first run's start.
   const [wasRunning, setWasRunning] = useState(running);
   if (wasRunning !== running) {
     setWasRunning(running);
-    if (!running && collapseOnDone && !(lines.at(-1)?.trimStart().startsWith("✗") ?? false)) setOpen(false);
+    if (running) {
+      setStartAt(null);
+      setOpen(true);
+    } else if (collapseOnDone && !(lines.at(-1)?.trimStart().startsWith("✗") ?? false)) setOpen(false);
   }
 
   // Tick only while running; setState happens in the async interval callback (not in the
@@ -88,7 +93,11 @@ export function LogConsole({
       {open && (
         <pre ref={pre} className="max-h-40 overflow-auto p-3 font-mono text-xs leading-relaxed text-muted-foreground">
           {/* Tools print blank lines around their messages: trim them, keep one between paragraphs. */}
-          {lines.join("\n").replace(/^\s*\n+/, "").replace(/\n\s*\n(\s*\n)+/g, "\n\n").trimEnd()}
+          {lines
+            .join("\n")
+            .replace(/^\s*\n+/, "")
+            .replace(/\n\s*\n(\s*\n)+/g, "\n\n")
+            .trimEnd()}
         </pre>
       )}
     </div>

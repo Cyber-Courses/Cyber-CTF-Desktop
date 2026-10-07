@@ -15,15 +15,64 @@ use crate::error::{Error, Result};
 const WINDOWS_CMD_SHIM: &[&str] = &["az", "gcloud", "oci"];
 
 /// Builds the Command, routing Windows batch-wrapper tools through `cmd /C` so they resolve.
+/// Environment variables that would redirect the Docker CLI to a different engine than the one
+/// the user configured as current (`docker context use`, which Docker Desktop's UI reflects).
+/// A process that launches the app (an IDE, a terminal integration, another tool) can carry a
+/// stale `DOCKER_HOST` or `DOCKER_CONTEXT` — e.g. pointing at OrbStack's `/var/run/docker.sock`
+/// while the user works in Docker Desktop. Every lab would then deploy to, and be looked for in,
+/// an engine the user never sees: status reads "not running" and a launch looks like it reset.
+/// Stripping these makes the launcher follow the configured current context, so it always agrees
+/// with `docker context show` and the Desktop UI.
+const DOCKER_ENGINE_OVERRIDES: [&str; 2] = ["DOCKER_HOST", "DOCKER_CONTEXT"];
+
+/// Whether `program` talks to the Docker engine (`docker`, including `docker compose`, a CLI
+/// plugin of the same binary), and so must not inherit an engine override.
+fn uses_docker_engine(program: &str) -> bool {
+    program == "docker"
+}
+
+/// On Windows, every child of a windowed app gets a console window of its own unless told not
+/// to: the status polls (docker, vagrant, VBoxManage) would flash one on screen every few
+/// seconds. `CREATE_NO_WINDOW` keeps them headless; their output is piped anyway.
+#[cfg(windows)]
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Keeps a child process off the screen on Windows (no-op elsewhere).
+pub fn headless(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+/// `headless` for a blocking `std::process::Command` (only Windows code calls it).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn headless_std(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 fn build(program: &str, args: &[&str]) -> Command {
     #[cfg(windows)]
     if WINDOWS_CMD_SHIM.contains(&program) {
         let mut cmd = Command::new("cmd");
         cmd.arg("/C").arg(program).args(args);
+        headless(&mut cmd);
         return cmd;
     }
     let mut cmd = Command::new(program);
     cmd.args(args);
+    headless(&mut cmd);
+    if uses_docker_engine(program) {
+        for var in DOCKER_ENGINE_OVERRIDES {
+            cmd.env_remove(var);
+        }
+    }
     cmd
 }
 
@@ -70,6 +119,10 @@ async fn run_inner(program: &'static str, args: &[&str], cwd: Option<&Path>, env
     let output = match timeout {
         None => cmd.output().await.map_err(to_err)?,
         Some(dur) => {
+            // `spawn` (unlike `output`) inherits the parent's stdio by default, so without
+            // explicit pipes `wait_with_output` returns an empty stdout even though the tool
+            // printed plenty: every timed status probe then read as "nothing running".
+            cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
             let child = cmd.spawn().map_err(to_err)?;
             match tokio::time::timeout(dur, child.wait_with_output()).await {
                 Ok(out) => out.map_err(to_err)?,
@@ -135,4 +188,40 @@ pub async fn stream(program: &'static str, args: &[&str], cwd: Option<&Path>, en
         return Err(Error::CommandFailed { command: format!("{program} {}", args.join(" ")), stderr });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DOCKER_ENGINE_OVERRIDES, uses_docker_engine};
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn timed_reads_capture_the_tools_output() {
+        // Regression: the timed path spawned without piping stdout, so `wait_with_output`
+        // returned "" for every status probe (docker ps, compose ps, vagrant status). Labs read
+        // as not running and a successful launch looked like it reset. A timed read must return
+        // what the tool printed, exactly like the untimed one.
+        let timed = super::run_read("sh", &["-c", "printf hi"], None).await.unwrap();
+        assert_eq!(timed, "hi");
+        let untimed = super::run("sh", &["-c", "printf hi"], None).await.unwrap();
+        assert_eq!(timed, untimed);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn timed_reads_surface_stderr_on_failure() {
+        // A failing tool's message is piped too, so it reaches the error instead of vanishing.
+        let err = super::run_read("sh", &["-c", "echo boom >&2; exit 3"], None).await.unwrap_err();
+        assert!(matches!(err, super::Error::CommandFailed { ref stderr, .. } if stderr.contains("boom")), "{err:?}");
+    }
+
+    #[test]
+    fn only_docker_drops_inherited_engine_overrides() {
+        // Regression: an inherited DOCKER_HOST pointed the app at OrbStack while the user worked
+        // in Docker Desktop, so labs were deployed to and looked for in the wrong engine.
+        assert!(uses_docker_engine("docker"));
+        assert!(!uses_docker_engine("vagrant"));
+        assert!(!uses_docker_engine("terraform"));
+        assert_eq!(DOCKER_ENGINE_OVERRIDES, ["DOCKER_HOST", "DOCKER_CONTEXT"]);
+    }
 }

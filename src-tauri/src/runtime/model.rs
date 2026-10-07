@@ -2,7 +2,7 @@
 //! (Docker, VM, Terraform), kept apart from the command surface so adding a field here
 //! doesn't touch command registration or dispatch.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A port the software inside a container binds: `target` is the port inside the
 /// container, `published` is where it is reachable on 127.0.0.1 (0 = not published).
@@ -37,6 +37,12 @@ pub struct Machine {
     /// empty when the lab declares none (never inferred).
     #[serde(default)]
     pub services: Vec<Service>,
+    /// Part of the lab's plumbing, not a target: the controller that provisions the machines
+    /// (Isoloom's `isoloom-controller`). Powered off once the lab is up, hidden from the
+    /// diagram, never counted as "down". (Isoloom will expose machine roles itself; until then
+    /// the controller is known by its name.)
+    #[serde(default)]
+    pub infra: bool,
 }
 
 /// One service inside a machine, as declared by the lab.
@@ -82,10 +88,39 @@ pub enum Place {
     Cloud,
 }
 
+/// How a lab was parked: its machines kept on disk, to resume later without rebuilding them.
+/// `Pause` saves the VMs' state (instant resume); `Shutdown` powers them off cleanly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Park {
+    Pause,
+    Shutdown,
+}
+
+impl Park {
+    pub fn id(self) -> &'static str {
+        match self {
+            Park::Pause => "pause",
+            Park::Shutdown => "shutdown",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Park> {
+        match id.trim() {
+            "pause" => Some(Park::Pause),
+            "shutdown" => Some(Park::Shutdown),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabStatus {
     pub running: bool,
+    /// Set when the launcher parked the lab (paused or shut down) and it isn't running: its
+    /// machines exist and resume as they were, so the UI offers Resume, not "clean up".
+    pub parked: Option<Park>,
     pub machines: Vec<Machine>,
     /// The lab's network segments (Docker labs); empty when the runtime doesn't report them.
     pub networks: Vec<Network>,
@@ -98,4 +133,8 @@ pub struct LabStatus {
     pub expires_at: Option<u64>,
     /// Where it runs; set by the runtime dispatcher (None from the per-runtime probes).
     pub place: Option<Place>,
+    /// The engine or hypervisor it runs on: "docker", or a Vagrant provider id ("virtualbox",
+    /// "vmware_desktop", "parallels", ...), or a server/cloud provider. "On this machine" alone
+    /// is misleading for a VM lab: this says which hypervisor to look in.
+    pub provider: Option<String>,
 }

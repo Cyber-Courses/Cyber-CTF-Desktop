@@ -92,7 +92,7 @@ export const machineMetrics = () => invoke<MachineMetrics>("machine_metrics");
 /** Opens the setup window, optionally at one step (e.g. "docker", "vm"). */
 export const machineOpenSetup = (step?: string) => invoke<void>("machine_open_setup", { step: step ?? null });
 
-export type Dependency = "docker" | "vagrant" | "terraform" | "virtualbox" | "qemu" | "utm" | "libvirt" | "awscli" | "azurecli" | "gcloud";
+export type Dependency = "docker" | "vagrant" | "terraform" | "virtualbox" | "qemu" | "utm" | "libvirt" | "awscli" | "azurecli" | "gcloud" | "wsl";
 
 /** Assisted one-click install of a lab dependency, streaming the installer output. */
 export function installDependency(dependency: Dependency, onLog: (line: string) => void) {

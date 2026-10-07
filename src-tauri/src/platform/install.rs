@@ -3,6 +3,7 @@
 //! UAC, Linux pkexec, or downloading the official app/installer for macOS casks and
 //! letting the tool's own installer run).
 
+#[cfg(target_os = "macos")]
 use std::path::Path;
 use std::process::Stdio;
 
@@ -26,6 +27,8 @@ pub enum Dependency {
     Awscli,
     Azurecli,
     Gcloud,
+    /// Windows Subsystem for Linux (WSL 2), enabled through its own installer.
+    Wsl,
 }
 
 struct Step {
@@ -75,6 +78,7 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Utm => vec![fetch_and_open(&brew, "utm", "UTM")],
             Dependency::Libvirt => return Err(Error::Invalid("libvirt isn't used on macOS; use QEMU or UTM instead.".into())),
             // Cloud CLIs (brew formulae; gcloud is a cask).
+            Dependency::Wsl => return Err(Error::Invalid("WSL is only available on Windows.".into())),
             Dependency::Awscli => vec![step(brew.clone(), &["install", "awscli"])],
             // Microsoft's prebuilt cask instead of the `azure-cli` formula: on recent macOS the
             // formula has no bottle and builds its whole tree (llvm, rust) from source, which takes
@@ -105,6 +109,14 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Awscli => "Amazon.AWSCLI",
             Dependency::Azurecli => "Microsoft.AzureCLI",
             Dependency::Gcloud => "Google.CloudSDK",
+            // Turns on the WSL and Virtual Machine Platform features and installs the WSL 2 kernel.
+            // Elevated through Windows' own UAC prompt; the features need a restart to take effect.
+            Dependency::Wsl => {
+                return Ok(vec![step(
+                    "powershell",
+                    &["-NoProfile", "-Command", "Start-Process -FilePath wsl.exe -ArgumentList '--install','--no-distribution' -Verb RunAs -Wait"],
+                )]);
+            }
         };
         Ok(vec![step("winget", &["install", "-e", "--id", id, "--accept-source-agreements", "--accept-package-agreements"])])
     }
@@ -112,6 +124,7 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
     {
         // pkexec raises a graphical password prompt (polkit) for the privileged install.
         Ok(match dep {
+            Dependency::Wsl => return Err(Error::Invalid("WSL is only available on Windows.".into())),
             Dependency::Docker => vec![step("pkexec", &["sh", "-c", "curl -fsSL https://get.docker.com | sh"])],
             Dependency::Vagrant => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y vagrant"])],
             // Terraform via HashiCorp's official apt repo (best effort across Debian/Ubuntu).
@@ -148,13 +161,15 @@ async fn run_step(step: &Step, on_line: &mut impl FnMut(String)) -> Result<()> {
     if let Some(note) = &step.note {
         on_line(note.clone());
     }
-    let mut child =
-        Command::new(&step.program).args(&step.args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| {
-            match e.kind() {
-                std::io::ErrorKind::NotFound => Error::Invalid(format!("{} is not available on this machine.", step.program)),
-                _ => Error::Io(e),
-            }
-        })?;
+    let mut cmd = Command::new(&step.program);
+    cmd.args(&step.args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    // Installers that need a console of their own (winget, an .msi) still get none here: their
+    // output streams into the app's setup log instead of a window flashing on screen.
+    crate::exec::headless(&mut cmd);
+    let mut child = cmd.spawn().map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => Error::Invalid(format!("{} is not available on this machine.", step.program)),
+        _ => Error::Io(e),
+    })?;
     let mut out = BufReader::new(child.stdout.take().expect("piped stdout")).lines();
     let mut err = BufReader::new(child.stderr.take().expect("piped stderr")).lines();
     let (mut out_done, mut err_done) = (false, false);

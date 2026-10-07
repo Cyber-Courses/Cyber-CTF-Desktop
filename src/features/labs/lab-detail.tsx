@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, ExternalLink, LogIn, Play, Square } from "lucide-react";
+import { ArrowLeft, ExternalLink, LogIn, Pause, Play, Power, RefreshCw, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { CopyValue } from "@/components/ui/copy-value";
 import { Panel, PanelHeader } from "@/components/ui/panel";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Tip } from "@/components/ui/tip";
 import { AttackBoxPanel } from "@/features/labs/attack-box-panel";
 import { DeploySteps } from "@/features/labs/deploy-steps";
 import { LabBrief } from "@/features/labs/lab-brief";
@@ -16,13 +20,35 @@ import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on
 import { runPlaces } from "@/features/labs/lab-row";
 import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
-import { useDeployingLabs } from "@/lib/deploy-store";
+import { useActiveOperations, useDeployingLabs, useWorkerLog } from "@/lib/deploy-store";
+import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
-import { labAttackShell, labTools, exegolShell, serverList, type LabTool, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
+import {
+  attackVmShell,
+  labAttackShell,
+  labTools,
+  exegolShell,
+  serverList,
+  type LabTool,
+  type Park,
+  type Provider,
+  type ServerHost,
+  type LabStatus,
+} from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 const VM_CLOUDS_NOT_YET = ["azure", "gcp", "digitalocean", "linode", "oci"];
+
+// The header's status while something runs on the lab: the containers report "running" well
+// before a launch or resume is done, and until the end of a shut down or stop.
+const OPERATION_STATUS: Partial<Record<string, string>> = {
+  launch: "Starting",
+  resume: "Resuming",
+  pause: "Pausing",
+  shutdown: "Shutting down",
+  stop: "Stopping",
+};
 
 export function LabDetail({
   lab,
@@ -38,6 +64,10 @@ export function LabDetail({
   onBack,
   onStart,
   onStop,
+  onPark,
+  onResume,
+  onProvision,
+  ready = true,
 }: {
   lab: Lab;
   status?: LabStatus;
@@ -55,15 +85,27 @@ export function LabDetail({
   onBack: () => void;
   onStart: (target: RunTarget) => Promise<void> | void;
   onStop: () => Promise<void> | void;
+  /** Pause (state saved) or shut down (powered off), machines kept for `onResume`. */
+  onPark?: (mode: Park) => Promise<void> | void;
+  onResume?: () => Promise<void> | void;
+  /** Re-run a VM lab's provisioners on one machine (null = all), in place. */
+  onProvision?: (machine: string | null) => Promise<void> | void;
+  /** False until the first checks (sign-in, the lab's status) are in: the page then shows a
+   *  placeholder instead of a Start button that flips to Running a moment later. */
+  ready?: boolean;
 }) {
   const [resetting, setResetting] = useState(false);
+  // Which header action is in flight, so its button (not the others) reads as busy.
+  const [acting, setActing] = useState<"pause" | "shutdown" | "resume" | "provision" | null>(null);
+  // Which machine to provision again ("" = all), from the Details panel.
+  const [provisionTarget, setProvisionTarget] = useState("");
 
   // Esc returns to the list (unless a dialog or a field is focused, which handle Esc themselves).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       const el = document.activeElement as HTMLElement | null;
-      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable || el.closest("[role=dialog]"))) return;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable || el.closest("[role=dialog],[role=alertdialog]"))) return;
       onBack();
     };
     window.addEventListener("keydown", onKey);
@@ -72,6 +114,9 @@ export function LabDetail({
 
   // Labs the backend is still deploying, so a window reload recovers the "starting" state.
   const backendDeploying = useDeployingLabs();
+  // A deploy running in its worker process after this page reloaded (or the app relaunched): no
+  // local log of it, so follow the worker's log file instead.
+  const workerLines = useWorkerLog(lab.id, backendDeploying.has(lab.id) && !busy && logs.length === 0);
   const rt = lab.runtime;
   const native = rt?.architectures.includes(hostArch) ?? true;
   const running = status?.running ?? false;
@@ -82,13 +127,62 @@ export function LabDetail({
   const starting = deployingHere && !running;
   // Infrastructure exists but nothing is deploying and the lab isn't fully up: a run was cut off
   // (a crash or a restart mid-start). Offer to clean it up rather than a Start that would collide.
-  const interrupted = !deployingHere && !running && (status?.machines?.length ?? 0) > 0;
+  // Only machines that actually exist count as leftovers: a VM lab's status lists every declared
+  // machine, including ones Vagrant reports as `not_created`, and those are nothing to clean up
+  // (counting them showed "Stop & clean up" on a lab that was never started).
+  const leftovers = (status?.machines ?? []).filter((m) => m.state !== "not_created");
+  // Parked by the launcher: its stopped machines are expected, and come back on Resume.
+  const parked = !running && !deployingHere ? (status?.parked ?? null) : null;
+  // What is in flight on this lab: the button this page clicked, else what the backend reports
+  // (a reload loses the former), else a stop when a built lab is being worked on, a launch if not.
+  const backendOp = useActiveOperations().get(lab.id)?.op;
+  const operation = deployingHere ? (acting ?? backendOp ?? (busy && (running || status?.parked) ? "stop" : "launch")) : null;
+  // The panel keeps showing the last run's log once it's over (a resume's, say): keep reading
+  // it as that operation.
+  const [lastOperation, setLastOperation] = useState<NonNullable<typeof operation>>("launch");
+  if (operation && operation !== lastOperation) setLastOperation(operation);
+  const tearingDown = operation === "stop" || operation === "shutdown" || operation === "pause";
+  const interrupted = !deployingHere && !running && !parked && leftovers.length > 0;
+  const act = async (what: "pause" | "shutdown" | "resume" | "provision") => {
+    setActing(what);
+    try {
+      if (what === "resume") await onResume?.();
+      else if (what === "provision") await onProvision?.(provisionTarget || null);
+      else await onPark?.(what);
+    } finally {
+      setActing(null);
+    }
+  };
   const url = status?.url;
+  // Where it actually runs: "on this machine" alone is misleading for a VM lab (which hypervisor
+  // do I open?), so name the engine or hypervisor the status reports.
+  const whereLabel = status?.provider ? (status.provider === "docker" ? "Docker" : (PROVIDER_LABELS[status.provider] ?? status.provider)) : null;
+  // Each published container port and the local address it is bound to, so the player sees the
+  // link between a service inside the lab (web :3206) and the port on this machine (:56235).
+  const binds = (status?.machines ?? []).flatMap((m) =>
+    m.ports.filter((p) => p.published > 0).map((p) => ({ machine: m.name, target: p.target, published: p.published })),
+  );
+  const bindHost = (() => {
+    if (!url) return "127.0.0.1";
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return "127.0.0.1";
+    }
+  })();
   // Machines that went down while the lab runs. Not while it's starting or stopping: machines
   // come up one after another then (a web server waits for its database), and that's normal.
-  const down = deployingHere ? [] : (status?.machines ?? []).filter((m) => m.state !== "running");
+  // The controller is powered off by design once the lab is built: never "down".
+  const down = deployingHere ? [] : (status?.machines ?? []).filter((m) => !m.infra && m.state !== "running");
   const isDocker = rt?.runtime !== "VM";
   const remote = !!status?.host;
+  // A container lab in a VM can only be paused (its containers don't restart on their own after a
+  // power-off); a container lab here only shut down (its containers stop; there's no state to
+  // save). A VM lab gets both. Nothing on a server host yet.
+  const canPause = !!onPark && !remote && (!isDocker || status?.place === "local_vm");
+  const canShutdown = !!onPark && !remote && status?.place !== "local_vm";
+  // Provisioning runs again in place on VM labs driven by Vagrant (here, or an ESXi host).
+  const canProvision = !!onProvision && !isDocker && status?.place !== "cloud" && status?.provider !== "proxmox";
 
   // A lab can run on this machine or on one of the player's server hosts (Docker labs
   // through their deploy/ layer). VM labs default to the default host; Docker labs to here.
@@ -98,6 +192,7 @@ export function LabDetail({
   // lists it first), else the first ready one its deploy/ supports. One option, not a catalogue.
   const localVms = isDocker ? readyVms.filter((p) => rt?.providers.includes(p)).slice(0, 1) : [];
   const [choosing, setChoosing] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   // Cyber CTF can also run it for the player: a hosted session with a public URL.
   const hostedOk = !!rt?.hosted;
   const hosted = useHostedLabs();
@@ -135,8 +230,11 @@ export function LabDetail({
   }, [isDocker, hostOk, localReady]);
   const [shellError, setShellError] = useState<string | null>(null);
 
-  // The attack box (local container labs); a remote lab's runs next to it on its host.
-  const box = useAttackBox(lab.id, { running, local: isDocker && !remote });
+  // The attack box: a container on a local container lab's networks, the learner's own VM beside
+  // a local VM lab; a remote container lab's runs next to it on its host.
+  // Not while the lab itself is starting, resuming or stopping: a resume brings the attack VM
+  // back on its own, and a second `vagrant up` in its folder at the same time would collide.
+  const box = useAttackBox(lab.id, { running, holding: deployingHere, local: !remote, kind: isDocker ? "container" : "vm" });
   const exegol = box.status;
   const [check, clearCheck] = useLabCheck(lab.id, { running, downCount: down.length, enabled: isDocker });
   // The lab's observers (`tools:` in its spec), read once it runs: static addresses, so the
@@ -169,10 +267,10 @@ export function LabDetail({
     }
   }
 
-  const attackReady = isDocker && (remote || !!exegol?.running);
+  const attackReady = remote ? isDocker : !!exegol?.running;
   const openShell = () => {
     setShellError(null);
-    (remote ? labAttackShell(lab.id, "DOCKER") : exegolShell(lab.id)).catch((e) => setShellError(String(e)));
+    (remote ? labAttackShell(lab.id, "DOCKER") : isDocker ? exegolShell(lab.id) : attackVmShell(lab.id)).catch((e) => setShellError(String(e)));
   };
 
   // Where this deploy is headed, shown in the Deployment panel so it's clear during a build.
@@ -182,17 +280,56 @@ export function LabDetail({
       ? (hosts.find((h) => h.id === runOn.id)?.name ?? "your server")
       : runOn.kind === "local-vm"
         ? "a VM on this machine"
-        : "this machine");
+        : whereLabel
+          ? `this machine · ${whereLabel}`
+          : "this machine");
+  // This session's own log of the run when it has one; else the worker's log file, for a deploy
+  // that kept running through a reload or relaunch.
+  const shownLogs = logs.length > 0 ? logs : workerLines;
+  const shownTimes = logs.length > 0 ? times : [];
   const deploy = (
     <Panel>
-      <DeploySteps lines={logs} times={times} busy={deployingHere} ready={running} where={destLabel} />
+      <DeploySteps
+        lines={shownLogs}
+        times={shownTimes}
+        busy={deployingHere}
+        ready={running && !tearingDown}
+        where={destLabel}
+        operation={operation ?? lastOperation}
+      />
     </Panel>
   );
   // The deploy panel is worth showing while a run is in progress, once the lab is up, or when
   // the last run failed. Once a lab is stopped the leftover "✓ Lab is running" logs are stale
   // (they'd otherwise read "Ready" with nothing running), so we don't show them.
-  const deployFailed = logs.some((l) => l.startsWith("✗"));
+  const deployFailed = shownLogs.some((l) => l.startsWith("✗"));
   const showDeploy = deployingHere || running || deployFailed;
+
+  if (!ready) {
+    return (
+      <div className="space-y-5" aria-busy="true" aria-label="Loading the lab">
+        <Skeleton className="h-4 w-16" />
+        <div className="flex items-start gap-4">
+          <div className="flex-1 space-y-2.5">
+            <Skeleton className="h-7 w-56" />
+            <Skeleton className="h-3.5 w-40" />
+            <Skeleton className="h-3.5 w-full max-w-2xl" />
+          </div>
+          <Skeleton className="h-9 w-28" />
+        </div>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="space-y-4">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-64 w-full" />
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-40 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-rise-in space-y-5">
@@ -211,14 +348,25 @@ export function LabDetail({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-xl font-semibold tracking-tight">{lab.title}</h1>
-            {running ? (
+            {operation && OPERATION_STATUS[operation] ? (
+              <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-muted-foreground">
+                <Spinner className="size-3" /> {OPERATION_STATUS[operation]}
+              </span>
+            ) : running ? (
               <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-emerald-500">
                 <span className="size-1.5 rounded-full bg-emerald-500" />
                 Running on {status?.host ?? "this machine"}
+                {whereLabel && !status?.host && <span className="text-muted-foreground"> · {whereLabel}</span>}
               </span>
             ) : starting ? (
               <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-muted-foreground">
-                <Spinner className="size-3" /> Starting
+                <Spinner className="size-3" /> {acting === "resume" ? "Resuming" : "Starting"}
+              </span>
+            ) : parked ? (
+              <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-muted-foreground">
+                {parked === "pause" ? <Pause className="size-3" /> : <Power className="size-3" />}
+                {parked === "pause" ? "Paused" : "Shut down"}
+                {whereLabel && <span className="text-muted-foreground/70"> · {whereLabel}</span>}
               </span>
             ) : null}
           </div>
@@ -243,19 +391,72 @@ export function LabDetail({
           {running ? (
             <>
               {url && (
-                <Button variant="learn" onClick={() => openUrl(url).catch(() => {})}>
-                  <ExternalLink className="size-4" /> Open lab
+                <Button variant="learn" onClick={() => openUrl(url).catch(() => {})} title={`Open ${url} in your browser`}>
+                  <ExternalLink className="size-4" /> Open in browser
                 </Button>
               )}
-              <Button variant="destructive" onClick={() => onStop()} disabled={busy}>
-                {busy && !resetting ? (
-                  "Stopping…"
-                ) : (
-                  <>
-                    <Square className="size-3.5" /> Stop
-                  </>
-                )}
-              </Button>
+              {canPause && (
+                <Tip key="pause" text="Save the machines' state; resume in seconds">
+                  <Button variant="outline" onClick={() => void act("pause")} disabled={busy}>
+                    {acting === "pause" ? (
+                      <>
+                        <Spinner className="size-4" /> Pausing…
+                      </>
+                    ) : (
+                      <>
+                        <Pause className="size-3.5" /> Pause
+                      </>
+                    )}
+                  </Button>
+                </Tip>
+              )}
+              {canShutdown && (
+                <Tip key="shutdown" text="Power the machines off; they keep their state and boot again on Resume">
+                  <Button variant="outline" onClick={() => void act("shutdown")} disabled={busy}>
+                    {acting === "shutdown" ? (
+                      <>
+                        <Spinner className="size-4" /> Shutting down…
+                      </>
+                    ) : (
+                      <>
+                        <Power className="size-3.5" /> Shut down
+                      </>
+                    )}
+                  </Button>
+                </Tip>
+              )}
+              <Tip key="remove" text="Remove the machines; the next start rebuilds the lab from scratch">
+                <Button variant="destructive" onClick={() => setConfirmingRemove(true)} disabled={busy}>
+                  {operation === "stop" && !resetting ? (
+                    "Stopping…"
+                  ) : (
+                    <>
+                      <Square className="size-3.5" /> Stop &amp; remove
+                    </>
+                  )}
+                </Button>
+              </Tip>
+            </>
+          ) : parked && onResume ? (
+            <>
+              <Tip key="resume" text="Bring the lab back as it was">
+                <Button variant="learn" onClick={() => void act("resume")} disabled={busy}>
+                  {busy ? (
+                    <>
+                      <Spinner className="size-4" /> Resuming…
+                    </>
+                  ) : (
+                    <>
+                      <Play className="size-4" /> Resume
+                    </>
+                  )}
+                </Button>
+              </Tip>
+              <Tip key="remove-parked" text="Remove the machines; the next start rebuilds the lab from scratch">
+                <Button variant="destructive" onClick={() => setConfirmingRemove(true)} disabled={busy}>
+                  <Square className="size-3.5" /> Stop &amp; remove
+                </Button>
+              </Tip>
             </>
           ) : starting ? (
             <Button variant="learn" disabled>
@@ -356,7 +557,16 @@ export function LabDetail({
       )}
 
       {/* Health: a container went down. Say so, check it, offer a clean restart. */}
-      {running && down.length > 0 && <HealthBanner down={down.map((m) => m.name)} check={check} busy={busy} resetting={resetting} onReset={reset} />}
+      {running && down.length > 0 && (
+        <HealthBanner
+          down={down.map((m) => m.name)}
+          check={check}
+          busy={busy}
+          resetting={resetting}
+          onReset={reset}
+          onResume={!isDocker && !remote && onResume ? () => void act("resume") : undefined}
+        />
+      )}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18.75rem]">
         <div className="min-w-0 space-y-5">
@@ -373,7 +583,9 @@ export function LabDetail({
           {/* Only show the diagram once the lab is up and we're no longer deploying: during a
               build the backend may already report a machine "running" while it's still being
               provisioned, and a half-resolved diagram is more confusing than helpful. */}
-          {running && !busy && status && status.machines.length > 0 ? (
+          {/* Pausing, resuming or provisioning a lab, and a parked lab, keep the diagram: its
+              machines exist and their states (paused, off, running) are the point. */}
+          {status && status.machines.length > 0 && (acting !== null || (!busy && (running || parked))) ? (
             <NetworkDiagram
               machines={status.machines}
               networks={status.networks}
@@ -386,7 +598,11 @@ export function LabDetail({
               <p className="px-4 py-10 text-center text-[0.78125rem] text-muted-foreground">
                 {interrupted
                   ? "A previous start was interrupted and left machines behind. Use “Stop & clean up”, then start again."
-                  : "Start the lab to see its machines and network."}
+                  : parked
+                    ? parked === "pause"
+                      ? "The lab is paused with its state saved. Resume it to pick up where you left off."
+                      : "The lab is shut down; its machines keep their state. Resume it to boot them again."
+                    : "Start the lab to see its machines and network."}
               </p>
             </Panel>
           )}
@@ -412,8 +628,15 @@ export function LabDetail({
         </div>
 
         <aside className="h-fit space-y-4 lg:sticky lg:top-2">
-          {isDocker && (
-            <AttackBoxPanel box={box} running={running} host={remote ? (status?.host ?? null) : null} onShell={openShell} shellReady={attackReady} />
+          {/* VM labs on a server host have no attacker yet (their networks live on that host). */}
+          {(isDocker || !remote) && (
+            <AttackBoxPanel
+              box={box}
+              running={running && !deployingHere}
+              host={remote ? (status?.host ?? null) : null}
+              onShell={openShell}
+              shellReady={attackReady}
+            />
           )}
 
           {/* Before it runs, the aside would otherwise be empty for a VM lab: say what the lab is
@@ -448,15 +671,90 @@ export function LabDetail({
               <div className="space-y-2 p-4 text-[0.75rem]">
                 <p className="text-muted-foreground">
                   Runs on <span className="text-foreground">{status?.host ?? "this machine"}</span>
+                  {whereLabel && !status?.host && (
+                    <>
+                      {" "}
+                      · <span className="text-foreground">{whereLabel}</span>
+                    </>
+                  )}
                 </p>
                 {status?.expiresAt && <AutoStop at={status.expiresAt} />}
-                {url && <p className="break-all font-mono text-[0.71875rem] text-foreground">{url}</p>}
+                {/* The bind spelled out: which service inside the lab answers on which address of
+                    this machine, with that local address one click away. */}
+                {binds.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {binds.map((b) => (
+                      <div key={`${b.machine}:${b.target}`} className="space-y-1">
+                        <p className="flex flex-wrap items-baseline gap-x-2">
+                          <span className="w-28 shrink-0 text-muted-foreground">Inside the lab</span>
+                          <span className="font-mono text-[0.71875rem] text-foreground">
+                            {b.machine} :{b.target}
+                          </span>
+                        </p>
+                        <p className="flex flex-wrap items-center gap-x-2">
+                          <span className="w-28 shrink-0 text-muted-foreground">On {status?.host ?? "this machine"}</span>
+                          <CopyValue text={`http://${bindHost}:${b.published}`} />
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  url && <p className="break-all font-mono text-[0.71875rem] text-foreground">{url}</p>
+                )}
+                {canProvision && (
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">Setup</p>
+                    <p className="text-muted-foreground">
+                      Runs the lab’s setup again on its machines, keeping them as they are. Use it when a machine didn’t finish its setup.
+                    </p>
+                    <select
+                      aria-label="Machine to set up again"
+                      value={provisionTarget}
+                      onChange={(e) => setProvisionTarget(e.target.value)}
+                      disabled={busy}
+                      className="h-8 w-full rounded-md border border-border bg-background px-2 text-[0.71875rem] text-foreground outline-none focus:border-ring"
+                    >
+                      <option value="">All machines</option>
+                      {(status?.machines ?? [])
+                        .filter((m) => !m.infra)
+                        .map((m) => (
+                          <option key={m.name} value={m.name}>
+                            {m.name}
+                          </option>
+                        ))}
+                    </select>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => void act("provision")}
+                      disabled={busy}
+                      title="Run the lab's setup again (vagrant provision)"
+                    >
+                      {acting === "provision" ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} Re-run setup
+                    </Button>
+                  </div>
+                )}
               </div>
             </Panel>
           )}
           {!loggedIn && <p className="text-[0.71875rem] text-muted-foreground">Sign in to run labs on this machine.</p>}
         </aside>
       </div>
+      {confirmingRemove && (
+        <ConfirmDialog
+          title={`Remove ${lab.title}?`}
+          confirmLabel="Remove"
+          onCancel={() => setConfirmingRemove(false)}
+          onConfirm={() => {
+            setConfirmingRemove(false);
+            void onStop();
+          }}
+        >
+          Its machines and your attack box are deleted, with everything changed or saved on them. The next start rebuilds the lab from scratch.
+          {canShutdown && " To keep them, shut the lab down instead."}
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
