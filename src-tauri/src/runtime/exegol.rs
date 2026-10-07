@@ -182,9 +182,15 @@ pub fn open_terminal(command: &str) -> Result<()> {
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         let run = format!("clear; DOCKER_CLI_HINTS=false exec {command}");
-        for term in ["x-terminal-emulator", "gnome-terminal", "konsole", "xterm"] {
-            if std::process::Command::new(term).args(["-e", "sh", "-c", &run]).spawn().is_ok() {
-                return Ok(());
+        // gnome-terminal's `-e` takes one string, so it gets `--`; the others run what follows `-e`.
+        for (term, flag) in [("x-terminal-emulator", "-e"), ("gnome-terminal", "--"), ("konsole", "-e"), ("xterm", "-e")] {
+            let Ok(mut child) = std::process::Command::new(term).args([flag, "sh", "-c", &run]).spawn() else { continue };
+            // A terminal that can't start (e.g. zutty without its font) dies within a moment
+            // without a window, so give it that moment and fall through to the next one.
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            match child.try_wait() {
+                Ok(Some(status)) if !status.success() => continue,
+                _ => return Ok(()),
             }
         }
         Err(Error::Invalid(format!("couldn't open a terminal; run this yourself: {command}")))
