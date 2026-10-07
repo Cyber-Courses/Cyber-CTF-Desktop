@@ -16,14 +16,22 @@ use isoloom_core::{Spec, Target};
 use super::{Interface, Network, Runtime};
 use crate::error::{Error, Result};
 
-/// The lab's spec, checked (fields and the files it names).
+/// The lab's spec, checked (fields and the files it names), with this machine's Isoloom
+/// defaults applied (its image table).
 pub fn spec(dir: &Path) -> Result<Spec> {
     let spec = isoloom_core::load(dir).map_err(|e| Error::Invalid(format!("this lab's isoloom.yml: {e}")))?;
     let problems: Vec<String> = isoloom_core::validate(&spec).into_iter().chain(isoloom_core::validate_files(&spec, dir)).map(|p| p.to_string()).collect();
     if !problems.is_empty() {
         return Err(Error::Invalid(format!("this lab's isoloom.yml has mistakes:\n{}", problems.join("\n"))));
     }
-    Ok(spec)
+    Ok(defaults(dir)?.images.apply(&spec))
+}
+
+/// This machine's Isoloom defaults for the lab: the user's `~/.isoloom/defaults.yml`, the
+/// lab's own `isoloom.defaults.yml`, then `ISOLOOM_*` in the environment (the same hierarchy
+/// the `isoloom` CLI reads), so a user's image table or cloud regions hold here too.
+fn defaults(dir: &Path) -> Result<isoloom_core::defaults::Defaults> {
+    isoloom_core::defaults::load(dir, None, &[]).map(|r| r.defaults).map_err(|e| Error::Invalid(format!("this machine's Isoloom defaults: {e}")))
 }
 
 /// The lab's Isoloom instance number (see the module), when it has one.
@@ -107,6 +115,7 @@ pub fn prepare(dir: &Path, target: Target) -> Result<Spec> {
     let spec = instanced(dir)?;
     let n = instance(dir);
     let files = isoloom_core::generate(&spec, target).map_err(|e| Error::Invalid(format!("this lab can't run there: {e}")))?;
+    let files = isoloom_core::defaults::apply_to_files(files, &defaults(dir)?);
     for f in files {
         let (path, contents) = match n {
             Some(n) => isoloom_core::instance::relocate(&f.path, &f.contents, n),
@@ -348,6 +357,16 @@ mod tests {
         assert_eq!(found[0].addresses.len(), 1);
         assert_eq!(found[0].addresses[0].network, "lab");
         assert!(tools(&spec, false)[0].addresses[0].ip.starts_with("10.30.0."));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_labs_own_defaults_file_reaches_the_generated_files() {
+        let dir = lab(SPEC);
+        std::fs::write(dir.join(isoloom_core::defaults::PROJECT_FILE), "cloud:\n  aws: { region: us-east-1 }\n").unwrap();
+        prepare(&dir, Target::CloudDocker).unwrap();
+        let tf = std::fs::read_to_string(dir.join(".isoloom/cloud-docker/aws/main.tf")).unwrap();
+        assert!(tf.contains("us-east-1"), "{tf}");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
