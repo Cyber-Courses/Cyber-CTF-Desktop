@@ -19,7 +19,7 @@ import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
 import { useDeployingLabs } from "@/lib/deploy-store";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
-import { labAttackShell, exegolShell, serverList, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
+import { labAttackShell, labTools, exegolShell, serverList, type LabTool, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 const VM_CLOUDS_NOT_YET = ["azure", "gcp", "digitalocean", "linode", "oci"];
@@ -139,6 +139,19 @@ export function LabDetail({
   const box = useAttackBox(lab.id, { running, local: isDocker && !remote });
   const exegol = box.status;
   const [check, clearCheck] = useLabCheck(lab.id, { running, downCount: down.length, enabled: isDocker });
+  // The lab's observers (`tools:` in its spec), read once it runs: static addresses, so the
+  // last answer stays good across a stop and a start.
+  const [tools, setTools] = useState<LabTool[]>([]);
+  useEffect(() => {
+    if (!running) return;
+    let alive = true;
+    labTools(lab.id, isDocker ? "DOCKER" : "VM")
+      .then((t) => alive && setTools(t))
+      .catch(() => alive && setTools([]));
+    return () => {
+      alive = false;
+    };
+  }, [lab.id, running, isDocker]);
 
   // Reset = stop and start again where it ran: a clean lab.
   async function reset() {
@@ -183,9 +196,14 @@ export function LabDetail({
 
   return (
     <div className="animate-rise-in space-y-5">
-      <button onClick={onBack} className="group inline-flex items-center gap-1.5 text-[0.78125rem] text-muted-foreground transition-colors hover:text-foreground">
+      <button
+        onClick={onBack}
+        className="group inline-flex items-center gap-1.5 text-[0.78125rem] text-muted-foreground transition-colors hover:text-foreground"
+      >
         <ArrowLeft className="size-4" /> All labs
-        <kbd className="rounded border border-border px-1.5 text-[0.625rem] text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100">esc</kbd>
+        <kbd className="rounded border border-border px-1.5 text-[0.625rem] text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100">
+          esc
+        </kbd>
       </button>
 
       {/* Header: what the lab is, and the one thing to do next. */}
@@ -246,7 +264,12 @@ export function LabDetail({
           ) : interrupted ? (
             // Machines exist but nothing is deploying and the lab isn't fully up: a previous run
             // was interrupted (e.g. the app restarted mid-start). Clean it up before a fresh start.
-            <Button variant="destructive" onClick={() => onStop()} disabled={busy} title="A previous start was interrupted; stop and clean it up, then start again">
+            <Button
+              variant="destructive"
+              onClick={() => onStop()}
+              disabled={busy}
+              title="A previous start was interrupted; stop and clean it up, then start again"
+            >
               {busy ? (
                 "Cleaning up…"
               ) : (
@@ -368,6 +391,21 @@ export function LabDetail({
             </Panel>
           )}
 
+          {running && !busy && tools.length > 0 && (
+            <Panel>
+              <PanelHeader title="Observers" />
+              {tools.map((t) => (
+                <div key={t.name} className="flex flex-wrap items-baseline gap-x-3 border-b border-border px-3.5 py-2 text-[0.78125rem] last:border-b-0">
+                  <span className="font-medium">{t.name}</span>
+                  <span className="text-muted-foreground">
+                    {t.addresses.map((a) => `${a.network} ${a.ip}`).join(" · ")}
+                    {t.publish ? ` · http://127.0.0.1:${t.publish}` : ""}
+                  </span>
+                </div>
+              ))}
+            </Panel>
+          )}
+
           {showDeploy && running && !busy && deploy}
 
           <LabBrief labId={lab.id} />
@@ -388,7 +426,11 @@ export function LabDetail({
                   <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">Where it runs</p>
                   <div className="space-y-1.5">
                     {runPlaces(rt).map(({ key, icon: Icon, label, available }) => (
-                      <div key={key} className={cn("flex items-center gap-2", available ? "text-foreground" : "text-muted-foreground/40")} title={available ? undefined : "Not available for this lab"}>
+                      <div
+                        key={key}
+                        className={cn("flex items-center gap-2", available ? "text-foreground" : "text-muted-foreground/40")}
+                        title={available ? undefined : "Not available for this lab"}
+                      >
                         <Icon className="size-3.5 shrink-0" />
                         <span>{label}</span>
                       </div>

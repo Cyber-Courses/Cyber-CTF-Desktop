@@ -48,6 +48,53 @@ pub fn ensure_instance(labs: &Path, dir: &Path) -> Result<u8> {
     Ok(n)
 }
 
+/// The spec as this lab's instance of it (what `prepare` generates from): its own name and
+/// Docker blocks when the lab has an instance number.
+pub fn instanced(dir: &Path) -> Result<Spec> {
+    let spec = spec(dir)?;
+    match instance(dir) {
+        Some(n) => isoloom_core::instance::apply(&spec, n).map_err(|e| Error::Invalid(format!("this lab as instance {n}: {e}"))),
+        None => Ok(spec),
+    }
+}
+
+/// An observer the lab puts beside itself (`tools:` in its spec): a toolbox or a capture box
+/// on every network, outside the lab's contract.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Observer {
+    pub name: String,
+    pub image: Option<String>,
+    /// Its address on each lab network, where the lab runs.
+    pub addresses: Vec<Interface>,
+    /// The loopback port its web UI is published on, when it has one.
+    pub publish: Option<u16>,
+}
+
+/// The lab's observers at their addresses: the container ones when the lab runs as
+/// containers (`docker`), else the ones the spec writes.
+pub fn tools(spec: &Spec, docker: bool) -> Vec<Observer> {
+    let snapshot = isoloom_core::resolved::resolve(spec);
+    let key = if docker { "docker_addresses" } else { "addresses" };
+    snapshot["tools"]
+        .as_object()
+        .map(|tools| {
+            tools
+                .iter()
+                .map(|(name, t)| Observer {
+                    name: name.clone(),
+                    image: t["image"].as_str().map(str::to_string),
+                    addresses: t[key]
+                        .as_object()
+                        .map(|a| a.iter().filter_map(|(net, ip)| ip.as_str().map(|ip| Interface { network: net.clone(), ip: ip.to_string() })).collect())
+                        .unwrap_or_default(),
+                    publish: t["publish"].as_u64().and_then(|p| u16::try_from(p).ok()),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Where the lab's generated files are: `.isoloom-<n>/` for an instance, else `.isoloom/`.
 pub fn out(dir: &Path) -> PathBuf {
     dir.join(isoloom_core::instance::output_dir(instance(dir)))
@@ -57,12 +104,8 @@ pub fn out(dir: &Path) -> PathBuf {
 /// spec as this lab's instance of it. Fails with Isoloom's own reason when the lab can't run
 /// there (e.g. Windows machines on a target without Windows images).
 pub fn prepare(dir: &Path, target: Target) -> Result<Spec> {
-    let spec = spec(dir)?;
+    let spec = instanced(dir)?;
     let n = instance(dir);
-    let spec = match n {
-        Some(n) => isoloom_core::instance::apply(&spec, n).map_err(|e| Error::Invalid(format!("this lab as instance {n}: {e}")))?,
-        None => spec,
-    };
     let files = isoloom_core::generate(&spec, target).map_err(|e| Error::Invalid(format!("this lab can't run there: {e}")))?;
     for f in files {
         let (path, contents) = match n {
@@ -292,6 +335,20 @@ mod tests {
         assert!(!b.join(".isoloom").exists());
         assert_eq!(vagrant_dir(&b, Runtime::Vm), b.join(".isoloom-2/vagrant"));
         std::fs::remove_dir_all(labs).unwrap();
+    }
+
+    #[test]
+    fn observers_come_with_their_addresses() {
+        let dir = lab(&format!("{SPEC}tools:\n  shell: {{}}\n"));
+        let spec = spec(&dir).unwrap();
+        let found = tools(&spec, true);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "shell");
+        assert_eq!(found[0].image.as_deref(), Some("nicolaka/netshoot"));
+        assert_eq!(found[0].addresses.len(), 1);
+        assert_eq!(found[0].addresses[0].network, "lab");
+        assert!(tools(&spec, false)[0].addresses[0].ip.starts_with("10.30.0."));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

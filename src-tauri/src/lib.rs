@@ -207,6 +207,7 @@ pub fn run() {
             runtime::lab_stop,
             runtime::lab_status,
             runtime::lab_check,
+            runtime::lab_tools,
             runtime::exegol_status,
             runtime::exegol_start,
             runtime::exegol_stop,

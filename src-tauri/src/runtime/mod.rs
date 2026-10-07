@@ -592,6 +592,15 @@ pub async fn lab_status(app: AppHandle, id: String, runtime: Runtime) -> Result<
     status(&app, &dir, &id, runtime).await
 }
 
+/// The observers a lab puts beside itself (`tools:` in its spec), at their addresses where it
+/// runs (container addresses for a container lab, wherever its Compose file runs).
+#[tauri::command]
+pub async fn lab_tools(app: AppHandle, id: String, runtime: Runtime) -> Result<Vec<lab::Observer>> {
+    let dir = lab_dir(&app, &id)?;
+    let spec = lab::instanced(&dir)?;
+    Ok(lab::tools(&spec, runtime == Runtime::Docker))
+}
+
 /// Runs a lab's exploitability check: does the intended exploit path still work? Lets a
 /// learner who broke their box know to reset it. Local Docker labs only for now.
 #[tauri::command]

@@ -79,6 +79,19 @@ export interface LabCheck {
   results: LabCheckResult[];
 }
 
+/** An observer the lab puts beside itself (`tools:`): a toolbox or a capture box on every network, outside the lab's contract. */
+export interface LabTool {
+  name: string;
+  image: string | null;
+  /** Its address on each lab network, where the lab runs. */
+  addresses: { network: string; ip: string }[];
+  /** The loopback port its web UI is published on, when it has one. */
+  publish: number | null;
+}
+
+/** The lab's observers, at their addresses where it runs. */
+export const labTools = (id: string, runtime: Runtime) => invoke<LabTool[]>("lab_tools", { id, runtime });
+
 /** Runs a lab's exploitability check: is the intended exploit path still solvable? */
 export const labCheck = (id: string, runtime: Runtime) => invoke<LabCheck>("lab_check", { id, runtime });
 
