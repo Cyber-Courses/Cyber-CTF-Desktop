@@ -36,6 +36,11 @@
   },
   "bundle": {
     "active": true,
+    "linux": {
+      "deb": {
+        "depends": ["pkexec | policykit-1"]
+      }
+    },
     "targets": [
       "app",
       "dmg",

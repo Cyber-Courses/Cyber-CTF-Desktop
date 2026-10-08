@@ -232,7 +232,7 @@ async fn docker(dir: &Path, r: &Reporter) -> Result<()> {
 
 async fn docker_steps(dir: &Path, r: &Reporter) -> Result<()> {
     r.step("engine", "Container engine answers", async {
-        let v = run("docker", &["info", "--format", "{{.ServerVersion}}"], None).await?;
+        let v = crate::exec::run_read("docker", &["info", "--format", "{{.ServerVersion}}"], None).await?;
         Ok(((), Some(format!("Docker {}", v.trim()))))
     })
     .await?;
@@ -345,7 +345,10 @@ async fn pick_box(p: Provider, arm: bool) -> (&'static str, bool) {
     (candidates[0], false)
 }
 
-fn vagrantfile(p: Provider, bx: &str) -> String {
+/// `no_kvm`: a Linux host without a usable /dev/kvm. vagrant-qemu asks for `accel=kvm` with
+/// `cpu=host` there, which QEMU refuses; the test VM falls back to software emulation (slow,
+/// but it boots and the check says something true).
+fn vagrantfile(p: Provider, bx: &str, no_kvm: bool) -> String {
     let mut v = format!(
         "Vagrant.configure(\"2\") do |config|\n  config.vm.box = \"{bx}\"\n  config.vm.hostname = \"cyberctf-selftest\"\n  config.vm.boot_timeout = 600\n  config.vm.synced_folder \".\", \"/vagrant\", disabled: true\n"
     );
@@ -360,6 +363,9 @@ fn vagrantfile(p: Provider, bx: &str) -> String {
         Provider::Libvirt => "    h.default_prefix = \"cyberctf-\"\n    h.memory = 512\n".to_string(),
         Provider::Hyperv => format!("    h.vmname = \"{VM_NAME}\"\n"),
         Provider::Utm => format!("    h.name = \"{VM_NAME}\"\n"),
+        // vagrant-qemu's default is 4G, much more than a test VM needs.
+        Provider::Qemu if no_kvm => "    h.memory = \"1G\"\n    h.machine = \"q35,accel=tcg\"\n    h.cpu = \"max\"\n".to_string(),
+        Provider::Qemu => "    h.memory = \"1G\"\n".to_string(),
         _ => String::new(),
     };
     if !settings.is_empty() {
@@ -431,7 +437,8 @@ async fn vm_steps(dir: &Path, preferred: Option<Provider>, r: &Reporter) -> Resu
     .await?;
 
     r.step("boot", "Boot the test VM", async {
-        std::fs::write(dir.join("Vagrantfile"), vagrantfile(provider, bx))?;
+        let no_kvm = cfg!(target_os = "linux") && crate::runtime::providers::kvm_problem().is_some();
+        std::fs::write(dir.join("Vagrantfile"), vagrantfile(provider, bx, no_kvm))?;
         stream("vagrant", &["up", "--provider", provider.id()], Some(dir), &[], |l| r.progress("boot", "Boot the test VM", l)).await?;
         Ok(((), Some(format!("{bx} on {}", provider.id()))))
     })
@@ -478,5 +485,21 @@ mod explain_tests {
     #[test]
     fn unknown_errors_pass_through_unchanged() {
         assert_eq!(explain("something else broke"), "something else broke");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::vagrantfile;
+    use crate::runtime::providers::Provider;
+
+    #[test]
+    fn qemu_test_vm_falls_back_to_software_emulation_without_kvm() {
+        let with_kvm = vagrantfile(Provider::Qemu, "generic/alpine319", false);
+        assert!(with_kvm.contains("h.memory = \"1G\"") && !with_kvm.contains("accel=tcg"), "{with_kvm}");
+        let without = vagrantfile(Provider::Qemu, "generic/alpine319", true);
+        assert!(without.contains("h.machine = \"q35,accel=tcg\"") && without.contains("h.cpu = \"max\""), "{without}");
+        // Other providers are unaffected.
+        assert!(!vagrantfile(Provider::Virtualbox, "x", true).contains("accel"));
     }
 }

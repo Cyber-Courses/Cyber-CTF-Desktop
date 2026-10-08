@@ -937,9 +937,9 @@ pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> R
         if local_vm(&dir).is_some() && matches!(runtime, Runtime::Docker) {
             let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&lab::vagrant_dir(&dir, runtime)), &[]).await?;
             let target = ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab VM's SSH settings".into()))?;
-            return exegol::open_terminal(&target.attack_shell_command(&ssh::known_hosts(&app)?)?);
+            return exegol::open_terminal_async(target.attack_shell_command(&ssh::known_hosts(&app)?)?).await;
         }
-        return exegol::shell(&id);
+        return tokio::task::spawn_blocking(move || exegol::shell(&id)).await.map_err(|e| Error::Invalid(e.to_string()))?;
     };
     if !matches!(runtime, Runtime::Docker) {
         return Err(Error::Invalid("this lab has no attack box".into()));
@@ -952,7 +952,7 @@ pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> R
         let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&lab::vagrant_dir(&dir, runtime)), &conn.env).await?;
         ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab host's SSH settings".into()))?
     };
-    exegol::open_terminal(&target.attack_shell_command(&ssh::known_hosts(&app)?)?)
+    exegol::open_terminal_async(target.attack_shell_command(&ssh::known_hosts(&app)?)?).await
 }
 
 /// An attack-box image reference the launcher accepts.
@@ -994,9 +994,10 @@ pub async fn exegol_stop(id: String, logs: Channel<String>) -> Result<()> {
 
 /// Opens the player's terminal attached to the running attack box.
 #[tauri::command]
-pub fn exegol_shell(id: String) -> Result<()> {
+pub async fn exegol_shell(id: String) -> Result<()> {
     validate_id(&id)?;
-    exegol::shell(&id)
+    // Off the UI thread: finding a terminal that starts can take seconds.
+    tokio::task::spawn_blocking(move || exegol::shell(&id)).await.map_err(|e| Error::Invalid(e.to_string()))?
 }
 
 /// The attack VM beside a VM lab on this machine, in the container attack box's status shape.
@@ -1034,8 +1035,10 @@ pub async fn attack_vm_stop(app: AppHandle, id: String, logs: Channel<String>) -
 
 /// Opens the player's terminal on an SSH session into the attack VM.
 #[tauri::command]
-pub fn attack_vm_shell(app: AppHandle, id: String) -> Result<()> {
-    attack_vm::shell(&lab_dir(&app, &id)?)
+pub async fn attack_vm_shell(app: AppHandle, id: String) -> Result<()> {
+    let dir = lab_dir(&app, &id)?;
+    // Off the UI thread: finding a terminal that starts can take seconds.
+    tokio::task::spawn_blocking(move || attack_vm::shell(&dir)).await.map_err(|e| Error::Invalid(e.to_string()))?
 }
 
 #[cfg(test)]

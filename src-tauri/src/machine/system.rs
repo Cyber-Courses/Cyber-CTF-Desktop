@@ -73,6 +73,10 @@ pub struct SystemReport {
     pub docker: Tool,
     /// The Docker daemon answers (Docker Desktop / engine is started).
     pub docker_running: bool,
+    /// The daemon runs but refused this account (not in the `docker` group yet): starting the
+    /// engine won't help; `docker_denied_hint` says what will.
+    pub docker_denied: bool,
+    pub docker_denied_hint: Option<String>,
     /// Which Docker-compatible engine answers, when one does: `docker-desktop`, `orbstack`,
     /// `colima`, `rancher-desktop`, `podman` or `docker-engine`.
     pub docker_engine: Option<&'static str>,
@@ -132,7 +136,7 @@ async fn isoloom_targets() -> Vec<TargetReadiness> {
 
 /// Name the running engine from the daemon's OS string and the active CLI context.
 async fn docker_engine(os: &str) -> &'static str {
-    let context = run("docker", &["context", "show"], None).await.unwrap_or_default().to_lowercase();
+    let context = run_read("docker", &["context", "show"], None).await.unwrap_or_default().to_lowercase();
     let os = os.to_lowercase();
     if os.contains("orbstack") || context.contains("orbstack") {
         "orbstack"
@@ -173,7 +177,7 @@ fn context_engine(name: &str, os: &str) -> Option<&'static str> {
 
 /// The Docker CLI contexts, each with the engine behind it (unknown contexts are left out).
 async fn engine_contexts() -> Vec<(String, &'static str)> {
-    let out = run("docker", &["context", "ls", "--format", "{{.Name}}"], None).await.unwrap_or_default();
+    let out = run_read("docker", &["context", "ls", "--format", "{{.Name}}"], None).await.unwrap_or_default();
     out.lines().map(|l| l.trim().trim_end_matches(" *").to_string()).filter_map(|name| context_engine(&name, std::env::consts::OS).map(|e| (name, e))).collect()
 }
 
@@ -210,27 +214,40 @@ pub async fn docker_use_engine(engine: String) -> Result<()> {
 /// while on first start, hence the generous wait.
 #[tauri::command]
 pub async fn docker_start_engine(engine: String) -> Result<()> {
+    // Running already, but not for this account: starting it again can't help.
+    if let Err(e) = run_read("docker", &["info", "--format", "{{.OperatingSystem}}"], None).await
+        && crate::exec::docker_denied(&e)
+    {
+        return Err(Error::Invalid(crate::exec::docker_denied_message()));
+    }
     match (std::env::consts::OS, engine.as_str()) {
         ("macos", "docker-desktop") => run("open", &["-a", "Docker"], None).await?,
         ("macos", "orbstack") => run("open", &["-a", "OrbStack"], None).await?,
         ("windows", "docker-desktop") => run("cmd", &["/C", "start", "", r"C:\Program Files\Docker\Docker\Docker Desktop.exe"], None).await?,
-        ("linux", "docker-engine") => run("pkexec", &["systemctl", "start", "docker"], None).await?,
+        ("linux", "docker-engine") => run("pkexec", &["systemctl", "start", "docker"], None).await.map_err(|e| match e {
+            Error::ToolMissing { .. } => Error::Invalid(crate::platform::install::NO_PKEXEC.into()),
+            e => e,
+        })?,
         (_, "colima") => run("colima", &["start"], None).await?,
         _ => return Err(Error::Invalid(format!("Cyber CTF can't start {engine} here; start it yourself, then re-check."))),
     };
     for _ in 0..90 {
         // The engine's context appears once it is up; point Docker at it, then ask the daemon.
         let _ = docker_use_engine(engine.clone()).await;
-        if run_read("docker", &["info", "--format", "{{.OperatingSystem}}"], None).await.is_ok() {
-            return Ok(());
+        match run_read("docker", &["info", "--format", "{{.OperatingSystem}}"], None).await {
+            Ok(_) => return Ok(()),
+            // Up now, but not for this account: say so instead of waiting out the 3 minutes.
+            Err(e) if crate::exec::docker_denied(&e) => return Err(Error::Invalid(crate::exec::docker_denied_message())),
+            Err(_) => {}
         }
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     }
     Err(Error::Invalid(format!("{engine} didn't answer within 3 minutes. Check its window, then re-check.")))
 }
 
+/// A tool's version, timed: a wedged daemon or a held Vagrant lock must not hang the check.
 async fn probe(program: &'static str, args: &[&str]) -> Tool {
-    match run(program, args, None).await {
+    match run_read(program, args, None).await {
         Ok(out) => Tool { installed: true, version: out.lines().next().map(|l| l.trim().to_string()) },
         Err(_) => Tool { installed: false, version: None },
     }
@@ -251,6 +268,7 @@ pub async fn system_check() -> SystemReport {
     );
     let (vm_providers, docker_engines_running, ovftool, targets) =
         tokio::join!(providers::detect(vagrant.installed), running_engines(), probe("ovftool", &["--version"]), isoloom_targets());
+    let docker_denied = daemon.as_ref().err().is_some_and(crate::exec::docker_denied);
     let docker_engine = match &daemon {
         Ok(os) => Some(docker_engine(os.trim()).await),
         Err(_) => None,
@@ -261,6 +279,8 @@ pub async fn system_check() -> SystemReport {
         pkg_manager: package_manager().await,
         docker,
         docker_running: daemon.is_ok(),
+        docker_denied,
+        docker_denied_hint: docker_denied.then(crate::exec::docker_denied_message),
         docker_engine,
         docker_engines_running,
         docker_compose,

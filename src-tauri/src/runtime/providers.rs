@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::exec::run;
+use crate::exec::run_read;
 
 /// Vagrant provider ids (the value given to `vagrant up --provider`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -158,7 +158,7 @@ const UTM_APP: &str = "/Applications/UTM.app";
 
 /// Why libvirt can't run VMs here although `virsh` is installed: vagrant-libvirt boots KVM
 /// guests, so it needs `/dev/kvm`, and the player must be allowed to open it.
-fn kvm_problem() -> Option<String> {
+pub(crate) fn kvm_problem() -> Option<String> {
     let dev = std::path::Path::new("/dev/kvm");
     if !dev.exists() {
         return Some("KVM isn't available on this machine (no /dev/kvm): turn on virtualization in the firmware, or use another hypervisor".into());
@@ -200,7 +200,7 @@ pub fn parse_plugins(out: &str) -> Vec<String> {
 }
 
 async fn tool_present(program: &'static str, args: &[&str]) -> bool {
-    match run(program, args, None).await {
+    match run_read(program, args, None).await {
         Ok(_) => true,
         // vmrun without arguments prints usage and exits non-zero, but it exists.
         Err(crate::error::Error::CommandFailed { .. }) => true,
@@ -209,7 +209,8 @@ async fn tool_present(program: &'static str, args: &[&str]) -> bool {
 }
 
 pub async fn detect(vagrant_installed: bool) -> Vec<ProviderStatus> {
-    let plugins = if vagrant_installed { run("vagrant", &["plugin", "list"], None).await.map(|o| parse_plugins(&o)).unwrap_or_default() } else { Vec::new() };
+    let plugins =
+        if vagrant_installed { run_read("vagrant", &["plugin", "list"], None).await.map(|o| parse_plugins(&o)).unwrap_or_default() } else { Vec::new() };
 
     let mut statuses = Vec::new();
     for provider in Provider::ALL {
@@ -282,7 +283,7 @@ pub async fn ensure_usable(provider: Provider) -> std::result::Result<(), String
         return Err(format!("Can't run on libvirt here: {why}."));
     }
     if let Some(needed) = provider.plugin() {
-        let plugins = run("vagrant", &["plugin", "list"], None).await.map(|o| parse_plugins(&o)).unwrap_or_default();
+        let plugins = run_read("vagrant", &["plugin", "list"], None).await.map(|o| parse_plugins(&o)).unwrap_or_default();
         if !plugins.iter().any(|i| i == needed) {
             return Err(format!(
                 "The Vagrant plugin `{needed}` for {} isn't installed. Install it from the Machine page, then start the lab again.",

@@ -43,6 +43,10 @@ pub struct AuthStatus {
     logged_in: bool,
     name: Option<String>,
     email: Option<String>,
+    /// Why the session couldn't be read (the keychain is locked, its prompt was dismissed, or
+    /// there is no Secret Service), when that is why the player shows as signed out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    keychain_error: Option<String>,
 }
 
 fn now() -> u64 {
@@ -87,16 +91,63 @@ fn dev_session_path() -> Option<std::path::PathBuf> {
     Some(std::path::PathBuf::from(home).join(".cyberctf").join("dev-session.json"))
 }
 
-fn load_session() -> Option<Session> {
+/// The stored session: `Ok(None)` when there is none, `Err` when the keychain couldn't be read.
+/// Blocking (the Secret Service may show its unlock prompt and wait): call `read_session`.
+fn load_session_blocking() -> std::result::Result<Option<Session>, String> {
     #[cfg(debug_assertions)]
     {
-        let raw = std::fs::read_to_string(dev_session_path()?).ok()?;
-        serde_json::from_str(&raw).ok()
+        let Some(path) = dev_session_path() else { return Ok(None) };
+        Ok(std::fs::read_to_string(path).ok().and_then(|raw| serde_json::from_str(&raw).ok()))
     }
     #[cfg(not(debug_assertions))]
     {
-        let raw = entry().ok()?.get_password().ok()?;
-        serde_json::from_str(&raw).ok()
+        if let Some(why) = keychain_backoff() {
+            return Err(why);
+        }
+        let read = entry().map_err(|e| e.to_string()).and_then(|e| match e.get_password() {
+            Ok(raw) => Ok(serde_json::from_str(&raw).ok()),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(keychain_error(e).to_string()),
+        });
+        if let Err(why) = &read {
+            set_keychain_backoff(Some(why.clone()));
+        }
+        read
+    }
+}
+
+/// After the keychain fails (locked, its unlock prompt dismissed, no Secret Service), it isn't
+/// asked again for a minute: the background agent reads the session every few seconds, and each
+/// read would raise the unlock prompt again right after the player dismissed it. Signing in
+/// clears it.
+#[cfg(not(debug_assertions))]
+static KEYCHAIN_BACKOFF: std::sync::Mutex<Option<(std::time::Instant, String)>> = std::sync::Mutex::new(None);
+#[cfg(not(debug_assertions))]
+const KEYCHAIN_RETRY: std::time::Duration = std::time::Duration::from_secs(60);
+
+#[cfg(not(debug_assertions))]
+fn keychain_backoff() -> Option<String> {
+    let guard = KEYCHAIN_BACKOFF.lock().unwrap_or_else(|e| e.into_inner());
+    guard.as_ref().filter(|(at, _)| at.elapsed() < KEYCHAIN_RETRY).map(|(_, why)| why.clone())
+}
+
+#[cfg(not(debug_assertions))]
+fn set_keychain_backoff(why: Option<String>) {
+    *KEYCHAIN_BACKOFF.lock().unwrap_or_else(|e| e.into_inner()) = why.map(|w| (std::time::Instant::now(), w));
+}
+
+/// `load_session_blocking` on a blocking thread, never the UI thread or an async worker.
+async fn read_session() -> std::result::Result<Option<Session>, String> {
+    tokio::task::spawn_blocking(load_session_blocking).await.unwrap_or_else(|e| Err(e.to_string()))
+}
+
+/// The session, or the error a call needing the account returns: signed out, or why the
+/// keychain couldn't be read.
+async fn session_or_signed_out() -> Result<Session> {
+    match read_session().await {
+        Ok(Some(s)) => Ok(s),
+        Ok(None) => Err(Error::Invalid(SIGNED_OUT.into())),
+        Err(why) => Err(Error::Invalid(why)),
     }
 }
 
@@ -113,8 +164,15 @@ fn save_session(session: &Session) -> Result<()> {
     }
     #[cfg(not(debug_assertions))]
     {
-        entry()?.set_password(&raw).map_err(keychain_error)
+        entry()?.set_password(&raw).map_err(keychain_error)?;
+        set_keychain_backoff(None);
+        Ok(())
     }
+}
+
+/// `save_session` on a blocking thread (the keychain may prompt).
+async fn store_session(session: Session) -> Result<()> {
+    tokio::task::spawn_blocking(move || save_session(&session)).await.map_err(|e| Error::Invalid(e.to_string()))?
 }
 
 fn clear_session() {
@@ -187,12 +245,12 @@ pub const SIGNED_OUT: &str = "You're signed out. Sign in again to continue.";
 /// the session once they hold the lock, so the first refresh serves them all.
 pub async fn access_token() -> Result<String> {
     static REFRESH: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-    let session = load_session().ok_or_else(|| Error::Invalid(SIGNED_OUT.into()))?;
+    let session = session_or_signed_out().await?;
     if session.expires_at > now() + 60 {
         return Ok(session.access_token);
     }
     let _one_at_a_time = REFRESH.get_or_init(|| tokio::sync::Mutex::new(())).lock().await;
-    let session = load_session().ok_or_else(|| Error::Invalid(SIGNED_OUT.into()))?;
+    let session = session_or_signed_out().await?;
     if session.expires_at > now() + 60 {
         return Ok(session.access_token);
     }
@@ -205,14 +263,15 @@ pub async fn access_token() -> Result<String> {
             // (OAuth `invalid_grant`). On a transient failure (network, 5xx) keep it, so a blip
             // near expiry doesn't log the user out and stop the background agent.
             if e.to_string().contains("invalid_grant") {
-                clear_session();
+                let _ = tokio::task::spawn_blocking(clear_session).await;
             }
             return Err(e);
         }
     };
     let renewed = session_from(tokens, Some(&session));
-    save_session(&renewed)?;
-    Ok(renewed.access_token)
+    let token = renewed.access_token.clone();
+    store_session(renewed).await?;
+    Ok(token)
 }
 
 // --- login ----------------------------------------------------------------
@@ -315,23 +374,30 @@ pub async fn auth_login(app: AppHandle) -> Result<AuthStatus> {
     ])
     .await?;
     let session = session_from(tokens, None);
+    let (name, email) = (session.name.clone(), session.email.clone());
+    // A fresh sign-in asks the keychain again, even right after it failed.
+    #[cfg(not(debug_assertions))]
+    set_keychain_backoff(None);
     // Signed in at cyber-auth, but the session can't be kept: say so, so the app doesn't look
     // like the login was never accepted.
-    save_session(&session).map_err(|e| Error::Invalid(format!("You signed in, but the session wasn't saved. {e}")))?;
-    Ok(AuthStatus { logged_in: true, name: session.name, email: session.email })
+    store_session(session).await.map_err(|e| Error::Invalid(format!("You signed in, but the session wasn't saved. {e}")))?;
+    Ok(AuthStatus { logged_in: true, name, email, keychain_error: None })
 }
 
+/// Async so the keychain is read off the UI thread: a locked GNOME keyring shows its unlock
+/// prompt and waits, which froze the window while this ran on the main thread.
 #[tauri::command]
-pub fn auth_status() -> AuthStatus {
-    match load_session() {
-        Some(s) => AuthStatus { logged_in: true, name: s.name, email: s.email },
-        None => AuthStatus { logged_in: false, name: None, email: None },
+pub async fn auth_status() -> AuthStatus {
+    match read_session().await {
+        Ok(Some(s)) => AuthStatus { logged_in: true, name: s.name, email: s.email, keychain_error: None },
+        Ok(None) => AuthStatus { logged_in: false, name: None, email: None, keychain_error: None },
+        Err(why) => AuthStatus { logged_in: false, name: None, email: None, keychain_error: Some(why) },
     }
 }
 
 #[tauri::command]
-pub fn auth_logout() {
-    clear_session();
+pub async fn auth_logout() {
+    let _ = tokio::task::spawn_blocking(clear_session).await;
 }
 
 #[cfg(test)]

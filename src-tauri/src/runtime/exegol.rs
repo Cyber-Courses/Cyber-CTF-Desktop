@@ -143,6 +143,13 @@ pub async fn stop(id: &str, mut log: impl FnMut(String)) -> Result<()> {
     Ok(())
 }
 
+/// `open_terminal` off the async runtime's threads and the UI thread: finding a terminal that
+/// starts can take a few seconds (each candidate gets a moment to fail), which froze the window
+/// when a command ran it on the main thread.
+pub async fn open_terminal_async(command: String) -> Result<()> {
+    tokio::task::spawn_blocking(move || open_terminal(&command)).await.map_err(|e| Error::Invalid(format!("couldn't open a terminal: {e}")))?
+}
+
 /// Opens the player's own terminal attached to the attack box.
 pub fn shell(id: &str) -> Result<()> {
     // bash is present on Kali/Parrot/Exegol alike (keeps native-terminal quoting simple).
@@ -197,7 +204,14 @@ pub fn open_terminal(command: &str) -> Result<()> {
             std::thread::sleep(std::time::Duration::from_millis(1500));
             match child.try_wait() {
                 Ok(Some(status)) if !status.success() => continue,
-                _ => return Ok(()),
+                _ => {
+                    // Reaped when it closes, or each terminal opened stays a zombie while the
+                    // app runs (Debian's gnome-terminal wrapper waits for its window).
+                    std::thread::spawn(move || {
+                        let _ = child.wait();
+                    });
+                    return Ok(());
+                }
             }
         }
         Err(Error::Invalid(format!("couldn't open a terminal; run this yourself: {command}")))
