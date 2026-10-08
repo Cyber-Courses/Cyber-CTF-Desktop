@@ -10,20 +10,12 @@ import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useLabs, type Lab } from "@/features/labs/use-labs";
-import {
-  awsMonthToDateCost,
-  labStop,
-  SERVER_CHANGED,
-  serverList,
-  serverOpenSetup,
-  serverRemove,
-  serverTest,
-  type ServerHost,
-  type ServerTest,
-} from "@/lib/tauri";
+import { awsMonthToDateCost, SERVER_CHANGED, serverList, serverOpenSetup, serverRemove, serverTest, type ServerHost, type ServerTest } from "@/lib/tauri";
 import { AccountRow } from "@/features/cloud/account-row";
 import { FirstRun } from "@/features/cloud/first-run";
 import { ignore } from "@/lib/failure";
+import { useLabActions } from "@/features/labs/use-lab-actions";
+import { getDeploySnapshot } from "@/lib/deploy-store";
 
 export function CloudScreen() {
   const [allHosts, setHosts] = useState<ServerHost[] | null>(null);
@@ -41,7 +33,9 @@ export function CloudScreen() {
   const [tests, setTests] = useState<Record<string, ServerTest | "testing">>({});
   const [spend, setSpend] = useState<Record<string, number | null>>({});
   const { labs, statuses, refreshStatus } = useLabs();
-  const [stopping, setStopping] = useState<string | null>(null);
+  // Through the shared lab actions: the lab reads busy everywhere (this list, Labs, its page)
+  // until its status after the stop is read, so Stop can't be pressed twice.
+  const { runs, stop } = useLabActions(refreshStatus);
 
   const reload = useCallback(() => {
     serverList()
@@ -92,16 +86,10 @@ export function CloudScreen() {
   }
 
   async function stopLab(l: Lab) {
-    if (!l.runtime) return;
-    setStopping(l.id);
-    try {
-      await labStop(l.id, l.runtime.runtime, () => {});
-      refreshStatus(l);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setStopping(null);
-    }
+    await stop(l);
+    // A failure ends the run's log with "✗ <why>": show it here too.
+    const last = getDeploySnapshot().runs[l.id]?.logs.at(-1);
+    if (last?.startsWith("✗")) setError(last.slice(1).trim());
   }
 
   const over = (hosts ?? []).filter((h) => {
@@ -148,8 +136,8 @@ export function CloudScreen() {
                     {s?.expiresAt ? ` · auto-stops ${new Date(s.expiresAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
                   </p>
                 </div>
-                <Button variant="destructive" size="sm" onClick={() => stopLab(l)} disabled={stopping === l.id}>
-                  {stopping === l.id ? <Spinner className="size-3.5" /> : <Square className="size-3.5" />} Stop
+                <Button variant="destructive" size="sm" onClick={() => void stopLab(l)} disabled={!!runs[l.id]?.busy}>
+                  {runs[l.id]?.busy ? <Spinner className="size-3.5" /> : <Square className="size-3.5" />} Stop
                 </Button>
               </div>
             );

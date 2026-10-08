@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CalendarDays, Cloud, Cog, FlaskConical, LayoutDashboard, type LucideIcon, MonitorCog, Search, Server } from "lucide-react";
 import { Account } from "@/features/account/account";
 import { Labs } from "@/features/labs/labs-screen";
@@ -23,9 +23,11 @@ import { operationLabel, SIGNED_OUT_EVENT, useActiveOperations, useDeployingLabs
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { ignore, tell, warn } from "@/lib/failure";
+import { useLabLinks } from "@/lib/deep-link";
+import { AUTH_CHANGED_EVENT, NAVIGATE_EVENT, REPLAY_ONBOARDING_EVENT, showInMainWindow } from "@/lib/app-events";
+import { Button } from "@/components/ui/button";
 
 /** Broadcast to every window when the session changes in one of them. */
-const AUTH_CHANGED_EVENT = "cyberctf:auth-changed";
 
 type Tab = "home" | "labs" | "machine" | "setup" | "server" | "cloud" | "events" | "settings";
 
@@ -66,10 +68,28 @@ export function AppShell() {
   // A light lab list for the command palette (jump straight to a lab), refreshed on auth change.
   const [palLabs, setPalLabs] = useState<{ id: string; slug: string; title: string; category: string }[]>([]);
 
-  const check = () =>
-    systemCheck()
-      .then(setReport)
-      .catch(() => setReport(null));
+  // The machine check failed (and no earlier one succeeded): the screens that need it say so
+  // with a retry instead of "Checking this machine…" forever.
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const lastCheck = useRef(0);
+  const check = () => {
+    lastCheck.current = Date.now();
+    return systemCheck()
+      .then((r) => {
+        setReport(r);
+        setCheckError(null);
+      })
+      .catch((e) => setCheckError(String(e)));
+  };
+  // Checked again when the window comes back (at most every 15 s): Docker started from a
+  // terminal, or an engine installed meanwhile, shows up without a restart.
+  useEffect(() => {
+    const onFocus = () => {
+      if (Date.now() - lastCheck.current > 15_000) void check();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
   useEffect(() => {
     try {
       // Reads the window marker once on mount (window isn't available during render).
@@ -101,6 +121,29 @@ export function AppShell() {
     setTab(next);
     setOpenLab((o) => ({ slug: slug ?? null, tick: o.tick + 1 }));
   }
+
+  // Asked from the Settings window: switch screens, or show the onboarding again. Brought to the
+  // front, since the request came from another window.
+  useEffect(() => {
+    if (!ready || settingsWindow) return;
+    const toFront = () => getCurrentWindow().setFocus().catch(ignore("the window manager keeps focus where it is"));
+    const nav = listen<string>(NAVIGATE_EVENT, (e) => {
+      if (NAV.some((n) => n.id === e.payload)) navigate(e.payload as Tab);
+      void toFront();
+    });
+    const replay = listen(REPLAY_ONBOARDING_EVENT, () => {
+      setOnboarded(false);
+      void toFront();
+    });
+    return () => {
+      nav.then((off) => off()).catch(ignore("the listener was never set up"));
+      replay.then((off) => off()).catch(ignore("the listener was never set up"));
+    };
+  }, [ready, settingsWindow]);
+
+  // A cyberctf://labs/<slug> link (the one that opened the app, or one opened since) shows that
+  // lab, whatever screen is open. Not in the Settings window: the main window takes it.
+  useLabLinks((slug) => navigate("labs", slug), ready && !settingsWindow);
 
   function findALab() {
     setTab("labs");
@@ -213,6 +256,12 @@ export function AppShell() {
     })),
   ];
 
+  // Signed in or out here: the Settings window (if open) hears it too.
+  function authChanged(status: AuthStatus) {
+    setAuth(status);
+    emit(AUTH_CHANGED_EVENT).catch(warn("Couldn't tell the other windows about the sign-in"));
+  }
+
   function completeOnboarding() {
     try {
       localStorage.setItem(ONBOARDED_KEY, "1");
@@ -230,16 +279,7 @@ export function AppShell() {
 
   if (!ready) return <div className="h-dvh bg-background" />;
   // Settings runs standalone in its own window: no sidebar, no onboarding, just the screen.
-  if (settingsWindow)
-    return (
-      <SettingsWindowView
-        auth={auth}
-        onAuthChange={(status) => {
-          setAuth(status);
-          emit(AUTH_CHANGED_EVENT).catch(warn("Couldn't tell the other windows about the sign-in"));
-        }}
-      />
-    );
+  if (settingsWindow) return <SettingsWindowView auth={auth} onAuthChange={authChanged} />;
   if (!onboarded) return <Onboarding onComplete={completeOnboarding} />;
 
   const CurrentIcon = NAV.find((n) => n.id === tab)?.icon ?? MonitorCog;
@@ -345,7 +385,7 @@ export function AppShell() {
         </nav>
 
         <div className="border-t border-border px-3 py-3">
-          <Account status={auth} onChange={setAuth} online={!!auth?.loggedIn} onSettings={() => openSettings().catch(tell("Couldn't open Settings"))} />
+          <Account status={auth} onChange={authChanged} online={!!auth?.loggedIn} onSettings={() => openSettings().catch(tell("Couldn't open Settings"))} />
         </div>
       </aside>
 
@@ -360,7 +400,16 @@ export function AppShell() {
         <div className="flex-1 overflow-y-auto">
           <UpdateBanner />
           <div className="mx-auto w-full max-w-[70rem] px-5 py-5">
-            <Screen tab={tab} report={report} auth={auth} openLab={openLab} onRefresh={check} onNavigate={navigate} onAuthChange={setAuth} />
+            <Screen
+              tab={tab}
+              report={report}
+              checkError={checkError}
+              auth={auth}
+              openLab={openLab}
+              onRefresh={check}
+              onNavigate={navigate}
+              onAuthChange={setAuth}
+            />
           </div>
         </div>
       </main>
@@ -373,9 +422,8 @@ function ComingSoon({ icon, title, description }: { icon: "server" | "cloud" | "
 }
 
 // Settings rendered on its own in the dedicated `settings` window: just the titlebar band and
-// the screen. The "set up a hypervisor" link lives in the main window, so onNavigate closes here.
+// the screen. The "set up a hypervisor" link shows the Machine screen in the main window.
 function SettingsWindowView({ auth, onAuthChange }: { auth: AuthStatus | null; onAuthChange: (status: AuthStatus) => void }) {
-  const close = () => getCurrentWindow().close().catch(warn("closing the window"));
   return (
     <main className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <div data-tauri-drag-region className="h-9 shrink-0" />
@@ -385,7 +433,7 @@ function SettingsWindowView({ auth, onAuthChange }: { auth: AuthStatus | null; o
       </div>
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[70rem] px-5 py-5">
-          <SettingsScreen auth={auth} onAuthChange={onAuthChange} onNavigate={close} />
+          <SettingsScreen auth={auth} onAuthChange={onAuthChange} onNavigate={showInMainWindow} />
         </div>
       </div>
     </main>
@@ -395,6 +443,7 @@ function SettingsWindowView({ auth, onAuthChange }: { auth: AuthStatus | null; o
 function Screen({
   tab,
   report,
+  checkError,
   auth,
   openLab,
   onRefresh,
@@ -403,20 +452,28 @@ function Screen({
 }: {
   tab: Tab;
   report: SystemReport | null;
+  checkError: string | null;
   auth: AuthStatus | null;
   openLab: { slug: string | null; tick: number };
   onRefresh: () => void | Promise<void>;
   onNavigate: (t: Tab, slug?: string) => void;
   onAuthChange: (status: AuthStatus) => void;
 }): ReactNode {
+  // Shown where the machine check is needed and hasn't answered: a retry when it failed.
+  const waiting = (what: string) =>
+    checkError ? (
+      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+        <span>Couldn&apos;t check this machine: {checkError}</span>
+        <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
+          Try again
+        </Button>
+      </div>
+    ) : (
+      <p className="text-sm text-muted-foreground">{what}</p>
+    );
   if (tab === "home") return <HomeScreen report={report} auth={auth} onNavigate={onNavigate} />;
   if (tab === "settings") return <SettingsScreen auth={auth} onAuthChange={onAuthChange} onNavigate={onNavigate} />;
-  if (tab === "machine")
-    return report ? (
-      <MachineScreen report={report} onRefresh={onRefresh} onNavigate={onNavigate} />
-    ) : (
-      <p className="text-sm text-muted-foreground">Checking this machine…</p>
-    );
+  if (tab === "machine") return report ? <MachineScreen report={report} onRefresh={onRefresh} onNavigate={onNavigate} /> : waiting("Checking this machine…");
   if (tab === "server") return <ServerScreen onNavigate={onNavigate} />;
   if (tab === "cloud") return <CloudScreen />;
   if (tab === "events")
@@ -437,6 +494,6 @@ function Screen({
       openLab={openLab}
     />
   ) : (
-    <p className="text-sm text-muted-foreground">Loading…</p>
+    waiting("Loading…")
   );
 }

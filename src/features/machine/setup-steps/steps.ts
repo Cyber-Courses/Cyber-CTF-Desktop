@@ -90,6 +90,9 @@ export function stepMeta(step: MachineStep, report: SystemReport | null): { icon
 export function nextLabel(step: MachineStep, report: SystemReport | null): string {
   if (step === "virtualization") return "I’ve done this";
   if (step === "vm-test" && !hasHypervisor(report)) return "Skip for now";
+  // A hypervisor is optional (VM labs can run on a server): with none set up, the VM steps
+  // can be passed by.
+  if ((step === "vm" || step === "vagrant") && !hasHypervisor(report)) return "Skip for now";
   return "Continue";
 }
 
@@ -112,16 +115,19 @@ export function chosenHypervisor(report: SystemReport, setup: MachineSetupState)
 export function canContinue(step: MachineStep, report: SystemReport | null, setup: MachineSetupState): boolean {
   if (!report) return false;
   if (step === "pkgmgr") return report.pkgManager.installed;
-  if (step === "docker") return isDockerReady(report) && report.dockerEngine === chosenEngine(report, setup).id;
-  if (step === "vm") {
-    const choice = chosenHypervisor(report, setup);
-    // No local hypervisor applies here (VM labs go to a Server): nothing to wait for.
-    return !choice || choice.hypervisor === true;
+  if (step === "docker") {
+    if (!isDockerReady(report)) return false;
+    // A working engine this step has no tile for (Podman) is fine unless another was picked.
+    const known = ENGINES.some((e) => e.id === report.dockerEngine);
+    return report.dockerEngine === chosenEngine(report, setup).id || (!known && !setup.engine);
   }
+  // A hypervisor is optional, as the step says (VM labs can go to a Server, and one can be added
+  // later from the Machine page): the flow never waits on one.
+  if (step === "vm") return true;
   if (step === "vagrant") {
     const choice = chosenHypervisor(report, setup);
-    // No local hypervisor (VM labs go to a Server): nothing for Vagrant to drive here.
-    if (!choice) return true;
+    // No local hypervisor set up (VM labs go to a Server): nothing for Vagrant to drive here.
+    if (!choice || choice.hypervisor !== true) return true;
     // Vagrant, and the plugin that lets it drive the chosen hypervisor.
     return report.vagrant.installed && (!choice.plugin || choice.pluginInstalled);
   }

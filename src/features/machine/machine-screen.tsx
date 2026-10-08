@@ -225,7 +225,8 @@ export function MachineScreen({
             ) : report.docker.installed ? (
               "A container engine is installed but not running. Start it to run labs."
             ) : (
-              "No container engine yet. Docker Desktop, OrbStack or Colima all work."
+              // The engines this OS has (OrbStack is macOS-only; Docker Engine is Linux's own).
+              `No container engine yet. ${report.os === "linux" ? "Docker Engine, Docker Desktop or Colima" : report.os === "macos" ? "Docker Desktop, OrbStack or Colima" : "Docker Desktop"} all work.`
             )
           }
           hint={dockerReady ? freeHint("docker") : undefined}

@@ -54,7 +54,9 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
           </div>
         )}
         {!isMac && !isWin && (
-          <p className="text-[0.78125rem] text-muted-foreground">Install your distribution’s package manager (apt) to use the one-click installs.</p>
+          <p className="text-[0.78125rem] text-muted-foreground">
+            Install your distribution’s package manager{report.pkgManager.name ? ` (${report.pkgManager.name})` : ""} to use the one-click installs.
+          </p>
         )}
       </>
     );

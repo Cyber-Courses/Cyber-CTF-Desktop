@@ -11,6 +11,8 @@ import { getAttackBox, getAttackImage, getVmProvider } from "@/lib/settings";
 import { Row, Section } from "@/features/settings/settings-layout";
 import { ONBOARDED_KEY } from "@/features/settings/settings-screen";
 import { tell } from "@/lib/failure";
+import { emit } from "@tauri-apps/api/event";
+import { closeIfSettings, REPLAY_ONBOARDING_EVENT } from "@/lib/app-events";
 
 /* ------------------------------------------------------------------ about */
 
@@ -79,13 +81,16 @@ export function AboutSection({ version, report, agent }: { version: string | nul
     }
   }
 
+  // The onboarding shows in the main window: it is asked to show it again (a reload here only
+  // reloaded the Settings window, which never shows it).
   function replayOnboarding() {
     try {
       localStorage.removeItem(ONBOARDED_KEY);
     } catch {
       /* ignore */
     }
-    location.reload();
+    emit(REPLAY_ONBOARDING_EVENT).catch(tell("Couldn't replay the setup"));
+    closeIfSettings();
   }
 
   const updateText = (() => {

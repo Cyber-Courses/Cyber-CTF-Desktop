@@ -19,6 +19,9 @@ export type DeployRun = {
   /** The arrival time (ms) of each log line, parallel to `logs`, so step timings survive
    *  leaving and returning to the lab page. */
   times: number[];
+  /** What the run is (launch, stop, shutdown…), so a list row can say "Starting…" or
+   *  "Stopping…" instead of guessing from the lab's status. */
+  op?: string;
 };
 /** Every lab with a run in flight or just finished, keyed by lab id. A single global slot
  *  would cross-contaminate: with two deploys running, the second's lines would appear on the
@@ -39,10 +42,20 @@ function setRun(labId: string, run: DeployRun) {
   emit();
 }
 
-/** Begin a run for `labId`: clears that lab's previous logs, leaves other labs untouched. */
-export function beginDeploy(labId: string) {
-  setRun(labId, { busy: true, logs: [], times: [] });
+/** Begin a run (`op`) for `labId`: clears that lab's previous logs, leaves other labs untouched. */
+export function beginDeploy(labId: string, op?: string) {
+  setRun(labId, { busy: true, logs: [], times: [], op });
 }
+
+/** What a lab shows while an operation runs on it: the containers report "running" well before
+ *  a launch or resume is done, and until the end of a shut down or stop. */
+export const OPERATION_STATUS: Partial<Record<string, string>> = {
+  launch: "Starting",
+  resume: "Resuming",
+  pause: "Pausing",
+  shutdown: "Shutting down",
+  stop: "Stopping",
+};
 
 /** Append a log line to `labId`'s run, timestamped on arrival. */
 export function appendDeployLog(labId: string, line: string) {

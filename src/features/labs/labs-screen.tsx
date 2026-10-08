@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
-import { useRequestedLab } from "@/lib/deep-link";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
 import { Panel, RailLabel } from "@/components/ui/panel";
@@ -48,7 +47,6 @@ export function Labs({
   const [runtime, setRuntime] = useState<RuntimeFilter>("all");
   const [difficulty, setDifficulty] = useState(0);
   const [servers, setServers] = useState<ServerHost[]>([]);
-  const requested = useRequestedLab();
   // Local hypervisors ready for a lab VM (Vagrant + hypervisor), the Settings default first.
   const readyVms = useMemo(() => {
     const ready = (report?.vagrant.installed ? report.vmProviders : [])
@@ -77,11 +75,6 @@ export function Labs({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDetailSlug(openLab.slug);
   }, [openLab, labs]);
-  // A deep link (cyberctf://lab/<slug>) opens that lab once the catalogue is loaded.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (requested && labs?.some((l) => l.slug === requested)) setDetailSlug(requested);
-  }, [requested, labs]);
 
   const isRunning = (l: Lab) => !!statuses[l.id]?.running;
 
@@ -119,6 +112,9 @@ export function Labs({
   if (detail) {
     return (
       <LabDetail
+        // Its own state per lab (a pending action, an open remove dialog, the attack box's
+        // auto-start): opening another lab from the sidebar or palette must not inherit it.
+        key={detail.id}
         lab={detail}
         status={statuses[detail.id]}
         busy={!!runs[detail.id]?.busy}
@@ -146,6 +142,7 @@ export function Labs({
       lab={lab}
       status={statuses[lab.id]}
       busy={!!runs[lab.id]?.busy}
+      operation={runs[lab.id]?.op}
       loggedIn={loggedIn}
       onLogin={onLogin}
       hostArch={hostArch}

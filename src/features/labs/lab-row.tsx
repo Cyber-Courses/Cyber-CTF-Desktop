@@ -5,8 +5,10 @@ import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-
 import { CLOUDS } from "@/features/labs/run-on";
 import { machineOpenSetup, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
-import type { ButtonHTMLAttributes } from "react";
+import { useState, type ButtonHTMLAttributes } from "react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { OPERATION_STATUS } from "@/lib/deploy-store";
 import { openExternal, tell } from "@/lib/failure";
 
 const SERVERS = new Set(["vmware_esxi", "proxmox"]);
@@ -57,6 +59,7 @@ export function LabRow({
   lab,
   status,
   busy = false,
+  operation,
   loggedIn,
   onLogin,
   hostArch,
@@ -69,6 +72,8 @@ export function LabRow({
   lab: Lab;
   status?: LabStatus;
   busy?: boolean;
+  /** The operation in flight while `busy` (launch, stop, shutdown…), for its label. */
+  operation?: string;
   loggedIn: boolean;
   /** Logged out: the start button logs in instead of being greyed out. */
   onLogin?: () => Promise<void>;
@@ -87,11 +92,25 @@ export function LabRow({
   const running = status?.running ?? false;
   const parked = !running && (status?.parked ?? null);
   const RuntimeIcon = rt?.runtime === "VM" ? Monitor : Container;
+  // While busy, what is actually happening: a lab being started reports running long before
+  // the launch is done, so "Stopping…" there would be wrong.
+  const doing = busy ? `${(operation && OPERATION_STATUS[operation]) ?? "Working"}…` : null;
+  // Stop deletes the lab's machines: ask first, as the lab's own page does.
+  const [confirmingStop, setConfirmingStop] = useState(false);
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${lab.title}`}
       onClick={onOpen}
-      className="group flex cursor-pointer items-center gap-3 border-t border-border px-4 py-3 transition-colors first:border-t-0 hover:bg-[#0e0e0e]"
+      onKeyDown={(e) => {
+        // Only the row itself: Enter on one of its buttons (or in its dialog) is theirs.
+        if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        onOpen();
+      }}
+      className="group flex cursor-pointer items-center gap-3 border-t border-border px-4 py-3 outline-none transition-colors first:border-t-0 hover:bg-[#0e0e0e] focus-visible:bg-[#0e0e0e] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring/60"
     >
       <span className="grid size-[1.875rem] shrink-0 place-items-center rounded-lg border border-border bg-[#121212] text-muted-foreground">
         <RuntimeIcon className="size-4" />
@@ -123,8 +142,8 @@ export function LabRow({
                 <ExternalLink className="size-3" /> Open
               </RowButton>
             )}
-            <RowButton tone="danger" onClick={onStop} disabled={busy}>
-              {busy ? "Stopping…" : "Stop"}
+            <RowButton tone="danger" onClick={() => setConfirmingStop(true)} disabled={busy}>
+              {doing ?? "Stop"}
             </RowButton>
           </>
         ) : parked ? (
@@ -132,7 +151,7 @@ export function LabRow({
             <span className="text-[0.6875rem] text-muted-foreground">{parked === "pause" ? "Paused" : "Shut down"}</span>
             {onResume && (
               <RowButton tone="learn" onClick={onResume} disabled={busy} title="Bring it back as it was">
-                {busy ? "Resuming…" : "Resume"}
+                {doing ?? "Resume"}
               </RowButton>
             )}
           </>
@@ -168,6 +187,24 @@ export function LabRow({
 
         <ChevronRight className="size-4 text-muted-foreground/50 transition-colors group-hover:text-foreground" />
       </div>
+
+      {confirmingStop && (
+        // Clicks in the dialog stay in it: the row behind would open the lab.
+        <div onClick={(e) => e.stopPropagation()}>
+          <ConfirmDialog
+            title={`Remove ${lab.title}?`}
+            confirmLabel="Remove"
+            onCancel={() => setConfirmingStop(false)}
+            onConfirm={() => {
+              setConfirmingStop(false);
+              onStop();
+            }}
+          >
+            Its machines and your attack box are deleted, with everything changed or saved on them. The next start rebuilds the lab from scratch.
+            {!status?.host && status?.place !== "local_vm" && " To keep them, open the lab and shut it down instead."}
+          </ConfirmDialog>
+        </div>
+      )}
     </div>
   );
 }
