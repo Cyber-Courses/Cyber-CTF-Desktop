@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CalendarDays, Cloud, Cog, FlaskConical, LayoutDashboard, type LucideIcon, MonitorCog, Search, Server } from "lucide-react";
 import { Account } from "@/features/account/account";
@@ -21,11 +20,21 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { apiQuery, authLogin, authStatus, machineWorkloads, openSettings, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { operationLabel, SIGNED_OUT_EVENT, useActiveOperations, useDeployingLabs } from "@/lib/deploy-store";
 import { Spinner } from "@/components/ui/spinner";
+import { StatusDot } from "@/components/ui/status-pill";
+import { Toaster } from "@/components/ui/toaster";
+import { CtfMark } from "@/components/brand/mark";
+import { engineName } from "@/features/machine/setup-steps/engines";
+import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
+import { getVersion } from "@tauri-apps/api/app";
 import { cn } from "@/lib/utils";
 import { ignore, tell, warn } from "@/lib/failure";
 import { useLabLinks } from "@/lib/deep-link";
 import { AUTH_CHANGED_EVENT, NAVIGATE_EVENT, REPLAY_ONBOARDING_EVENT, showInMainWindow } from "@/lib/app-events";
 import { Button } from "@/components/ui/button";
+import { installDevMock } from "@/lib/dev-mock";
+
+// Development only: ?mock in a plain browser answers the Tauri commands with sample data.
+installDevMock();
 
 /** Broadcast to every window when the session changes in one of them. */
 
@@ -65,6 +74,10 @@ export function AppShell() {
   // This webview is the dedicated Settings window (opened by `open_settings` with ?window=settings).
   const [settingsWindow, setSettingsWindow] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The lab page open in Labs, for the breadcrumb (null on the list and other screens).
+  const [labTitle, setLabTitle] = useState<string | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
+  const [isMac, setIsMac] = useState(true);
   // A light lab list for the command palette (jump straight to a lab), refreshed on auth change.
   const [palLabs, setPalLabs] = useState<{ id: string; slug: string; title: string; category: string }[]>([]);
 
@@ -99,6 +112,8 @@ export function AppShell() {
       /* ignore */
     }
     check();
+    getVersion().then(setVersion).catch(ignore("no version outside the app"));
+    setIsMac(navigator.userAgent.includes("Mac"));
     authStatus()
       .then(setAuth)
       .catch(() => setAuth({ loggedIn: false, name: null, email: null }));
@@ -238,12 +253,21 @@ export function AppShell() {
     .map((l) => ({ ...l, op: ops.get(l.id) ?? (deploying.has(l.id) ? { labId: l.id, op: "launch" as const, machine: null, step: null } : null) }));
 
   const paletteCommands: Command[] = [
-    { id: "find-lab", label: "Find a lab", hint: "search", icon: Search, keywords: "labs search ctf", run: findALab },
+    { id: "find-lab", label: "Find a lab", hint: "/", icon: Search, keywords: "labs search ctf", group: "Actions", run: findALab },
+    {
+      id: "settings",
+      label: "Open Settings",
+      icon: Cog,
+      keywords: "settings preferences appearance theme",
+      group: "Actions",
+      run: () => void openSettings().catch(tell("Couldn't open Settings")),
+    },
     ...NAV.filter((n) => !n.soon).map((n) => ({
       id: `go-${n.id}`,
       label: `Go to ${n.label}`,
       icon: n.icon,
       keywords: n.label,
+      group: "Screens",
       run: () => navigate(n.id),
     })),
     ...palLabs.map((l) => ({
@@ -252,6 +276,7 @@ export function AppShell() {
       hint: l.category,
       icon: FlaskConical,
       keywords: `lab ${l.category}`,
+      group: "Labs",
       run: () => navigate("labs", l.slug),
     })),
   ];
@@ -282,124 +307,135 @@ export function AppShell() {
   if (settingsWindow) return <SettingsWindowView auth={auth} onAuthChange={authChanged} />;
   if (!onboarded) return <Onboarding onComplete={completeOnboarding} />;
 
-  const CurrentIcon = NAV.find((n) => n.id === tab)?.icon ?? MonitorCog;
+  // Breadcrumb: where you are. A lab page shows "Labs / <lab>".
+  const crumbs = tab === "labs" && labTitle ? ["Labs", labTitle] : [tab === "settings" ? "Settings" : "This machine", TITLES[tab]];
+  const engine =
+    report?.dockerRunning && report.dockerEngine ? `${engineName(report.dockerEngine)}${report.docker.version ? ` ${report.docker.version}` : ""}` : null;
+  const hypervisor = report?.vmProviders.find((p) => !p.remote && p.available && p.hypervisor !== false);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <CommandPalette key={paletteOpen ? "open" : "closed"} open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={paletteCommands} />
       <QuitGuard />
       <LaunchConfirm />
+      <Toaster />
       {/* ---- Sidebar ---- */}
-      <aside className="flex w-[14.5rem] shrink-0 flex-col border-r border-border">
-        {/* macOS titlebar band inside the column, so the sidebar divider runs to the top of the window */}
-        <div data-tauri-drag-region className="h-9 shrink-0" />
-        <div data-tauri-drag-region className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border px-4">
-          <Image src="/logo-mark.svg" alt="" width={20} height={20} className="size-5 pointer-events-none" priority />
-          <span className="text-[0.8125rem] font-semibold tracking-tight">Cyber CTF</span>
+      <aside className="flex w-[14.5rem] shrink-0 flex-col border-r border-border bg-card">
+        {/* macOS titlebar band (traffic lights) inside the column, so the divider runs to the top */}
+        <div data-tauri-drag-region className="h-10 shrink-0" />
+        <div data-tauri-drag-region className="flex items-center gap-2.5 px-3.5 pb-3">
+          <CtfMark className="pointer-events-none size-[1.35rem]" />
+          <span className="pointer-events-none text-[0.875rem] font-semibold tracking-tight">CyberCTF</span>
+          {version && <span className="pointer-events-none ml-auto font-mono text-[0.625rem] text-faint">v{version}</span>}
         </div>
 
         <button
-          onClick={() => navigate("labs")}
-          className="mx-3 mb-2 mt-3 flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-[0.78125rem] text-muted-foreground transition-colors hover:border-ring/60 hover:text-foreground"
+          type="button"
+          onClick={() => setPaletteOpen(true)}
+          className="mx-2.5 mb-2.5 flex h-8 items-center justify-between rounded-sm bg-glass px-2.5 text-[0.75rem] text-faint shadow-[inset_0_0_0_1px_var(--border)] transition-colors hover:text-muted-foreground"
         >
-          <Search className="size-3.5" />
-          <span>Find a lab…</span>
-          <kbd className="ml-auto rounded border border-border px-1.5 text-[0.6875rem] text-muted-foreground/70">/</kbd>
+          <span className="flex items-center gap-2">
+            <Search className="size-3.5" /> Find…
+          </span>
+          <kbd className="kbd">{isMac ? "⌘K" : "Ctrl K"}</kbd>
         </button>
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
-          {NAV.map((n) => {
-            return (
-              <div key={n.id}>
-                {n.sep && <div className="my-2 h-px bg-border" />}
-                <button
-                  onClick={() => navigate(n.id)}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[0.4375rem] text-[0.8125rem] transition-colors",
-                    tab === n.id ? "bg-[#1a1a1a] text-foreground" : "text-muted-foreground hover:bg-[#141414] hover:text-foreground",
-                    n.soon && tab !== n.id && "opacity-55",
-                  )}
-                >
-                  <n.icon className="size-4 shrink-0" />
-                  <span className="flex-1 text-left">{n.label}</span>
-                  {n.soon && (
-                    <span className="rounded border border-border px-1.5 text-[0.5625rem] font-medium uppercase tracking-wide text-muted-foreground/70">
-                      Soon
-                    </span>
-                  )}
-                </button>
-              </div>
-            );
-          })}
+        <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2.5">
+          {NAV.map((n) => (
+            <div key={n.id}>
+              {n.sep && <div className="mx-1.5 my-2 h-px bg-border" />}
+              <NavItem icon={n.icon} active={tab === n.id} dim={n.soon && tab !== n.id} onClick={() => navigate(n.id)}>
+                {n.label}
+                {n.soon ? (
+                  <span className="ml-auto font-mono text-[0.625rem] text-faint">Soon</span>
+                ) : n.id === "labs" && palLabs.length > 0 ? (
+                  <span className="ml-auto font-mono text-[0.6875rem] text-faint">{palLabs.length}</span>
+                ) : null}
+              </NavItem>
+            </div>
+          ))}
 
           {activeLabs.length > 0 && (
-            <div className="pt-1">
-              <div className="my-2 h-px bg-border" />
+            <>
+              <div className="section-label px-2 pt-4 pb-1.5">Running</div>
               {activeLabs.map((l) => (
                 <button
                   key={l.id}
+                  type="button"
                   onClick={() => navigate("labs", l.slug)}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[#141414]"
+                  className="flex w-full items-start gap-2.5 rounded-sm px-2 py-1.5 text-left transition-colors hover:bg-glass"
                 >
-                  <span
-                    className={cn(
-                      "grid size-7 shrink-0 place-items-center rounded-md border",
-                      l.op ? "border-learn/25 bg-learn/10 text-learn" : "border-emerald-500/25 bg-emerald-500/10 text-emerald-500",
-                    )}
-                  >
-                    {l.op ? <Spinner className="size-3.5" /> : <FlaskConical className="size-3.5" />}
-                  </span>
+                  <StatusDot tone={l.op ? "warn" : "ok"} pulse={!!l.op} className="mt-[0.4rem]" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[0.78125rem] font-medium text-foreground">{l.title}</span>
-                    <span className="flex items-center gap-1.5 truncate text-[0.65625rem] text-muted-foreground">
-                      {l.op ? (
-                        <span className="min-w-0">
-                          <span className="block truncate text-learn">{operationLabel(l.op)}</span>
-                          {/* The step the operation is at, re-entering as it changes. */}
-                          {l.op.step && (
-                            <span
-                              key={l.op.step}
-                              className="animate-fade-in block truncate font-mono text-[0.59375rem] text-muted-foreground/80"
-                              title={l.op.step}
-                            >
-                              {l.op.step}
-                            </span>
-                          )}
-                        </span>
-                      ) : (
-                        <>
-                          {/* A live dot: the lab is up right now, not a stale entry. */}
-                          <span className="relative flex size-1.5 shrink-0">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
-                            <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
+                    <span className="block truncate text-[0.8125rem] text-foreground">{l.title}</span>
+                    {l.op ? (
+                      <>
+                        <span className="block truncate font-mono text-[0.625rem] text-warning">{operationLabel(l.op)}</span>
+                        {/* The step the operation is at, re-entering as it changes. */}
+                        {l.op.step && (
+                          <span key={l.op.step} className="animate-fade-in block truncate font-mono text-[0.625rem] text-faint" title={l.op.step}>
+                            {l.op.step}
                           </span>
-                          Running
-                        </>
-                      )}
-                    </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="block truncate font-mono text-[0.625rem] text-faint">running</span>
+                    )}
                   </span>
                 </button>
               ))}
-            </div>
+            </>
           )}
+
+          <div className="flex-1" />
+          <NavItem icon={Cog} active={false} onClick={() => openSettings().catch(tell("Couldn't open Settings"))}>
+            Settings
+            <span className="ml-auto font-mono text-[0.625rem] text-faint">{isMac ? "⌘," : "Ctrl ,"}</span>
+          </NavItem>
         </nav>
 
-        <div className="border-t border-border px-3 py-3">
-          <Account status={auth} onChange={authChanged} online={!!auth?.loggedIn} onSettings={() => openSettings().catch(tell("Couldn't open Settings"))} />
+        <div className="mt-1 border-t border-border px-2.5 py-2.5">
+          <Account status={auth} onChange={authChanged} online={!!auth?.loggedIn} />
         </div>
       </aside>
 
       {/* ---- Main ---- */}
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div data-tauri-drag-region className="h-9 shrink-0" />
-        <div data-tauri-drag-region className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
-          <CurrentIcon className="size-4 text-muted-foreground" />
-          <span className="text-[0.8125rem] font-medium text-foreground">{TITLES[tab]}</span>
+        <div data-tauri-drag-region className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-6 text-[0.8125rem] text-faint">
+          {crumbs.map((c, i) =>
+            i === crumbs.length - 1 ? (
+              <b key={i} className="pointer-events-none truncate font-medium text-foreground">
+                {c}
+              </b>
+            ) : (
+              <span key={i} className="pointer-events-none flex items-center gap-2">
+                {c}
+                <span>/</span>
+              </span>
+            ),
+          )}
+          <span className="pointer-events-none ml-auto flex items-center gap-2 font-mono text-[0.6875rem]">
+            {report ? (
+              <>
+                <StatusDot tone={report.dockerRunning ? "ok" : "warn"} />
+                {engine ?? "Docker not running"}
+                {hypervisor && <span> · {PROVIDER_LABELS[hypervisor.provider] ?? hypervisor.provider}</span>}
+              </>
+            ) : checkError ? (
+              <>
+                <StatusDot tone="fail" /> machine check failed
+              </>
+            ) : (
+              <>
+                <StatusDot tone="muted" /> checking…
+              </>
+            )}
+          </span>
         </div>
 
         <div className="flex-1 overflow-y-auto">
           <UpdateBanner />
-          <div className="mx-auto w-full max-w-[70rem] px-5 py-5">
+          <div className="mx-auto w-full max-w-[72rem] px-7 pt-7 pb-10">
             <Screen
               tab={tab}
               report={report}
@@ -409,11 +445,31 @@ export function AppShell() {
               onRefresh={check}
               onNavigate={navigate}
               onAuthChange={setAuth}
+              onLabChange={setLabTitle}
             />
           </div>
         </div>
       </main>
     </div>
+  );
+}
+
+/** One sidebar entry: 2rem high, icon then label; the current one sits on a glass fill. */
+function NavItem({ icon: I, active, dim, onClick, children }: { icon: LucideIcon; active: boolean; dim?: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex h-8 w-full items-center gap-2.5 rounded-sm px-2.5 text-left text-[0.8125rem] transition-colors",
+        active ? "bg-glass-2 text-foreground shadow-[inset_0_0_0_1px_var(--border)]" : "text-muted-foreground hover:bg-glass hover:text-foreground",
+        dim && "opacity-60",
+      )}
+    >
+      <I className="size-4 shrink-0 opacity-85" />
+      {children}
+    </button>
   );
 }
 
@@ -426,13 +482,12 @@ function ComingSoon({ icon, title, description }: { icon: "server" | "cloud" | "
 function SettingsWindowView({ auth, onAuthChange }: { auth: AuthStatus | null; onAuthChange: (status: AuthStatus) => void }) {
   return (
     <main className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      <div data-tauri-drag-region className="h-9 shrink-0" />
-      <div data-tauri-drag-region className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
-        <Cog className="size-4 text-muted-foreground" />
-        <span className="text-[0.8125rem] font-medium text-foreground">Settings</span>
+      <Toaster />
+      <div data-tauri-drag-region className="flex h-12 shrink-0 items-center justify-center border-b border-border text-[0.8125rem] font-medium">
+        <span className="pointer-events-none">Settings</span>
       </div>
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[70rem] px-5 py-5">
+        <div className="mx-auto w-full max-w-[52rem] px-7 pt-7 pb-10">
           <SettingsScreen auth={auth} onAuthChange={onAuthChange} onNavigate={showInMainWindow} />
         </div>
       </div>
@@ -449,6 +504,7 @@ function Screen({
   onRefresh,
   onNavigate,
   onAuthChange,
+  onLabChange,
 }: {
   tab: Tab;
   report: SystemReport | null;
@@ -458,18 +514,25 @@ function Screen({
   onRefresh: () => void | Promise<void>;
   onNavigate: (t: Tab, slug?: string) => void;
   onAuthChange: (status: AuthStatus) => void;
+  onLabChange: (title: string | null) => void;
 }): ReactNode {
   // Shown where the machine check is needed and hasn't answered: a retry when it failed.
   const waiting = (what: string) =>
     checkError ? (
-      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-        <span>Couldn&apos;t check this machine: {checkError}</span>
-        <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
-          Try again
-        </Button>
-      </div>
+      <EmptyState
+        icon="alert"
+        title="Couldn’t check this machine"
+        description={checkError}
+        action={
+          <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
+            Try again
+          </Button>
+        }
+      />
     ) : (
-      <p className="text-sm text-muted-foreground">{what}</p>
+      <p className="flex items-center gap-2.5 text-[0.8125rem] text-muted-foreground">
+        <Spinner className="size-3.5" /> {what}
+      </p>
     );
   if (tab === "home") return <HomeScreen report={report} auth={auth} onNavigate={onNavigate} />;
   if (tab === "settings") return <SettingsScreen auth={auth} onAuthChange={onAuthChange} onNavigate={onNavigate} />;
@@ -492,6 +555,7 @@ function Screen({
       hostArch={report.arch}
       report={report}
       openLab={openLab}
+      onDetailChange={onLabChange}
     />
   ) : (
     waiting("Loading…")

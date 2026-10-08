@@ -11,6 +11,8 @@ export type Command = {
   hint?: string;
   icon: LucideIcon;
   keywords?: string;
+  /** Heading the command is listed under (Screens, Labs...). */
+  group?: string;
   run: () => void;
 };
 
@@ -72,7 +74,7 @@ export function CommandPalette({ open, onClose, commands }: { open: boolean; onC
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[12vh] backdrop-blur-[2px] animate-fade-in"
+      className="animate-fade-in fixed inset-0 z-50 flex items-start justify-center bg-[var(--scrim)] pt-[14vh] backdrop-blur-[3px]"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -81,43 +83,47 @@ export function CommandPalette({ open, onClose, commands }: { open: boolean; onC
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
+        aria-label="Command menu"
+        className="surface-glass w-full max-w-[36rem] overflow-hidden rounded-[1rem]"
         onKeyDown={onKey}
       >
-        <div className="flex items-center gap-2.5 border-b border-border px-3.5">
-          <Search className="size-4 shrink-0 text-muted-foreground/70" />
+        <div className="flex items-center gap-3 border-b border-border px-4">
+          <Search className="size-4 shrink-0 text-faint" />
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Go to… or search actions"
-            className="w-full bg-transparent py-3 text-[0.875rem] outline-none placeholder:text-muted-foreground/50"
+            placeholder="Search labs, screens, actions…"
+            className="h-13 w-full bg-transparent text-[0.9375rem] outline-none placeholder:text-faint"
           />
-          <kbd className="rounded border border-border px-1.5 text-[0.625rem] text-muted-foreground/60">esc</kbd>
+          <kbd className="kbd">esc</kbd>
         </div>
-        <div ref={listRef} className="max-h-[22rem] overflow-y-auto p-1.5">
+        <div ref={listRef} className="max-h-[24rem] overflow-y-auto pb-2">
           {results.length === 0 ? (
-            <p className="px-3 py-6 text-center text-[0.8125rem] text-muted-foreground">No matching action.</p>
+            <p className="px-4 py-8 text-center text-[0.8125rem] text-muted-foreground">No results</p>
           ) : (
             results.map((c, i) => {
               const Icon = c.icon;
+              const heading = c.group && c.group !== results[i - 1]?.group ? c.group : null;
               return (
-                <button
-                  key={c.id}
-                  data-active={i === selected}
-                  onMouseMove={() => setActive(i)}
-                  onClick={() => run(c)}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[0.8125rem] transition-colors",
-                    i === selected ? "bg-foreground/[0.06] text-foreground" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <Icon className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="flex-1 truncate">{c.label}</span>
-                  {c.hint && <span className="truncate text-[0.71875rem] text-muted-foreground/70">{c.hint}</span>}
-                  {i === selected && <CornerDownLeft className="size-3.5 shrink-0 text-muted-foreground/60" />}
-                </button>
+                <div key={c.id}>
+                  {heading && <div className="section-label px-4 pt-3 pb-1.5">{heading}</div>}
+                  <button
+                    type="button"
+                    data-active={i === selected}
+                    onMouseMove={() => setActive(i)}
+                    onClick={() => run(c)}
+                    className={cn(
+                      "flex h-9 w-full items-center gap-3 px-4 text-left text-[0.8125rem] transition-colors",
+                      i === selected ? "bg-glass-2 text-foreground" : "text-muted-foreground",
+                    )}
+                  >
+                    <Icon className="size-3.5 shrink-0 text-faint" />
+                    <span className="flex-1 truncate">{c.label}</span>
+                    {c.hint && <span className="truncate font-mono text-[0.625rem] text-faint">{c.hint}</span>}
+                    {i === selected && <CornerDownLeft className="size-3.5 shrink-0 text-faint" />}
+                  </button>
+                </div>
               );
             })
           )}

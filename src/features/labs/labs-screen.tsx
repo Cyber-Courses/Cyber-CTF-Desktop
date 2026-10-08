@@ -26,6 +26,7 @@ export function Labs({
   hostArch,
   report,
   openLab,
+  onDetailChange,
 }: {
   loggedIn: boolean;
   /** False until the sign-in state is known (the lab page waits for it). */
@@ -35,6 +36,8 @@ export function Labs({
   hostArch: string;
   report?: SystemReport | null;
   openLab: { slug: string | null; tick: number };
+  /** Told the open lab's title (null on the list), for the shell's breadcrumb. */
+  onDetailChange?: (title: string | null) => void;
 }) {
   const { labs, error, statuses, completed, refreshStatus, probed } = useLabs(loggedIn);
   const { runs, launch, stop, park, resume, provision } = useLabActions(refreshStatus);
@@ -97,9 +100,13 @@ export function Labs({
   const running = filtered.filter(isRunning);
   const rest = useMemo(() => filtered.filter((l) => !statuses[l.id]?.running).sort((a, b) => a.title.localeCompare(b.title)), [filtered, statuses]);
 
+  const detail = labs && detailSlug ? labs.find((l) => l.slug === detailSlug) : undefined;
+  const detailTitle = detail?.title ?? null;
+  useEffect(() => onDetailChange?.(detailTitle), [detailTitle, onDetailChange]);
+  useEffect(() => () => onDetailChange?.(null), [onDetailChange]);
+
   if (error) return <EmptyState icon="alert" title="Can’t reach the lab catalogue" description="Check your connection or sign in, then try again." />;
 
-  const detail = labs && detailSlug ? labs.find((l) => l.slug === detailSlug) : undefined;
   // Opening a lab while the catalogue is still loading: show a placeholder, never the list, so
   // there is no flash of the list before the lab page.
   if (detailSlug && !detail && !labs) {
@@ -164,7 +171,7 @@ export function Labs({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search labs and skills…"
-            className="w-full rounded-lg border border-border bg-card py-2 pl-9 pr-3 text-[0.8125rem] outline-none placeholder:text-muted-foreground/60 focus:border-ring/60"
+            className="w-full rounded-control border border-border bg-card py-2 pl-9 pr-3 text-[0.8125rem] outline-none placeholder:text-muted-foreground/60 focus:border-ring/60"
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -208,12 +215,12 @@ export function Labs({
         <Panel>
           {[0, 1, 2, 3, 4].map((i) => (
             <div key={i} className="flex items-center gap-3 border-t border-border px-4 py-3 first:border-t-0">
-              <Skeleton className="size-[1.875rem] rounded-lg" />
+              <Skeleton className="size-[1.875rem] rounded-control" />
               <div className="flex-1">
                 <Skeleton className="h-3.5 w-44" />
                 <Skeleton className="mt-2 h-2.5 w-24" />
               </div>
-              <Skeleton className="h-6 w-16 rounded-md" />
+              <Skeleton className="h-6 w-16 rounded-sm" />
             </div>
           ))}
         </Panel>
