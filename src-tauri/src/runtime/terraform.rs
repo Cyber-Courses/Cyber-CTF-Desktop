@@ -64,7 +64,63 @@ async fn terraform(module: &Path, state: &Path, env: &[(String, String)], comman
     // present now is stale and would otherwise block this op with "Error acquiring the state
     // lock". Clear it before init.
     let _ = std::fs::remove_file(state.join(".terraform.tfstate.lock.info"));
+    if in_container(module).await {
+        return terraform_container(module, state, env, command, log).await;
+    }
     terraform_host(module, state, env, command, log).await
+}
+
+/// The Terraform image for runs that can't use the host binary.
+const TERRAFORM_IMAGE: &str = "hashicorp/terraform:1.9.8";
+
+/// macOS lets an app reach the local network but not the third-party tools it starts: Terraform's
+/// Proxmox provider got "no route to host" to a LAN server the app itself could reach (even with
+/// Cyber CTF allowed under Local Network), while Docker Desktop, an allowed app, carries container
+/// traffic fine. So on macOS a Proxmox module runs in the Terraform container when Docker answers.
+/// Clouds keep the host binary (they need the host's CLI logins, and the internet isn't affected).
+async fn in_container(module: &Path) -> bool {
+    cfg!(target_os = "macos")
+        && module.components().any(|c| c.as_os_str() == "proxmox")
+        && run_read("docker", &["info", "--format", "{{.ServerVersion}}"], None).await.is_ok()
+}
+
+/// Runs terraform in the official image, with the module, its state and the files the variables
+/// name mounted at their own paths (so every path in the module and the state stays valid), and
+/// the variables passed through the environment (`-e NAME`, never their values on a command line).
+async fn terraform_container(dir: &Path, state: &Path, env: &[(String, String)], command: &str, mut log: impl FnMut(String)) -> Result<()> {
+    let mut full = env.to_vec();
+    full.push(("TF_DATA_DIR".to_string(), state.join(".terraform").display().to_string()));
+    full.push(("TF_IN_AUTOMATION".to_string(), "1".to_string()));
+    let mut mounts: Vec<String> = vec![dir.display().to_string(), state.display().to_string()];
+    // Files a variable points at (the SSH key), by their folder.
+    for (_, v) in env.iter().filter(|(k, _)| k.ends_with("_file")) {
+        if let Some(parent) = Path::new(v).parent().filter(|p| p.is_absolute()) {
+            mounts.push(parent.display().to_string());
+        }
+    }
+    mounts.sort();
+    mounts.dedup();
+    let backend = format!("-backend-config=path={}", state.join("terraform.tfstate").display());
+    let workdir = dir.display().to_string();
+    let run = |tf_args: Vec<String>| {
+        let mut args: Vec<String> = vec!["run".into(), "--rm".into(), "-i".into(), "-w".into(), workdir.clone()];
+        for m in &mounts {
+            args.extend(["-v".into(), format!("{m}:{m}")]);
+        }
+        for (k, _) in &full {
+            args.extend(["-e".into(), k.clone()]);
+        }
+        args.push(TERRAFORM_IMAGE.into());
+        args.extend(tf_args);
+        args
+    };
+    log("Running Terraform in its container (macOS keeps third-party tools off the local network).".into());
+    let init = run(vec!["init".into(), "-input=false".into(), "-no-color".into(), backend]);
+    let init_refs: Vec<&str> = init.iter().map(String::as_str).collect();
+    stream("docker", &init_refs, Some(dir), &full, &mut log).await?;
+    let cmd = run(vec![command.into(), "-auto-approve".into(), "-input=false".into(), "-no-color".into()]);
+    let cmd_refs: Vec<&str> = cmd.iter().map(String::as_str).collect();
+    stream("docker", &cmd_refs, Some(dir), &full, log).await
 }
 
 /// Runs terraform from the host PATH (init, then the command). State lives in `state` as
