@@ -93,7 +93,8 @@ export function LabRow({
   setup?: string | null;
 }) {
   const rt = lab.runtime;
-  const native = rt?.architectures.includes(hostArch) ?? true;
+  // Unknown host (report not in yet) or a lab for any CPU: native, never a wrong "emulated".
+  const native = !hostArch || !rt || runsNatively(rt, hostArch);
   const running = status?.running ?? false;
   const parked = !running && (status?.parked ?? null);
   const RuntimeIcon = rt?.runtime === "VM" ? Monitor : Container;
