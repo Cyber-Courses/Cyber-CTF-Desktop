@@ -22,7 +22,7 @@ function inline(text: string, k: string): ReactNode[] {
     const t = m[0];
     if (t.startsWith("`")) {
       out.push(
-        <code key={`${k}-${i}`} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">
+        <code key={`${k}-${i}`} className="rounded-xs bg-glass-2 px-1 py-0.5 font-mono text-[0.85em] text-foreground shadow-[inset_0_0_0_1px_var(--border)]">
           {t.slice(1, -1)}
         </code>,
       );
@@ -44,7 +44,7 @@ function inline(text: string, k: string): ReactNode[] {
             e.preventDefault();
             openExternal(href);
           }}
-          className="cursor-pointer text-learn underline-offset-4 hover:underline"
+          className="cursor-pointer text-link underline underline-offset-4 decoration-[color-mix(in_oklab,var(--link)_40%,transparent)] hover:decoration-current"
         >
           {mm[1]}
         </a>,
@@ -75,7 +75,7 @@ export function Markdown({ content, className }: { content: string; className?: 
       while (i < lines.length && !lines[i].startsWith("```")) buf.push(lines[i++]);
       i++;
       blocks.push(
-        <pre key={key()} className="overflow-auto rounded-lg border border-border bg-[#0d0d0d] p-3 font-mono text-xs leading-relaxed text-muted-foreground">
+        <pre key={key()} className="surface-log overflow-auto rounded-control px-3.5 py-3 font-mono text-[0.75rem] leading-[1.8] text-muted-foreground">
           {buf.join("\n")}
         </pre>,
       );
@@ -86,9 +86,9 @@ export function Markdown({ content, className }: { content: string; className?: 
       const lvl = h[1].length;
       const cls =
         lvl === 1
-          ? "mt-6 text-lg font-semibold tracking-tight first:mt-0"
+          ? "serif-title mt-6 text-[1.5rem] text-foreground first:mt-0"
           : lvl === 2
-            ? "mt-5 text-base font-semibold tracking-tight"
+            ? "serif-title mt-5 text-[1.25rem] text-foreground"
             : "mt-4 text-sm font-semibold";
       const Tag = `h${lvl + 1}` as keyof JSX.IntrinsicElements;
       blocks.push(
@@ -108,7 +108,7 @@ export function Markdown({ content, className }: { content: string; className?: 
       const buf: string[] = [];
       while (i < lines.length && lines[i].startsWith(">")) buf.push(lines[i++].replace(/^>\s?/, ""));
       blocks.push(
-        <blockquote key={key()} className="border-l-2 border-border pl-3 text-muted-foreground">
+        <blockquote key={key()} className="border-l-2 border-jewel/40 pl-3 text-muted-foreground">
           {inline(buf.join(" "), key())}
         </blockquote>,
       );

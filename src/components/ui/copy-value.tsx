@@ -24,12 +24,12 @@ export function CopyValue({ text, label, className }: { text: string; label?: st
           .catch(tell("Couldn't copy to the clipboard"))
       }
       className={cn(
-        "inline-flex items-center gap-1.5 rounded border border-border px-1.5 py-0.5 font-mono text-[0.71875rem] text-foreground transition-colors hover:bg-foreground/[0.04]",
+        "inline-flex items-center gap-1.5 rounded-xs bg-glass px-1.5 py-0.5 font-mono text-[0.75rem] text-foreground shadow-[inset_0_0_0_1px_var(--border)] transition-colors hover:bg-glass-2",
         className,
       )}
     >
       <span className="break-all">{label ?? text}</span>
-      {copied ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3 text-muted-foreground" />}
+      {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3 text-faint" />}
     </button>
   );
 }

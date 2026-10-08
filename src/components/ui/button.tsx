@@ -2,45 +2,51 @@ import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * The family Button primitive, monochrome Geist. Token-driven so it matches the rest of
- * the Cyber apps. Dependency-free (no cva/base-ui) to keep the launcher light.
+ * The family Button: a pill with an inset highlight (cyber-design-system). Dependency-free.
+ * - `default` (alias `primary`): the emerald jewel gradient with a soft glow.
+ *   One per view, for the main action (Launch, Start lab, Submit).
+ * - `outline` / `secondary`: ghost glass. Everyday actions.
+ * - `inverted`: white pill (ink in Light). Rare, for a strong neutral action.
+ * - `ghost` / `link`: text only. `destructive`: fail text on glass with a fail ring.
+ * Press feedback is scale(.97). Sizes: lg 3rem, default 2.25rem, sm 2rem, xs 1.75rem (rows).
  */
-type Variant = "default" | "learn" | "outline" | "secondary" | "ghost" | "destructive" | "link";
-type Size = "default" | "sm" | "xs" | "lg" | "icon";
+type Variant = "default" | "primary" | "outline" | "secondary" | "inverted" | "ghost" | "destructive" | "link";
+type Size = "default" | "sm" | "xs" | "lg" | "icon" | "icon-sm";
 
 const BASE =
-  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg text-sm font-medium leading-none whitespace-nowrap transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
+  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full text-[0.8125rem] font-medium leading-none whitespace-nowrap select-none transition-[transform,box-shadow,background-color,color] duration-200 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
 
 const VARIANTS: Record<Variant, string> = {
-  default: "bg-primary text-primary-foreground hover:bg-primary/90",
-  // Filled accent: deeper violet, a hairline edge and a top highlight for depth.
-  learn:
-    "border border-white/10 bg-learn-solid text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.16),0_1px_2px_rgb(0_0_0/0.4)] hover:bg-learn-solid-hover active:bg-learn-solid-active",
-  outline: "border border-border bg-background hover:bg-muted hover:text-foreground",
-  secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-  ghost: "hover:bg-muted hover:text-foreground",
-  destructive: "bg-destructive/15 text-destructive hover:bg-destructive/25",
-  link: "text-link underline-offset-4 hover:underline",
+  default: "btn-jewel",
+  primary: "btn-jewel",
+  outline: "btn-glass",
+  secondary: "btn-glass",
+  inverted: "btn-inverted",
+  ghost: "text-muted-foreground hover:bg-accent hover:text-foreground",
+  destructive: "btn-stop",
+  link: "rounded-none px-0 text-link underline-offset-4 hover:underline",
 };
 
 const SIZES: Record<Size, string> = {
   default: "h-9 px-4",
-  sm: "h-8 px-3 text-[0.8rem]",
+  sm: "h-8 px-3.5",
   // Compact, for actions inside dense list rows.
-  xs: "h-7 rounded-md px-2.5 text-[0.71875rem] font-normal [&_svg:not([class*='size-'])]:size-3",
-  lg: "h-10 px-5",
+  xs: "h-7 px-3 text-[0.75rem] [&_svg:not([class*='size-'])]:size-3.5",
+  lg: "h-12 px-6 text-[0.9375rem]",
   icon: "size-9",
+  "icon-sm": "size-7 [&_svg:not([class*='size-'])]:size-3.5",
 };
 
 export function buttonVariants({ variant = "default", size = "default", className }: { variant?: Variant; size?: Size; className?: string } = {}) {
-  return cn(BASE, VARIANTS[variant], SIZES[size], className);
+  return cn(BASE, VARIANTS[variant], variant !== "link" && SIZES[size], className);
 }
 
 export function Button({
   variant = "default",
   size = "default",
   className,
+  type = "button",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size }) {
-  return <button className={buttonVariants({ variant, size, className })} {...props} />;
+  return <button type={type} className={buttonVariants({ variant, size, className })} {...props} />;
 }

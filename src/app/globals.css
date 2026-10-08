@@ -1,56 +1,156 @@
 @import "tailwindcss";
+@import "./topology.css";
 
 /*
- * Cyber CTF design primitives: the Vercel/Geist-style monochrome token system shared
- * across the Cyber family (the same contract Cyber Courses builds on, minus the learn
- * accent). Components use semantic tokens (bg-card, text-muted-foreground, border,
- * bg-primary...) so the whole app restyles from here. Dark-first: the launcher runs dark.
+ * Cyber design system ("Lit from within") at launcher density. Same tokens as the Cyber
+ * websites (cyber-design-system/tokens.css), product jewel = CyberCTF emerald.
+ *
+ * Modes: Dark is the default (bare :root). Black (true #000, OLED) and Light (Paper) are a
+ * class on <html>, set from Settings > Appearance (src/lib/appearance.ts).
+ *
+ * Components use the semantic (shadcn) names: bg-card, text-muted-foreground, border...
+ * plus the system's own: card-2, glass, edge, faint, jewel*, you (the player's attacker).
+ * Never hard-code a hex value or a Tailwind palette class in a component: add a token here.
  */
 :root {
-  --radius: 0.5rem;
+  /* Surfaces */
+  --background: #09090b;
+  --surface: #0d0d10;
+  --card: #111114;
+  --card-2: #17171b;
+  --popover: #17171b;
+  --muted: #17171b;
+  --secondary: #17171b;
 
+  /* Ink */
+  --foreground: #f4f4f6;
+  --card-foreground: var(--foreground);
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: var(--foreground);
+  --muted-foreground: #a0a0ab;
+  --faint: #64646f;
+
+  /* Fills and lines */
+  --accent: rgb(255 255 255 / 0.06);
+  --glass: rgb(255 255 255 / 0.035);
+  --glass-2: rgb(255 255 255 / 0.06);
+  --border: rgb(255 255 255 / 0.075);
+  --input: rgb(255 255 255 / 0.12);
+  --border-strong: var(--input);
+  --edge: rgb(255 255 255 / 0.16);
+  /* Cables in diagrams. */
+  --edge-line: rgb(255 255 255 / 0.24);
+  --log: rgb(0 0 0 / 0.28);
+  --scrim: rgb(0 0 0 / 0.5);
+
+  /* Status (never the product colour) */
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --destructive: #f87171;
+
+  /* Product jewel: CyberCTF emerald */
+  --jewel: #34d399;
+  --jewel-text: #6ee7b7;
+  --jewel-top: #3ee0a3;
+  --jewel-bottom: #059669;
+  --jewel-solid: #10b981;
+  --jewel-on: #022c1e;
+  --jewel-rgb: 16 185 129;
+  --mark-top: #34d399;
+  --mark-base: #0b7a5a;
+
+  /* "You": the player's attacker in diagrams (amethyst reads as you, not as a status) */
+  --you: #a78bfa;
+  --you-text: #c4b5fd;
+
+  /* Categorical hues for diagram service types (data, not status) */
+  --hue-sky: #7dd3fc;
+  --hue-amber: #fcd34d;
+  --hue-mint: #6ee7b7;
+  --hue-violet: #c4b5fd;
+  --hue-grey: #a0a0ab;
+
+  /* Family jewels for cross-links */
+  --emerald: #34d399;
+  --amethyst: #a78bfa;
+  --sapphire: #60a5fa;
+
+  --primary: var(--jewel-solid);
+  --primary-foreground: var(--jewel-on);
+  --ring: var(--jewel);
+  --link: var(--jewel-text);
+
+  --shadow-xl: 0 2.5rem 6rem -1.5rem rgb(0 0 0 / 0.8), 0 0 0 1px var(--border);
+  --shadow-pop: 0 1rem 2.5rem -0.75rem rgb(0 0 0 / 0.7), 0 0 0 1px var(--border);
+
+  --radius: 0.75rem;
+  color-scheme: dark;
+}
+
+:root.black {
   --background: #000000;
-  --foreground: #ededed;
-  --surface: #0a0a0a;
+  --surface: #030304;
+  --card: #0a0a0b;
+  --card-2: #111113;
+  --popover: #111113;
+  --muted: #111113;
+  --secondary: #111113;
+  --accent: rgb(255 255 255 / 0.055);
+  --glass: rgb(255 255 255 / 0.03);
+  --glass-2: rgb(255 255 255 / 0.055);
+  --border: rgb(255 255 255 / 0.07);
+  --input: rgb(255 255 255 / 0.11);
+  --log: rgb(255 255 255 / 0.02);
+}
 
-  --card: #0a0a0a;
-  --card-foreground: #ededed;
-  --popover: #0a0a0a;
-  --popover-foreground: #ededed;
-
-  /* Monochrome with one accent (--learn, violet), matching cyber-courses-web. */
-  --primary: #ededed;
-  --primary-foreground: #0a0a0a;
-  --secondary: #1a1a1a;
-  --secondary-foreground: #ededed;
-  --muted: #1a1a1a;
-  --muted-foreground: #a1a1a1;
-  --accent: #1a1a1a;
-  --accent-foreground: #ededed;
-
-  --border: #262626;
-  --input: #333333;
-  --ring: #707070;
-
-  --link: #ededed;
-  --learn: #a78bfa;
-  /* Filled accent buttons: a deeper violet so white text stays readable (~4.8:1). */
-  --learn-solid: #7c5cf0;
-  --learn-solid-hover: #8a6cf4;
-  --learn-solid-active: #6f4fe3;
-  --destructive: #ff6166;
-  --success: #62c073;
-  --warning: #f1a10d;
+:root.light {
+  --background: #fafaf9;
+  --surface: #f4f4f2;
+  --card: #ffffff;
+  --card-2: #f6f6f4;
+  --popover: #ffffff;
+  --muted: #f1f1ef;
+  --secondary: #f1f1ef;
+  --foreground: #0c0c10;
+  --muted-foreground: #5c5c66;
+  --faint: #92929c;
+  --accent: rgb(16 16 24 / 0.05);
+  --glass: rgb(255 255 255 / 0.7);
+  --glass-2: rgb(16 16 24 / 0.045);
+  --border: rgb(16 16 24 / 0.08);
+  --input: rgb(16 16 24 / 0.13);
+  --edge: #ffffff;
+  --edge-line: rgb(16 16 24 / 0.28);
+  --log: var(--surface);
+  --scrim: rgb(12 12 16 / 0.25);
+  --success: #16a34a;
+  --warning: #b45309;
+  --destructive: #dc2626;
+  --jewel-text: #047857;
+  --mark-base: #064e3b;
+  --you: #7c3aed;
+  --you-text: #6d28d9;
+  --hue-sky: #0284c7;
+  --hue-amber: #b45309;
+  --hue-mint: #047857;
+  --hue-violet: #6d28d9;
+  --hue-grey: #5c5c66;
+  --shadow-xl: 0 2rem 4rem -1.5rem rgb(30 20 60 / 0.22), 0 0 0 1px var(--border);
+  --shadow-pop: 0 1rem 2rem -0.75rem rgb(30 20 60 / 0.2), 0 0 0 1px var(--border);
+  color-scheme: light;
 }
 
 @theme inline {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+  --font-heading: var(--font-newsreader), "Iowan Old Style", Georgia, serif;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
   --color-card: var(--card);
+  --color-card-2: var(--card-2);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
@@ -60,37 +160,273 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-glass: var(--glass);
+  --color-glass-2: var(--glass-2);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
+  --color-edge: var(--edge);
   --color-ring: var(--ring);
   --color-link: var(--link);
-  --color-learn: var(--learn);
-  --color-learn-solid: var(--learn-solid);
-  --color-learn-solid-hover: var(--learn-solid-hover);
-  --color-learn-solid-active: var(--learn-solid-active);
+  --color-jewel: var(--jewel);
+  --color-jewel-text: var(--jewel-text);
+  --color-jewel-solid: var(--jewel-solid);
+  --color-jewel-on: var(--jewel-on);
+  --color-you: var(--you);
+  --color-you-text: var(--you-text);
   --color-destructive: var(--destructive);
   --color-success: var(--success);
   --color-warning: var(--warning);
 
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) * 1.4);
-  --radius-xl: calc(var(--radius) * 2);
+  /* Radius scale of the family (sm .5, md .75, lg 1.25, xl 1.75) plus two app-density steps:
+     controls (nav items, inputs, small tiles) and panels. */
+  --radius-xs: 0.3125rem;
+  --radius-sm: 0.5rem;
+  --radius-control: 0.625rem;
+  --radius-md: 0.75rem;
+  --radius-panel: 0.875rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.75rem;
 }
 
-body {
-  background: var(--background);
+@layer base {
+  html {
+    background: var(--background);
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: rgb(var(--jewel-rgb) / 0.3);
+  }
+  /* A visible focus ring on everything you can reach by keyboard. Inputs draw their own. */
+  :where(button, a, summary, [role="button"], [role="tab"], [role="radio"], [role="switch"], [tabindex]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* Quiet scrollbars, in the surface colours. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--input) transparent;
+  }
+}
+
+/* ---------------------------------------------------------------- type */
+
+/* Page titles: Newsreader 350, tight, at most one italic word in the jewel. */
+.page-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: 350;
+  font-size: 2rem;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-optical-sizing: auto;
+  text-wrap: balance;
+}
+.page-title em,
+.serif-title em {
+  font-style: italic;
+  font-weight: 300;
+  color: var(--jewel-text);
+  padding-right: 0.04em;
+}
+/* Smaller serif titles: empty states, stat values, the budget figure. */
+.serif-title {
+  font-family: var(--font-heading);
+  font-weight: 350;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  font-optical-sizing: auto;
+}
+/* Eyebrow: mono, faint, with a short hairline before it. */
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font: 500 0.75rem var(--font-mono);
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+.eyebrow::before {
+  content: "";
+  width: 1.25rem;
+  height: 1px;
+  background: var(--input);
+}
+/* Small caps label for groups (sidebar "Running", palette groups). */
+.section-label {
+  font: 500 0.625rem var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+/* ---------------------------------------------------------------- surfaces */
+
+/* The default container: a vertical gradient with a lit top edge. No flat grey cards. */
+.surface-panel {
+  background: linear-gradient(180deg, var(--card-2), var(--card));
+  box-shadow:
+    inset 0 1px 0 var(--glass-2),
+    0 0 0 1px var(--border);
+}
+:root.light .surface-panel {
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 0 0 1px var(--border),
+    0 0.75rem 1.5rem -1.25rem rgb(30 20 60 / 0.18);
+}
+/* Floating things: popovers, dialogs, the command menu, toasts. */
+.surface-glass {
+  background: color-mix(in oklab, var(--card-2) 90%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow:
+    var(--shadow-xl),
+    inset 0 1px 0 var(--glass-2);
+}
+:root.light .surface-glass {
+  background: color-mix(in oklab, var(--popover) 92%, transparent);
+}
+/* Inset well: log output, code, terminal-like text. */
+.surface-log {
+  background: var(--log);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+/* The dotted canvas behind the network diagram. */
+.dotted-canvas {
+  background-color: var(--surface);
+  background-image: radial-gradient(var(--input) 1px, transparent 1px);
+  background-size: 1.1rem 1.1rem;
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn-jewel {
+  color: var(--jewel-on);
+  background: linear-gradient(180deg, var(--jewel-top), var(--jewel-bottom));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.28),
+    0 0 0 1px rgb(var(--jewel-rgb) / 0.6),
+    0 0.5rem 1.25rem -0.5rem rgb(var(--jewel-rgb) / 0.7);
+}
+.btn-jewel:hover {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.32),
+    0 0 0 1px rgb(var(--jewel-rgb) / 0.8),
+    0 0.75rem 1.75rem -0.5rem rgb(var(--jewel-rgb) / 0.85);
+}
+.btn-glass {
   color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background: var(--glass);
+  box-shadow:
+    inset 0 1px 0 var(--glass-2),
+    0 0 0 1px var(--input);
+}
+.btn-glass:hover {
+  background: var(--glass-2);
+}
+:root.light .btn-glass {
+  background: #ffffff;
+  box-shadow:
+    0 1px 0 rgb(16 16 24 / 0.04),
+    0 0 0 1px var(--input);
+}
+:root.light .btn-glass:hover {
+  background: var(--surface);
+}
+.btn-inverted {
+  color: #0c0c10;
+  background: linear-gradient(180deg, #ffffff, #e7e7ec);
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 0 0 1px rgb(255 255 255 / 0.2),
+    0 0.5rem 1.5rem -0.5rem rgb(0 0 0 / 0.6);
+}
+:root.light .btn-inverted {
+  color: #ffffff;
+  background: linear-gradient(180deg, #2a2a33, #0c0c10);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.15),
+    0 0 0 1px #0c0c10;
+}
+.btn-stop {
+  color: var(--destructive);
+  background: var(--glass);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--destructive) 40%, transparent);
+}
+.btn-stop:hover {
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
 }
 
-/* Subtle enter transition (onboarding steps, revealed panels). */
+/* ---------------------------------------------------------------- data and status */
+
+.dot {
+  display: inline-block;
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.dot-ok {
+  background: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--success) 18%, transparent);
+}
+.dot-warn {
+  background: var(--warning);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--warning) 15%, transparent);
+}
+.dot-fail {
+  background: var(--destructive);
+}
+.dot-idle {
+  background: var(--faint);
+}
+.dot-jewel {
+  background: var(--jewel);
+}
+.dot-you {
+  background: var(--you);
+}
+@keyframes dot-pulse {
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+.dot-pulse {
+  animation: dot-pulse 2s infinite;
+}
+/* Usage bars: the jewel by default, warm when nearly full. */
+.meter-fill {
+  background: linear-gradient(90deg, var(--jewel-bottom), var(--jewel));
+}
+.meter-fill-warn {
+  background: linear-gradient(90deg, color-mix(in oklab, var(--warning) 70%, #000), var(--warning));
+}
+.meter-fill-fail {
+  background: var(--destructive);
+}
+/* Keyboard hint. */
+.kbd {
+  font: 0.625rem var(--font-mono);
+  color: var(--muted-foreground);
+}
+
+/* ---------------------------------------------------------------- motion */
+
+/* Every entrance starts from a visible state (never opacity 0 above the fold). */
 @keyframes rise-in {
   from {
-    opacity: 0;
-    transform: translateY(0.375rem);
+    opacity: 0.6;
+    transform: translateY(0.25rem);
   }
   to {
     opacity: 1;
@@ -98,12 +434,12 @@ body {
   }
 }
 .animate-rise-in {
-  animation: rise-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: rise-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes fade-in {
   from {
-    opacity: 0;
+    opacity: 0.4;
     transform: translateY(-0.25rem) scale(0.99);
   }
   to {
@@ -126,711 +462,22 @@ body {
   animation: dash-flow 0.8s linear infinite;
 }
 
-/* Flowing dot down the diagram connector. */
-@keyframes drip {
-  0% {
-    transform: translateY(-0.5rem);
-    opacity: 0;
-  }
-  25% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(1.75rem);
-    opacity: 0;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }
 
-/* ------------------------------------------------------------------ *
- * Lab network topology (React Flow). Designed in v0, kept in sync with
- * src/components/labs/network-diagram.tsx. Embedded, so the shell is a
- * fixed height rather than the full viewport.
- * ------------------------------------------------------------------ */
-/* "Your machine" is the wrapping card; the diagram lives in its body. */
-.hostcard {
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  background: #0a0a0a;
-}
-.hostcard-header {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  padding: 0.625rem 0.875rem;
-  border-bottom: 1px solid var(--border);
-  border-radius: 0.75rem 0.75rem 0 0;
-  background: #111;
-}
-.hostcard-icon {
-  width: 1.875rem;
-  height: 1.875rem;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: #0c0c0c;
-  color: #b5b5b5;
-}
-.hostcard-title {
-  font-size: 0.8125rem;
-  font-weight: 600;
-}
-.hostcard-sub {
-  font-size: 0.65625rem;
-  color: #777;
-}
-.hostcard-online {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  color: #70c988;
-  font-size: 0.65625rem;
-}
-.hostcard-online i {
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 50%;
-  background: #54c171;
-  box-shadow: 0 0 0 0.1875rem rgba(84, 193, 113, 0.1);
-}
-.topology-shell {
-  position: relative;
-  width: 100%;
-  height: 26.875rem;
-  background: #070707;
-  border-radius: 0 0 0.6875rem 0.6875rem;
-}
-.topology-shell > .react-flow {
-  border-radius: 0 0 0.6875rem 0.6875rem;
-  overflow: hidden;
-}
-.react-flow {
-  background: radial-gradient(ellipse at 70% 40%, rgba(240, 97, 109, 0.05), transparent 42%);
-}
-.netpill {
-  position: absolute;
-  top: 0.75rem;
-  left: 0.875rem;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #8f8f8f;
-  background: rgba(10, 10, 10, 0.82);
-  border: 1px solid var(--border);
-  border-radius: 1.25rem;
-  padding: 0.25rem 0.6875rem;
-}
-.netpill .mono {
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
-  color: #6a6a6a;
-}
-/* Network zones (areas) + click-to-copy for the lab diagram. */
-.react-flow__node-zone {
-  z-index: -1 !important;
-}
-.zone {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  border: 1px dashed #2e2e2e;
-  border-radius: 0.75rem;
-  background: rgba(255, 255, 255, 0.012);
-  pointer-events: none;
-}
-.zone-attack {
-  border-color: rgba(240, 97, 109, 0.35);
-  background: rgba(240, 97, 109, 0.035);
-}
-.zone-label {
-  position: absolute;
-  top: -0.5rem;
-  left: 0.875rem;
-  padding: 1px 0.5625rem;
-  background: #0a0a0a;
-  border: 1px solid var(--border);
-  border-radius: 1.25rem;
-  font-size: 0.5625rem;
-  font-weight: 650;
-  letter-spacing: 0.09em;
-  color: #8f8f8f;
-  white-space: nowrap;
-}
-.zone-attack .zone-label {
-  color: #d9a1a5;
-  border-color: rgba(240, 97, 109, 0.32);
-}
-.copy-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  cursor: pointer;
-}
-.copy-ico {
-  opacity: 0;
-  transition: opacity 0.12s;
-  color: #8f8f8f;
-}
-.copy-chip:hover .copy-ico {
-  opacity: 0.7;
-}
-.copy-ok {
-  color: #54c171;
-}
-/* Network bridge (switch) node. */
-.bridge {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.3125rem;
-  border: 1px solid #2e2e2e;
-  border-radius: 0.625rem;
-  background: linear-gradient(180deg, #161616, #101010);
-  color: #9a9a9a;
-}
-.bridge > svg {
-  color: #8a8a8a;
-}
-.bridge-label {
-  font-size: 0.5625rem;
-  font-weight: 650;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #7a7a7a;
-}
-.bridge-attack {
-  border-color: rgba(240, 97, 109, 0.3);
-}
-.bridge-attack > svg {
-  color: #f0616d;
-}
-.bridge-attack .bridge-label {
-  color: #c98f93;
-}
-/* Open ports shown as doors on a machine. */
-.doors {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  margin-top: 0.6875rem;
-}
-.door {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.1875rem 0.4375rem;
-  border: 1px solid #2f2f2f;
-  border-radius: 0.4375rem;
-  background: #1b1b1b;
-  font-size: 0.65625rem;
-  color: #b0b0b0;
-}
-.door > svg {
-  color: #8a8a8a;
-}
-.door-pub {
-  border-color: rgba(84, 193, 113, 0.32);
-  background: rgba(84, 193, 113, 0.09);
-  color: #8fd3a0;
-}
-.door-pub > svg {
-  color: #54c171;
-}
-.door-host {
-  color: #54c171;
-}
-.door-none {
-  font-size: 0.65625rem;
-  color: #707070;
-}
-/* Localhost port-binding node on the host-card edge. */
-.react-flow__pane {
-  cursor: grab;
-}
-.react-flow__pane:active {
-  cursor: grabbing;
-}
-.react-flow__background pattern circle {
-  fill: #292929;
-}
-.react-flow__controls {
-  left: 1rem;
-  bottom: 1rem;
-  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.35);
-  border: 1px solid #232323;
-  border-radius: 0.5625rem;
-  overflow: hidden;
-}
-.react-flow__controls-button {
-  width: 1.75rem;
-  height: 1.75rem;
-  border: 0;
-  border-bottom: 1px solid #232323;
-  background: #111;
-  color: #8f8f8f;
-  fill: #8f8f8f;
-}
-.react-flow__controls-button:hover {
-  background: #1b1b1b;
-  color: #ededed;
-  fill: #ededed;
-}
-.react-flow__controls-button:last-child {
-  border-bottom: 0;
+/* The switch knob stays white in every mode. */
+.switch-thumb {
+  background: #ffffff;
 }
 
-.topology-node {
-  position: relative;
-  color: #ededed;
-  border: 1px solid #292929;
-  border-radius: 0.75rem;
-  background: linear-gradient(145deg, #1a1a1a, #141414);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.035),
-    0 0.625rem 1.75rem rgba(0, 0, 0, 0.24);
-  user-select: none;
-}
-.group-frame {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  border-radius: 0.75rem;
-  color: #ededed;
-  pointer-events: none;
-}
-.host-group {
-  border: 1px solid #292929;
-  background: rgba(18, 18, 18, 0.42);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.025),
-    0 1.125rem 3.125rem rgba(0, 0, 0, 0.18);
-}
-.host-group::after {
-  content: "";
-  position: absolute;
-  inset: 3.5rem 0 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.035);
-  border-radius: 0 0 0.75rem 0.75rem;
-  pointer-events: none;
-}
-.group-header {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  padding: 0 1.0625rem;
-  border-radius: 0.75rem 0.75rem 0 0;
-  background: rgba(24, 24, 24, 0.62);
-}
-.group-header > svg {
-  color: #a0a0a0;
-}
-.group-title {
-  font-size: 0.8125rem;
-  font-weight: 560;
-}
-.group-subtitle {
-  margin-top: 0.1875rem;
-  color: #777;
-  font-size: 0.625rem;
-}
-.group-online {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  margin-left: auto;
-  color: #70c988;
-  font-size: 0.625rem;
-}
-.group-online i {
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 50%;
-  background: #54c171;
-  box-shadow: 0 0 0 0.1875rem rgba(84, 193, 113, 0.1);
-}
-.lab-group {
-  border: 1px dashed #292929;
-  border-radius: 0.5625rem;
-  background: rgba(10, 10, 10, 0.2);
-}
-.lab-header {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 2.8125rem;
-  display: flex;
-  align-items: center;
-  padding: 0 0.9375rem;
-  border-bottom: 1px solid rgba(41, 41, 41, 0.55);
-}
-.group-kicker {
-  color: #777;
-  font-size: 0.5625rem;
-  font-weight: 650;
-  letter-spacing: 0.13em;
-}
-.lab-count {
-  margin-left: auto;
-  color: #666;
-  font-family: var(--font-mono), monospace;
-  font-size: 0.5625rem;
-}
-.topology-node::before {
-  content: "";
-  position: absolute;
-  inset: 0 0.75rem auto;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.07);
-}
-.node-copy {
-  min-width: 0;
-}
-.attacker-kicker {
-  font-size: 0.5625rem;
-  letter-spacing: 0.13em;
-  color: #777;
-  font-weight: 650;
-}
-.node-title {
-  margin-top: 0.25rem;
-  font-size: 0.875rem;
-  font-weight: 560;
-  letter-spacing: -0.01em;
-}
-.node-subtitle {
-  margin-top: 0.3125rem;
-  color: #8f8f8f;
-  font-size: 0.6875rem;
-}
-.mono {
-  font-family: var(--font-mono), monospace;
-}
-.attacker-node {
-  width: 11.875rem;
-  min-height: 6.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1.0625rem 0.9375rem;
-  border-color: rgba(240, 97, 109, 0.5);
-  background: linear-gradient(145deg, #2b1d1f, #1d1416);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.055),
-    0 0 2rem rgba(240, 97, 109, 0.12),
-    0 0.625rem 1.75rem rgba(0, 0, 0, 0.28);
-}
-.attacker-glow {
-  position: absolute;
-  inset: -1px;
-  border-radius: 0.75rem;
-  pointer-events: none;
-  box-shadow: inset 0 0 1.125rem rgba(240, 97, 109, 0.07);
-}
-.attacker-icon {
-  width: 2.125rem;
-  height: 2.125rem;
-  display: grid;
-  place-items: center;
-  color: #f6a3a9;
-  border: 1px solid rgba(240, 97, 109, 0.45);
-  border-radius: 0.5625rem;
-  background: rgba(240, 97, 109, 0.1);
-}
-.attacker-kicker {
-  color: #d6a2a6;
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-.you-chip {
-  padding: 2px 0.3125rem;
-  border-radius: 0.25rem;
-  color: #ffe3e5;
-  background: rgba(240, 97, 109, 0.18);
-  font-size: 0.5rem;
-  letter-spacing: 0.08em;
-}
-.attacker-node .node-subtitle {
-  color: #d8a9ac;
-}
-.attacker-shield {
-  position: absolute;
-  right: 0.8125rem;
-  top: 0.75rem;
-  color: #f0616d;
-  opacity: 0.85;
-}
-.computer-node {
-  width: 14.75rem;
-  min-height: 9.375rem;
-  padding: 0.9375rem;
-}
-.computer-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.computer-name {
-  display: flex;
-  gap: 0.4375rem;
-  align-items: center;
-  color: #bcbcbc;
-  font-size: 0.8125rem;
-}
-.computer-name svg {
-  color: #777;
-}
-.running {
-  display: flex;
-  align-items: center;
-  gap: 0.3125rem;
-  color: #70c988;
-  font-size: 0.625rem;
-}
-.running i {
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 50%;
-  background: #54c171;
-  box-shadow: 0 0 0 0.1875rem rgba(84, 193, 113, 0.1);
-}
-.computer-ip {
-  margin-top: 0.4375rem;
-  color: #858585;
-  font-size: 0.625rem;
-}
-.service-chip {
-  display: flex;
-  align-items: center;
-  gap: 0.5625rem;
-  min-height: 2.8125rem;
-  margin-top: 0.8125rem;
-  padding: 0.4375rem 0.5625rem;
-  border: 1px solid #303030;
-  border-radius: 0.5rem;
-  background: #202020;
-}
-.service-icon {
-  color: var(--service-color);
-}
-.service-main {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-.service-main span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.6875rem;
-  color: #d6d6d6;
-}
-.service-main small {
-  color: #777;
-  font-size: 0.5625rem;
-}
-.service-port {
-  color: var(--service-color);
-  font-size: 0.6875rem;
-}
-.exposed-line,
-.internal-line {
-  display: flex;
-  align-items: center;
-  gap: 0.3125rem;
-  margin-top: 0.6875rem;
-  font-size: 0.625rem;
-}
-.exposed-line {
-  color: #54c171;
-}
-.exposed-line em {
-  margin-left: auto;
-  color: #639b70;
-  font-style: normal;
-  font-size: 0.5625rem;
-}
-.internal-line {
-  color: #707070;
-}
-.internal-line .mono {
-  color: #848484;
-}
-.topology-handle {
-  width: 0.5625rem;
-  height: 0.5625rem;
-  border: 2px solid #070707;
-  border-radius: 50%;
-  background: #777;
-  box-shadow: 0 0 0 1px var(--handle-accent, #777);
-}
-.topology-handle:hover {
-  background: #ededed;
-}
-.edge-label {
-  position: absolute;
-  padding: 0.1875rem 0.4375rem;
-  border: 1px solid #292929;
-  border-radius: 0.3125rem;
-  background: #111;
-  color: #858585;
-  font-family: var(--font-mono), monospace;
-  font-size: 0.5625rem;
-  pointer-events: all;
-}
-/* Network diagram: per-network interfaces on a pivot, isolated (internal) networks. */
-.ifaces {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1875rem;
-  margin-top: 0.4375rem;
-}
-.iface {
-  display: flex;
-  align-items: center;
-  gap: 0.4375rem;
-  color: #858585;
-  font-size: 0.625rem;
-}
-.iface-net {
-  min-width: 3.25rem;
-  padding: 1px 0.375rem;
-  border: 1px solid #2c2c2c;
-  border-radius: 0.25rem;
-  background: #181818;
-  color: #a39bc2;
-  font-size: 0.5625rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-align: center;
-}
-/* Two-line label straddling the segment's top edge: name, then subnet and counts. */
-.zone .zone-label {
-  top: -0.9375rem;
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  padding: 0.25rem 0.6875rem 0.3125rem;
-  border-radius: 0.5625rem;
-}
-.zone-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4375rem;
-}
-.zone-detail {
-  font-size: 0.59375rem;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: #6f6f6f;
-}
-.zone-isolated {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.1875rem;
-  padding-left: 0.4375rem;
-  border-left: 1px solid #2a2a2a;
-  color: #c9a85a;
-  letter-spacing: 0.06em;
-}
-/* A segment's side ports are anchors for pivot links only, never drawn. */
-.zone .zone-handle {
-  pointer-events: none;
-  opacity: 0;
-}
-/* A service's ports sit on its row, at the right: the port belongs to the service. */
-.service-ports {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.25rem;
-  max-width: 50%;
-}
-.service-ports .door {
-  border-color: color-mix(in srgb, var(--service-color) 35%, #2f2f2f);
-  background: color-mix(in srgb, var(--service-color) 8%, #1b1b1b);
-}
-.service-ports .door > svg {
-  color: var(--service-color);
-}
-/* Several services in one container: one row each, stacked. */
-.service-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-  margin-top: 0.8125rem;
-}
-.service-rows .service-chip {
-  margin-top: 0;
-}
-.computer-image {
-  margin-top: 0.1875rem;
-  color: #6f6f6f;
-  font-size: 0.625rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* The host the published ports land on (your machine, or the server). */
-.zone-host {
-  border-style: solid;
-  border-color: rgba(84, 193, 113, 0.28);
-  background: rgba(84, 193, 113, 0.03);
-}
-.zone-host .zone-label {
-  color: #8fd3a0;
-  border-color: rgba(84, 193, 113, 0.3);
-}
-/* A published port: a tab straddling the card's bottom edge (an opening in the machine's wall). */
-/* The tabs hang below the card: keep a full section gap (space-y-5 = 1.25rem) under them. */
-.hostcard-docked {
-  margin-bottom: 2.25rem;
-}
-.hostport-anchor {
-  width: 100%;
-  height: 100%;
-}
-.hostport-handle {
-  opacity: 0;
-}
-.port-tab {
-  position: absolute;
-  bottom: 0;
-  z-index: 6;
-  transform: translate(-50%, 50%);
-  padding: 0.25rem 0.5625rem;
-  border: 1px solid rgba(84, 193, 113, 0.4);
-  border-radius: 0.4375rem;
-  background: #0d1a11;
-  color: #8fd3a0;
-  font-size: 0.65625rem;
-  box-shadow: 0 0.25rem 0.875rem rgba(0, 0, 0, 0.4);
-}
-.port-tab svg {
-  color: #54c171;
-}
-.port-tab .copy-chip {
-  gap: 0.3125rem;
-}
-.react-flow__pane {
-  cursor: default;
-}
-.react-flow__pane:active {
-  cursor: default;
+/* Account avatar: the family gradient (emerald to sapphire). */
+.avatar {
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--emerald), var(--sapphire));
 }

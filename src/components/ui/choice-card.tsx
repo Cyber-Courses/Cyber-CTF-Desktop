@@ -35,8 +35,10 @@ export function Choice({
       aria-checked={selected}
       onClick={onSelect}
       className={cn(
-        "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
-        selected ? "border-foreground/40 bg-foreground/[0.04]" : "border-border hover:border-foreground/20",
+        "flex items-start gap-3 rounded-control p-3 text-left transition-[background-color,box-shadow]",
+        selected
+          ? "bg-jewel/[0.06] shadow-[inset_0_0_0_1px_var(--jewel),0_0_0_3px_rgb(var(--jewel-rgb)/0.12)]"
+          : "bg-glass shadow-[inset_0_0_0_1px_var(--border)] hover:shadow-[inset_0_0_0_1px_var(--input)]",
       )}
     >
       {mark}
@@ -46,12 +48,10 @@ export function Choice({
           {badge && (
             <span
               className={cn(
-                "rounded px-1.5 py-px text-[0.65625rem] font-normal",
+                "rounded-full px-2 py-px font-mono text-[0.625rem] font-normal",
                 badge === "recommended"
-                  ? "border border-border text-muted-foreground"
-                  : badge === "running"
-                    ? "border border-emerald-500/30 text-emerald-500"
-                    : "bg-emerald-500/10 text-emerald-500",
+                  ? "text-jewel-text shadow-[inset_0_0_0_1px_rgb(var(--jewel-rgb)/0.4)]"
+                  : "text-success shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--success)_35%,transparent)]",
               )}
             >
               {badge}
@@ -60,8 +60,8 @@ export function Choice({
         </span>
         <span className="mt-0.5 block text-[0.75rem] text-muted-foreground">{note}</span>
       </span>
-      <span className={cn("mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border", selected ? "border-foreground" : "border-border")}>
-        {selected && <span className="size-2 rounded-full bg-foreground" />}
+      <span className={cn("mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px]", selected ? "border-jewel" : "border-input")}>
+        {selected && <span className="size-2 rounded-full bg-jewel" />}
       </span>
     </button>
   );
@@ -69,5 +69,5 @@ export function Choice({
 
 /** What to do for the selected option: install it, get it, or nothing (it's ready). */
 export function ChoiceAction({ children }: { children: React.ReactNode }) {
-  return <div className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-border bg-card px-3.5 py-2.5 text-left">{children}</div>;
+  return <div className="surface-panel flex min-h-12 items-center justify-between gap-3 rounded-control px-3.5 py-2.5 text-left">{children}</div>;
 }
