@@ -648,7 +648,7 @@ export function LabDetail({
                 <div>
                   <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">Where it runs</p>
                   <div className="space-y-1.5">
-                    {runPlaces(rt).map(({ key, icon: Icon, label, available }) => (
+                    {runPlaces(rt, hostArch).map(({ key, icon: Icon, label, available }) => (
                       <div
                         key={key}
                         className={cn("flex items-center gap-2", available ? "text-foreground" : "text-muted-foreground/40")}

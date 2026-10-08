@@ -41,6 +41,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
       vmProvider?: Provider,
       /** The machine report, to pick a hypervisor that is actually installed here. */
       report?: {
+        arch?: string;
         vagrant: { installed: boolean };
         vmProviders: { provider: Provider; remote: boolean; available: boolean; hypervisor?: boolean | null }[];
       } | null,
@@ -76,6 +77,14 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
               ? ((preferred && local.includes(preferred) ? preferred : local[0]) ?? null)
               : (ready.find((p) => local.includes(p)) ?? null)
             : null;
+        // x86 VMs (Windows AD labs) can't boot on an Apple Silicon hypervisor; say so up front
+        // instead of failing deep in Vagrant.
+        const archs = lab.runtime.architectures;
+        if (vm && !remote && report?.arch && archs.length && !archs.includes(report.arch)) {
+          throw new Error(
+            `This lab's VMs are built for ${archs.join(", ")} and this machine is ${report.arch}, so its hypervisors can't run them. Run it on a server or in your cloud account instead.`,
+          );
+        }
         if (vm && !remote && provider === null) {
           throw new Error(
             `No hypervisor for this lab is installed on this machine (it runs on ${local.join(", ") || "none"}). Install one from the Machine page, or run it on a server.`,
