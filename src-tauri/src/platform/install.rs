@@ -53,11 +53,21 @@ pub(crate) fn brew_bin() -> Option<String> {
 // A disk image is mounted quietly and its .pkg opened in Installer, which comes to the front;
 // only an app to drag into Applications (Docker Desktop, UTM) is shown in Finder, brought
 // forward. Either way the log says where to finish: a window behind the app went unnoticed.
+// `brew fetch` doesn't update Homebrew, and an old Homebrew can crash reading today's cask
+// data (`undefined method 'first' for nil` in api/cask.rb), so a failed fetch updates
+// Homebrew and tries once more.
 #[cfg(target_os = "macos")]
 fn fetch_and_open(brew: &str, cask: &str, name: &str) -> Step {
     let script = format!(
         r#"set -e
-'{brew}' fetch --cask {cask}
+if ! '{brew}' fetch --cask {cask}; then
+  echo "Homebrew couldn't download {name}. Updating Homebrew and trying again (this can take a few minutes)…"
+  '{brew}' update || true
+  if ! '{brew}' fetch --cask {cask}; then
+    echo "Homebrew still can't download {name}. Run 'brew update' in Terminal, or install {name} from its website, then try again." >&2
+    exit 1
+  fi
+fi
 f="$('{brew}' --cache --cask {cask})"
 case "$f" in
   *.dmg)
@@ -319,6 +329,27 @@ mod tests {
         assert!(!docker_script(Some("a; rm -rf /")).contains("usermod"));
         assert!(!docker_script(None).contains("usermod"));
         assert!(valid_user("_svc-1.x") && !valid_user("Root") && !valid_user(""));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_failed_cask_fetch_updates_homebrew_and_retries_once() {
+        // A Homebrew whose fetch always fails (an old one crashing on the cask data).
+        let dir = std::env::temp_dir().join(format!("cyberctf-brew-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let brew = dir.join("brew");
+        let log = dir.join("calls");
+        std::fs::write(&brew, format!("#!/bin/sh\necho \"$1\" >> '{}'\n[ \"$1\" = update ]\n", log.display())).unwrap();
+        std::fs::set_permissions(&brew, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+
+        let step = super::fetch_and_open(brew.to_str().unwrap(), "vagrant", "Vagrant");
+        let out = std::process::Command::new(&step.program).args(&step.args).output().unwrap();
+        let calls = std::fs::read_to_string(&log).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert!(!out.status.success());
+        assert_eq!(calls.lines().collect::<Vec<_>>(), ["fetch", "update", "fetch"]);
+        assert!(String::from_utf8_lossy(&out.stderr).contains("Run 'brew update' in Terminal"));
     }
 
     #[test]
