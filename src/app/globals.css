@@ -193,6 +193,19 @@
 }
 
 @layer base {
+  /* An app window, not a page: the document never scrolls (only the panes inside do), so
+     nothing can push the shell up under the titlebar, and no rubber-band bounce. The body is
+     pinned to the window: anything taller inside it can't make the document scrollable (on the
+     root, `overflow: clip` still counts as `hidden`, which a focus or scrollIntoView scrolls). */
+  html,
+  body {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  body {
+    position: fixed;
+    inset: 0;
+  }
   html {
     background: var(--background);
   }

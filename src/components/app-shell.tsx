@@ -322,7 +322,9 @@ export function AppShell() {
   const hypervisor = report?.vmProviders.find((p) => !p.remote && p.available && p.hypervisor !== false);
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
+    // `overflow-clip`, not `hidden`: a hidden box can still be scrolled (focus, scrollIntoView,
+    // a wheel over the sidebar), which shifted the whole window up under the titlebar.
+    <div className="flex h-dvh overflow-clip bg-background text-foreground">
       <CommandPalette key={paletteOpen ? "open" : "closed"} open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={paletteCommands} />
       <QuitGuard />
       <LaunchConfirm />
@@ -408,7 +410,7 @@ export function AppShell() {
       </aside>
 
       {/* ---- Main ---- */}
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <main className="flex min-w-0 flex-1 flex-col overflow-clip">
         <div data-tauri-drag-region className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-6 text-[0.8125rem] text-faint">
           {crumbs.map((c, i) =>
             i === crumbs.length - 1 ? (
@@ -489,7 +491,7 @@ function ComingSoon({ icon, title, description }: { icon: "server" | "cloud" | "
 // the screen. The "set up a hypervisor" link shows the Machine screen in the main window.
 function SettingsWindowView({ auth, onAuthChange }: { auth: AuthStatus | null; onAuthChange: (status: AuthStatus) => void }) {
   return (
-    <main className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+    <main className="flex h-dvh flex-col overflow-clip bg-background text-foreground">
       <Toaster />
       <div data-tauri-drag-region className="flex h-12 shrink-0 items-center justify-center border-b border-border text-[0.8125rem] font-medium">
         <span className="pointer-events-none">Settings</span>
