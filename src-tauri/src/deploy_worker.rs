@@ -198,23 +198,42 @@ pub fn spawn(app: &AppHandle, job: &Job) -> Result<Spawned> {
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
-    let child = cmd.spawn().map_err(Error::Io)?;
+    let mut child = cmd.spawn().map_err(Error::Io)?;
     let pid = child.id();
     std::fs::write(&f.pid, pid.to_string()).map_err(Error::Io)?;
+    // Reaped when it exits: unreaped, a finished worker stays a zombie for as long as the app
+    // runs, and a zombie still answers `kill -0`. Its pidfile goes with it: a worker that
+    // finished before the line above wrote the pidfile would otherwise leave one behind.
+    let pidfile = f.pid.clone();
+    std::thread::spawn(move || {
+        let _ = child.wait();
+        if read_pid(&pidfile) == Some(pid) {
+            let _ = std::fs::remove_file(&pidfile);
+        }
+    });
     Ok(Spawned { files: f, pid })
 }
 
-/// Whether `pid` is a live process.
+/// Whether `pid` is a live deploy worker: running (not a zombie) and this app's `deploy --job`
+/// process, not another program that got the number of a worker long gone.
 fn alive(pid: u32) -> bool {
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     {
-        std::process::Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+        // The state follows the command name, which is in parentheses and may hold spaces.
+        let state = stat.rsplit_once(") ").and_then(|(_, rest)| rest.chars().next());
+        let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+        state.is_some_and(|c| c != 'Z' && c != 'X') && is_worker(&String::from_utf8_lossy(&cmdline).replace('\0', " "))
+    }
+    #[cfg(all(unix, not(target_os = "linux")))]
+    {
+        std::process::Command::new("ps")
+            .args(["-o", "stat=,command=", "-p", &pid.to_string()])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .is_some_and(|l| !l.starts_with('Z') && is_worker(&l))
     }
     #[cfg(windows)]
     {
@@ -223,6 +242,11 @@ fn alive(pid: u32) -> bool {
             .map(|o| String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()))
             .unwrap_or(false)
     }
+}
+
+/// A deploy worker's command line: `<app> deploy --job <file>`.
+fn is_worker(cmdline: &str) -> bool {
+    cmdline.contains(" deploy ") && cmdline.contains("--job")
 }
 
 fn read_pid(path: &Path) -> Option<u32> {
@@ -463,6 +487,24 @@ mod tests {
         // Long lines are kept readable.
         let long = format!("==> ws01: {}", "a".repeat(200));
         assert!(super::last_step(&long).unwrap().ends_with('…'));
+    }
+
+    #[test]
+    fn only_a_deploy_worker_counts_as_one() {
+        assert!(super::is_worker("/usr/bin/cyberctf-desktop deploy --job /data/deploys/lab-1.json"));
+        assert!(!super::is_worker("/usr/bin/firefox-esr --new-window"));
+        assert!(!super::is_worker(""));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_finished_or_foreign_process_is_not_alive() {
+        // This test binary is alive but isn't a worker; a reaped child is gone.
+        assert!(!super::alive(std::process::id()));
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        assert!(!super::alive(pid));
     }
 
     #[test]
