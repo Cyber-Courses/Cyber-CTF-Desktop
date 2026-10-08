@@ -180,6 +180,9 @@ impl Drop for GroupGuard {
 }
 
 async fn run_inner(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)], timeout: Option<std::time::Duration>) -> Result<String> {
+    // Kept alive until the tool exits (see lan_relay).
+    let relayed = crate::lan_relay::prepare(program, env).await;
+    let env = relayed.env.as_slice();
     let mut cmd = build(program, args);
     cmd.stdin(Stdio::null());
     cmd.envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
@@ -234,6 +237,8 @@ async fn run_inner(program: &'static str, args: &[&str], cwd: Option<&Path>, env
 /// Like `run`, but adds `env` to the process environment and forwards every
 /// stdout/stderr line to `on_line` as it arrives.
 pub async fn stream(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)], mut on_line: impl FnMut(String)) -> Result<()> {
+    let relayed = crate::lan_relay::prepare(program, env).await;
+    let env = relayed.env.as_slice();
     let mut cmd = build(program, args);
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd.envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));

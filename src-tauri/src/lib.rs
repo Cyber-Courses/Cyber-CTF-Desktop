@@ -5,6 +5,7 @@ mod deploy_worker;
 mod error;
 mod exec;
 mod labs;
+mod lan_relay;
 mod machine;
 mod platform;
 mod provisioning;
