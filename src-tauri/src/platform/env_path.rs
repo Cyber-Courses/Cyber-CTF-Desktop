@@ -5,6 +5,18 @@
 
 use std::path::PathBuf;
 
+/// Dirs added even before they exist: a tool installed there while the app runs (the gcloud
+/// SDK, per user, from the Cloud setup) is then found without a restart, since PATH is only
+/// set once at startup.
+fn future_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    #[cfg(target_os = "linux")]
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        dirs.push(home.join("google-cloud-sdk/bin"));
+    }
+    dirs
+}
+
 fn extra_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
     #[cfg(unix)]
@@ -39,6 +51,11 @@ fn augmented(current: Option<std::ffi::OsString>) -> Option<std::ffi::OsString> 
     let before = paths.len();
     for dir in extra_dirs() {
         if dir.is_dir() && !paths.contains(&dir) {
+            paths.push(dir);
+        }
+    }
+    for dir in future_dirs() {
+        if !paths.contains(&dir) {
             paths.push(dir);
         }
     }

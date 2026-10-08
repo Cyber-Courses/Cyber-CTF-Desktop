@@ -17,6 +17,9 @@ use tauri::{Emitter, Manager};
 /// Set once the user confirms quitting while a deploy is in progress, so the close/exit handlers
 /// stop intercepting and let the app go.
 static FORCE_QUIT: AtomicBool = AtomicBool::new(false);
+/// Set while the app finishes in the background with its windows hidden (`linger_quit`); a
+/// relaunch clears it, so the app stays open instead of exiting once the deploys are done.
+static LINGERING: AtomicBool = AtomicBool::new(false);
 
 /// Whether leaving now would interrupt a lab deploy. The UI reads this (and the handlers below
 /// use it) to warn before quitting: an interrupted cloud apply can leave billable resources.
@@ -129,12 +132,17 @@ fn linger_quit(app: tauri::AppHandle) {
     for (_, w) in app.webview_windows() {
         let _ = w.hide();
     }
+    LINGERING.store(true, Ordering::SeqCst);
     tauri::async_runtime::spawn(async move {
         // Bounded: a wedged operation (a hung VBoxManage) must not keep an invisible app alive
         // for good. Past the cap it exits anyway; a detached worker would have been unaffected.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60 * 60);
-        while runtime::active_deploys() > 0 && std::time::Instant::now() < deadline {
+        while runtime::active_deploys() > 0 && std::time::Instant::now() < deadline && LINGERING.load(Ordering::SeqCst) {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+        // Relaunched meanwhile (the windows are back): stay open.
+        if !LINGERING.swap(false, Ordering::SeqCst) {
+            return;
         }
         FORCE_QUIT.store(true, Ordering::SeqCst);
         app.exit(0);
@@ -232,7 +240,12 @@ pub fn run() {
         // First: a cyberctf:// link opened while the app runs goes to that window
         // (Windows/Linux would otherwise start a second instance).
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // The windows may be hidden (finishing in the background) or minimized: bring the
+            // main one back, and keep the app open instead of exiting once its deploys end.
+            LINGERING.store(false, Ordering::SeqCst);
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
                 let _ = window.set_focus();
             }
         }))
