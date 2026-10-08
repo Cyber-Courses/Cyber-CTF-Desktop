@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Circle, X } from "lucide-react";
-import { Spinner } from "@/components/ui/spinner";
+import { Check, X } from "lucide-react";
+import { StatusDot } from "@/components/ui/status-pill";
 import { serverSelftest, type SelfTestEvent, type ServerHost } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { formatElapsed } from "@/lib/format";
@@ -72,36 +72,57 @@ export function ServerSelfTest({ id, provider, onDone }: { id: string; provider:
   const fmt = formatElapsed(now - startAt);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-surface">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
-        <span className="text-[0.71875rem] font-medium">{running ? "Running a real VM on the host…" : failed ? "VM test failed" : "VM test passed"}</span>
-        <span className="ml-auto font-mono text-[0.6875rem] tabular-nums text-muted-foreground">{fmt}</span>
+    <div className="overflow-hidden rounded-control bg-glass shadow-[inset_0_0_0_1px_var(--border)]">
+      <div className="flex items-center gap-2.5 border-b border-border px-4 py-2">
+        <StatusDot tone={running ? "warn" : failed ? "fail" : "ok"} pulse={running} />
+        <span className="text-[0.8125rem] font-medium">{running ? "Running a real VM on the host…" : failed ? "VM test failed" : "VM test passed"}</span>
+        <span className="ml-auto font-mono text-[0.6875rem] tabular-nums text-faint">{fmt}</span>
       </div>
-      <div className="divide-y divide-border/60">
+      <div className="grid py-1">
         {plan.map((p) => {
           const st = states[p.step]?.state ?? "idle";
+          const detail = states[p.step]?.detail;
           return (
-            <div key={p.step} className="flex items-start gap-2.5 px-3 py-2">
-              <span className="mt-0.5">
-                {st === "ok" ? (
-                  <Check className="size-3.5 text-emerald-500" />
-                ) : st === "fail" ? (
-                  <X className="size-3.5 text-rose-500" />
-                ) : st === "running" ? (
-                  <Spinner className="size-3.5 text-learn" />
-                ) : (
-                  <Circle className={cn("size-3.5", st === "skip" ? "text-muted-foreground/40" : "text-muted-foreground/30")} />
-                )}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className={cn("text-[0.78125rem]", st === "idle" ? "text-muted-foreground/60" : "text-foreground")}>{p.label}</p>
-                {states[p.step]?.detail && <p className="mt-0.5 break-words font-mono text-[0.6875rem] text-muted-foreground">{states[p.step]!.detail}</p>}
+            <div key={p.step} className="grid grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-3 px-4 py-1.5 text-[0.8125rem]">
+              <StepMark state={st} />
+              <div className="min-w-0">
+                <p className={cn(st === "idle" || st === "skip" ? "text-faint" : "text-foreground")}>{p.label}</p>
+                {detail && <p className="mt-0.5 break-words font-mono text-[0.6875rem] text-faint">{detail}</p>}
               </div>
             </div>
           );
         })}
       </div>
-      {error && <p className="border-t border-border px-3 py-2 text-[0.71875rem] text-rose-500">{error}</p>}
+      {error && (
+        <div className="flex items-start gap-2.5 border-t border-border px-4 py-2 text-[0.75rem] text-muted-foreground">
+          <StatusDot tone="fail" className="mt-1.5" />
+          <span className="min-w-0 break-words">{error}</span>
+        </div>
+      )}
     </div>
   );
+}
+
+/** The step's circle: filled with a check when done, a pulsing ring while it runs. */
+function StepMark({ state }: { state: string }) {
+  const base = "mt-px grid size-[1.1rem] place-items-center rounded-full";
+  if (state === "ok")
+    return (
+      <span className={cn(base, "bg-success text-background")}>
+        <Check className="size-2.5" strokeWidth={3.5} />
+      </span>
+    );
+  if (state === "fail")
+    return (
+      <span className={cn(base, "bg-destructive text-background")}>
+        <X className="size-2.5" strokeWidth={3.5} />
+      </span>
+    );
+  if (state === "running")
+    return (
+      <span className={cn(base, "shadow-[inset_0_0_0_0.1rem_var(--warning)]")}>
+        <StatusDot tone="warn" pulse />
+      </span>
+    );
+  return <span className={cn(base, "shadow-[inset_0_0_0_0.1rem_var(--input)]", state === "skip" && "opacity-50")} />;
 }

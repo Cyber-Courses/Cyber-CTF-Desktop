@@ -33,7 +33,7 @@ export function RunOnDialog({ onClose, children, footer }: { onClose: () => void
   useFocusTrap(ref);
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] p-4 backdrop-blur-[0.125rem]"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
@@ -42,10 +42,10 @@ export function RunOnDialog({ onClose, children, footer }: { onClose: () => void
         role="dialog"
         aria-modal="true"
         aria-label="Where should the lab run?"
-        className="flex max-h-[85vh] w-full max-w-[28rem] flex-col rounded-xl border border-border bg-card shadow-2xl shadow-black/50 outline-none"
+        className="surface-glass flex max-h-[85vh] w-full max-w-[28rem] flex-col rounded-panel outline-none"
       >
         <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
-        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-3.5">{footer}</div>
       </div>
     </div>
   );
@@ -191,12 +191,12 @@ export function RunOnPicker({
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-base font-semibold tracking-tight text-foreground">Where should it run?</p>
-        <p className="mt-0.5 text-[0.8125rem] text-muted-foreground">{title}</p>
+        <p className="serif-title text-[1.5rem] text-foreground">Where should it run?</p>
+        <p className="mt-1 text-[0.8125rem] text-muted-foreground">{title}</p>
       </div>
       {groups.map((g) => (
         <div key={g.label} className="space-y-1.5">
-          <p className="text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">{g.label}</p>
+          <p className="section-label">{g.label}</p>
           <RadioList label={g.label}>
             {g.options.map((o) => (
               <RadioRow

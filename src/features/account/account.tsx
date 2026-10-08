@@ -59,15 +59,15 @@ export function Account({
   onSettings?: () => void;
 }) {
   const { login, logout, busy, error } = useAuthActions(onChange);
-  const iconBtn = "shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
+  const iconBtn = "grid size-7 shrink-0 place-items-center rounded-xs text-faint transition-colors hover:bg-glass hover:text-foreground";
 
   if (!status) return null;
 
   if (!status.loggedIn) {
     return (
       <div className="space-y-2">
-        {error && <p className="text-xs text-destructive">{error}</p>}
-        <Button variant="learn" size="sm" className="w-full" onClick={login} disabled={busy}>
+        {error && <p className="text-[0.75rem] text-destructive">{error}</p>}
+        <Button size="sm" className="w-full" onClick={login} disabled={busy}>
           {busy ? (
             <>
               <Spinner className="size-3.5" /> Waiting for the browser…
@@ -79,7 +79,7 @@ export function Account({
         {onSettings && (
           <button
             onClick={onSettings}
-            className="flex w-full items-center justify-center gap-1.5 text-[0.71875rem] text-muted-foreground transition-colors hover:text-foreground"
+            className="flex w-full items-center justify-center gap-1.5 text-[0.75rem] text-muted-foreground transition-colors hover:text-foreground"
           >
             <Cog className="size-3.5" /> Settings
           </button>
@@ -89,19 +89,19 @@ export function Account({
   }
 
   return (
-    <div className="flex items-center gap-2.5">
-      <span className="relative flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-[0.7rem] font-semibold text-foreground">
+    <div className="flex items-center gap-2.5 px-1">
+      <span className="avatar relative flex size-7 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-semibold">
         {initials(status.name, status.email)}
         {online && (
           <span
             title="Online: labs you launch from the website run on this machine"
-            className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-card bg-emerald-500"
+            className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-card bg-success"
           />
         )}
       </span>
       <div className="min-w-0 flex-1 leading-tight">
-        <p className="truncate text-xs font-medium text-foreground">{status.name ?? "Signed in"}</p>
-        {status.email && <p className="truncate text-[0.7rem] text-muted-foreground">{status.email}</p>}
+        <p className="truncate text-[0.8125rem] font-medium text-foreground">{status.name ?? "Signed in"}</p>
+        <p className="truncate font-mono text-[0.625rem] text-faint">{status.email ?? "signed in · keychain"}</p>
       </div>
       {onSettings && (
         <button onClick={onSettings} title="Settings" className={iconBtn}>

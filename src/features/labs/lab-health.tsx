@@ -5,7 +5,6 @@ import { AlertTriangle, Play, RotateCcw, ShieldAlert, ShieldCheck } from "lucide
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { labCheck, type LabCheck } from "@/lib/tauri";
-import { cn } from "@/lib/utils";
 
 export type CheckState = LabCheck | "checking" | null;
 
@@ -51,25 +50,25 @@ export function HealthBanner({
   onResume?: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-3.5">
-      <AlertTriangle className="size-4 shrink-0 text-amber-500" />
-      <div className="min-w-0 flex-1 text-[0.78125rem]">
+    <div role="status" className="surface-panel flex flex-wrap items-center gap-3 rounded-panel px-4 py-3">
+      <AlertTriangle className="size-4 shrink-0 text-warning" />
+      <div className="min-w-0 flex-1 text-[0.8125rem]">
         <p className="text-foreground">
           {down.join(", ")} {down.length > 1 ? "are" : "is"} down. The lab may not work.
         </p>
         {check === "checking" && (
-          <p className="mt-0.5 flex items-center gap-1.5 text-muted-foreground">
+          <p className="mt-0.5 flex items-center gap-1.5 text-[0.75rem] text-muted-foreground">
             <Spinner className="size-3" /> Checking whether it&apos;s still solvable…
           </p>
         )}
         {check && check !== "checking" && check.available && (
           <>
-            <p className={cn("mt-0.5 flex items-center gap-1.5", check.ok ? "text-emerald-500" : "text-rose-400")}>
-              {check.ok ? <ShieldCheck className="size-3.5" /> : <ShieldAlert className="size-3.5" />}
+            <p className="mt-0.5 flex items-center gap-1.5 text-[0.75rem] text-muted-foreground">
+              {check.ok ? <ShieldCheck className="size-3.5 text-success" /> : <ShieldAlert className="size-3.5 text-destructive" />}
               {check.ok ? "Still solvable." : "It can no longer be solved. Reset it to get a clean lab."}
             </p>
             {!check.ok && check.results.some((r) => !r.ok) && (
-              <ul className="mt-1 space-y-0.5 text-muted-foreground">
+              <ul className="mt-1 space-y-0.5 font-mono text-[0.6875rem] text-faint">
                 {check.results
                   .filter((r) => !r.ok)
                   .slice(0, 5)

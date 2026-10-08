@@ -2,9 +2,10 @@
 
 import { ArrowLeft, Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StatusDot } from "@/components/ui/status-pill";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { Field, Input, Nav, Select, Step } from "@/features/servers/host-setup/form";
+import { Field, Input, Nav, Note, Select, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
 
 export function OptionsStep({ s }: { s: HostSetup }) {
@@ -13,7 +14,7 @@ export function OptionsStep({ s }: { s: HostSetup }) {
     <Step icon={Cloud} title="Lab settings" description="Name this account and choose when idle labs stop.">
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name">
-          <Input {...text("name")} placeholder={v.provider === "azure" ? "My Azure" : v.provider === "gcp" ? "My Google Cloud" : "My AWS"} />
+          <Input mono={false} {...text("name")} placeholder={v.provider === "azure" ? "My Azure" : v.provider === "gcp" ? "My Google Cloud" : "My AWS"} />
         </Field>
         <Field label="Auto-stop">
           <Select value={String(v.autoStopHours ?? 4)} onChange={(e) => set("autoStopHours", Number(e.target.value))}>
@@ -26,7 +27,7 @@ export function OptionsStep({ s }: { s: HostSetup }) {
           </Select>
         </Field>
       </div>
-      <p className="mt-2 text-[0.71875rem] text-muted-foreground">
+      <p className="mt-2 text-[0.75rem] text-muted-foreground">
         {v.provider === "aws"
           ? "An auto-stopped lab terminates itself when the time is up, even if this machine is off."
           : "At the auto-stop time the launcher tears the lab down to end billing, so keep it open (or stop the lab yourself) before then."}{" "}
@@ -36,6 +37,7 @@ export function OptionsStep({ s }: { s: HostSetup }) {
         <div className="mt-3">
           <Field label="Monthly budget (USD)" hint="optional">
             <Input
+              mono
               type="number"
               min={0}
               step={5}
@@ -45,22 +47,27 @@ export function OptionsStep({ s }: { s: HostSetup }) {
             />
           </Field>
           {mtdCost != null && (
-            <p className={cn("mt-1.5 text-[0.71875rem]", v.monthlyLimit && mtdCost >= v.monthlyLimit ? "text-rose-400" : "text-muted-foreground")}>
+            <p className={cn("mt-1.5 text-[0.75rem]", v.monthlyLimit && mtdCost >= v.monthlyLimit ? "text-destructive" : "text-muted-foreground")}>
               Spent this month: ${mtdCost.toFixed(2)}
               {v.monthlyLimit ? ` of $${v.monthlyLimit.toFixed(2)}` : ""}.
             </p>
           )}
         </div>
       )}
-      {error && <p className="mt-3 text-[0.75rem] text-destructive">{error}</p>}
+      {error && (
+        <Note className="mt-3 flex items-start gap-2.5">
+          <StatusDot tone="fail" className="mt-1.5" />
+          <span className="min-w-0 break-words text-muted-foreground">{error}</span>
+        </Note>
+      )}
       <Nav
         left={
-          <Button variant="outline" onClick={back}>
+          <Button variant="ghost" onClick={back}>
             <ArrowLeft className="size-4" /> Back
           </Button>
         }
         right={
-          <Button variant="learn" onClick={saveAndTest} disabled={saving || !connectionOk}>
+          <Button onClick={saveAndTest} disabled={saving || !connectionOk}>
             {saving && <Spinner className="size-4" />} Save and test
           </Button>
         }

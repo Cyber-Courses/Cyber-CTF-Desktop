@@ -123,18 +123,18 @@ export function HypervisorRow({
         </RadioList>
       )}
       {notReady.length > 0 && (
-        <div className="mt-3 overflow-hidden rounded-lg border border-border">
+        <div className="mt-3 overflow-hidden rounded-control bg-glass shadow-[inset_0_0_0_1px_var(--border)]">
           {notReady.map((h) => (
-            <div key={h.provider} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
+            <div key={h.provider} className="flex min-h-[3.25rem] items-center gap-3 border-t border-border px-3.5 py-2 first:border-t-0">
               <HypervisorLogo provider={h.provider} size="sm" />
               <div className="min-w-0 flex-1">
                 <p className="text-[0.8125rem] font-medium text-foreground">{providerLabel(h, report?.os)}</p>
-                <p className="truncate text-xs text-muted-foreground">
+                <p className="truncate text-[0.75rem] text-muted-foreground">
                   {h.plugin && !h.pluginInstalled ? `Installed · needs the Vagrant add-on ${h.plugin}` : (h.reason ?? "Installed · not ready for VM labs")}
                 </p>
               </div>
               {h.plugin && !h.pluginInstalled && (
-                <Button variant="outline" size="sm" disabled={installing !== null || !report?.vagrant.installed} onClick={() => installAddon(h.plugin!)}>
+                <Button variant="outline" size="xs" disabled={installing !== null || !report?.vagrant.installed} onClick={() => installAddon(h.plugin!)}>
                   {installing === h.plugin ? (
                     <>
                       <Spinner className="size-3.5" /> Installing…
@@ -148,7 +148,7 @@ export function HypervisorRow({
           ))}
         </div>
       )}
-      {log && <LogConsole lines={log} running={installing !== null} title="Vagrant add-on" />}
+      {log && <LogConsole className="mt-3" lines={log} running={installing !== null} title="Vagrant add-on" />}
     </Row>
   );
 }

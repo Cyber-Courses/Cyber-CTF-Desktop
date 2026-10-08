@@ -8,6 +8,7 @@
 
 import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StatusDot } from "@/components/ui/status-pill";
 import { SelfTest } from "@/features/machine/self-test";
 import { type SystemReport } from "@/lib/tauri";
 import { AttackStep } from "@/features/machine/setup-steps/attack-step";
@@ -26,7 +27,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
   if (step === "pkgmgr") {
     if (report.pkgManager.installed) {
       return (
-        <div className="overflow-hidden rounded-lg border border-border">
+        <div className="overflow-hidden rounded-control bg-glass shadow-[inset_0_0_0_1px_var(--border)]">
           <Requirement ok title={report.pkgManager.name} detail={report.pkgManager.version ?? "Installed"} action={null} />
         </div>
       );
@@ -35,26 +36,26 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
       <>
         {isMac && (
           <div className="space-y-2">
-            <p className="text-[0.78125rem] text-muted-foreground">Run this in Terminal, then come back, it’s detected automatically:</p>
+            <p className="text-[0.8125rem] text-muted-foreground">Run this in Terminal, then come back, it’s detected automatically:</p>
             <CmdRow cmd={'/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'} />
-            <button onClick={() => openExternal("https://brew.sh")} className="inline-flex items-center gap-1.5 text-[0.75rem] text-learn hover:underline">
+            <button onClick={() => openExternal("https://brew.sh")} className="inline-flex items-center gap-1.5 text-[0.75rem] text-jewel-text hover:underline">
               <ExternalLink className="size-3.5" /> brew.sh
             </button>
           </div>
         )}
         {isWin && (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-[#0f0f0f] p-3.5">
+          <div className="flex items-center justify-between gap-3 rounded-control bg-glass shadow-[inset_0_0_0_1px_var(--border)] px-4 py-3">
             <div>
-              <p className="text-[0.8125rem] font-medium">App Installer (winget)</p>
+              <p className="text-[0.8125rem] font-medium text-foreground">App Installer (winget)</p>
               <p className="text-[0.75rem] text-muted-foreground">Install it from the Microsoft Store, then come back.</p>
             </div>
-            <Button variant="learn" onClick={() => openExternal("https://apps.microsoft.com/detail/9nblggh4nns1")}>
+            <Button variant="primary" size="sm" onClick={() => openExternal("https://apps.microsoft.com/detail/9nblggh4nns1")}>
               <ExternalLink className="size-3.5" /> Get
             </Button>
           </div>
         )}
         {!isMac && !isWin && (
-          <p className="text-[0.78125rem] text-muted-foreground">
+          <p className="text-[0.8125rem] text-muted-foreground">
             Install your distribution’s package manager{report.pkgManager.name ? ` (${report.pkgManager.name})` : ""} to use the one-click installs.
           </p>
         )}
@@ -71,7 +72,8 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
           Cyber CTF turns on WSL 2 for you. Windows asks for permission once (the usual admin prompt), then needs a restart.
         </p>
         <Button
-          variant="learn"
+          variant="primary"
+          size="sm"
           className="mt-4"
           disabled={setup.busy}
           onClick={() => setup.install("wsl", "wsl", "Turning on WSL 2. Accept the Windows prompt to continue…")}
@@ -82,15 +84,19 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
           <Log setup={setup} />
         </div>
         {tried && (
-          <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[0.8125rem] text-amber-200">
+          <div
+            role="status"
+            className="mt-3 flex items-center gap-3 rounded-control bg-glass px-4 py-3 text-[0.8125rem] text-foreground shadow-[inset_0_0_0_1px_var(--border)]"
+          >
+            <StatusDot tone="warn" />
             Restart Windows to finish, then open Cyber CTF again to continue setup.
-          </p>
+          </div>
         )}
-        <details className="mt-4 text-[0.78125rem] text-muted-foreground">
+        <details className="mt-4 text-[0.8125rem] text-muted-foreground">
           <summary className="cursor-pointer hover:text-foreground">Do it by hand instead</summary>
           <ol className="mt-3 space-y-3">
             <Num n={1}>
-              Open <b>PowerShell</b> as Administrator (right-click → “Run as administrator”).
+              Open <b>PowerShell</b> as Administrator (right-click, then “Run as administrator”).
             </Num>
             <Num n={2}>
               Run this, then reboot when it finishes:
@@ -105,7 +111,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
           </ol>
           <button
             onClick={() => openExternal("https://learn.microsoft.com/windows/wsl/install")}
-            className="mt-4 inline-flex items-center gap-1.5 text-[0.75rem] text-learn hover:underline"
+            className="mt-4 inline-flex items-center gap-1.5 text-[0.75rem] text-jewel-text hover:underline"
           >
             <ExternalLink className="size-3.5" /> Microsoft’s WSL install guide
           </button>
@@ -138,7 +144,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
 export function SetupOutcome({ report, setup }: { report: SystemReport | null; setup: MachineSetupState }) {
   const { dockerTest, vmTest } = setup;
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div className="overflow-hidden rounded-control bg-glass shadow-[inset_0_0_0_1px_var(--border)]">
       <Outcome
         title="Container labs"
         ok={dockerTest === "ok"}

@@ -7,8 +7,8 @@ type Port = { published: number; target: number };
 export type Machine = LabMachine;
 export type Attacker = { running: boolean; ip: string; labNetwork?: string } | null;
 
-const violet = "#a78bfa"; // web/api service accent
-export const attack = "#f0616d"; // red: the attacker and its pivot into the lab network
+// Colours are CSS custom properties (globals.css), so the diagram follows Dark, Black and Light.
+export const attack = "var(--you)"; // violet: you, the attacker, and your link into the lab network
 
 export function isIp(s: string) {
   return /^\d{1,3}\.\d{1,3}\./.test(s);
@@ -43,12 +43,12 @@ export type ComputerData = {
 };
 
 export const serviceMeta: Record<ServiceType, { icon: LucideIcon; label: string; color: string }> = {
-  database: { icon: Database, label: "database", color: "#56b6e6" },
-  web: { icon: Globe2, label: "web / api", color: violet },
-  cache: { icon: Zap, label: "cache", color: "#f5b544" },
-  worker: { icon: Workflow, label: "worker", color: "#a3a3a3" },
-  ssh: { icon: Terminal, label: "ssh", color: "#7fc8a9" },
-  service: { icon: Box, label: "service", color: "#a3a3a3" },
+  database: { icon: Database, label: "database", color: "var(--hue-sky)" },
+  web: { icon: Globe2, label: "web / api", color: "var(--hue-violet)" },
+  cache: { icon: Zap, label: "cache", color: "var(--hue-amber)" },
+  worker: { icon: Workflow, label: "worker", color: "var(--hue-grey)" },
+  ssh: { icon: Terminal, label: "ssh", color: "var(--hue-mint)" },
+  service: { icon: Box, label: "service", color: "var(--hue-grey)" },
 };
 
 /** A declared kind, mapped onto the known looks; anything else is a plain service. */
@@ -85,9 +85,10 @@ export type Pt = { x: number; y: number };
 
 export type LinkData = { label?: string; route?: Pt[] };
 
-export const GREY = "#4f4f4f";
-export const GREEN = "#54c171";
-export const PIVOT = "#8b7cc4"; // a pivot's link on into a deeper network
+export const GREY = "var(--edge-line)";
+export const GREEN = "var(--success)";
+export const PIVOT = "var(--jewel)"; // a pivot's link on into a deeper network
+export const IDLE = "var(--faint)"; // a link that is not live (attack box not attached)
 
 export const BRIDGE = { w: 136, h: 60 };
 export const ANCHOR = 2; // a published port's anchor node, a point on the card's edge

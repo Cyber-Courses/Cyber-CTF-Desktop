@@ -34,7 +34,7 @@ export function CopyText({ text, children }: { text: string; children: React.Rea
   );
 }
 
-function PortHandles({ accent = "#6b7280", sides = false, top = true }: { accent?: string; sides?: boolean; top?: boolean }) {
+function PortHandles({ accent = "var(--faint)", sides = false, top = true }: { accent?: string; sides?: boolean; top?: boolean }) {
   const style = { "--handle-accent": accent } as React.CSSProperties;
   return (
     <>
@@ -103,7 +103,7 @@ function ZoneNode({ data }: NodeProps<Node<ZoneData>>) {
 function BridgeNode({ data }: NodeProps<Node<{ label: string; tone?: "attack" }>>) {
   return (
     <div className={`bridge ${data.tone === "attack" ? "bridge-attack" : ""}`}>
-      <PortHandles accent={data.tone === "attack" ? attack : "#6b7280"} top={false} />
+      <PortHandles accent={data.tone === "attack" ? attack : "var(--faint)"} top={false} />
       {/* The uplink to the host arrives here, unseen: the line just leaves the bridge upward. */}
       <Handle id="up" type="target" position={Position.Top} className="topology-handle hostport-handle" />
       <Network size={16} />
@@ -116,7 +116,6 @@ function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string
   return (
     <div className="topology-node attacker-node">
       <PortHandles accent={attack} />
-      <div className="attacker-glow" />
       <div className="attacker-icon">
         <Terminal size={18} />
       </div>
@@ -125,8 +124,8 @@ function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string
           <span className="you-chip">YOU</span> ATTACKER
         </div>
         <div className="node-title">{data.label}</div>
-        <div className="node-subtitle" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: data.running ? "#54c171" : "#6b6b6b" }} />
+        <div className="node-subtitle" style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+          <span className="attacker-state" data-on={data.running} />
           {data.running && isIp(data.subtitle) ? <CopyText text={data.subtitle}>{data.subtitle}</CopyText> : data.subtitle}
         </div>
       </div>

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Check, Copy, KeyRound, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { KIND } from "@/features/servers/host-setup/constants";
-import { Field, Input, Nav, Step } from "@/features/servers/host-setup/form";
+import { Field, Input, Nav, Note, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
 import { serverPublicKey } from "@/lib/tauri/servers";
 import { warn } from "@/lib/failure";
@@ -38,7 +38,7 @@ export function ConnectionStep({ s }: { s: HostSetup }) {
     >
       <div className="grid gap-3 sm:grid-cols-[1fr_1fr_6.875rem]">
         <Field label="Name">
-          <Input {...text("name")} placeholder={v.provider === "proxmox" ? "Garage Proxmox" : "ESXi box"} />
+          <Input mono={false} {...text("name")} placeholder={v.provider === "proxmox" ? "Garage Proxmox" : "ESXi box"} />
         </Field>
         <Field label="Host">
           <Input {...text("host")} placeholder="192.168.1.20 or pve.lan" />
@@ -69,32 +69,32 @@ export function ConnectionStep({ s }: { s: HostSetup }) {
         </Field>
       </div>
       {isToken && (
-        <div className="mt-3 rounded-lg border border-border bg-surface px-3 py-2.5">
-          <div className="flex items-center gap-1.5 text-[0.75rem] font-medium">
+        <Note className="mt-3">
+          <div className="flex items-center gap-1.5 text-[0.8125rem] font-medium">
             <KeyRound className="size-3.5 text-muted-foreground" /> Authorize the launcher&apos;s SSH key
           </div>
-          <p className="mt-1 text-[0.6875rem] text-muted-foreground">
+          <p className="mt-1 text-[0.75rem] text-muted-foreground">
             Token hosts use this key over SSH to upload the cloud-init snippet. Add it to the token user&apos;s
-            <code className="mx-1 rounded bg-muted px-1 py-0.5">~/.ssh/authorized_keys</code> on the Proxmox node.
+            <code className="mx-1 rounded-xs bg-glass-2 px-1 py-0.5 font-mono">~/.ssh/authorized_keys</code> on the Proxmox node.
           </p>
           <div className="mt-2 flex items-start gap-2">
-            <code className="min-w-0 flex-1 break-all rounded bg-muted px-2 py-1.5 font-mono text-[0.6875rem] text-muted-foreground">
+            <code className="surface-log min-w-0 flex-1 break-all rounded-sm px-2 py-1.5 font-mono text-[0.6875rem] text-muted-foreground">
               {pubkey ?? "Loading the launcher's public key…"}
             </code>
-            <Button variant="outline" size="sm" onClick={copyKey} disabled={!pubkey}>
-              {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy"}
+            <Button variant="outline" size="xs" onClick={copyKey} disabled={!pubkey}>
+              {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />} {copied ? "Copied" : "Copy"}
             </Button>
           </div>
-        </div>
+        </Note>
       )}
       <Nav
         left={
-          <Button variant="outline" onClick={back}>
+          <Button variant="ghost" onClick={back}>
             <ArrowLeft className="size-4" /> Back
           </Button>
         }
         right={
-          <Button variant="learn" onClick={next} disabled={!connectionOk}>
+          <Button onClick={next} disabled={!connectionOk}>
             Continue
           </Button>
         }

@@ -14,7 +14,7 @@ export function Tip({ text, children, align = "end" }: { text?: string; children
       <span
         role="tooltip"
         className={cn(
-          "pointer-events-none absolute top-full z-40 mt-1.5 w-max max-w-64 rounded-md border border-border bg-popover px-2 py-1 text-[0.71875rem] leading-snug text-popover-foreground opacity-0 shadow-lg shadow-black/40 transition-opacity",
+          "surface-glass pointer-events-none absolute top-full z-40 mt-1.5 w-max max-w-64 rounded-sm px-2.5 py-1.5 text-[0.75rem] leading-snug text-popover-foreground opacity-0 transition-opacity",
           "group-hover/tip:opacity-100 group-hover/tip:delay-500 group-has-[:focus-visible]/tip:opacity-100",
           align === "end" ? "right-0" : "left-0",
         )}

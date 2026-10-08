@@ -3,7 +3,9 @@
 import { Crosshair, Play, Square, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LogConsole } from "@/components/ui/log-console";
-import { Panel, PanelHeader } from "@/components/ui/panel";
+import { CopyValue } from "@/components/ui/copy-value";
+import { KeyValue, Panel, PanelHeader } from "@/components/ui/panel";
+import { StatusDot } from "@/components/ui/status-pill";
 import { Spinner } from "@/components/ui/spinner";
 import type { AttackBox } from "@/features/labs/use-attack-box";
 
@@ -24,34 +26,44 @@ export function AttackBoxPanel({
   const remote = host !== null;
   const { status, busy, log, name } = box;
   const vm = box.kind === "vm";
+  const tone = (remote && running) || status?.running ? "ok" : busy ? "warn" : "muted";
   return (
     <Panel>
       <PanelHeader
-        title={vm ? "Attack VM" : "Attack box"}
+        title={
+          <>
+            <StatusDot tone={tone} pulse={busy} />
+            {vm ? "Attack VM" : "Attack box"}
+          </>
+        }
         action={
-          <span className="inline-block max-w-[9.5rem] truncate align-bottom font-mono text-[0.6875rem] text-muted-foreground" title={name}>
+          <span className="inline-block max-w-[9.5rem] truncate align-bottom font-mono text-[0.6875rem] text-faint" title={name}>
             {name}
           </span>
         }
       />
-      <div className="space-y-3 p-4">
-        <div className="flex items-center gap-2 text-[0.8125rem]">
-          <Crosshair className="size-4 text-learn" />
-          {remote && running ? (
-            <span>Running on {host}</span>
-          ) : status?.running ? (
-            <span className="flex items-center gap-1.5">
-              Running <span className="font-mono text-[0.6875rem] text-muted-foreground">{status.ip}</span>
-            </span>
-          ) : busy ? (
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <Spinner className="size-3.5" /> Starting…
-            </span>
-          ) : (
-            <span className="text-muted-foreground">{running ? "Not started" : "Starts with the lab"}</span>
-          )}
-        </div>
-        <p className="text-[0.71875rem] text-muted-foreground">
+      <KeyValue k="Status">
+        {remote && running ? (
+          <>running on {host}</>
+        ) : status?.running ? (
+          <span className="inline-flex items-center gap-1.5">
+            <Crosshair className="size-3.5 text-you-text" /> running
+          </span>
+        ) : busy ? (
+          <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+            <Spinner className="size-3" /> starting
+          </span>
+        ) : (
+          <span className="text-muted-foreground">{running ? "not started" : "starts with the lab"}</span>
+        )}
+      </KeyValue>
+      {status?.running && status.ip && (
+        <KeyValue k="Address">
+          <CopyValue text={status.ip} />
+        </KeyValue>
+      )}
+      <div className="space-y-3 border-t border-border p-4">
+        <p className="text-[0.75rem] leading-relaxed text-muted-foreground">
           {remote
             ? "Your machine on the lab network. Open its shell to attack the targets; it connects over SSH."
             : vm
@@ -59,24 +71,27 @@ export function AttackBoxPanel({
               : "Your machine on the lab network. Open its shell to attack the targets from inside the lab."}
         </p>
         {onShell && shellReady && (
-          <Button variant="learn" className="w-full" onClick={onShell}>
-            <Terminal className="size-4" /> Open attacker shell
+          <Button variant="primary" size="sm" className="w-full" onClick={onShell}>
+            <Terminal className="size-3.5" /> Open attacker shell
           </Button>
         )}
         {!remote && status && !status.imagePresent && !status.running && (
-          <p className="text-[0.71875rem] text-amber-500">
-            The first start downloads <span className="font-mono">{name}</span> (several GB).
+          <p className="flex items-start gap-2 text-[0.75rem] text-muted-foreground">
+            <StatusDot tone="warn" className="mt-1.5 shrink-0" />
+            <span>
+              The first start downloads <span className="font-mono text-foreground">{name}</span> (several GB).
+            </span>
           </p>
         )}
         {running && !remote && (
           <div className="space-y-2">
             {status?.running ? (
-              <Button variant="outline" className="w-full" onClick={() => box.stop()} disabled={busy}>
+              <Button variant="outline" size="sm" className="w-full" onClick={() => box.stop()} disabled={busy}>
                 <Square className="size-3.5" /> {busy ? "Working…" : "Stop attack box"}
               </Button>
             ) : (
-              <Button variant="outline" className="w-full" onClick={() => box.start()} disabled={busy}>
-                {busy ? <Spinner className="size-4" /> : <Play className="size-4" />} Start attack box
+              <Button variant="outline" size="sm" className="w-full" onClick={() => box.start()} disabled={busy}>
+                {busy ? <Spinner className="size-3.5" /> : <Play className="size-3.5" />} Start attack box
               </Button>
             )}
           </div>

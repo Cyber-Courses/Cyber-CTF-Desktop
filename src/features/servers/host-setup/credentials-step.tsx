@@ -4,8 +4,9 @@ import { ArrowLeft, CheckCircle2, Cloud, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { LogConsole } from "@/components/ui/log-console";
+import { StatusDot } from "@/components/ui/status-pill";
 import { AWS_REGIONS, AZURE_LOCATIONS, DO_REGIONS, GCP_REGIONS, LINODE_REGIONS, OCI_REGIONS } from "@/features/servers/host-setup/constants";
-import { Field, Input, Nav, Select, Step } from "@/features/servers/host-setup/form";
+import { Field, Input, Nav, Note, Select, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
 import { openExternal } from "@/lib/failure";
 
@@ -74,9 +75,9 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
     >
       {oci ? (
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem]">
+          <Note className="flex flex-wrap items-center gap-2">
             {ociCfg?.configured ? (
-              <span className="flex items-center gap-1.5 text-emerald-500">
+              <span className="flex items-center gap-1.5 text-success">
                 <CheckCircle2 className="size-3.5" /> Found ~/.oci/config
               </span>
             ) : (
@@ -89,7 +90,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             >
               How to set up <ExternalLink className="size-3" />
             </button>
-          </div>
+          </Note>
           <Field label="Compartment OCID" hint="the tenancy root OCID works">
             <Input {...text("username")} placeholder="ocid1.compartment.oc1..…" />
           </Field>
@@ -105,7 +106,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
               autoComplete="off"
             />
           </Field>
-          <p className="text-[0.6875rem] text-muted-foreground">
+          <p className="text-[0.75rem] text-muted-foreground">
             No token?{" "}
             <button
               type="button"
@@ -119,14 +120,14 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
       ) : azure ? (
         <div className="space-y-3">
           {azureChecking ? (
-            <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem] text-muted-foreground">
+            <Note className="flex items-center gap-2 text-muted-foreground">
               <Spinner className="size-3.5" /> Checking the Azure CLI…
-            </div>
+            </Note>
           ) : azureSubs.length > 0 ? (
             <>
               {/* The sign-in, its log, then the subscription it gives access to (as for GCP). */}
-              <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
-                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+              <Note className="flex items-center gap-2">
+                <CheckCircle2 className="size-3.5 shrink-0 text-success" />
                 <span className="text-muted-foreground">Signed in to the Azure CLI.</span>
                 <button
                   type="button"
@@ -136,7 +137,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
                 >
                   {signingIn ? "Signing in…" : "Switch account"}
                 </button>
-              </div>
+              </Note>
               {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" collapseOnDone />}
               <Field label="Subscription">
                 <Select value={v.username} onChange={(e) => set("username", e.target.value)}>
@@ -152,12 +153,12 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             </>
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
+              <Note className="flex flex-wrap items-center gap-2">
                 <span className="text-muted-foreground">Sign in with the Azure CLI to list your subscriptions.</span>
-                <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
-                  {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (az login)
+                <Button variant="outline" size="xs" className="ml-auto" onClick={signIn} disabled={signingIn}>
+                  {signingIn ? <Spinner className="size-3" /> : null} Sign in (az login)
                 </Button>
-              </div>
+              </Note>
               {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" collapseOnDone />}
               <Field label="Subscription ID" hint="or paste it">
                 <Input {...text("username")} placeholder="00000000-0000-0000-0000-000000000000" />
@@ -168,14 +169,14 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
       ) : gcp ? (
         <div className="space-y-3">
           {gcpChecking ? (
-            <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem] text-muted-foreground">
+            <Note className="flex items-center gap-2 text-muted-foreground">
               <Spinner className="size-3.5" /> Checking the gcloud CLI…
-            </div>
+            </Note>
           ) : gcpEmail ? (
             <>
               {/* The sign-in, its log, then the billing account it gives access to. */}
-              <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
-                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+              <Note className="flex items-center gap-2">
+                <CheckCircle2 className="size-3.5 shrink-0 text-success" />
                 <span className="min-w-0 truncate">
                   <span className="text-muted-foreground">Signed in as </span>
                   <span className="text-foreground">{gcpEmail}</span>
@@ -188,7 +189,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
                 >
                   {signingIn ? "Signing in…" : "Switch account"}
                 </button>
-              </div>
+              </Note>
               {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" collapseOnDone />}
               {gcpBilling.length > 0 ? (
                 <Field label="Billing account" hint="the labs project is billed here">
@@ -220,12 +221,12 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             </>
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
+              <Note className="flex flex-wrap items-center gap-2">
                 <span className="text-muted-foreground">Sign in with the gcloud CLI to list your billing accounts.</span>
-                <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
-                  {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (gcloud)
+                <Button variant="outline" size="xs" className="ml-auto" onClick={signIn} disabled={signingIn}>
+                  {signingIn ? <Spinner className="size-3" /> : null} Sign in (gcloud)
                 </Button>
-              </div>
+              </Note>
               {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" collapseOnDone />}
               <Field label="Billing account" hint="or type the id">
                 <Input {...text("username")} placeholder="0X0X0X-0X0X0X-0X0X0X" />
@@ -236,24 +237,24 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
       ) : v.useCliCreds ? (
         <div className="space-y-3">
           {/* The sign-in, its log, then the profile (as for GCP and Azure). */}
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
+          <Note className="flex flex-wrap items-center gap-2">
             {checkingId ? (
               <span className="flex items-center gap-1.5 text-muted-foreground">
                 <Spinner className="size-3.5" /> Checking…
               </span>
             ) : awsIdentity ? (
               <span className="flex min-w-0 items-center gap-1.5">
-                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+                <CheckCircle2 className="size-3.5 shrink-0 text-success" />
                 <span className="text-muted-foreground">Signed in as</span>
                 <span className="truncate text-foreground">{awsIdentity}</span>
               </span>
             ) : (
               <span className="text-muted-foreground">Not signed in on this profile.</span>
             )}
-            <Button variant="outline" size="sm" className="ml-auto" onClick={awsSignIn} disabled={signingIn}>
-              {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (browser)
+            <Button variant="outline" size="xs" className="ml-auto" onClick={awsSignIn} disabled={signingIn}>
+              {signingIn ? <Spinner className="size-3" /> : null} Sign in (browser)
             </Button>
-          </div>
+          </Note>
           {signInLog && <LogConsole lines={signInLog} running={signingIn} title="Sign in" collapseOnDone />}
           {profiles.length > 0 && (
             <Field label="Profile">
@@ -284,7 +285,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
               />
             </Field>
           </div>
-          <p className="mt-1.5 text-[0.6875rem] text-muted-foreground">
+          <p className="mt-1.5 text-[0.75rem] text-muted-foreground">
             No keys yet?{" "}
             <button
               type="button"
@@ -313,15 +314,20 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
           </Select>
         </Field>
       </div>
-      {error && <p className="mt-3 text-[0.75rem] text-destructive">{error}</p>}
+      {error && (
+        <Note className="mt-3 flex items-start gap-2.5">
+          <StatusDot tone="fail" className="mt-1.5" />
+          <span className="min-w-0 break-words text-muted-foreground">{error}</span>
+        </Note>
+      )}
       <Nav
         left={
-          <Button variant="outline" onClick={back}>
+          <Button variant="ghost" onClick={back}>
             <ArrowLeft className="size-4" /> Back
           </Button>
         }
         right={
-          <Button variant="learn" onClick={next} disabled={!connectionOk}>
+          <Button onClick={next} disabled={!connectionOk}>
             Continue
           </Button>
         }

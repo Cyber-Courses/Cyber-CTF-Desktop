@@ -19,13 +19,13 @@ export function LabBrief({ labId }: { labId: string }) {
       <PanelHeader title="Brief" />
       <div className="p-4">
         {content === undefined ? (
-          <div className="flex items-center gap-2 text-[0.78125rem] text-muted-foreground">
-            <Spinner className="size-4" /> Loading the brief…
+          <div className="flex items-center gap-2 text-[0.8125rem] text-muted-foreground">
+            <Spinner className="size-3.5" /> Loading the brief…
           </div>
         ) : content ? (
           <Markdown content={content} className="space-y-3 text-[0.8125rem] leading-relaxed text-foreground" />
         ) : (
-          <p className="text-[0.78125rem] text-muted-foreground">No briefing for this lab yet. Start it and dig in.</p>
+          <p className="text-[0.8125rem] text-muted-foreground">No briefing for this lab yet. Start it and dig in.</p>
         )}
       </div>
     </Panel>

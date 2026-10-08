@@ -1,63 +1,111 @@
 "use client";
 
 import { type ReactNode } from "react";
-import { type LucideIcon } from "lucide-react";
+import { Panel } from "@/components/ui/panel";
+import { Meter } from "@/components/ui/meter";
+import { Sparkline } from "@/components/ui/sparkline";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SelfTest } from "@/features/machine/self-test";
 import { cn } from "@/lib/utils";
-import { StatusPill, type Tone } from "@/components/ui/status-pill";
+import { StatusDot, type Tone } from "@/components/ui/status-pill";
 
 // ---------- small parts ----------
 
-/** The last minute of a 0-100 series as a thin line with a soft fill. */
-function Sparkline({ values, className }: { values: number[]; className?: string }) {
-  if (values.length < 2) return <div className={cn("h-7", className)} />;
-  const pts = values.map((v, i) => `${(i / (values.length - 1)) * 100},${28 - (Math.max(0, Math.min(100, v)) / 100) * 26 - 1}`);
-  return (
-    <svg viewBox="0 0 100 28" preserveAspectRatio="none" className={cn("h-7 w-full text-learn", className)} aria-hidden>
-      <polygon points={`0,28 ${pts.join(" ")} 100,28`} className="fill-current opacity-10" />
-      <polyline points={pts.join(" ")} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
-    </svg>
-  );
-}
+/** Over this, a usage figure reads as a warning (sparkline in the warning colour). */
+const WARN_PCT = 75;
 
-export function Stat({ icon: Icon, label, value, sub, history }: { icon: LucideIcon; label: string; value: string | null; sub: string; history: number[] }) {
+/**
+ * A stat card: label and mono detail on top, a serif value with a small % unit, then a
+ * sparkline of the recent values (or a meter when there is no history to draw).
+ */
+export function StatCard({
+  label,
+  detail,
+  value,
+  history,
+  meter,
+}: {
+  label: string;
+  detail: string;
+  value: number | null;
+  history?: number[];
+  meter?: boolean;
+}) {
   return (
-    <div className="min-w-0 px-4 py-3.5">
-      <div className="flex items-center gap-1.5 text-[0.71875rem] text-muted-foreground">
-        <Icon className="size-3.5" /> {label}
+    <Panel className="grid gap-2.5 px-[1.1rem] py-4">
+      <div className="flex items-baseline justify-between gap-3 text-[0.8125rem] text-muted-foreground">
+        <span>{label}</span>
+        <span className="truncate font-mono text-[0.6875rem] text-faint">{detail}</span>
       </div>
       {value === null ? (
         <>
-          <Skeleton className="mt-2 h-6 w-16" />
-          <Skeleton className="mt-2.5 h-7 w-full" />
+          <Skeleton className="h-8 w-20" />
+          <Skeleton className={meter ? "h-1.5 w-full" : "h-9 w-full"} />
         </>
       ) : (
         <>
-          <div className="mt-1.5 flex items-baseline justify-between gap-2">
-            <span className="text-xl font-semibold tracking-tight tabular-nums">{value}</span>
-            <span className="truncate text-[0.71875rem] tabular-nums text-muted-foreground">{sub}</span>
+          <div className="serif-title text-[2rem] leading-none tabular-nums">
+            {Math.round(value)}
+            <small className="ml-1 font-sans text-[0.8125rem] tracking-normal text-faint">%</small>
           </div>
-          <Sparkline values={history} className="mt-1.5" />
+          {meter ? <Meter value={value} className="mt-1" /> : <Sparkline values={history?.length ? history : [value]} warn={value > WARN_PCT} />}
         </>
       )}
-    </div>
+    </Panel>
+  );
+}
+
+/** A compact callout row for warnings and errors: an icon or dot in the status colour, the
+ *  text in foreground and muted, and small actions on the right. */
+export function CalloutRow({
+  tone,
+  icon,
+  title,
+  meta,
+  children,
+  actions,
+  className,
+}: {
+  tone: "warn" | "fail";
+  icon?: ReactNode;
+  title: ReactNode;
+  meta?: ReactNode;
+  children?: ReactNode;
+  actions?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Panel className={className}>
+      <div role="alert" className="flex flex-wrap items-center gap-3 px-4 py-3">
+        <span className={cn("flex size-4 shrink-0 items-center justify-center", tone === "warn" ? "text-warning" : "text-destructive")}>
+          {icon ?? <StatusDot tone={tone} />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.8125rem] font-medium text-foreground">
+            {title}
+            {meta && <span className="ml-2 font-mono text-[0.6875rem] font-normal text-faint">{meta}</span>}
+          </p>
+          {children && <p className="mt-0.5 text-[0.75rem] text-muted-foreground">{children}</p>}
+        </div>
+        {actions && <div className="flex shrink-0 gap-2">{actions}</div>}
+      </div>
+    </Panel>
   );
 }
 
 /** A read-only tool row for the Details section. */
 export function DetailRow({ name, value, bad }: { name: string; value: string; bad?: boolean }) {
   return (
-    <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2 text-[0.78125rem] last:border-b-0">
+    <div className="flex items-center gap-2.5 border-t border-border px-4 py-2.5 text-[0.8125rem] first:border-t-0">
       <span className="text-muted-foreground">{name}</span>
-      <span className={cn("ml-auto font-mono text-[0.71875rem]", bad ? "text-amber-500" : "text-foreground")}>{value}</span>
+      <span className={cn("ml-auto font-mono text-[0.75rem]", bad ? "text-warning" : "text-foreground")}>{value}</span>
     </div>
   );
 }
 
 export function ListSkeleton() {
   return (
-    <div className="space-y-2 p-3.5">
+    <div className="space-y-2 px-4 py-3.5">
       <Skeleton className="h-4 w-2/3" />
       <Skeleton className="h-4 w-1/2" />
     </div>
@@ -68,7 +116,15 @@ export function ListSkeleton() {
 
 export type LabKind = "docker" | "vm";
 
-/** One lab type: what it runs on, whether it's ready, and the one action that matters. */
+const STATUS_TEXT: Record<Tone, string> = {
+  ok: "text-foreground",
+  warn: "text-warning",
+  fail: "text-destructive",
+  muted: "text-muted-foreground",
+};
+
+/** One lab type as a provider row: logo tile, name over mono detail, status (dot + word) and
+ *  the one action that matters on the right; the self-test opens inline below it. */
 export function LabTypeRow({
   kind,
   icon,
@@ -93,21 +149,22 @@ export function LabTypeRow({
   onTestDone: () => void;
 }) {
   return (
-    <div className="border-b border-border last:border-b-0">
-      <div className="flex flex-wrap items-center gap-3 px-3.5 py-3">
+    <div className="border-t border-border first:border-t-0">
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3">
         {icon}
         <div className="min-w-0 flex-1">
-          <p className="flex flex-wrap items-center gap-x-2.5 text-[0.8125rem] font-medium">
-            {title}
-            <StatusPill tone={tone}>{status}</StatusPill>
-          </p>
-          <p className="mt-0.5 text-[0.75rem] text-muted-foreground">{detail}</p>
-          {hint && <p className="mt-1 text-[0.75rem] text-amber-500">{hint}</p>}
+          <p className="text-[0.8125rem] font-medium text-foreground">{title}</p>
+          <p className="mt-0.5 font-mono text-[0.6875rem] text-faint">{detail}</p>
+          {hint && <p className="mt-1 text-[0.75rem] text-warning">{hint}</p>}
         </div>
-        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+        <span className={cn("inline-flex shrink-0 items-center gap-2 text-[0.75rem]", STATUS_TEXT[tone])}>
+          <StatusDot tone={tone} />
+          {status}
+        </span>
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
       {testing && (
-        <div className="px-3.5 pb-3.5">
+        <div className="px-4 pb-4">
           <SelfTest
             kind={kind}
             title={kind === "docker" ? "Container lab test" : "VM lab test"}

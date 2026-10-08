@@ -73,25 +73,28 @@ export function LogConsole({
   const elapsed = startAt === null ? 0 : Math.max(0, now - startAt);
 
   return (
-    <div className={cn("overflow-hidden rounded-lg border border-border bg-black", className)}>
+    <div className={cn("surface-log overflow-hidden rounded-control", className)}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 border-b border-border/70 px-3 py-1.5 text-left transition-colors hover:bg-white/[0.03]"
+        className="flex h-9 w-full items-center gap-2 border-b border-border px-3 text-left transition-colors hover:bg-accent"
       >
         {running ? (
-          <Loader2 className="size-3.5 animate-spin text-learn" />
+          <Loader2 className="size-3.5 animate-spin text-jewel" />
         ) : failed ? (
-          <X className="size-3.5 text-rose-400" />
+          <X className="size-3.5 text-destructive" />
         ) : (
-          <Check className="size-3.5 text-emerald-500" />
+          <Check className="size-3.5 text-success" />
         )}
-        <span className="text-[0.71875rem] font-medium text-foreground">{running ? `${title}…` : failed ? `${title} failed` : `${title} · done`}</span>
-        <span className="ml-auto font-mono text-[0.6875rem] tabular-nums text-muted-foreground">{formatElapsed(elapsed)}</span>
+        <span className="text-[0.75rem] font-medium text-foreground">{running ? `${title}…` : failed ? `${title} failed` : `${title} · done`}</span>
+        <span className="ml-auto font-mono text-[0.6875rem] tabular-nums text-faint">{formatElapsed(elapsed)}</span>
         {open ? <ChevronDown className="size-3.5 text-muted-foreground" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
       </button>
       {open && (
-        <pre ref={pre} className="max-h-40 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-relaxed text-muted-foreground">
+        <pre
+          ref={pre}
+          className="max-h-40 overflow-auto px-3.5 py-3 font-mono text-[0.75rem] leading-[1.8] break-words whitespace-pre-wrap text-muted-foreground"
+        >
           {/* Tools print blank lines around their messages: trim them, keep one between paragraphs. */}
           {lines
             .join("\n")

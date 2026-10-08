@@ -6,6 +6,7 @@ import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { HostSetupPage, SetupTrademarks, EMPTY_CLOUD, EMPTY_HOST } from "@/features/servers/host-setup";
 import { Spinner } from "@/components/ui/spinner";
+import { Toaster } from "@/components/ui/toaster";
 import { SERVER_CHANGED, serverList, systemCheck, type ServerHostInput, type SystemReport } from "@/lib/tauri";
 import { warn } from "@/lib/failure";
 
@@ -50,7 +51,7 @@ function Setup() {
         <div className="min-h-0 flex-1 overflow-y-auto">
           {/* my-auto centers a short step but collapses to 0 when the step is tall, so the
               top never clips and the window scrolls (unlike justify-center on a flex child). */}
-          <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-6 py-6">
+          <main className="mx-auto flex min-h-full w-full max-w-[38rem] flex-col px-6 py-6">
             <div className="my-auto w-full">
               <HostSetupPage
                 initial={initial}
@@ -65,10 +66,11 @@ function Setup() {
       )}
 
       {initial && (
-        <div className="shrink-0 border-t border-border/60 px-6 py-3">
+        <div className="shrink-0 border-t border-border px-6 py-3">
           <SetupTrademarks cloud={cloud} />
         </div>
       )}
+      <Toaster />
     </div>
   );
 }

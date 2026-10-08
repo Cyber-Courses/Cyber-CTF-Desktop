@@ -50,25 +50,25 @@ export function RadioRow({
         }
       }}
       className={cn(
-        "flex gap-3 border-b border-border outline-none transition-colors last:border-0 focus-visible:bg-muted",
+        "flex gap-3 border-b border-border outline-none transition-colors last:border-0 focus-visible:bg-accent",
         compact ? "px-3 py-2" : "px-3.5 py-3",
         disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer",
-        selected ? "bg-learn/[0.06]" : !disabled && "hover:bg-muted/50",
+        selected ? "bg-jewel/[0.06]" : !disabled && "hover:bg-glass",
       )}
     >
       <span
         className={cn(
-          "mt-0.5 flex shrink-0 items-center justify-center rounded-full border transition-colors",
+          "mt-0.5 flex shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors",
           compact ? "size-3.5" : "size-4",
-          selected ? "border-learn" : "border-muted-foreground/40",
+          selected ? "border-jewel" : "border-input",
         )}
       >
-        {selected && <span className={cn("rounded-full bg-learn", compact ? "size-1.5" : "size-2")} />}
+        {selected && <span className={cn("rounded-full bg-jewel", compact ? "size-1.5" : "size-2")} />}
       </span>
       {leading && <span className="-my-0.5 shrink-0">{leading}</span>}
       <div className="min-w-0 flex-1">
         <div className={cn("flex flex-wrap items-center gap-1.5 font-medium text-foreground", compact ? "text-[0.78125rem]" : "text-[0.8125rem]")}>{title}</div>
-        <div className={cn("mt-0.5 truncate text-muted-foreground", compact ? "font-mono text-[0.65625rem]" : "text-xs")}>{subtitle}</div>
+        <div className={cn("mt-0.5 truncate", compact ? "font-mono text-[0.6875rem] text-faint" : "text-[0.75rem] text-muted-foreground")}>{subtitle}</div>
         {children}
       </div>
       {trailing && <span className="shrink-0 self-center">{trailing}</span>}
@@ -79,7 +79,7 @@ export function RadioRow({
 /** The bordered box that holds a list of RadioRows. */
 export function RadioList({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
   return (
-    <div role="radiogroup" aria-label={label} className={cn("overflow-hidden rounded-lg border border-border", className)}>
+    <div role="radiogroup" aria-label={label} className={cn("surface-panel overflow-hidden rounded-control", className)}>
       {children}
     </div>
   );

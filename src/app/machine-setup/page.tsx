@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MachineSetup } from "@/features/machine/machine-setup";
+import { Toaster } from "@/components/ui/toaster";
 import { systemCheck, type SystemReport } from "@/lib/tauri";
 import { ignore, warn } from "@/lib/failure";
 
@@ -33,5 +34,11 @@ export default function MachineSetupWindow() {
   }, []);
   const close = () => getCurrentWindow().close().catch(warn("closing the window"));
 
-  return <MachineSetup report={report} onRefresh={check} onClose={close} startAt={startAt} />;
+  return (
+    <>
+      <MachineSetup report={report} onRefresh={check} onClose={close} startAt={startAt} />
+      {/* This window has its own root (no app shell), so it mounts its own toasts. */}
+      <Toaster />
+    </>
+  );
 }

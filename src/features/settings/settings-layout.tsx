@@ -9,21 +9,31 @@ import { cn } from "@/lib/utils";
 
 export function Section({ title, description, saved, children }: { title: string; description?: string; saved?: boolean; children: ReactNode }) {
   return (
-    <section className="space-y-3">
-      <div className="flex items-end justify-between gap-4 px-0.5">
-        <div>
-          <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
-          {description && <p className="mt-0.5 text-[0.8125rem] text-muted-foreground">{description}</p>}
-        </div>
-        <span
-          aria-live="polite"
-          className={cn("flex items-center gap-1 text-xs text-emerald-500 transition-opacity duration-300", saved ? "opacity-100" : "opacity-0")}
-        >
-          <Check className="size-3.5" /> Saved
-        </span>
-      </div>
-      <Card className="divide-y divide-border">{children}</Card>
+    <section className="space-y-4">
+      <SectionTitle title={title} description={description} saved={saved} />
+      <Card className="overflow-hidden">{children}</Card>
     </section>
+  );
+}
+
+/** A section's serif title and muted description, with the "Saved" mark on the right. */
+export function SectionTitle({ title, description, saved }: { title: string; description?: ReactNode; saved?: boolean }) {
+  return (
+    <div className="flex items-end justify-between gap-4 px-0.5">
+      <div className="min-w-0">
+        <h2 className="serif-title text-[1.5rem] text-foreground">{title}</h2>
+        {description && <p className="mt-1.5 text-[0.8125rem] text-muted-foreground">{description}</p>}
+      </div>
+      <span
+        aria-live="polite"
+        className={cn(
+          "flex shrink-0 items-center gap-1 font-mono text-[0.6875rem] text-success transition-opacity duration-300",
+          saved ? "opacity-100" : "opacity-0",
+        )}
+      >
+        <Check className="size-3.5" /> Saved
+      </span>
+    </div>
   );
 }
 
@@ -42,11 +52,11 @@ export function Row({
   children?: ReactNode;
 }) {
   return (
-    <div className="px-5 py-4">
-      <div className={cn("flex gap-6", stacked ? "flex-col gap-3" : "items-center justify-between")}>
+    <div className="border-t border-border px-4 py-3.5 first:border-t-0">
+      <div className={cn("flex gap-6", stacked ? "flex-col gap-0" : "items-center justify-between")}>
         <div className="min-w-0">
-          <div className="text-sm font-medium text-foreground">{title}</div>
-          {description && <div className="mt-0.5 text-[0.8125rem] text-muted-foreground">{description}</div>}
+          <div className="text-[0.8125rem] font-medium text-foreground">{title}</div>
+          {description && <div className="mt-0.5 text-[0.75rem] leading-relaxed text-muted-foreground">{description}</div>}
         </div>
         {control && <div className="shrink-0">{control}</div>}
       </div>

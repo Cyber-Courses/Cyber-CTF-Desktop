@@ -55,25 +55,28 @@ export function InstalledToolsPanel() {
   const now = Date.now();
   return (
     <Panel>
-      <PanelHeader title="Tools Cyber CTF installed" />
-      <p className="px-3.5 pt-2.5 text-[0.75rem] text-muted-foreground">
+      <PanelHeader title="Tools Cyber CTF installed" meta={tools.length ? `${tools.length} installed` : undefined} />
+      <p className="border-b border-border px-4 py-2.5 text-[0.75rem] text-muted-foreground">
         Installed during setup. Remove the ones you no longer need; tools you had before aren&apos;t listed.
       </p>
-      <ul className="divide-y divide-border">
+      <ul>
         {tools.map((t) => (
-          <li key={t.dependency} className="flex items-center gap-3 px-3.5 py-2.5">
+          <li
+            key={t.dependency}
+            className="flex min-h-[3.25rem] items-center gap-3 border-t border-border px-4 py-2 transition-colors first:border-t-0 hover:bg-glass"
+          >
             <div className="min-w-0 flex-1">
-              <p className="text-[0.8125rem] font-medium">{NAMES[t.dependency]}</p>
-              <p className="text-[0.6875rem] text-muted-foreground">Installed {formatAgo(t.at * 1000, now)}</p>
+              <p className="text-[0.8125rem] font-medium text-foreground">{NAMES[t.dependency]}</p>
+              <p className="font-mono text-[0.6875rem] text-faint">installed {formatAgo(t.at * 1000, now)}</p>
             </div>
-            <Button variant="outline" size="sm" disabled={removing !== null} onClick={() => setAsking(t.dependency)}>
-              <Trash2 className="size-3.5" /> {removing === t.dependency ? "Removing…" : "Remove"}
+            <Button variant="outline" size="xs" disabled={removing !== null} onClick={() => setAsking(t.dependency)}>
+              <Trash2 className="size-3" /> {removing === t.dependency ? "Removing…" : "Remove"}
             </Button>
           </li>
         ))}
       </ul>
       {log.length > 0 && (
-        <div className="px-3.5 pb-3.5">
+        <div className="border-t border-border p-4">
           <LogConsole lines={log} running={removing !== null} title="Remove" />
         </div>
       )}

@@ -39,26 +39,26 @@ export function LaunchConfirm() {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]">
+    <div className="animate-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-[var(--scrim)] p-4 backdrop-blur-[0.125rem]">
       <div
         ref={ref}
         tabIndex={-1}
         role="alertdialog"
         aria-modal="true"
         aria-label="Confirm a cloud lab launch"
-        className="w-full max-w-[28rem] rounded-xl border border-border bg-card p-5 shadow-2xl shadow-black/50 outline-none"
+        className="w-full max-w-[28rem] surface-glass rounded-[1rem] p-5 outline-none"
       >
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-learn/30 bg-learn/10 text-learn">
+          <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-jewel/10 text-jewel-text shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--jewel)_30%,transparent)]">
             <Cloud className="size-4" />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground">Run this lab on your cloud account?</p>
+            <p className="text-[0.9375rem] font-medium text-foreground">Run this lab on your cloud account?</p>
             <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">
               A launch from the website wants to run on <span className="text-foreground">{req.target}</span>. This starts billable resources on your account
               (they auto-stop later). Only approve a launch you started.
             </p>
-            <div className="mt-2.5 space-y-0.5 font-mono text-[0.6875rem] text-muted-foreground">
+            <div className="mt-2.5 space-y-0.5 font-mono text-[0.6875rem] text-faint">
               <p className="truncate">repo: {req.repository}</p>
               <p className="truncate">commit: {req.commit.slice(0, 12)}</p>
             </div>
@@ -68,7 +68,7 @@ export function LaunchConfirm() {
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => answer(false)}>
             Decline
           </Button>
-          <Button variant="learn" size="sm" disabled={busy} onClick={() => answer(true)}>
+          <Button size="sm" disabled={busy} onClick={() => answer(true)}>
             Run on my cloud
           </Button>
         </div>

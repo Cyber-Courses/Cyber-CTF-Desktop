@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Circle, RefreshCw, X } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { StatusDot } from "@/components/ui/status-pill";
+import { StepRow } from "@/features/machine/step-row";
 import { machineSelftest, type SelfTestEvent } from "@/lib/tauri";
 import { getVmProvider, setLastTest } from "@/lib/settings";
-import { cn } from "@/lib/utils";
 import { formatElapsed } from "@/lib/format";
 
 export type SelfTestResult = "idle" | "running" | "ok" | "fail";
@@ -102,37 +102,44 @@ export function SelfTest({
     }
   }, [auto, runTest]);
 
+  const passed = PLAN[kind].filter(({ step }) => events[step]?.state === "ok").length;
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center gap-3 border-b border-border px-3.5 py-2.5">
+    <div className="overflow-hidden rounded-control bg-glass shadow-[inset_0_0_0_1px_var(--border)]">
+      <div className="flex items-center gap-3 border-b border-border px-4 py-2.5">
         <div className="min-w-0">
-          <p className="text-[0.8125rem] font-medium">{title}</p>
+          <p className="text-[0.8125rem] font-medium text-foreground">{title}</p>
           <p className="text-[0.75rem] text-muted-foreground">{description}</p>
         </div>
         <span className="ml-auto shrink-0">
           {result === "running" ? (
-            <span className="flex items-center gap-1.5 text-[0.75rem] text-muted-foreground">
-              <Spinner className="size-3.5" /> Testing… <span className="font-mono tabular-nums">{run ? formatElapsed(now - run.start) : ""}</span>
+            <span className="flex items-center gap-2 text-[0.75rem] text-muted-foreground">
+              <StatusDot tone="warn" pulse /> Testing
+              <span className="font-mono text-[0.6875rem] tabular-nums text-faint">
+                {passed}/{PLAN[kind].length} · {run ? formatElapsed(now - run.start) : ""}
+              </span>
             </span>
           ) : result === "ok" ? (
             <span className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 text-[0.75rem] text-emerald-500">
-                <span className="size-1.5 rounded-full bg-emerald-500" /> Passed
-                {run?.end ? <span className="font-mono tabular-nums text-muted-foreground">· {formatElapsed(run.end - run.start)}</span> : null}
+              <span className="flex items-center gap-2 text-[0.75rem] text-foreground">
+                <StatusDot tone="ok" /> Passed
+                {run?.end ? <span className="font-mono text-[0.6875rem] tabular-nums text-faint">{formatElapsed(run.end - run.start)}</span> : null}
               </span>
-              <Button variant="ghost" size="sm" onClick={runTest} aria-label="Run again">
-                <RefreshCw className="size-3.5" />
+              <Button variant="ghost" size="icon-sm" onClick={runTest} aria-label="Run again">
+                <RefreshCw />
               </Button>
             </span>
           ) : (
             <span className="flex items-center gap-2">
-              {result === "fail" && run?.end && (
-                <span className="font-mono text-[0.75rem] tabular-nums text-muted-foreground">{formatElapsed(run.end - run.start)}</span>
+              {result === "fail" && (
+                <span className="flex items-center gap-2 text-[0.75rem] text-destructive">
+                  <StatusDot tone="fail" /> Failed
+                  {run?.end && <span className="font-mono text-[0.6875rem] tabular-nums text-faint">{formatElapsed(run.end - run.start)}</span>}
+                </span>
               )}
-              <Button variant={result === "fail" ? "outline" : "learn"} size="sm" onClick={runTest}>
+              <Button variant={result === "fail" ? "outline" : "primary"} size="xs" onClick={runTest}>
                 {result === "fail" ? (
                   <>
-                    <RefreshCw className="size-3.5" /> Retry
+                    <RefreshCw /> Retry
                   </>
                 ) : (
                   "Run test"
@@ -143,36 +150,26 @@ export function SelfTest({
         </span>
       </div>
       {result !== "idle" && (
-        <ul className="space-y-1.5 px-3.5 py-3">
+        <ul className="py-1.5">
           {PLAN[kind].map(({ step, label }) => {
             const e: SelfTestEvent | undefined = events[step];
             const state: SelfTestEvent["state"] | "pending" = e ? e.state : "pending";
+            const t = times[step];
             return (
-              <li key={step} className="flex items-start gap-2.5 text-[0.78125rem]">
-                <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
-                  {state === "running" ? (
-                    <Spinner className="size-3.5" />
-                  ) : state === "ok" ? (
-                    <Check className="size-3.5 text-emerald-500" />
-                  ) : state === "fail" ? (
-                    <X className="size-3.5 text-rose-500" />
-                  ) : (
-                    <Circle className="size-2 text-muted-foreground/40" />
-                  )}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className={cn(state === "pending" || state === "skip" ? "text-muted-foreground" : "text-foreground")}>{label}</span>
-                  {e?.detail && (
-                    <span className={cn("block break-words font-mono text-[0.6875rem]", state === "fail" ? "text-rose-400" : "text-muted-foreground")}>
-                      {e.detail}
-                    </span>
-                  )}
-                </span>
-                {times[step] && state !== "skip" && (
-                  <span className="shrink-0 font-mono text-[0.6875rem] tabular-nums text-muted-foreground">
-                    {formatElapsed((times[step].end ?? (result === "running" ? now : (run?.end ?? now))) - times[step].start)}
-                  </span>
-                )}
+              <li key={step}>
+                <StepRow
+                  state={state === "ok" ? "done" : state === "running" ? "run" : state}
+                  label={label}
+                  detail={e?.detail}
+                  detailTone={state === "fail" ? "fail" : undefined}
+                  meta={
+                    t && state !== "skip"
+                      ? formatElapsed((t.end ?? (result === "running" ? now : (run?.end ?? now))) - t.start)
+                      : state === "skip"
+                        ? "skipped"
+                        : undefined
+                  }
+                />
               </li>
             );
           })}

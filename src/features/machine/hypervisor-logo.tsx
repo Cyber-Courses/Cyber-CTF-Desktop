@@ -8,17 +8,19 @@ const LOGOS: Partial<Record<Provider, string>> = {
   qemu: "/brands/qemu.svg",
 };
 
-/** A hypervisor's logo on a light tile (like the container engines), or a neutral icon. */
+/** A hypervisor's logo on a white logo tile (white in every mode) (like the container engines), or a neutral icon. */
 export function HypervisorLogo({ provider, size = "md" }: { provider: Provider | null | undefined; size?: "sm" | "md" }) {
   const logo = provider ? LOGOS[provider] : undefined;
-  const box = size === "sm" ? "size-6 rounded-md p-1" : "size-8 rounded-lg p-1.5";
+  const box = size === "sm" ? "size-6 rounded-sm p-1" : "size-8 rounded-control p-1.5";
   return logo ? (
-    <span className={`flex shrink-0 items-center justify-center bg-white ${box}`}>
+    <span className={`logo-tile flex shrink-0 items-center justify-center ${box}`}>
       {/* eslint-disable-next-line @next/next/no-img-element -- static export, plain asset */}
       <img src={logo} alt="" className="size-full object-contain" />
     </span>
   ) : (
-    <span className={`flex shrink-0 items-center justify-center border border-border bg-surface text-muted-foreground ${box.replace(/p-[\d.]+/, "")}`}>
+    <span
+      className={`flex shrink-0 items-center justify-center bg-glass-2 text-muted-foreground shadow-[inset_0_0_0_1px_var(--input)] ${box.replace(/p-[\d.]+/, "")}`}
+    >
       <Server className={size === "sm" ? "size-3.5" : "size-4"} />
     </span>
   );

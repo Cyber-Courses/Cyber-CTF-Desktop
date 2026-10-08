@@ -38,7 +38,7 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]"
+      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] p-4 backdrop-blur-[2px]"
       onMouseDown={(e) => e.target === e.currentTarget && onCancel()}
     >
       <div
@@ -48,14 +48,14 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-title"
         aria-describedby="confirm-body"
-        className="w-full max-w-[26rem] rounded-xl border border-border bg-card p-5 shadow-2xl shadow-black/50 outline-none"
+        className="surface-glass w-full max-w-[26rem] rounded-[1rem] p-5 outline-none"
       >
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-destructive/30 bg-destructive/10 text-destructive">
+          <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control bg-destructive/10 text-destructive shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--destructive)_30%,transparent)]">
             <AlertTriangle className="size-4" />
           </span>
           <div className="min-w-0">
-            <p id="confirm-title" className="text-sm font-semibold text-foreground">
+            <p id="confirm-title" className="text-[0.9375rem] font-medium text-foreground">
               {title}
             </p>
             <div id="confirm-body" className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">

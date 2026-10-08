@@ -5,7 +5,7 @@ import { AlertTriangle, CheckCircle2, Pencil, Trash2, X, XCircle, Zap } from "lu
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { type ServerCheck, type ServerHost, type ServerTest, type Tool } from "@/lib/tauri";
-import { cn } from "@/lib/utils";
+import { StatusDot, StatusPill, type Tone } from "@/components/ui/status-pill";
 
 export function AccountRow({
   host,
@@ -42,31 +42,27 @@ export function AccountRow({
             : "access keys",
     host.autoStopHours ? `auto-stop ${host.autoStopHours}h` : "no auto-stop",
   ];
+  const tone: Tone = test === "testing" ? "muted" : dot === null ? "muted" : dot;
+  const label = test === "testing" ? "Testing…" : dot === null ? "Not tested" : dot === "ok" ? "Connected" : dot === "warn" ? "Needs attention" : "Failed";
+  const isOver = host.monthlyLimit != null && spent != null && spent >= host.monthlyLimit;
   return (
-    <div className="border-b border-border px-3.5 py-3 last:border-b-0">
-      <div className="flex items-center gap-3">
-        {/* eslint-disable-next-line @next/next/no-img-element -- static export, plain asset */}
-        <img src={`/brands/${host.provider}.svg`} alt="" className="size-6 shrink-0" draggable={false} />
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 text-[0.8125rem] font-medium">
-            <span className="truncate">{host.name}</span>
-            <span
-              className={cn(
-                "size-1.5 shrink-0 rounded-full",
-                dot === null ? "bg-muted-foreground/40" : dot === "ok" ? "bg-emerald-500" : dot === "warn" ? "bg-amber-500" : "bg-rose-500",
-              )}
-            />
-          </p>
-          <p className="truncate font-mono text-[0.6875rem] text-muted-foreground">
+    <div className="border-t border-border first:border-t-0">
+      <div className="grid min-h-[3.25rem] grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3.5 px-4 py-2.5 transition-colors hover:bg-glass">
+        <LogoTile provider={host.provider} />
+        <div className="min-w-0">
+          <p className="truncate text-[0.8125rem] font-medium text-foreground">{host.name}</p>
+          <p className="truncate font-mono text-[0.6875rem] text-faint">
             {facts.join(" · ")}
             {result?.latencyMs != null ? ` · ${result.latencyMs} ms` : ""}
+            {host.monthlyLimit != null ? ` · budget $${host.monthlyLimit.toFixed(0)}/mo` : ""}
+            {host.monthlyLimit != null && spent != null ? `, $${spent.toFixed(2)} this month` : ""}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-2">
           {confirming ? (
             <>
-              <span className="mr-1 text-[0.71875rem] text-muted-foreground">Remove?</span>
-              <Button variant="destructive" size="sm" onClick={onRemove}>
+              <span className="text-[0.75rem] text-muted-foreground">Remove?</span>
+              <Button variant="destructive" size="xs" onClick={onRemove}>
                 Remove
               </Button>
               <IconButton label="Cancel" onClick={() => setConfirming(false)}>
@@ -75,8 +71,11 @@ export function AccountRow({
             </>
           ) : (
             <>
-              <Button variant="outline" size="sm" onClick={onTest} disabled={test === "testing"}>
-                {test === "testing" ? <Spinner className="size-3.5" /> : <Zap className="size-3.5" />} Test
+              <StatusPill tone={isOver ? "fail" : tone} pulse={test === "testing"}>
+                {isOver ? "Over budget" : label}
+              </StatusPill>
+              <Button variant="outline" size="xs" onClick={onTest} disabled={test === "testing"}>
+                {test === "testing" ? <Spinner className="size-3" /> : <Zap className="size-3" />} Test
               </Button>
               <IconButton label="Edit" onClick={onEdit}>
                 <Pencil className="size-3.5" />
@@ -90,36 +89,40 @@ export function AccountRow({
       </div>
       {result &&
         (result.checks?.length ? (
-          <ul className="mt-2 space-y-1 pl-9">
+          <ul className="space-y-1 px-4 pb-3 pl-[4.125rem]">
             {result.checks.map((c) => (
-              <li key={c.name} className="flex items-start gap-1.5 text-[0.75rem]">
+              <li key={c.name} className="flex items-start gap-2 text-[0.75rem]">
                 <CheckGlyph state={c.state} />
-                <span>
+                <span className="min-w-0 break-words">
                   <span className="font-medium text-foreground">{c.name}:</span> <span className="text-muted-foreground">{c.detail}</span>
                 </span>
               </li>
             ))}
           </ul>
         ) : (
-          <p className={cn("mt-2 flex items-start gap-1.5 pl-9 text-[0.75rem]", ok ? "text-emerald-500" : "text-rose-400")}>
-            {ok ? <CheckCircle2 className="mt-px size-3.5 shrink-0" /> : <XCircle className="mt-px size-3.5 shrink-0" />}
-            <span>{result.message}</span>
+          <p className="flex items-start gap-2 px-4 pb-3 pl-[4.125rem] text-[0.75rem] text-muted-foreground">
+            {ok ? <CheckCircle2 className="mt-px size-3.5 shrink-0 text-success" /> : <XCircle className="mt-px size-3.5 shrink-0 text-destructive" />}
+            <span className="min-w-0 break-words">{result.message}</span>
           </p>
         ))}
-      {host.monthlyLimit != null && (
-        <p className={cn("mt-1.5 pl-9 text-[0.71875rem]", spent != null && spent >= host.monthlyLimit ? "text-rose-400" : "text-muted-foreground")}>
-          Budget ${host.monthlyLimit.toFixed(0)}/mo{spent != null ? ` · $${spent.toFixed(2)} this month` : ""}
-          {spent != null && spent >= host.monthlyLimit ? " — over budget" : ""}
-        </p>
-      )}
     </div>
   );
 }
 
+/** The provider's logo in the 2.25rem glass tile that leads a provider row. */
+export function LogoTile({ provider, label }: { provider: string; label?: string }) {
+  return (
+    <span className="grid size-9 shrink-0 place-items-center rounded-control bg-glass-2 shadow-[inset_0_0_0_1px_var(--input)]">
+      {/* eslint-disable-next-line @next/next/no-img-element -- static export, plain asset */}
+      <img src={`/brands/${provider}.svg`} alt={label ?? ""} className="size-5 object-contain" draggable={false} />
+    </span>
+  );
+}
+
 function CheckGlyph({ state }: { state: ServerCheck["state"] }) {
-  if (state === "ok") return <CheckCircle2 className="mt-px size-3.5 shrink-0 text-emerald-500" />;
-  if (state === "warn") return <AlertTriangle className="mt-px size-3.5 shrink-0 text-amber-500" />;
-  return <XCircle className="mt-px size-3.5 shrink-0 text-rose-400" />;
+  if (state === "ok") return <CheckCircle2 className="mt-px size-3.5 shrink-0 text-success" />;
+  if (state === "warn") return <AlertTriangle className="mt-px size-3.5 shrink-0 text-warning" />;
+  return <XCircle className="mt-px size-3.5 shrink-0 text-destructive" />;
 }
 
 function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
@@ -129,7 +132,7 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
       title={label}
       aria-label={label}
       onClick={onClick}
-      className="grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="grid size-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-glass-2 hover:text-foreground"
     >
       {children}
     </button>
@@ -139,8 +142,8 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
 export function Status({ tool }: { tool?: Tool }) {
   const installed = !!tool?.installed;
   return (
-    <span className={cn("flex items-center gap-1.5 text-[0.75rem]", installed ? "text-emerald-500" : "text-muted-foreground")}>
-      {installed && <span className="size-1.5 rounded-full bg-emerald-500" />}
+    <span className="flex items-center gap-2 font-mono text-[0.6875rem] text-faint">
+      <StatusDot tone={installed ? "ok" : "muted"} />
       {tool ? (installed ? (tool.version ?? "installed") : "not installed") : "…"}
     </span>
   );
