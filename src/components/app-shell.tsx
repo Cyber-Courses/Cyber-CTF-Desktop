@@ -22,6 +22,7 @@ import { apiQuery, authLogin, authStatus, machineWorkloads, openSettings, system
 import { operationLabel, SIGNED_OUT_EVENT, useActiveOperations, useDeployingLabs } from "@/lib/deploy-store";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { ignore, tell, warn } from "@/lib/failure";
 
 /** Broadcast to every window when the session changes in one of them. */
 const AUTH_CHANGED_EVENT = "cyberctf:auth-changed";
@@ -132,10 +133,7 @@ export function AppShell() {
   // that's gone.
   const loggedIn = !!auth?.loggedIn;
   useEffect(() => {
-    const reread = () =>
-      authStatus()
-        .then(setAuth)
-        .catch(() => {});
+    const reread = () => authStatus().then(setAuth).catch(ignore("read again on the next sign-out event or launch"));
     window.addEventListener(SIGNED_OUT_EVENT, reread);
     window.addEventListener("focus", reread);
     // Signing in or out in the Settings window: `focus` doesn't fire reliably when moving between
@@ -167,7 +165,7 @@ export function AppShell() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "," && !navigator.userAgent.includes("Mac")) {
         e.preventDefault();
-        openSettings().catch(() => {});
+        openSettings().catch(tell("Couldn't open Settings"));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -184,7 +182,7 @@ export function AppShell() {
     const read = () =>
       machineWorkloads()
         .then((w) => alive && setRunningIds(new Set(w.map((x) => x.id).filter((id) => id !== "selftest"))))
-        .catch(() => {});
+        .catch(ignore("polled again in a moment"));
     read();
     const t = setInterval(read, 8000);
     return () => {
@@ -227,9 +225,7 @@ export function AppShell() {
     // Pick up a sign-in done during onboarding: the shell's auth was read once at mount (before
     // onboarding), so re-read the persisted session, otherwise the app stays "offline" until a
     // restart even though the user just signed in.
-    authStatus()
-      .then(setAuth)
-      .catch(() => {});
+    authStatus().then(setAuth).catch(ignore("the sign-in state is read again on the next event"));
   }
 
   if (!ready) return <div className="h-dvh bg-background" />;
@@ -349,7 +345,7 @@ export function AppShell() {
         </nav>
 
         <div className="border-t border-border px-3 py-3">
-          <Account status={auth} onChange={setAuth} online={!!auth?.loggedIn} onSettings={() => openSettings().catch(() => {})} />
+          <Account status={auth} onChange={setAuth} online={!!auth?.loggedIn} onSettings={() => openSettings().catch(tell("Couldn't open Settings"))} />
         </div>
       </aside>
 
@@ -379,10 +375,7 @@ function ComingSoon({ icon, title, description }: { icon: "server" | "cloud" | "
 // Settings rendered on its own in the dedicated `settings` window: just the titlebar band and
 // the screen. The "set up a hypervisor" link lives in the main window, so onNavigate closes here.
 function SettingsWindowView({ auth, onAuthChange }: { auth: AuthStatus | null; onAuthChange: (status: AuthStatus) => void }) {
-  const close = () =>
-    getCurrentWindow()
-      .close()
-      .catch(() => {});
+  const close = () => getCurrentWindow().close().catch(warn("closing the window"));
   return (
     <main className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <div data-tauri-drag-region className="h-9 shrink-0" />

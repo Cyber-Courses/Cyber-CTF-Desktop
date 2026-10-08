@@ -1,6 +1,5 @@
 "use client";
 
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, ExternalLink, HardDrive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -10,6 +9,7 @@ import { installDependency, installVagrantPlugin } from "@/lib/tauri";
 import { CLOUD_META, KIND } from "@/features/servers/host-setup/constants";
 import { Nav, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
+import { openExternal } from "@/lib/failure";
 
 export function ToolsStep({ s }: { s: HostSetup }) {
   const {
@@ -125,7 +125,7 @@ export function ToolsStep({ s }: { s: HostSetup }) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => openUrl("https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest").catch(() => {})}
+                  onClick={() => openExternal("https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest")}
                 >
                   <ExternalLink className="size-3.5" /> Get
                 </Button>

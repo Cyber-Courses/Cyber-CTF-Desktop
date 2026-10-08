@@ -82,8 +82,10 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
     let labs = app.path().app_data_dir().map_err(|e| Error::Invalid(e.to_string()))?.join("labs");
     let dir = labs.join(lab_id);
     let marker = dir.join(".cyberctf-commit");
+    // Docker's networks now, so a new lab's instance lands on blocks nothing else holds.
+    let in_use = runtime::subnets_in_use(lab_id).await;
     if std::fs::read_to_string(&marker).is_ok_and(|c| c.trim() == commit) {
-        runtime::lab::ensure_instance(&labs, &dir)?;
+        runtime::lab::ensure_instance(&labs, &dir, &in_use, &runtime::lab::registry_instances(&dir))?;
         return Ok(dir);
     }
 
@@ -115,7 +117,7 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::rename(&staging, &dir)?;
     // Its own room on this machine (networks, names), so it runs beside the other labs.
-    runtime::lab::ensure_instance(&labs, &dir)?;
+    runtime::lab::ensure_instance(&labs, &dir, &in_use, &runtime::lab::registry_instances(&dir))?;
     log("Lab installed".into());
     Ok(dir)
 }

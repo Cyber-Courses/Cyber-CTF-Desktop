@@ -5,6 +5,7 @@
 mod attack_vm;
 mod discover;
 mod docker;
+pub use docker::subnets_in_use;
 mod exegol;
 pub mod lab;
 mod model;

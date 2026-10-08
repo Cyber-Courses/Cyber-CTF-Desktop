@@ -3,6 +3,7 @@ import { type SelfTestResult } from "@/features/machine/self-test";
 import { getVmProvider } from "@/lib/settings";
 import { installDependency, installVagrantPlugin, machineSelftestPrefetch, type Dependency, type DockerEngine, type SystemReport } from "@/lib/tauri";
 import { hasHypervisor, isDockerReady } from "@/features/machine/setup-steps/steps";
+import { ignore } from "@/lib/failure";
 
 export function useMachineSetup(report: SystemReport | null, onRefresh: () => void) {
   const prefetched = useRef({ docker: false, vm: false });
@@ -11,11 +12,11 @@ export function useMachineSetup(report: SystemReport | null, onRefresh: () => vo
   useEffect(() => {
     if (dockerReady && !prefetched.current.docker) {
       prefetched.current.docker = true;
-      machineSelftestPrefetch("docker", null).catch(() => {});
+      machineSelftestPrefetch("docker", null).catch(ignore("a head start only; the self-test pulls the image when it runs"));
     }
     if (vmReady && !prefetched.current.vm) {
       prefetched.current.vm = true;
-      machineSelftestPrefetch("vm", getVmProvider()).catch(() => {});
+      machineSelftestPrefetch("vm", getVmProvider()).catch(ignore("a head start only; the self-test pulls the box when it runs"));
     }
   }, [dockerReady, vmReady]);
 

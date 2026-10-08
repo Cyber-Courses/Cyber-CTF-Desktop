@@ -11,6 +11,7 @@ import { AttackBoxRows } from "@/features/settings/attack-box-rows";
 import { CleanupSection } from "@/features/settings/cleanup-section";
 import { HypervisorRow } from "@/features/settings/hypervisor-row";
 import { Section, useSavedFlash } from "@/features/settings/settings-layout";
+import { warn } from "@/lib/failure";
 
 export const ONBOARDED_KEY = "cyberctf.onboarded";
 
@@ -38,10 +39,7 @@ export function SettingsScreen({
       .then(setReport)
       .catch(() => setReport(null));
   }, []);
-  const recheck = () =>
-    systemCheck()
-      .then(setReport)
-      .catch(() => {});
+  const recheck = () => systemCheck().then(setReport).catch(warn("system check"));
 
   // The agent registers once signed in, so re-read it whenever auth changes.
   useEffect(() => {

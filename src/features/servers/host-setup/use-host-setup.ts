@@ -27,6 +27,7 @@ import { CLOUD_DEFAULT_NAME, CLOUD_META, KIND, StepKey } from "@/features/server
 
 const DEFAULT_NAMES = Object.values(CLOUD_DEFAULT_NAME);
 import type { Dependency } from "@/lib/tauri";
+import { ignore } from "@/lib/failure";
 
 /** All the server / cloud setup state and actions, shared by the setup steps. */
 export function useHostSetup({
@@ -98,10 +99,7 @@ export function useHostSetup({
       .catch(() => setOciCfg(null));
   }, [oci, editing]);
   useEffect(() => {
-    if (aws)
-      awsProfiles()
-        .then(setProfiles)
-        .catch(() => {});
+    if (aws) awsProfiles().then(setProfiles).catch(ignore("profiles are a convenience; typed by hand otherwise"));
   }, [aws]);
   const loadAzureSubs = useCallback(() => {
     setAzureChecking(true);

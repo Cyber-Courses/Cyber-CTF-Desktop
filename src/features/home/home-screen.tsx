@@ -12,6 +12,7 @@ import { formatAgo } from "@/lib/format";
 import { assessRam } from "@/features/home/capacity";
 import { machineMetrics, machineOpenSetup, type AuthStatus, type MachineMetrics, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+import { ignore, tell } from "@/lib/failure";
 
 type Tab = "labs" | "machine" | "setup" | "server" | "cloud" | "settings";
 
@@ -62,7 +63,7 @@ export function HomeScreen({
     const tick = () =>
       machineMetrics()
         .then((m) => alive && setMetrics(m))
-        .catch(() => {});
+        .catch(ignore("polled again in a moment"));
     tick();
     const t = setInterval(tick, 3000);
     return () => {
@@ -103,7 +104,7 @@ export function HomeScreen({
         <div className="flex shrink-0 items-center gap-2">
           {!dockerReady ? (
             <button
-              onClick={() => machineOpenSetup().catch(() => {})}
+              onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))}
               className="inline-flex items-center gap-1.5 rounded-lg border border-learn bg-learn px-3.5 py-2 text-[0.8125rem] font-medium text-[#140b2e] transition-colors hover:bg-learn/90"
             >
               <Play className="size-4" /> Set up this machine

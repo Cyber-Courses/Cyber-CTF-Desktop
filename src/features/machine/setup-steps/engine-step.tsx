@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -11,6 +10,7 @@ import { CmdRow, Log } from "@/features/machine/setup-steps/parts";
 import { Choice, ChoiceAction, ChoiceGrid } from "@/components/ui/choice-card";
 import { chosenEngine, isDockerReady } from "@/features/machine/setup-steps/steps";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
+import { openExternal, tell } from "@/lib/failure";
 
 export function EngineStep({ report, setup }: { report: SystemReport; setup: MachineSetupState }) {
   const isWin = report.os === "windows";
@@ -26,7 +26,7 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
   const switchTo = (engine: DockerEngine) => {
     setSwitching(true);
     dockerUseEngine(engine)
-      .catch(() => {})
+      .catch(tell("Couldn't switch the Docker engine"))
       .finally(() => {
         setSwitching(false);
         onRefresh();
@@ -137,7 +137,7 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
             <>
               <span className="text-[0.8125rem] text-muted-foreground">Install {choice.name}, start it, then re-check.</span>
               <span className="flex shrink-0 gap-2">
-                <Button variant="outline" size="sm" onClick={() => openUrl(choice.url).catch(() => {})}>
+                <Button variant="outline" size="sm" onClick={() => openExternal(choice.url)}>
                   <ExternalLink className="size-3.5" /> Get {choice.name}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => onRefresh()}>

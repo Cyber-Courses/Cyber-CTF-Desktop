@@ -9,6 +9,7 @@ import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { ListSkeleton } from "@/features/machine/machine-parts";
 import { formatBytes } from "@/lib/format";
 import { apiQuery, machineWorkloadStop, machineWorkloads, type Workload } from "@/lib/tauri";
+import { ignore } from "@/lib/failure";
 
 /** What's running on this machine (Docker and Vagrant), with a Stop per lab. Polled every 8s,
  *  and again whenever `refreshKey` changes (e.g. after a setup test). */
@@ -41,7 +42,7 @@ export function RunningNowPanel({ refreshKey }: { refreshKey: unknown }) {
   useEffect(() => {
     apiQuery<{ labs: { id: string; title: string }[] }>("{ labs { id title } }")
       .then((d) => setTitles(Object.fromEntries(d.labs.map((l) => [l.id, l.title]))))
-      .catch(() => {});
+      .catch(ignore("lab ids are shown instead of titles"));
   }, []);
 
   async function stop(w: Workload) {

@@ -42,18 +42,53 @@ pub fn instance(dir: &Path) -> Option<u8> {
 }
 
 /// Gives the lab an instance number if it has none: the lowest one no other installed lab
-/// under `labs` holds. Returns the lab's number.
-pub fn ensure_instance(labs: &Path, dir: &Path) -> Result<u8> {
+/// under `labs` holds, nor another environment in Isoloom's registry (one run with the CLI),
+/// whose Docker blocks overlap none of `in_use` (the subnets of the Docker networks already
+/// on this machine). An instance moves the spec's blocks by its number, so two labs with
+/// different numbers can still land on one subnet; Docker would refuse the second. Returns
+/// the lab's number.
+pub fn ensure_instance(labs: &Path, dir: &Path, in_use: &[String], elsewhere: &[u8]) -> Result<u8> {
     if let Some(n) = instance(dir) {
         return Ok(n);
     }
-    let taken: Vec<u8> =
+    let mut taken: Vec<u8> =
         std::fs::read_dir(labs).map(|entries| entries.filter_map(|e| e.ok()).filter_map(|e| instance(&e.path())).collect()).unwrap_or_default();
+    taken.extend(elsewhere);
+    let spec = spec(dir).ok();
+    let used: Vec<(u32, u32)> = in_use.iter().filter_map(|c| range(c)).collect();
+    let clear = |n: u8| -> bool {
+        let Some(spec) = &spec else { return true };
+        let Ok(as_n) = isoloom_core::instance::apply(spec, n) else { return false };
+        let snapshot = isoloom_core::resolved::resolve_with(&as_n, Some(n));
+        snapshot["networks"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(_, net)| net["docker_cidr"].as_str().and_then(range))
+            .all(|(lo, hi)| used.iter().all(|&(a, b)| hi < a || b < lo))
+    };
     let n = (1..=isoloom_core::instance::MAX)
-        .find(|n| !taken.contains(n))
-        .ok_or_else(|| Error::Invalid("too many labs installed at once (99 instances)".into()))?;
+        .find(|n| !taken.contains(n) && clear(*n))
+        .ok_or_else(|| Error::Invalid("no free instance for this lab: 99 labs or networks already take its room on this machine".into()))?;
     std::fs::write(dir.join(INSTANCE_MARKER), n.to_string())?;
     Ok(n)
+}
+
+/// The instance numbers Isoloom's registry records for environments in other folders (run
+/// with the CLI), for [`ensure_instance`].
+pub fn registry_instances(dir: &Path) -> Vec<u8> {
+    let here = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    isoloom_core::registry::load().map(|reg| reg.environments.iter().filter(|e| e.dir != here).filter_map(|e| e.instance).collect()).unwrap_or_default()
+}
+
+/// An IPv4 CIDR as its first and last address.
+fn range(cidr: &str) -> Option<(u32, u32)> {
+    let (ip, len) = cidr.split_once('/')?;
+    let ip: u32 = ip.parse::<std::net::Ipv4Addr>().ok()?.into();
+    let len: u32 = len.parse().ok().filter(|l| *l <= 32)?;
+    let size = if len == 0 { u32::MAX } else { (1u32 << (32 - len)) - 1 };
+    let lo = ip & !size;
+    Some((lo, lo | size))
 }
 
 /// The spec as this lab's instance of it (what `prepare` generates from): its own name and
@@ -349,9 +384,9 @@ mod tests {
             std::fs::create_dir_all(d).unwrap();
             std::fs::write(d.join("isoloom.yml"), SPEC).unwrap();
         }
-        assert_eq!(ensure_instance(&labs, &a).unwrap(), 1);
-        assert_eq!(ensure_instance(&labs, &b).unwrap(), 2);
-        assert_eq!(ensure_instance(&labs, &a).unwrap(), 1, "kept");
+        assert_eq!(ensure_instance(&labs, &a, &[], &[]).unwrap(), 1);
+        assert_eq!(ensure_instance(&labs, &b, &[], &[]).unwrap(), 2);
+        assert_eq!(ensure_instance(&labs, &a, &[], &[]).unwrap(), 1, "kept");
         let spec = prepare(&b, Target::Docker).unwrap();
         assert_eq!(spec.name, "t-2");
         assert_eq!(compose_file(&b), b.join(".isoloom-2/docker/compose.yml"));
@@ -365,6 +400,28 @@ mod tests {
         assert_eq!(message(&b, &spec, Target::Docker).as_deref(), Some("web is 10.32.0.10"));
         assert_eq!(message(&b, &spec, Target::Vagrant).as_deref(), Some("web is 10.30.0.10"));
         std::fs::remove_dir_all(labs).unwrap();
+    }
+
+    #[test]
+    fn an_instance_skips_numbers_whose_blocks_docker_already_has() {
+        let labs = std::env::temp_dir().join(format!("cyberctf-labs-{}", rand::random::<u32>()));
+        let a = labs.join("a");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::write(a.join("isoloom.yml"), SPEC).unwrap();
+        // SPEC is at 10.30.0.0/24: instance 1 would be 10.31, 2 is 10.32. Another program's
+        // network covers 10.31 (a /16 here), so the lab gets 2.
+        assert_eq!(ensure_instance(&labs, &a, &["10.31.0.0/16".into(), "172.17.0.0/16".into()], &[]).unwrap(), 2);
+        // Instance 2 is held by an environment the CLI runs elsewhere: 3 (10.33) then.
+        std::fs::remove_file(a.join(INSTANCE_MARKER)).unwrap();
+        assert_eq!(ensure_instance(&labs, &a, &["10.31.0.0/16".into()], &[2]).unwrap(), 3);
+        std::fs::remove_dir_all(labs).unwrap();
+    }
+
+    #[test]
+    fn cidr_ranges() {
+        assert_eq!(range("10.31.0.0/24"), Some((u32::from(std::net::Ipv4Addr::new(10, 31, 0, 0)), u32::from(std::net::Ipv4Addr::new(10, 31, 0, 255)))));
+        assert_eq!(range("10.31.5.7/16").map(|r| r.0), Some(u32::from(std::net::Ipv4Addr::new(10, 31, 0, 0))));
+        assert_eq!(range("fd00::/64"), None);
     }
 
     #[test]

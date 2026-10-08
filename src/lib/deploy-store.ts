@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { activeOperations, deployingLabs, labDeployLog, parkingLabs, stoppingLabs, type ActiveOperation } from "@/lib/tauri";
+import { ignore } from "@/lib/failure";
 
 /**
  * The live state of lab start/stop, kept outside the React tree so it survives navigating
@@ -101,7 +102,7 @@ export function useDeployingLabs(pollMs = 4000): Set<string> {
     const read = () =>
       deployingLabs()
         .then((l) => alive && setIds(new Set(l)))
-        .catch(() => {});
+        .catch(ignore("polled again in a moment"));
     read();
     const t = setInterval(read, pollMs);
     const onFocus = () => read();
@@ -159,7 +160,7 @@ export function useActiveOperations(pollMs = 2000): Map<string, ActiveOperation>
     const tick = () =>
       activeOperations()
         .then((l) => alive && setOps(new Map(l.map((o) => [o.labId, o]))))
-        .catch(() => {});
+        .catch(ignore("polled again in a moment"));
     tick();
     const t = setInterval(tick, pollMs);
     return () => {
@@ -177,7 +178,7 @@ function usePolledIds(read: () => Promise<string[]>, pollMs: number): Set<string
     const tick = () =>
       read()
         .then((l) => alive && setIds(new Set(l)))
-        .catch(() => {});
+        .catch(ignore("polled again in a moment"));
     tick();
     const t = setInterval(tick, pollMs);
     return () => {
@@ -201,7 +202,7 @@ export function useWorkerLog(labId: string, active: boolean, pollMs = 1500): str
     const read = () =>
       labDeployLog(labId)
         .then((text) => alive && setLines(text.split("\n").filter((l) => l.length > 0)))
-        .catch(() => {});
+        .catch(ignore("read again in a moment"));
     read();
     const t = setInterval(read, pollMs);
     return () => {

@@ -1,10 +1,10 @@
 "use client";
 
 import { type ReactNode } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown, Cloud, ExternalLink, Server } from "lucide-react";
 import { type RemoteProvider } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+import { openExternal } from "@/lib/failure";
 
 /** Proxmox's own logo (official media kit, unaltered), or a neutral mark for ESXi / AWS. */
 export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
@@ -38,10 +38,7 @@ export function SetupTrademarks({ cloud = false }: { cloud?: boolean }) {
   return (
     <p className="text-[0.6875rem] leading-relaxed text-muted-foreground/70">
       Proxmox® is a registered trademark of Proxmox Server Solutions GmbH.{" "}
-      <button
-        onClick={() => openUrl("https://www.proxmox.com").catch(() => {})}
-        className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
-      >
+      <button onClick={() => openExternal("https://www.proxmox.com")} className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline">
         proxmox.com <ExternalLink className="size-3" />
       </button>{" "}
       VMware and ESXi are trademarks of Broadcom. Cyber CTF isn&apos;t affiliated with any of them.

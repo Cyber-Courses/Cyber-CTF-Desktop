@@ -151,6 +151,23 @@ async fn lab_networks(id: &str) -> Vec<Network> {
     }
 }
 
+/// The IPv4 subnets of every Docker network on this machine, but those of `except` (a lab id's
+/// own networks, left from an earlier run): what a new lab's networks must not overlap. Empty
+/// when Docker can't say.
+pub async fn subnets_in_use(except: &str) -> Vec<String> {
+    let Ok(names) = run_read("docker", &["network", "ls", "--format", "{{.Name}}"], None).await else {
+        return Vec::new();
+    };
+    let own = compose::project(except);
+    let names: Vec<&str> = names.lines().map(str::trim).filter(|n| !n.is_empty() && !n.starts_with(&own)).collect();
+    if names.is_empty() {
+        return Vec::new();
+    }
+    let mut args = vec!["network", "inspect", "-f", "{{range .IPAM.Config}}{{.Subnet}} {{end}}"];
+    args.extend(names);
+    run_read("docker", &args, None).await.map(|out| out.split_whitespace().filter(|s| !s.contains(':')).map(str::to_string).collect()).unwrap_or_default()
+}
+
 fn parse_networks(id: &str, out: &str) -> Vec<Network> {
     let mut nets: Vec<Network> = out
         .lines()

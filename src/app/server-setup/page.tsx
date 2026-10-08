@@ -7,6 +7,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { HostSetupPage, SetupTrademarks, EMPTY_CLOUD, EMPTY_HOST } from "@/features/servers/host-setup";
 import { Spinner } from "@/components/ui/spinner";
 import { SERVER_CHANGED, serverList, systemCheck, type ServerHostInput, type SystemReport } from "@/lib/tauri";
+import { warn } from "@/lib/failure";
 
 /** The server setup window (opened by `server_open_setup`), closed when setup ends. */
 function Setup() {
@@ -17,9 +18,7 @@ function Setup() {
   const [report, setReport] = useState<SystemReport | null>(null);
 
   const check = () => {
-    systemCheck()
-      .then(setReport)
-      .catch(() => {});
+    systemCheck().then(setReport).catch(warn("system check"));
   };
   useEffect(check, []);
   useEffect(() => {
@@ -32,10 +31,7 @@ function Setup() {
       .catch(() => setInitial({ ...empty }));
   }, [id, empty]);
 
-  const close = () =>
-    getCurrentWindow()
-      .close()
-      .catch(() => {});
+  const close = () => getCurrentWindow().close().catch(warn("closing the window"));
 
   const cloud = id ? initial?.provider === "aws" || initial?.provider === "azure" || initial?.provider === "gcp" : params.get("kind") === "cloud";
 
@@ -56,7 +52,13 @@ function Setup() {
               top never clips and the window scrolls (unlike justify-center on a flex child). */}
           <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-6 py-6">
             <div className="my-auto w-full">
-              <HostSetupPage initial={initial} report={report} onRefresh={check} onSaved={() => emit(SERVER_CHANGED).catch(() => {})} onDone={close} />
+              <HostSetupPage
+                initial={initial}
+                report={report}
+                onRefresh={check}
+                onSaved={() => emit(SERVER_CHANGED).catch(warn("telling the main window a server changed"))}
+                onDone={close}
+              />
             </div>
           </main>
         </div>

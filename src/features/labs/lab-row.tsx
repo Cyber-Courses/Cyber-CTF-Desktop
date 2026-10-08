@@ -1,13 +1,13 @@
 "use client";
 
 import { CheckCircle2, ChevronRight, Cloud, Container, ExternalLink, Globe, LogIn, Monitor, Server, Wrench, type LucideIcon } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import { CLOUDS } from "@/features/labs/run-on";
 import { machineOpenSetup, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import type { ButtonHTMLAttributes } from "react";
 import { Button } from "@/components/ui/button";
+import { openExternal, tell } from "@/lib/failure";
 
 const SERVERS = new Set(["vmware_esxi", "proxmox"]);
 
@@ -119,7 +119,7 @@ export function LabRow({
         {running ? (
           <>
             {status?.url && (
-              <RowButton tone="learn" onClick={() => openUrl(status.url!).catch(() => {})}>
+              <RowButton tone="learn" onClick={() => openExternal(status.url!)}>
                 <ExternalLink className="size-3" /> Open
               </RowButton>
             )}
@@ -137,11 +137,11 @@ export function LabRow({
             )}
           </>
         ) : setup ? (
-          <RowButton onClick={() => machineOpenSetup().catch(() => {})} title="Open machine setup">
+          <RowButton onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))} title="Open machine setup">
             <Wrench className="size-3" /> {setup}
           </RowButton>
         ) : !loggedIn && onLogin ? (
-          <RowButton tone="learn" onClick={() => void onLogin().catch(() => {})} title="Sign in to start labs">
+          <RowButton tone="learn" onClick={() => void onLogin().catch(tell("Couldn't start signing in"))} title="Sign in to start labs">
             <LogIn className="size-3" /> Sign in
           </RowButton>
         ) : null}

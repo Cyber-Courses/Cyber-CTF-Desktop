@@ -14,5 +14,5 @@ mod lifecycle;
 
 pub use check::{Check, check};
 pub use compose::project;
-pub use inspect::{primary_url, short_network, status};
+pub use inspect::{primary_url, short_network, status, subnets_in_use};
 pub use lifecycle::{park, published, resume, start, stop};

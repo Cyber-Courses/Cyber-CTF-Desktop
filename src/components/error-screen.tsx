@@ -4,6 +4,7 @@ import { Component, useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, Copy, RefreshCw, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { tell } from "@/lib/failure";
 
 /** The error as text to paste into a bug report: message, window, agent and stack. */
 function errorDetails(error: Error & { digest?: string }): string {
@@ -43,7 +44,7 @@ export function ErrorPanel({
     navigator.clipboard
       .writeText(errorDetails(error))
       .then(() => setCopied(true))
-      .catch(() => {});
+      .catch(tell("Couldn't copy to the clipboard"));
 
   return (
     <div className={cn("flex flex-col items-center rounded-xl border border-border px-6 py-10 text-center", className)}>
