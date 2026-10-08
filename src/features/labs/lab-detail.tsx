@@ -5,7 +5,11 @@ import { ArrowLeft, ExternalLink, LogIn, Pause, Play, Power, RefreshCw, Square }
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CopyValue } from "@/components/ui/copy-value";
-import { Panel, PanelHeader } from "@/components/ui/panel";
+import { KeyValue, Panel, PanelHeader } from "@/components/ui/panel";
+import { PageHeader, StatusStrip } from "@/components/ui/page-header";
+import { Badge, LevelBadge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/input";
+import { StatusDot, type Tone } from "@/components/ui/status-pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Tip } from "@/components/ui/tip";
@@ -16,13 +20,13 @@ import { HealthBanner, useLabCheck } from "@/features/labs/lab-health";
 import { AutoStop, StartTimer } from "@/features/labs/lab-timers";
 import { NetworkDiagram } from "@/features/labs/network-diagram";
 import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on";
-import { runPlaces } from "@/features/labs/lab-row";
+import { runPlaces, runsNatively } from "@/features/labs/lab-row";
 import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
 import { OPERATION_STATUS, useActiveOperations, useDeployingLabs, useWorkerLog } from "@/lib/deploy-store";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { useAttackBox } from "@/features/labs/use-attack-box";
-import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
+import { DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import {
   attackVmShell,
   labAttackShell,
@@ -108,7 +112,7 @@ export function LabDetail({
   // local log of it, so follow the worker's log file instead.
   const workerLines = useWorkerLog(lab.id, backendDeploying.has(lab.id) && !busy && logs.length === 0);
   const rt = lab.runtime;
-  const native = rt?.architectures.includes(hostArch) ?? true;
+  const native = rt ? runsNatively(rt, hostArch) : true;
   const running = status?.running ?? false;
   // A deploy this session started sets `busy`; one still running after a window reload (which
   // loses the in-memory deploy state) is recovered from the backend, so the page shows "Starting"
@@ -295,26 +299,63 @@ export function LabDetail({
   const deployFailed = shownLogs.some((l) => l.startsWith("✗"));
   const showDeploy = deployingHere || running || deployFailed;
 
+  // The page's state as one dot and one word, for the status strip under the title.
+  const state: { tone: Tone; word: string; pulse?: boolean } =
+    operation && OPERATION_STATUS[operation]
+      ? { tone: "warn", word: OPERATION_STATUS[operation]!, pulse: true }
+      : running
+        ? { tone: "ok", word: "Running" }
+        : starting
+          ? { tone: "warn", word: acting === "resume" ? "Resuming" : "Starting", pulse: true }
+          : parked
+            ? { tone: "muted", word: parked === "pause" ? "Paused" : "Shut down" }
+            : interrupted
+              ? { tone: "warn", word: "Interrupted" }
+              : { tone: "muted", word: "Not started" };
+  const strip: React.ReactNode[] = [
+    <span key="state" className="inline-flex items-center gap-2">
+      <StatusDot tone={state.tone} pulse={state.pulse} />
+      <b>{state.word}</b>
+    </span>,
+  ];
+  if (running) strip.push(<span key="where">on {status?.host ?? (whereLabel ? `this machine · ${whereLabel}` : "this machine")}</span>);
+  else if (parked && whereLabel) strip.push(<span key="where">{whereLabel}</span>);
+  if (rt) strip.push(<span key="rt">{isDocker ? "containers" : "vm"}</span>);
+  if (rt && !native && isDocker)
+    strip.push(
+      <span key="emu" className="text-warning">
+        emulated (slower)
+      </span>,
+    );
+  if (running && status?.expiresAt) strip.push(<AutoStop key="auto" at={status.expiresAt} />);
+  if (lab.difficulty > 0)
+    strip.push(
+      <LevelBadge key="lvl" level={lab.difficulty}>
+        {DIFFICULTY_LABEL[lab.difficulty]}
+      </LevelBadge>,
+    );
+  strip.push(<span key="cat">{lab.category}</span>);
+
   if (!ready) {
     return (
       <div className="space-y-5" aria-busy="true" aria-label="Loading the lab">
-        <Skeleton className="h-4 w-16" />
-        <div className="flex items-start gap-4">
-          <div className="flex-1 space-y-2.5">
-            <Skeleton className="h-7 w-56" />
-            <Skeleton className="h-3.5 w-40" />
+        <Skeleton className="h-3 w-16" />
+        <div className="flex items-end gap-4">
+          <div className="flex-1 space-y-3">
+            <Skeleton className="h-8 w-72" />
+            <Skeleton className="h-3 w-56" />
             <Skeleton className="h-3.5 w-full max-w-2xl" />
           </div>
-          <Skeleton className="h-9 w-28" />
+          <Skeleton className="h-9 w-28 rounded-full" />
         </div>
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <div className="space-y-4">
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-64 w-full" />
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
+          <div className="space-y-5">
+            <Skeleton className="h-72 w-full rounded-panel" />
+            <Skeleton className="h-28 w-full rounded-panel" />
           </div>
-          <div className="space-y-4">
-            <Skeleton className="h-40 w-full" />
-            <Skeleton className="h-24 w-full" />
+          <div className="space-y-5">
+            <Skeleton className="h-40 w-full rounded-panel" />
+            <Skeleton className="h-28 w-full rounded-panel" />
           </div>
         </div>
       </div>
@@ -324,65 +365,43 @@ export function LabDetail({
   return (
     <div className="animate-rise-in space-y-5">
       <button
+        type="button"
         onClick={onBack}
-        className="group inline-flex items-center gap-1.5 text-[0.78125rem] text-muted-foreground transition-colors hover:text-foreground"
+        className="group -mb-1 inline-flex items-center gap-1.5 text-[0.75rem] text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="size-4" /> All labs
-        <kbd className="rounded border border-border px-1.5 text-[0.625rem] text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100">
-          esc
-        </kbd>
+        <ArrowLeft className="size-3.5" /> All labs
+        <kbd className="kbd opacity-60 transition-opacity group-hover:opacity-100">Esc</kbd>
       </button>
 
-      {/* Header: what the lab is, and the one thing to do next. */}
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-xl font-semibold tracking-tight">{lab.title}</h1>
-            {operation && OPERATION_STATUS[operation] ? (
-              <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-muted-foreground">
-                <Spinner className="size-3" /> {OPERATION_STATUS[operation]}
-              </span>
-            ) : running ? (
-              <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-success">
-                <span className="size-1.5 rounded-full bg-success" />
-                Running on {status?.host ?? "this machine"}
-                {whereLabel && !status?.host && <span className="text-muted-foreground"> · {whereLabel}</span>}
-              </span>
-            ) : starting ? (
-              <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-muted-foreground">
-                <Spinner className="size-3" /> {acting === "resume" ? "Resuming" : "Starting"}
-              </span>
-            ) : parked ? (
-              <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-muted-foreground">
-                {parked === "pause" ? <Pause className="size-3" /> : <Power className="size-3" />}
-                {parked === "pause" ? "Paused" : "Shut down"}
-                {whereLabel && <span className="text-muted-foreground/70"> · {whereLabel}</span>}
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[0.75rem] text-muted-foreground">
-            {lab.difficulty > 0 && (
-              <span className="inline-flex items-center gap-1.5">
-                <span className={cn("size-1.5 rounded-full", DIFFICULTY_DOT[lab.difficulty])} />
-                {DIFFICULTY_LABEL[lab.difficulty]}
-              </span>
+      {/* Header: what the lab is, its state at a glance, and the one thing to do next. */}
+      <PageHeader
+        title={lab.title}
+        lead={
+          <div className="space-y-2.5">
+            <StatusStrip>
+              {strip.map((node, i) => (
+                <span key={i} className="inline-flex items-center gap-x-2.5">
+                  {i > 0 && <span aria-hidden>·</span>}
+                  {node}
+                </span>
+              ))}
+            </StatusStrip>
+            {(lab.skills ?? []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {lab.skills.map((sk) => (
+                  <Badge key={sk.id}>{sk.name}</Badge>
+                ))}
+              </div>
             )}
-            <span>· {lab.category}</span>
-            {rt && !native && isDocker && <span className="text-warning">· emulated (slower)</span>}
-            {(lab.skills ?? []).map((sk) => (
-              <span key={sk.id} className="rounded border border-border px-1.5 py-px text-[0.6875rem]">
-                {sk.name}
-              </span>
-            ))}
+            {lab.description && <p className="max-w-2xl text-[0.8125rem] leading-relaxed text-muted-foreground">{lab.description}</p>}
           </div>
-          {lab.description && <p className="mt-3 max-w-2xl text-[0.8125rem] leading-relaxed text-muted-foreground">{lab.description}</p>}
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {running ? (
+        }
+        actions={
+          running ? (
             <>
               {url && (
-                <Button variant="primary" onClick={() => openExternal(url)} title={`Open ${url} in your browser`}>
-                  <ExternalLink className="size-4" /> Open in browser
+                <Button variant="outline" onClick={() => openExternal(url)} title={`Open ${url} in your browser`}>
+                  <ExternalLink className="size-3.5" /> Open in browser
                 </Button>
               )}
               {canPause && (
@@ -390,7 +409,7 @@ export function LabDetail({
                   <Button variant="outline" onClick={() => void act("pause")} disabled={busy}>
                     {acting === "pause" ? (
                       <>
-                        <Spinner className="size-4" /> Pausing…
+                        <Spinner className="size-3.5" /> Pausing…
                       </>
                     ) : (
                       <>
@@ -405,7 +424,7 @@ export function LabDetail({
                   <Button variant="outline" onClick={() => void act("shutdown")} disabled={busy}>
                     {acting === "shutdown" ? (
                       <>
-                        <Spinner className="size-4" /> Shutting down…
+                        <Spinner className="size-3.5" /> Shutting down…
                       </>
                     ) : (
                       <>
@@ -429,28 +448,28 @@ export function LabDetail({
             </>
           ) : parked && onResume ? (
             <>
-              <Tip key="resume" text="Bring the lab back as it was">
-                <Button variant="primary" onClick={() => void act("resume")} disabled={busy}>
-                  {busy ? (
-                    <>
-                      <Spinner className="size-4" /> Resuming…
-                    </>
-                  ) : (
-                    <>
-                      <Play className="size-4" /> Resume
-                    </>
-                  )}
-                </Button>
-              </Tip>
               <Tip key="remove-parked" text="Remove the machines; the next start rebuilds the lab from scratch">
                 <Button variant="destructive" onClick={() => setConfirmingRemove(true)} disabled={busy}>
                   <Square className="size-3.5" /> Stop &amp; remove
                 </Button>
               </Tip>
+              <Tip key="resume" text="Bring the lab back as it was">
+                <Button variant="primary" onClick={() => void act("resume")} disabled={busy}>
+                  {busy ? (
+                    <>
+                      <Spinner className="size-3.5" /> Resuming…
+                    </>
+                  ) : (
+                    <>
+                      <Play className="size-3.5" /> Resume
+                    </>
+                  )}
+                </Button>
+              </Tip>
             </>
           ) : starting ? (
             <Button variant="primary" disabled>
-              <Spinner className="size-4" /> Starting… <StartTimer />
+              <Spinner className="size-3.5" /> Starting… <StartTimer />
             </Button>
           ) : interrupted ? (
             // Machines exist but nothing is deploying and the lab isn't fully up: a previous run
@@ -472,7 +491,7 @@ export function LabDetail({
           ) : !loggedIn && onLogin ? (
             // Logged out: say so on the button and log in from it, rather than a greyed-out Start.
             <Button variant="primary" onClick={() => void onLogin().catch(tell("Couldn't start signing in"))}>
-              <LogIn className="size-4" /> Sign in to start
+              <LogIn className="size-3.5" /> Sign in to start
             </Button>
           ) : (
             <div className="relative">
@@ -492,7 +511,7 @@ export function LabDetail({
                 }
                 aria-haspopup={hasChoice ? "dialog" : undefined}
               >
-                <Play className="size-4" /> Start lab
+                <Play className="size-3.5" /> Start lab
               </Button>
               {choosing && (
                 <RunOnDialog
@@ -530,10 +549,14 @@ export function LabDetail({
                 </RunOnDialog>
               )}
             </div>
-          )}
-        </div>
-      </div>
-      {shellError && <p className="-mt-3 text-[0.71875rem] text-destructive">{shellError}</p>}
+          )
+        }
+      />
+      {shellError && (
+        <p className="-mt-2 flex items-center gap-2 text-[0.75rem] text-muted-foreground">
+          <StatusDot tone="fail" /> {shellError}
+        </p>
+      )}
       {(mySession || (hostedTried && (hosted.busyLab === lab.id || hosted.error))) && (
         <HostedSessionPanel
           session={mySession}
@@ -558,15 +581,8 @@ export function LabDetail({
         />
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18.75rem]">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="min-w-0 space-y-5">
-          {lab.question && (
-            <Panel>
-              <PanelHeader title="Objective" />
-              <p className="p-4 text-[0.8125rem] leading-relaxed text-foreground">{lab.question}</p>
-            </Panel>
-          )}
-
           {/* While it starts, the deployment comes first; once ready, the diagram does. */}
           {showDeploy && !(running && !busy) && deploy}
 
@@ -584,8 +600,8 @@ export function LabDetail({
             />
           ) : busy || starting ? null : (
             <Panel>
-              <PanelHeader title="Network" />
-              <p className="px-4 py-10 text-center text-[0.78125rem] text-muted-foreground">
+              <PanelHeader title="Network" meta={rt ? (isDocker ? "containers" : "vm") : undefined} />
+              <p className="dotted-canvas px-6 py-14 text-center text-[0.8125rem] text-muted-foreground">
                 {interrupted
                   ? "A previous start was interrupted and left machines behind. Use “Stop & clean up”, then start again."
                   : parked
@@ -599,16 +615,21 @@ export function LabDetail({
 
           {running && !busy && tools.length > 0 && (
             <Panel>
-              <PanelHeader title="Observers" />
-              {tools.map((t) => (
-                <div key={t.name} className="flex flex-wrap items-baseline gap-x-3 border-b border-border px-3.5 py-2 text-[0.78125rem] last:border-b-0">
-                  <span className="font-medium">{t.name}</span>
-                  <span className="text-muted-foreground">
-                    {t.addresses.map((a) => `${a.network} ${a.ip}`).join(" · ")}
-                    {t.publish ? ` · http://127.0.0.1:${t.publish}` : ""}
-                  </span>
-                </div>
-              ))}
+              <PanelHeader title="Observers" meta={`${tools.length}`} />
+              <div>
+                {tools.map((t) => (
+                  <div
+                    key={t.name}
+                    className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-t border-border px-4 py-2.5 text-[0.8125rem] first:border-t-0"
+                  >
+                    <span className="font-medium text-foreground">{t.name}</span>
+                    <span className="font-mono text-[0.6875rem] text-faint">
+                      {t.addresses.map((a) => `${a.network} ${a.ip}`).join(" · ")}
+                      {t.publish ? ` · http://127.0.0.1:${t.publish}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </Panel>
           )}
 
@@ -617,7 +638,14 @@ export function LabDetail({
           <LabBrief labId={lab.id} />
         </div>
 
-        <aside className="h-fit space-y-4 lg:sticky lg:top-2">
+        <aside className="h-fit min-w-0 space-y-5 lg:sticky lg:top-2">
+          {lab.question && (
+            <Panel>
+              <PanelHeader title="Objective" meta="evidence" />
+              <p className="px-4 py-3.5 text-[0.8125rem] leading-relaxed text-foreground">{lab.question}</p>
+            </Panel>
+          )}
+
           {/* VM labs on a server host have no attacker yet (their networks live on that host). */}
           {(isDocker || !remote) && (
             <AttackBoxPanel
@@ -633,102 +661,102 @@ export function LabDetail({
               and where it can run, so the page reads as complete at rest. */}
           {!running && rt && (
             <Panel>
-              <PanelHeader title="About" />
-              <div className="space-y-3.5 p-4 text-[0.75rem]">
-                <div>
-                  <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">Where it runs</p>
-                  <div className="space-y-1.5">
-                    {runPlaces(rt, hostArch).map(({ key, icon: Icon, label, available }) => (
-                      <div
-                        key={key}
-                        className={cn("flex items-center gap-2", available ? "text-foreground" : "text-muted-foreground/40")}
-                        title={available ? undefined : "Not available for this lab"}
-                      >
-                        <Icon className="size-3.5 shrink-0" />
-                        <span>{label}</span>
-                      </div>
-                    ))}
+              <PanelHeader title="Where it runs" meta={isDocker ? "containers" : "vm"} />
+              <div>
+                {runPlaces(rt, hostArch).map(({ key, icon: Icon, label, available }) => (
+                  <div
+                    key={key}
+                    className="flex items-center gap-2.5 border-t border-border px-4 py-2 text-[0.8125rem] first:border-t-0"
+                    title={available ? undefined : "Not available for this lab"}
+                  >
+                    <Icon className={cn("size-3.5 shrink-0", available ? "text-jewel-text" : "text-faint opacity-50")} />
+                    <span className={available ? "text-foreground" : "text-faint"}>{label}</span>
+                    {!available && <span className="ml-auto font-mono text-[0.6875rem] text-faint">n/a</span>}
                   </div>
-                </div>
-                {!native && <p className="text-warning">Emulated on your CPU (slower than native).</p>}
+                ))}
+                {!native && (
+                  <div className="flex items-center gap-2.5 border-t border-border px-4 py-2.5 text-[0.75rem] text-muted-foreground">
+                    <StatusDot tone="warn" /> Emulated on your CPU (slower than native).
+                  </div>
+                )}
               </div>
             </Panel>
           )}
 
           {running && (
             <Panel>
-              <PanelHeader title="Details" />
-              <div className="space-y-2 p-4 text-[0.75rem]">
-                <p className="text-muted-foreground">
-                  Runs on <span className="text-foreground">{status?.host ?? "this machine"}</span>
-                  {whereLabel && !status?.host && (
-                    <>
-                      {" "}
-                      · <span className="text-foreground">{whereLabel}</span>
-                    </>
-                  )}
-                </p>
-                {status?.expiresAt && <AutoStop at={status.expiresAt} />}
-                {/* The bind spelled out: which service inside the lab answers on which address of
-                    this machine, with that local address one click away. */}
-                {binds.length > 0 ? (
-                  <div className="space-y-2.5">
+              <PanelHeader title="Details" meta={isDocker ? "containers" : "vm"} />
+              <div>
+                <KeyValue k="Runs on">{status?.host ?? "this machine"}</KeyValue>
+                {whereLabel && !status?.host && <KeyValue k="Engine">{whereLabel}</KeyValue>}
+                {status?.expiresAt && (
+                  <KeyValue k="Auto-stop">
+                    <AutoStop at={status.expiresAt} />
+                  </KeyValue>
+                )}
+                {!binds.length && url && (
+                  <KeyValue k="Address">
+                    <CopyValue text={url} />
+                  </KeyValue>
+                )}
+              </div>
+              {/* The bind spelled out: which service inside the lab answers on which address of
+                  this machine, with that local address one click away. */}
+              {binds.length > 0 && (
+                <div className="border-t border-border px-4 py-3">
+                  <div className="mb-2 flex justify-between gap-3">
+                    <span className="section-label">Inside the lab</span>
+                    <span className="section-label">On {status?.host ?? "this machine"}</span>
+                  </div>
+                  <div className="space-y-1.5">
                     {binds.map((b) => (
-                      <div key={`${b.machine}:${b.target}`} className="space-y-1">
-                        <p className="flex flex-wrap items-baseline gap-x-2">
-                          <span className="w-28 shrink-0 text-muted-foreground">Inside the lab</span>
-                          <span className="font-mono text-[0.71875rem] text-foreground">
-                            {b.machine} :{b.target}
-                          </span>
-                        </p>
-                        <p className="flex flex-wrap items-center gap-x-2">
-                          <span className="w-28 shrink-0 text-muted-foreground">On {status?.host ?? "this machine"}</span>
-                          <CopyValue text={`http://${bindHost}:${b.published}`} />
-                        </p>
+                      <div key={`${b.machine}:${b.target}`} className="flex items-center justify-between gap-3">
+                        <span className="min-w-0 truncate font-mono text-[0.75rem] text-muted-foreground">
+                          {b.machine} :{b.target}
+                        </span>
+                        <CopyValue text={`http://${bindHost}:${b.published}`} label={`:${b.published}`} />
                       </div>
                     ))}
                   </div>
-                ) : (
-                  url && <p className="break-all font-mono text-[0.71875rem] text-foreground">{url}</p>
-                )}
-                {canProvision && (
-                  <div className="space-y-2 border-t border-border pt-3">
-                    <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">Setup</p>
-                    <p className="text-muted-foreground">
-                      Runs the lab’s setup again on its machines, keeping them as they are. Use it when a machine didn’t finish its setup.
-                    </p>
-                    <select
-                      aria-label="Machine to set up again"
-                      value={provisionTarget}
-                      onChange={(e) => setProvisionTarget(e.target.value)}
-                      disabled={busy}
-                      className="h-8 w-full rounded-sm border border-border bg-background px-2 text-[0.71875rem] text-foreground outline-none focus:border-ring"
-                    >
-                      <option value="">All machines</option>
-                      {(status?.machines ?? [])
-                        .filter((m) => !m.infra)
-                        .map((m) => (
-                          <option key={m.name} value={m.name}>
-                            {m.name}
-                          </option>
-                        ))}
-                    </select>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => void act("provision")}
-                      disabled={busy}
-                      title="Run the lab's setup again (vagrant provision)"
-                    >
-                      {acting === "provision" ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} Re-run setup
-                    </Button>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
+              {canProvision && (
+                <div className="space-y-2.5 border-t border-border p-4">
+                  <p className="section-label">Setup</p>
+                  <p className="text-[0.75rem] leading-relaxed text-muted-foreground">
+                    Runs the lab’s setup again on its machines, keeping them as they are. Use it when a machine didn’t finish its setup.
+                  </p>
+                  <Select
+                    fieldSize="sm"
+                    aria-label="Machine to set up again"
+                    value={provisionTarget}
+                    onChange={(e) => setProvisionTarget(e.target.value)}
+                    disabled={busy}
+                  >
+                    <option value="">All machines</option>
+                    {(status?.machines ?? [])
+                      .filter((m) => !m.infra)
+                      .map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => void act("provision")}
+                    disabled={busy}
+                    title="Run the lab's setup again (vagrant provision)"
+                  >
+                    {acting === "provision" ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} Re-run setup
+                  </Button>
+                </div>
+              )}
             </Panel>
           )}
-          {!loggedIn && <p className="text-[0.71875rem] text-muted-foreground">Sign in to run labs on this machine.</p>}
+          {!loggedIn && <p className="px-1 text-[0.75rem] text-muted-foreground">Sign in to run labs on this machine.</p>}
         </aside>
       </div>
       {confirmingRemove && (

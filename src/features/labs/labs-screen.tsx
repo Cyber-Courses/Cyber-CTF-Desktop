@@ -4,13 +4,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
-import { Panel, RailLabel } from "@/components/ui/panel";
+import { Panel, PanelHeader } from "@/components/ui/panel";
+import { PageHeader } from "@/components/ui/page-header";
+import { Input } from "@/components/ui/input";
+import { StatusDot } from "@/components/ui/status-pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LabRow } from "@/features/labs/lab-row";
 import { LabDetail } from "@/features/labs/lab-detail";
 import { DIFFICULTY_LABEL, useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
 import { setupNeeded } from "@/features/labs/lab-readiness";
+import { useDeployingLabs } from "@/lib/deploy-store";
 import { serverList, type ServerHost, type SystemReport } from "@/lib/tauri";
 import { getVmProvider } from "@/lib/settings";
 import { Segmented } from "@/components/ui/segmented";
@@ -41,6 +45,8 @@ export function Labs({
 }) {
   const { labs, error, statuses, completed, refreshStatus, probed } = useLabs(loggedIn);
   const { runs, launch, stop, park, resume, provision } = useLabActions(refreshStatus);
+  // Deploys running in the backend (started from another window or before a reload), for the rows' dots.
+  const deploying = useDeployingLabs();
   // Opened straight from the slug the navigation carried, so a lab opened from Overview, the
   // command palette or a deep link shows its page on the first render instead of flashing the
   // list first.
@@ -154,6 +160,7 @@ export function Labs({
       onLogin={onLogin}
       hostArch={hostArch}
       solved={completed.has(lab.id)}
+      deploying={deploying.has(lab.id)}
       setup={isRunning(lab) ? null : setupNeeded(lab, report ?? null, servers)}
       onOpen={() => setDetailSlug(lab.slug)}
       onStop={() => stop(lab)}
@@ -161,66 +168,78 @@ export function Labs({
     />
   );
 
+  const solvedCount = labs ? labs.filter((l) => completed.has(l.id)).length : 0;
+  const runningCount = labs ? labs.filter(isRunning).length : 0;
+
   return (
     <div className="space-y-5">
-      <div className="space-y-2.5">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
-          <input
+      <PageHeader
+        title="Labs"
+        lead={
+          labs ? (
+            <span className="font-mono text-[0.75rem] tabular-nums">
+              {labs.length} in the catalogue · {runningCount} running on this machine · {solvedCount} solved
+            </span>
+          ) : (
+            "Hands-on labs that run on this machine, your servers or your cloud."
+          )
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-48 flex-1 basis-48 sm:max-w-80">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-faint" />
+          <Input
             data-lab-search
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search labs and skills…"
-            className="w-full rounded-control border border-border bg-card py-2 pl-9 pr-3 text-[0.8125rem] outline-none placeholder:text-muted-foreground/60 focus:border-ring/60"
+            placeholder="Search labs and skills"
+            aria-label="Search labs and skills"
+            className="pl-8.5"
           />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Segmented<StatusFilter>
-            label="Status"
-            value={status}
-            onChange={setStatus}
-            options={[
-              { value: "all", label: "All" },
-              { value: "todo", label: "To do" },
-              { value: "running", label: "Running" },
-              { value: "solved", label: "Solved" },
-            ]}
-          />
-          <Segmented<RuntimeFilter>
-            label="Runtime"
-            value={runtime}
-            onChange={setRuntime}
-            options={[
-              { value: "all", label: "Any runtime" },
-              { value: "DOCKER", label: "Container" },
-              { value: "VM", label: "VM" },
-              { value: "CLOUD", label: "Cloud" },
-            ]}
-          />
-          <Segmented<number>
-            label="Level"
-            value={difficulty}
-            onChange={setDifficulty}
-            options={[{ value: 0, label: "Any level" }, ...[1, 2, 3].map((d) => ({ value: d, label: DIFFICULTY_LABEL[d] }))]}
-          />
-          {labs && labs.length > 0 && (
-            <span className="ml-auto text-[0.75rem] tabular-nums text-muted-foreground">
-              {labs.filter((l) => completed.has(l.id)).length} of {labs.length} solved
-            </span>
-          )}
-        </div>
+        <Segmented<StatusFilter>
+          label="Status"
+          value={status}
+          onChange={setStatus}
+          options={[
+            { value: "all", label: "All" },
+            { value: "todo", label: "To do" },
+            { value: "running", label: "Running" },
+            { value: "solved", label: "Solved" },
+          ]}
+        />
+        <Segmented<RuntimeFilter>
+          label="Runtime"
+          value={runtime}
+          onChange={setRuntime}
+          options={[
+            { value: "all", label: "Any runtime" },
+            { value: "DOCKER", label: "Container" },
+            { value: "VM", label: "VM" },
+            { value: "CLOUD", label: "Cloud" },
+          ]}
+        />
+        <Segmented<number>
+          label="Level"
+          value={difficulty}
+          onChange={setDifficulty}
+          options={[{ value: 0, label: "Any level" }, ...[1, 2, 3].map((d) => ({ value: d, label: DIFFICULTY_LABEL[d] }))]}
+        />
       </div>
 
       {!labs ? (
         <Panel>
           {[0, 1, 2, 3, 4].map((i) => (
-            <div key={i} className="flex items-center gap-3 border-t border-border px-4 py-3 first:border-t-0">
-              <Skeleton className="size-[1.875rem] rounded-control" />
+            <div key={i} className="flex h-13 items-center gap-3.5 border-t border-border px-4 first:border-t-0">
+              <Skeleton className="size-2 rounded-full" />
               <div className="flex-1">
-                <Skeleton className="h-3.5 w-44" />
-                <Skeleton className="mt-2 h-2.5 w-24" />
+                <Skeleton className="h-3 w-44" />
+                <Skeleton className="mt-1.5 h-2.5 w-64 max-w-full" />
               </div>
-              <Skeleton className="h-6 w-16 rounded-sm" />
+              <Skeleton className="hidden h-2.5 w-20 md:block" />
+              <Skeleton className="hidden h-4 w-14 rounded-full md:block" />
+              <Skeleton className="h-7 w-16 rounded-full" />
             </div>
           ))}
         </Panel>
@@ -231,16 +250,23 @@ export function Labs({
       ) : (
         <>
           {running.length > 0 && (
-            <section>
-              <RailLabel>Running now</RailLabel>
-              <Panel>{running.map(row)}</Panel>
-            </section>
+            <Panel>
+              <PanelHeader
+                title={
+                  <>
+                    <StatusDot tone="ok" /> Running now
+                  </>
+                }
+                meta={`${running.length} ${running.length === 1 ? "lab" : "labs"}`}
+              />
+              <div>{running.map(row)}</div>
+            </Panel>
           )}
           {rest.length > 0 && (
-            <section>
-              {running.length > 0 && <RailLabel>All labs</RailLabel>}
-              <Panel>{rest.map(row)}</Panel>
-            </section>
+            <Panel>
+              {running.length > 0 && <PanelHeader title="All labs" meta={`${rest.length}`} />}
+              <div>{rest.map(row)}</div>
+            </Panel>
           )}
         </>
       )}

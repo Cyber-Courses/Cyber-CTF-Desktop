@@ -1,12 +1,14 @@
 "use client";
 
-import { CheckCircle2, ChevronRight, Cloud, Container, ExternalLink, Globe, LogIn, Monitor, Server, Wrench, type LucideIcon } from "lucide-react";
-import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
+import { ChevronRight, Cloud, Container, ExternalLink, Globe, LogIn, Monitor, Server, Wrench, type LucideIcon } from "lucide-react";
+import { DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import { CLOUDS } from "@/features/labs/run-on";
 import { machineOpenSetup, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { useState, type ButtonHTMLAttributes } from "react";
 import { Button } from "@/components/ui/button";
+import { LevelBadge } from "@/components/ui/badge";
+import { StatusDot } from "@/components/ui/status-pill";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { OPERATION_STATUS } from "@/lib/deploy-store";
 import { openExternal, tell } from "@/lib/failure";
@@ -55,10 +57,11 @@ function RowButton({
 }
 
 /**
- * One lab as a dense list row: runtime glyph, title + difficulty/category, the run-place icons
- * (where it runs / can run / can't), and Open + Stop while it runs, with a chevron into the
- * detail (starting happens on the lab's own page). Reused on the Overview rail-list and the full
- * Labs list.
+ * One lab as a dense 3.25rem list row: a status dot, the title over mono meta, then mono columns
+ * (category, level, runtime with the run-place icons), the row action (Open and Stop while it
+ * runs, Resume when parked, setup or sign-in when needed) and a chevron into the detail
+ * (starting happens on the lab's own page). The secondary columns fold away in a narrow
+ * container. Reused on the Overview rail-list and the full Labs list.
  */
 export function LabRow({
   lab,
@@ -73,6 +76,7 @@ export function LabRow({
   onResume,
   solved = false,
   setup = null,
+  deploying = false,
 }: {
   lab: Lab;
   status?: LabStatus;
@@ -91,106 +95,142 @@ export function LabRow({
   solved?: boolean;
   /** What this machine is missing to run it (see lab-readiness), or null. */
   setup?: string | null;
+  /** A deploy is running for it in the backend (e.g. started before a reload), for the dot. */
+  deploying?: boolean;
 }) {
   const rt = lab.runtime;
-  const native = rt?.architectures.includes(hostArch) ?? true;
+  const native = rt ? runsNatively(rt, hostArch) : true;
   const running = status?.running ?? false;
   const parked = !running && (status?.parked ?? null);
-  const RuntimeIcon = rt?.runtime === "VM" ? Monitor : Container;
   // While busy, what is actually happening: a lab being started reports running long before
   // the launch is done, so "Stopping…" there would be wrong.
   const doing = busy ? `${(operation && OPERATION_STATUS[operation]) ?? "Working"}…` : null;
   // Stop deletes the lab's machines: ask first, as the lab's own page does.
   const [confirmingStop, setConfirmingStop] = useState(false);
+  const stateLabel = busy
+    ? doing
+    : deploying && !running
+      ? "Starting…"
+      : running
+        ? "Running"
+        : parked
+          ? parked === "pause"
+            ? "Paused"
+            : "Shut down"
+          : solved
+            ? "Solved"
+            : "Not started";
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-label={`Open ${lab.title}`}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        // Only the row itself: Enter on one of its buttons (or in its dialog) is theirs.
-        if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
-        e.preventDefault();
-        onOpen();
-      }}
-      className="group flex cursor-pointer items-center gap-3 border-t border-border px-4 py-3 outline-none transition-colors first:border-t-0 hover:bg-glass focus-visible:bg-glass focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-    >
-      <span className="grid size-[1.875rem] shrink-0 place-items-center rounded-control border border-border bg-glass-2 text-muted-foreground">
-        <RuntimeIcon className="size-4" />
-      </span>
-
-      <div className="w-56 shrink-0">
-        <p className="flex items-center gap-1.5 truncate text-[0.84375rem] font-medium text-foreground">
-          {solved && <CheckCircle2 className="size-3.5 shrink-0 text-success" aria-label="Solved" />}
-          <span className="truncate">{lab.title}</span>
-        </p>
-        <div className="mt-0.5 flex items-center gap-1.5 text-[0.71875rem] text-muted-foreground">
-          {lab.difficulty > 0 && (
-            <span className="inline-flex items-center gap-1">
-              <span className={cn("size-1.5 rounded-full", DIFFICULTY_DOT[lab.difficulty])} />
-              {DIFFICULTY_LABEL[lab.difficulty]}
-            </span>
+    <div className="@container border-t border-border first:border-t-0">
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`Open ${lab.title}`}
+        onClick={onOpen}
+        onKeyDown={(e) => {
+          // Only the row itself: Enter on one of its buttons (or in its dialog) is theirs.
+          if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+          e.preventDefault();
+          onOpen();
+        }}
+        className="group grid h-13 cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto_1rem] items-center gap-3.5 px-4 text-[0.8125rem] outline-none transition-colors hover:bg-glass focus-visible:bg-glass focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @min-[44rem]:grid-cols-[auto_minmax(0,1fr)_8rem_5.5rem_7rem_9.5rem_1rem]"
+      >
+        <span title={stateLabel ?? undefined} className="flex w-2 justify-center">
+          {busy || (deploying && !running) ? (
+            <StatusDot tone="warn" pulse />
+          ) : running ? (
+            <StatusDot tone="ok" />
+          ) : solved ? (
+            <span aria-hidden className="dot dot-jewel" />
+          ) : (
+            <StatusDot tone="muted" />
           )}
-          <span className="truncate">· {lab.category}</span>
-        </div>
-      </div>
+          <span className="sr-only">{stateLabel}</span>
+        </span>
 
-      {/* Actions sit before the place icons, so the icons and the chevron stay put on every row
-          and a Stop or Resume button grows into the empty middle instead of shifting them. */}
-      <div className="ml-auto flex shrink-0 items-center gap-3">
-        {running ? (
-          <>
-            {status?.url && (
-              <RowButton tone="primary" onClick={() => openExternal(status.url!)}>
-                <ExternalLink className="size-3" /> Open
-              </RowButton>
+        <span className="min-w-0">
+          <span className="block truncate font-medium text-foreground">{lab.title}</span>
+          <span className="block truncate font-mono text-[0.6875rem] text-faint">
+            {lab.slug}
+            {!native && (
+              <>
+                {" · "}
+                <span className="text-warning" title="Built for another CPU: runs emulated (slower)">
+                  emulated
+                </span>
+              </>
             )}
-            <RowButton tone="danger" onClick={() => setConfirmingStop(true)} disabled={busy}>
-              {doing ?? "Stop"}
-            </RowButton>
-          </>
-        ) : parked ? (
-          <>
-            <span className="text-[0.6875rem] text-muted-foreground">{parked === "pause" ? "Paused" : "Shut down"}</span>
-            {onResume && (
-              <RowButton tone="primary" onClick={onResume} disabled={busy} title="Bring it back as it was">
-                {doing ?? "Resume"}
-              </RowButton>
+            {setup && !running ? (
+              <>
+                {" · "}
+                <span className="text-warning">{setup}</span>
+              </>
+            ) : (
+              ` · ${lab.description || lab.category}`
             )}
-          </>
-        ) : setup ? (
-          <RowButton onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))} title="Open machine setup">
-            <Wrench className="size-3" /> {setup}
-          </RowButton>
-        ) : !loggedIn && onLogin ? (
-          <RowButton tone="primary" onClick={() => void onLogin().catch(tell("Couldn't start signing in"))} title="Sign in to start labs">
-            <LogIn className="size-3" /> Sign in
-          </RowButton>
-        ) : null}
-        {/* Starting happens on the lab's own page, where you pick where to run; the row opens it. */}
-
-        {rt && (
-          <span className="hidden items-center gap-1.5 text-[0.6875rem] text-muted-foreground lg:inline-flex">
-            {!native && <span className="text-warning">emulated</span>}
-            <span className="inline-flex items-center gap-1">
-              {/* Every place is shown: where it runs (emerald), where it can (accent), and where
-                  it can't (greyed), so the row reads as the full set of options at a glance. */}
-              {runPlaces(rt, hostArch).map(({ key, icon: Icon, label, available }) => {
-                const inUse = running && status?.place === key;
-                const hint = inUse ? `Running on: ${status?.host ?? label}` : available ? `Can run on: ${label}` : `Not available: ${label}`;
-                return (
-                  <span key={key} title={hint} aria-label={hint} className="inline-flex">
-                    <Icon className={cn("size-3", inUse ? "text-success" : available ? "text-jewel-text" : "text-muted-foreground/60")} />
-                  </span>
-                );
-              })}
-            </span>
           </span>
-        )}
+        </span>
 
-        <ChevronRight className="size-4 text-muted-foreground/50 transition-colors group-hover:text-foreground" />
+        <span className="hidden truncate font-mono text-[0.6875rem] text-faint @min-[44rem]:block">{lab.category}</span>
+        <span className="hidden @min-[44rem]:block">
+          {lab.difficulty > 0 && <LevelBadge level={lab.difficulty}>{DIFFICULTY_LABEL[lab.difficulty]}</LevelBadge>}
+        </span>
+        <span className="hidden items-center gap-2 font-mono text-[0.6875rem] text-faint @min-[44rem]:flex">
+          {rt && (
+            <>
+              <span>{rt.runtime === "VM" ? "vm" : "docker"}</span>
+              <span className="inline-flex items-center gap-1">
+                {/* Every place is shown: where it runs (green), where it can (jewel), and where
+                    it can't (greyed), so the row reads as the full set of options at a glance. */}
+                {runPlaces(rt, hostArch).map(({ key, icon: Icon, label, available }) => {
+                  const inUse = running && status?.place === key;
+                  const hint = inUse ? `Running on: ${status?.host ?? label}` : available ? `Can run on: ${label}` : `Not available: ${label}`;
+                  return (
+                    <span key={key} title={hint} aria-label={hint} className="inline-flex">
+                      <Icon className={cn("size-3", inUse ? "text-success" : available ? "text-jewel-text" : "text-faint opacity-50")} />
+                    </span>
+                  );
+                })}
+              </span>
+            </>
+          )}
+        </span>
+
+        <span className="flex items-center justify-end gap-1.5">
+          {running ? (
+            <>
+              {status?.url && (
+                <RowButton onClick={() => openExternal(status.url!)}>
+                  <ExternalLink className="size-3" /> Open
+                </RowButton>
+              )}
+              <RowButton tone="danger" onClick={() => setConfirmingStop(true)} disabled={busy}>
+                {doing ?? "Stop"}
+              </RowButton>
+            </>
+          ) : parked ? (
+            <>
+              <span className="hidden font-mono text-[0.6875rem] text-faint @min-[30rem]:inline">{parked === "pause" ? "paused" : "shut down"}</span>
+              {onResume && (
+                <RowButton onClick={onResume} disabled={busy} title="Bring it back as it was">
+                  {doing ?? "Resume"}
+                </RowButton>
+              )}
+            </>
+          ) : setup ? (
+            <RowButton onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))} title={`${setup}: open machine setup`}>
+              <Wrench className="size-3" /> Set up
+            </RowButton>
+          ) : !loggedIn && onLogin ? (
+            <RowButton onClick={() => void onLogin().catch(tell("Couldn't start signing in"))} title="Sign in to start labs">
+              <LogIn className="size-3" /> Sign in
+            </RowButton>
+          ) : null}
+          {/* Starting happens on the lab's own page, where you pick where to run; the row opens it. */}
+        </span>
+
+        <ChevronRight className="size-4 text-faint transition-colors group-hover:text-foreground" />
       </div>
 
       {confirmingStop && (

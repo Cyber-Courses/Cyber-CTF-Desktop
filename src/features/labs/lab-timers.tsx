@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatDuration } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 /** Time since Start was pressed, ticking. */
 export function StartTimer() {
@@ -14,8 +15,8 @@ export function StartTimer() {
   return <span className="font-mono tabular-nums opacity-80">{formatDuration(now - start)}</span>;
 }
 
-/** "Auto-stops at 19:42 · in 3h 58m" for cloud labs. */
-export function AutoStop({ at }: { at: number }) {
+/** "Auto-stops at 19:42 · in 3h 58m" for cloud labs, as inline mono text in the warning colour. */
+export function AutoStop({ at, className }: { at: number; className?: string }) {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   useEffect(() => {
     const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 30_000);
@@ -26,9 +27,9 @@ export function AutoStop({ at }: { at: number }) {
   const h = Math.floor(left / 3600);
   const m = Math.floor((left % 3600) / 60);
   return (
-    <p className="text-[0.71875rem] text-warning">
+    <span className={cn("font-mono text-[0.6875rem] tabular-nums text-warning", className)}>
       Auto-stops at {time} · in {h > 0 ? `${h}h ` : ""}
       {m}m
-    </p>
+    </span>
   );
 }

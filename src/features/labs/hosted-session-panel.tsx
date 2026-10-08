@@ -1,9 +1,9 @@
 "use client";
 
-import { CheckCircle2, ExternalLink, Square } from "lucide-react";
+import { ExternalLink, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
-import { Spinner } from "@/components/ui/spinner";
+import { StatusDot } from "@/components/ui/status-pill";
 import type { HostedSession } from "@/features/hosted/use-hosted-labs";
 import { openExternal } from "@/lib/failure";
 
@@ -36,30 +36,34 @@ export function HostedSessionPanel({
   const state = session?.state;
   return (
     <Panel>
-      <div className="flex flex-wrap items-center gap-3 p-4">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           {state === "RUNNING" ? (
             <>
-              <p className="flex items-center gap-1.5 text-[0.8125rem] font-medium text-success">
-                <CheckCircle2 className="size-3.5" /> Running, hosted by Cyber CTF
+              <p className="flex items-center gap-2 text-[0.8125rem] font-medium text-foreground">
+                <StatusDot tone="ok" /> Running, hosted by Cyber CTF
               </p>
-              <p className="mt-0.5 text-[0.75rem] text-muted-foreground">
+              <p className="mt-0.5 pl-4 text-[0.75rem] text-muted-foreground">
                 Open it in your browser and attack it with your own tools. {expiresIn(session!.expiresAt)}
               </p>
             </>
           ) : state === "FAILED" || error ? (
             <>
-              <p className="text-[0.8125rem] font-medium text-destructive">
+              <p className="flex items-center gap-2 text-[0.8125rem] font-medium text-foreground">
+                <StatusDot tone={state === "FAILED" ? "fail" : "warn"} />
                 {state === "FAILED" ? "Couldn’t start the hosted lab" : "This is taking longer than expected"}
               </p>
-              <p className="mt-0.5 text-[0.75rem] text-muted-foreground">{error ?? session?.message ?? "Try again in a moment."}</p>
+              <p className="mt-0.5 pl-4 text-[0.75rem] text-muted-foreground">{error ?? session?.message ?? "Try again in a moment."}</p>
             </>
           ) : state === "STOPPED" || state === "EXPIRED" ? (
-            <p className="text-[0.8125rem] text-muted-foreground">The hosted session {state === "EXPIRED" ? "expired" : "ended"}.</p>
+            <p className="flex items-center gap-2 text-[0.8125rem] text-muted-foreground">
+              <StatusDot tone="muted" />
+              The hosted session {state === "EXPIRED" ? "expired" : "ended"}.
+            </p>
           ) : (
             <p className="flex items-center gap-2 text-[0.8125rem] text-muted-foreground">
-              <Spinner className="size-4" /> {(state && STAGE[state]) ?? (starting ? "Asking Cyber CTF for an instance" : "Starting")}… This usually takes about
-              30 seconds.
+              <StatusDot tone="warn" pulse /> {(state && STAGE[state]) ?? (starting ? "Asking Cyber CTF for an instance" : "Starting")}… This usually takes
+              about 30 seconds.
             </p>
           )}
         </div>
@@ -68,7 +72,7 @@ export function HostedSessionPanel({
             {session &&
               state === "RUNNING" &&
               session.endpoints.map((e) => (
-                <Button key={e.port} variant="primary" size="sm" onClick={() => openExternal(e.url)}>
+                <Button key={e.port} variant="outline" size="sm" onClick={() => openExternal(e.url)}>
                   Open{session.endpoints.length > 1 ? ` :${e.port}` : ""} <ExternalLink className="size-3.5" />
                 </Button>
               ))}

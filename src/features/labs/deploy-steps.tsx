@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronRight, Circle, X } from "lucide-react";
-import { Spinner } from "@/components/ui/spinner";
+import { Check, ChevronRight, X } from "lucide-react";
+import { PanelHeader } from "@/components/ui/panel";
+import { StatusDot, StatusPill } from "@/components/ui/status-pill";
 import { LogConsole } from "@/components/ui/log-console";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
@@ -159,36 +160,36 @@ export function DeploySteps({
 
   return (
     <div>
-      <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
-        <h3 className="text-[0.8125rem] font-medium">Deployment</h3>
-        {where && (
-          <span className="truncate text-[0.75rem] text-muted-foreground">
-            on <span className="text-foreground">{where}</span>
+      <PanelHeader
+        title={
+          <>
+            Deployment
+            {where && (
+              <span className="truncate font-normal text-muted-foreground">
+                on <span className="text-foreground">{where}</span>
+              </span>
+            )}
+          </>
+        }
+        action={
+          <span className="flex items-center gap-2.5">
+            {failed ? (
+              <StatusPill tone="fail">Failed</StatusPill>
+            ) : busy ? (
+              <StatusPill tone="warn" pulse>
+                {op?.busy ?? "Building"}
+              </StatusPill>
+            ) : ready || (done && !op) ? (
+              <StatusPill tone="ok">Ready</StatusPill>
+            ) : op && timed.length > 0 ? (
+              <StatusPill tone="muted">{op.done}</StatusPill>
+            ) : null}
+            {start && end && <span className="font-mono text-[0.6875rem] tabular-nums text-faint">{formatDuration(end - start)}</span>}
           </span>
-        )}
-        <span className="ml-auto flex items-center gap-2 text-[0.75rem]">
-          {failed ? (
-            <span className="flex items-center gap-1.5 text-destructive">
-              <X className="size-3.5" /> Failed
-            </span>
-          ) : busy ? (
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <Spinner className="size-3.5" /> {op?.busy ?? "Building"}
-            </span>
-          ) : ready || (done && !op) ? (
-            <span className="flex items-center gap-1.5 text-success">
-              <span className="size-1.5 rounded-full bg-success" /> Ready
-            </span>
-          ) : op && timed.length > 0 ? (
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <Check className="size-3.5 text-success" /> {op.done}
-            </span>
-          ) : null}
-          {start && end && <span className="font-mono tabular-nums text-muted-foreground">{formatDuration(end - start)}</span>}
-        </span>
-      </div>
+        }
+      />
 
-      <ul className="divide-y divide-border">
+      <ul className="py-1 empty:hidden">
         {steps.map((p, i) => {
           const rows = p.rows;
           const next = steps[i + 1]?.rows[0]?.at;
@@ -201,29 +202,22 @@ export function DeploySteps({
             <li key={p.id}>
               <button
                 type="button"
+                aria-expanded={expanded}
                 onClick={() => setOpen(expanded ? null : p.id)}
-                className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[0.78125rem] transition-colors hover:bg-foreground/[0.03]"
+                className="group grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto_0.875rem] items-center gap-3 px-4 py-2 text-left text-[0.8125rem] transition-colors hover:bg-glass"
               >
-                <span className="flex size-4 shrink-0 items-center justify-center">
-                  {state === "running" ? (
-                    <Spinner className="size-3.5" />
-                  ) : state === "fail" ? (
-                    <X className="size-3.5 text-destructive" />
-                  ) : (
-                    <Check className="size-3.5 text-success" />
-                  )}
-                </span>
-                <span className={cn("flex-1", state === "fail" ? "text-destructive" : "text-foreground")}>{p.label}</span>
-                <span className="font-mono text-[0.6875rem] tabular-nums text-muted-foreground">{formatDuration(to - from)}</span>
-                <ChevronRight className={cn("size-3.5 text-muted-foreground/60 transition-transform", expanded && "rotate-90")} />
+                <StepMark state={state} />
+                <span className={cn("truncate", state === "fail" ? "text-destructive" : "text-foreground")}>{p.label}</span>
+                <span className="font-mono text-[0.6875rem] tabular-nums text-faint">{formatDuration(to - from)}</span>
+                <ChevronRight className={cn("size-3.5 text-faint transition-transform group-hover:text-muted-foreground", expanded && "rotate-90")} />
               </button>
               {/* While a phase is running, show its latest line inline (e.g. which container is
                   still "Waiting"), so the long "Wait until healthy" step isn't a blank spinner. */}
               {state === "running" && !expanded && rows.at(-1)?.line && (
-                <div className="truncate px-3.5 pb-2 pl-10 font-mono text-[0.6875rem] text-muted-foreground">{rows.at(-1)!.line.trim()}</div>
+                <div className="-mt-1 truncate px-4 pb-2 pl-12 font-mono text-[0.6875rem] text-faint">{rows.at(-1)!.line.trim()}</div>
               )}
               {expanded && (
-                <div className="px-3.5 pb-2.5">
+                <div className="px-4 pb-2.5 pl-12">
                   <TimedLog rows={rows} origin={start!} />
                 </div>
               )}
@@ -231,42 +225,65 @@ export function DeploySteps({
           );
         })}
         {done && !op && (
-          <li className="flex items-center gap-2.5 px-3.5 py-2 text-[0.78125rem]">
-            <span className="flex size-4 shrink-0 items-center justify-center">
-              <Check className="size-3.5 text-success" />
-            </span>
-            <span className="flex-1 text-foreground">Ready</span>
+          <li className="grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-3 px-4 py-2 text-[0.8125rem]">
+            <StepMark state="ok" />
+            <span className="text-foreground">Ready</span>
           </li>
         )}
         {busy && steps.length === 0 && (
-          <li className="flex items-center gap-2.5 px-3.5 py-2 text-[0.78125rem] text-muted-foreground">
-            <span className="flex size-4 shrink-0 items-center justify-center">
-              <Circle className="size-2" />
-            </span>
+          <li className="grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-3 px-4 py-2 text-[0.8125rem] text-muted-foreground">
+            <StepMark state="pending" />
             {op ? `${op.busy}…` : "Preparing…"}
           </li>
         )}
       </ul>
 
-      {failed && <p className="border-t border-border px-3.5 py-2.5 font-mono text-[0.6875rem] text-destructive">{failed.line.replace(/^✗\s*/, "")}</p>}
+      {failed && (
+        <p className="flex items-start gap-2 border-t border-border px-4 py-2.5 font-mono text-[0.6875rem] text-muted-foreground">
+          <StatusDot tone="fail" className="mt-1 shrink-0" />
+          <span className="min-w-0 break-words">{failed.line.replace(/^✗\s*/, "")}</span>
+        </p>
+      )}
 
       {timed.length > 0 && (
-        <div className="border-t border-border px-3.5 py-2">
+        <div className="border-t border-border px-4 py-2">
           <button
             type="button"
+            aria-expanded={showLog}
             onClick={() => setShowLog((v) => !v)}
-            className="flex items-center gap-1.5 text-[0.71875rem] text-muted-foreground transition-colors hover:text-foreground"
+            className="flex items-center gap-1.5 text-[0.75rem] text-muted-foreground transition-colors hover:text-foreground"
           >
             <ChevronRight className={cn("size-3.5 transition-transform", showLog && "rotate-90")} /> {showLog ? "Hide" : "Show"} full log
           </button>
           {showLog && (
-            <div className="mt-2">
+            <div className="mt-2 pb-1">
               <LogConsole lines={timed.map((t) => `${formatDuration(t.at - start!).padStart(6)}  ${t.line}`)} />
             </div>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+/** A step's 1.1rem circle: done (filled success with a check), running (warning ring with a
+ *  pulsing dot), failed (fail ring with a cross), pending (an input ring). */
+function StepMark({ state }: { state: "ok" | "running" | "fail" | "pending" }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "flex size-[1.1rem] items-center justify-center rounded-full",
+        state === "ok" && "bg-success text-background",
+        state === "running" && "shadow-[inset_0_0_0_0.09375rem_var(--warning)]",
+        state === "fail" && "text-destructive shadow-[inset_0_0_0_0.09375rem_var(--destructive)]",
+        state === "pending" && "shadow-[inset_0_0_0_0.09375rem_var(--input)]",
+      )}
+    >
+      {state === "ok" && <Check className="size-2.5" strokeWidth={3.5} />}
+      {state === "running" && <span className="size-[0.4rem] animate-pulse rounded-full bg-warning" />}
+      {state === "fail" && <X className="size-2.5" strokeWidth={3} />}
+    </span>
   );
 }
 
@@ -279,10 +296,10 @@ function TimedLog({ rows, origin }: { rows: Timed[]; origin: number }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [rows]);
   return (
-    <div ref={box} className="max-h-48 overflow-auto rounded-sm border border-border bg-[var(--log)] p-2 font-mono text-[0.6875rem] leading-relaxed">
+    <div ref={box} className="surface-log max-h-48 overflow-auto rounded-sm px-3 py-2 font-mono text-[0.6875rem] leading-relaxed">
       {rows.map((r, i) => (
         <div key={i} className="flex gap-3">
-          <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground/60">{formatDuration(r.at - origin)}</span>
+          <span className="w-12 shrink-0 text-right tabular-nums text-faint">{formatDuration(r.at - origin)}</span>
           <span className="min-w-0 break-words text-muted-foreground">{r.line}</span>
         </div>
       ))}
