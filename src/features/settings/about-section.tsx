@@ -10,6 +10,7 @@ import { restartApp, type AgentInfo, type SystemReport } from "@/lib/tauri";
 import { getAttackBox, getAttackImage, getVmProvider } from "@/lib/settings";
 import { Row, Section } from "@/features/settings/settings-layout";
 import { ONBOARDED_KEY } from "@/features/settings/settings-screen";
+import { tell } from "@/lib/failure";
 
 /* ------------------------------------------------------------------ about */
 
@@ -43,7 +44,7 @@ export function AboutSection({ version, report, agent }: { version: string | nul
       return;
     }
     // Reopen on the new version straight away; Restart now stays as the fallback.
-    await restartApp().catch(() => {});
+    await restartApp().catch(tell("Couldn't restart Cyber CTF"));
   }
 
   async function copyDiagnostics() {
@@ -128,7 +129,7 @@ export function AboutSection({ version, report, agent }: { version: string | nul
               )}
             </Button>
           ) : upd.phase === "installed" ? (
-            <Button variant="learn" size="sm" onClick={() => restartApp().catch(() => {})}>
+            <Button variant="learn" size="sm" onClick={() => restartApp().catch(tell("Couldn't restart Cyber CTF"))}>
               Restart now
             </Button>
           ) : (

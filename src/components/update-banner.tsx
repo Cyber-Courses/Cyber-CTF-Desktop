@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { Button } from "@/components/ui/button";
 import { restartApp } from "@/lib/tauri";
+import { tell } from "@/lib/failure";
 
 /**
  * Checks for an update on launch (via plugins.updater) and offers a one-click install.
@@ -49,7 +50,7 @@ export function UpdateBanner() {
             : `Version ${update.version} is available.`}
       </span>
       {phase === "ready" ? (
-        <Button variant="learn" size="sm" onClick={() => restartApp().catch(() => {})}>
+        <Button variant="learn" size="sm" onClick={() => restartApp().catch(tell("Couldn't restart Cyber CTF"))}>
           Restart now
         </Button>
       ) : (
