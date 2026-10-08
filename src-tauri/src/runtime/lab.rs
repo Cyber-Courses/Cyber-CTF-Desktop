@@ -165,16 +165,17 @@ pub fn topology(spec: &Spec) -> (HashMap<String, Vec<Interface>>, Vec<Network>) 
 /// the resolved spec (`spec` as `prepare` returned it); shown once the lab is up. None when
 /// the lab has none, or it names a value the spec doesn't have (the lab's own mistake, not
 /// worth failing a launch over).
-pub fn message(dir: &Path, spec: &Spec) -> Option<String> {
-    message_at(dir, spec, &[])
+pub fn message(dir: &Path, spec: &Spec, target: Target) -> Option<String> {
+    message_at(dir, spec, target, &[])
 }
 
 /// `message` with the host ports the lab really got: (machine, container port, host port). A
 /// local container lab publishes on ports picked at its first start, not the `publish:` values
 /// its spec declares, so a `{{ machines.web.services.0.publish }}` must say where it answers.
-pub fn message_at(dir: &Path, spec: &Spec, published: &[(String, u16, u16)]) -> Option<String> {
+/// Addresses are the ones machines have on `target` (their Docker blocks on the Compose targets).
+pub fn message_at(dir: &Path, spec: &Spec, target: Target, published: &[(String, u16, u16)]) -> Option<String> {
     let text = spec.message.as_deref()?;
-    let mut snapshot = isoloom_core::resolved::resolve_with(spec, instance(dir));
+    let mut snapshot = isoloom_core::resolved::on_target(isoloom_core::resolved::resolve_with(spec, instance(dir)), target);
     for (machine, port, host) in published {
         let services = snapshot.pointer_mut(&format!("/machines/{machine}/services")).and_then(|s| s.as_array_mut());
         for s in services.into_iter().flatten().filter(|s| s["port"] == *port) {
@@ -340,9 +341,12 @@ mod tests {
         );
         assert_eq!(ifaces["web"].iter().map(|i| (i.network.as_str(), i.ip.as_str())).collect::<Vec<_>>(), [("lab", "10.30.0.10"), ("back", "10.31.0.10")]);
         assert_eq!(ifaces["db"].len(), 1);
-        assert_eq!(message(&dir, &spec).as_deref(), Some("Start at http://localhost:8080/ (web is 10.30.0.10)."));
+        assert_eq!(message(&dir, &spec, Target::Vagrant).as_deref(), Some("Start at http://localhost:8080/ (web is 10.30.0.10)."));
         // Run locally, the lab answers on the port picked at its first start: the message says so.
-        assert_eq!(message_at(&dir, &spec, &[("web".into(), 80, 46709)]).as_deref(), Some("Start at http://localhost:46709/ (web is 10.30.0.10)."));
+        assert_eq!(
+            message_at(&dir, &spec, Target::Docker, &[("web".into(), 80, 46709)]).as_deref(),
+            Some("Start at http://localhost:46709/ (web is 10.30.0.10).")
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -364,6 +368,11 @@ mod tests {
         assert!(compose.contains("10.32.0.0/24"), "the Docker block moved: {compose}");
         assert!(!b.join(".isoloom").exists());
         assert_eq!(vagrant_dir(&b, Runtime::Vm), b.join(".isoloom-2/vagrant"));
+        // Its message gives the address its container really has (the moved block), not the spec's.
+        let mut spec = spec;
+        spec.message = Some("web is {{ machines.web.addresses.lab }}".into());
+        assert_eq!(message(&b, &spec, Target::Docker).as_deref(), Some("web is 10.32.0.10"));
+        assert_eq!(message(&b, &spec, Target::Vagrant).as_deref(), Some("web is 10.30.0.10"));
         std::fs::remove_dir_all(labs).unwrap();
     }
 
