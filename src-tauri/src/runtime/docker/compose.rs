@@ -9,7 +9,7 @@ use crate::error::Result;
 use crate::exec::{run_env, run_read, stream as exec_stream};
 
 // One compose project per lab, so labs never collide and can be cleaned up by name.
-pub(super) fn project(id: &str) -> String {
+pub fn project(id: &str) -> String {
     format!("cyberctf-{id}")
 }
 
