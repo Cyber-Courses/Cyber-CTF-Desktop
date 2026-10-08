@@ -187,7 +187,7 @@ pub async fn start(
                     log(format!("The lab is running, but its attack box didn't start: {e}. Open the lab shell to retry it."));
                 }
                 registry::record(dir, &spec, lab::vagrant_target(runtime), None);
-                welcome(dir, &spec, &mut log);
+                welcome(dir, &spec, lab::vagrant_target(runtime), &mut log);
                 Ok(())
             }
             Runtime::Docker => {
@@ -198,7 +198,7 @@ pub async fn start(
                 registry::record(dir, &spec, isoloom_core::Target::Docker, None);
                 // Its ports here are the ones picked at its first start, not the spec's.
                 let published = docker::published(dir, id, env).await;
-                if let Some(m) = lab::message_at(dir, &spec, &published) {
+                if let Some(m) = lab::message_at(dir, &spec, isoloom_core::Target::Docker, &published) {
                     m.lines().for_each(|l| log(l.to_string()));
                 }
                 Ok(())
@@ -213,7 +213,7 @@ pub async fn start(
                 let vagrant = lab::vagrant_dir(dir, runtime);
                 start_local_vm(&vagrant, provider, env, &mut log).await?;
                 registry::record(dir, &spec, lab::vagrant_target(runtime), None);
-                welcome(dir, &spec, &mut log);
+                welcome(dir, &spec, lab::vagrant_target(runtime), &mut log);
                 // The lab's networks are internal to the hypervisor, so the learner's attack VM
                 // (their own box, chosen in Settings) goes beside it, on the same hypervisor. The
                 // lab is up at this point: a failing attacker is noted, not a failed deploy.
@@ -286,7 +286,7 @@ pub async fn start(
                 attack_box_remote(app, id, &spec, env, &mut log).await?;
             }
             registry::record(dir, &spec, target, provider.is_cloud().then_some(tf));
-            welcome(dir, &spec, &mut log);
+            welcome(dir, &spec, lab::vagrant_target(runtime), &mut log);
             Ok(())
         }
         // ESXi: the same Vagrantfiles as on this machine, with the vmware_esxi provider.
@@ -304,7 +304,7 @@ pub async fn start(
                 log(format!("The lab is running, but its attack box didn't start: {e}. Open the lab shell to retry it."));
             }
             registry::record(dir, &spec, lab::vagrant_target(runtime), None);
-            welcome(dir, &spec, &mut log);
+            welcome(dir, &spec, lab::vagrant_target(runtime), &mut log);
             Ok(())
         }
     }
@@ -312,8 +312,8 @@ pub async fn start(
 
 /// The lab's own words once it is up (`message:` in its spec, addresses filled in): where to
 /// start and what to do first, as the last lines of the deploy log.
-fn welcome(dir: &Path, spec: &isoloom_core::Spec, log: &mut impl FnMut(String)) {
-    if let Some(m) = lab::message(dir, spec) {
+fn welcome(dir: &Path, spec: &isoloom_core::Spec, target: isoloom_core::Target, log: &mut impl FnMut(String)) {
+    if let Some(m) = lab::message(dir, spec, target) {
         for line in m.lines() {
             log(line.to_string());
         }
