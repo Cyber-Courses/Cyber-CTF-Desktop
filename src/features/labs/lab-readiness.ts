@@ -13,6 +13,7 @@ export function setupNeeded(lab: Lab, report: SystemReport | null, servers: Serv
   if (!rt || !report) return null;
   if (rt.runtime === "DOCKER") {
     if (!report.docker.installed) return "Needs a container engine";
+    if (report.dockerDenied) return "Docker needs permission (see Machine)";
     if (!report.dockerRunning) return "Start your container engine";
     return null;
   }
@@ -21,7 +22,7 @@ export function setupNeeded(lab: Lab, report: SystemReport | null, servers: Serv
   if (local || remote) return null;
   // Name the hypervisors this lab supports, not a generic "a hypervisor": a lab that runs on
   // VirtualBox or VMware says so, instead of looking as if nothing is installed.
-  const supported = report.vmProviders.filter((p) => !p.remote && rt.providers.includes(p.provider)).map(providerLabel);
+  const supported = report.vmProviders.filter((p) => !p.remote && rt.providers.includes(p.provider)).map((p) => providerLabel(p, report.os));
   if (supported.length === 0) return "Needs a server to run on";
   return `Needs ${joinOr(supported)}, or a server`;
 }

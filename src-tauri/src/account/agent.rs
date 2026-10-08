@@ -189,7 +189,24 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
         }
     }
     let image = host.as_ref().map(|_| DEFAULT_ATTACK_IMAGE);
-    let url = labs::run(app, data["claimLaunch"].clone(), None, host.as_deref(), image, |_line: String| {}).await?;
+    let runtime = if data["claimLaunch"]["runtime"] == "VM" { crate::runtime::Runtime::Vm } else { crate::runtime::Runtime::Docker };
+    let lab_id = data["claimLaunch"]["labId"].as_str().map(str::to_string);
+    // A lab already up here is refused below, and must be left alone; anything else this start
+    // brought up before failing (one unhealthy service, say) is torn down, or it would keep
+    // running under a FAILED session and every later launch of it would be refused.
+    let was_running = match lab_id.as_deref() {
+        Some(id) => crate::runtime::lab_running_here(app, id).await,
+        None => false,
+    };
+    let url = match labs::run(app, data["claimLaunch"].clone(), None, host.as_deref(), image, |_line: String| {}).await {
+        Ok(url) => url,
+        Err(e) => {
+            if !was_running && let Some(id) = lab_id.as_deref() {
+                let _ = crate::runtime::stop_lab(app, id, runtime).await;
+            }
+            return Err(e);
+        }
+    };
     // The lab is actually running on this machine now. If anything below fails (reporting back to
     // the backend), tear it down before returning the error, so we don't leave infra running
     // under a session the poller will mark FAILED.
@@ -213,9 +230,8 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
     }
     .await;
     if let Err(e) = report {
-        let runtime = if data["claimLaunch"]["runtime"] == "VM" { crate::runtime::Runtime::Vm } else { crate::runtime::Runtime::Docker };
-        if let Some(lab_id) = data["claimLaunch"]["labId"].as_str() {
-            let _ = crate::runtime::stop_lab(app, lab_id, runtime).await;
+        if let Some(id) = lab_id.as_deref() {
+            let _ = crate::runtime::stop_lab(app, id, runtime).await;
         }
         return Err(e);
     }

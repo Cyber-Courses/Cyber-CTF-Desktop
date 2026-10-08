@@ -95,14 +95,19 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
     let _ = run("docker", &["rm", "-f", &name], None).await;
     log(format!("Starting the attack box on {attack_net}…"));
     // --init: `sleep` as PID 1 ignores SIGTERM, so every `docker stop` waited out its timeout.
-    stream(
+    if let Err(e) = stream(
         "docker",
         &["run", "-d", "--init", "--name", &name, "--network", &attack_net, "--hostname", "attacker", "--cap-add", "NET_ADMIN", image, "sleep", "infinity"],
         None,
         &[],
         &mut log,
     )
-    .await?;
+    .await
+    {
+        // No box, so no use for its own network either: it would only hold a subnet.
+        let _ = run("docker", &["network", "rm", &attack_net], None).await;
+        return Err(e);
+    }
     // Every lab network, so labs with their own segments (dmz, internal...) are reachable. If a
     // connect fails, tear the half-wired box down so a retry starts clean instead of leaving an
     // attacker that can only reach some of the lab.
@@ -110,6 +115,7 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
         log(format!("Connecting to the lab network {}…", super::docker::short_network(id, lab_net)));
         if let Err(e) = run("docker", &["network", "connect", lab_net, &name], None).await {
             let _ = run("docker", &["rm", "-f", &name], None).await;
+            let _ = run("docker", &["network", "rm", &attack_net], None).await;
             return Err(e);
         }
     }
@@ -135,6 +141,13 @@ pub async fn stop(id: &str, mut log: impl FnMut(String)) -> Result<()> {
     let _ = stream("docker", &["rm", "-f", &container(id)], None, &[], &mut log).await;
     let _ = run("docker", &["network", "rm", &format!("cyberctf-{id}-attack")], None).await;
     Ok(())
+}
+
+/// `open_terminal` off the async runtime's threads and the UI thread: finding a terminal that
+/// starts can take a few seconds (each candidate gets a moment to fail), which froze the window
+/// when a command ran it on the main thread.
+pub async fn open_terminal_async(command: String) -> Result<()> {
+    tokio::task::spawn_blocking(move || open_terminal(&command)).await.map_err(|e| Error::Invalid(format!("couldn't open a terminal: {e}")))?
 }
 
 /// Opens the player's own terminal attached to the attack box.
@@ -197,7 +210,14 @@ pub fn open_terminal(command: &str) -> Result<()> {
             std::thread::sleep(std::time::Duration::from_millis(1500));
             match child.try_wait() {
                 Ok(Some(status)) if !status.success() => continue,
-                _ => return Ok(()),
+                _ => {
+                    // Reaped when it closes, or each terminal opened stays a zombie while the
+                    // app runs (Debian's gnome-terminal wrapper waits for its window).
+                    std::thread::spawn(move || {
+                        let _ = child.wait();
+                    });
+                    return Ok(());
+                }
             }
         }
         Err(Error::Invalid(format!("couldn't open a terminal; run this yourself: {command}")))

@@ -164,6 +164,12 @@ pub async fn start(
         server::mark_lab(dir, None)?;
         // A parked lab (paused or shut down) is one the player wants back as it was, not rebuilt:
         // its stopped machines would otherwise read as leftovers and be cleared below.
+        // Unless nothing of it is left to resume: a parked container lab whose stopped containers
+        // were pruned (or Docker reset) can only start fresh, and resuming would fail every time.
+        if parked(dir).is_some() && runtime == Runtime::Docker && local_vm(dir).is_none() && docker::containers(dir, id).await.is_ok_and(|n| n == 0) {
+            log("This lab was shut down here, but its stopped containers are gone: starting it fresh.".into());
+            mark_parked(dir, None)?;
+        }
         if parked(dir).is_some() {
             log("This lab is parked on this machine: resuming it as it was. Stop it first if you want a fresh copy.".into());
             return resume_locked(app, dir, id, runtime, &mut log).await;
@@ -379,6 +385,29 @@ async fn start_local_vm(dir: &Path, provider: providers::Provider, env: &[(Strin
     }
 }
 
+/// Whether the lab runs on this machine right now: its containers, or a local VM of it. An
+/// upgrade must not swap the folder out from under it (its containers bind-mount files from it).
+pub async fn running_here(dir: &Path, id: &str) -> bool {
+    if docker::status(dir, id).await.is_ok_and(|s| s.running) {
+        return true;
+    }
+    for rt in [Runtime::Docker, Runtime::Vm] {
+        let vdir = lab::vagrant_dir(dir, rt);
+        if vdir.join("Vagrantfile").exists() && vm::status(&vdir, &[]).await.is_ok_and(|s| s.running) {
+            return true;
+        }
+    }
+    false
+}
+
+/// [`running_here`] for a lab by id; false when it isn't installed.
+pub async fn lab_running_here(app: &AppHandle, id: &str) -> bool {
+    match lab_dir(app, id) {
+        Ok(dir) if dir.exists() => running_here(&dir, id).await,
+        _ => false,
+    }
+}
+
 async fn ensure_local_slot_free(dir: &Path, id: &str, log: &mut impl FnMut(String)) -> Result<()> {
     // Docker containers of this lab on this machine (best effort: before the first start the
     // compose file may not exist yet, and status then errors, which just means nothing to clear).
@@ -386,7 +415,7 @@ async fn ensure_local_slot_free(dir: &Path, id: &str, log: &mut impl FnMut(Strin
         if s.running {
             return Err(Error::Invalid("This lab is already running on this machine. Stop it before starting it again.".into()));
         }
-        if !s.machines.is_empty() {
+        if docker::containers(dir, id).await.is_ok_and(|n| n > 0) {
             log("Clearing a previous, stopped run…".into());
             let _ = docker::stop(dir, id, |_l: String| {}).await;
         }
@@ -496,6 +525,13 @@ async fn resume_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, 
     match runtime {
         Runtime::Docker if local_vm(dir).is_some() => vm::resume(&lab::vagrant_dir(dir, runtime), &[], &mut *log).await?,
         Runtime::Docker => {
+            // Its stopped containers pruned (or Docker reset): nothing to bring back. Say so and
+            // drop the parked mark, so the page offers a fresh start instead of a resume that
+            // fails on "no container to start" every time.
+            if docker::containers(dir, id).await.is_ok_and(|n| n == 0) {
+                mark_parked(dir, None)?;
+                return Err(Error::Invalid("Nothing is left of this lab to resume (its stopped containers are gone). Start it again for a fresh copy.".into()));
+            }
             docker::resume(dir, id, &mut *log).await?;
             // Recorded again, with its Compose project (labs started before it was recorded).
             if let Ok(spec) = lab::instanced(dir) {
@@ -557,7 +593,9 @@ pub async fn clear_parked(dir: &Path, id: &str, log: &impl Fn(String)) {
     }
     log("A parked copy of an older version of this lab is here: removing it…".into());
     let mut sink = |l: String| log(l);
-    if dir.join("docker-compose.yml").exists() || dir.join("compose.yml").exists() {
+    // A container lab here: its containers go by their Compose project, wherever (or whether)
+    // its generated Compose file is (Isoloom labs keep it under .isoloom-<n>/, not at the root).
+    if local_vm(dir).is_none() {
         let _ = docker::stop(dir, id, &mut sink).await;
     }
     for rt in [Runtime::Docker, Runtime::Vm] {
@@ -793,8 +831,8 @@ pub async fn lab_stop(app: AppHandle, id: String, runtime: Runtime, logs: Channe
     // A deploy still running in its worker process is stopped first, so the teardown never races
     // a `vagrant up` or `compose up` that would recreate what it removes; same for an attack VM
     // start beside it.
-    crate::deploy_worker::kill(&app, &id);
-    crate::deploy_worker::kill(&app, &crate::deploy_worker::attack_key(&id));
+    crate::deploy_worker::kill_and_wait(&app, &id).await;
+    crate::deploy_worker::kill_and_wait(&app, &crate::deploy_worker::attack_key(&id)).await;
     stop(&app, &dir, &id, runtime, log).await
 }
 
@@ -906,9 +944,9 @@ pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> R
         if local_vm(&dir).is_some() && matches!(runtime, Runtime::Docker) {
             let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&lab::vagrant_dir(&dir, runtime)), &[]).await?;
             let target = ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab VM's SSH settings".into()))?;
-            return exegol::open_terminal(&target.attack_shell_command(&ssh::known_hosts(&app)?)?);
+            return exegol::open_terminal_async(target.attack_shell_command(&ssh::known_hosts(&app)?)?).await;
         }
-        return exegol::shell(&id);
+        return tokio::task::spawn_blocking(move || exegol::shell(&id)).await.map_err(|e| Error::Invalid(e.to_string()))?;
     };
     if !matches!(runtime, Runtime::Docker) {
         return Err(Error::Invalid("this lab has no attack box".into()));
@@ -921,7 +959,7 @@ pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> R
         let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&lab::vagrant_dir(&dir, runtime)), &conn.env).await?;
         ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab host's SSH settings".into()))?
     };
-    exegol::open_terminal(&target.attack_shell_command(&ssh::known_hosts(&app)?)?)
+    exegol::open_terminal_async(target.attack_shell_command(&ssh::known_hosts(&app)?)?).await
 }
 
 /// An attack-box image reference the launcher accepts.
@@ -963,9 +1001,10 @@ pub async fn exegol_stop(id: String, logs: Channel<String>) -> Result<()> {
 
 /// Opens the player's terminal attached to the running attack box.
 #[tauri::command]
-pub fn exegol_shell(id: String) -> Result<()> {
+pub async fn exegol_shell(id: String) -> Result<()> {
     validate_id(&id)?;
-    exegol::shell(&id)
+    // Off the UI thread: finding a terminal that starts can take seconds.
+    tokio::task::spawn_blocking(move || exegol::shell(&id)).await.map_err(|e| Error::Invalid(e.to_string()))?
 }
 
 /// The attack VM beside a VM lab on this machine, in the container attack box's status shape.
@@ -996,15 +1035,17 @@ pub async fn attack_vm_stop(app: AppHandle, id: String, logs: Channel<String>) -
         let _ = logs.send(line);
     };
     // A start still downloading or booting it is stopped first, so the removal is final.
-    crate::deploy_worker::kill(&app, &crate::deploy_worker::attack_key(&id));
+    crate::deploy_worker::kill_and_wait(&app, &crate::deploy_worker::attack_key(&id)).await;
     attack_vm::stop(&dir, log).await;
     Ok(())
 }
 
 /// Opens the player's terminal on an SSH session into the attack VM.
 #[tauri::command]
-pub fn attack_vm_shell(app: AppHandle, id: String) -> Result<()> {
-    attack_vm::shell(&lab_dir(&app, &id)?)
+pub async fn attack_vm_shell(app: AppHandle, id: String) -> Result<()> {
+    let dir = lab_dir(&app, &id)?;
+    // Off the UI thread: finding a terminal that starts can take seconds.
+    tokio::task::spawn_blocking(move || attack_vm::shell(&dir)).await.map_err(|e| Error::Invalid(e.to_string()))?
 }
 
 #[cfg(test)]

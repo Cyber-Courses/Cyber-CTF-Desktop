@@ -10,10 +10,15 @@ use crate::exec::{run, run_read};
 /// `compose up` (or the port/config probes) surface a raw "Cannot connect to the Docker daemon".
 /// Timed, so a wedged daemon can't hang the start.
 async fn ensure_docker_up() -> Result<()> {
-    run_read("docker", &["info", "--format", "{{.ServerVersion}}"], None)
-        .await
-        .map(|_| ())
-        .map_err(|_| Error::Invalid("Docker isn't running. Start Docker Desktop (or your container engine), then start the lab again.".into()))
+    run_read("docker", &["info", "--format", "{{.ServerVersion}}"], None).await.map(|_| ()).map_err(|e| {
+        if crate::exec::docker_denied(&e) {
+            Error::Invalid(crate::exec::docker_denied_message())
+        } else {
+            Error::Invalid(
+                "Docker isn't running. Start your container engine (Docker Desktop, or the docker service on Linux), then start the lab again.".into(),
+            )
+        }
+    })
 }
 
 /// A host port is taken if we can't bind it (another lab, or anything else, holds it). Checks

@@ -149,7 +149,11 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
         </ChoiceAction>
       )}
       {!ready && installerOpened && (
-        <p className="text-[0.75rem] text-muted-foreground">Finish in Docker’s installer, launch Docker Desktop, then press Re-check.</p>
+        <p className="text-[0.75rem] text-muted-foreground">
+          {choice.id === "docker-desktop"
+            ? "Finish in Docker’s installer, launch Docker Desktop, then press Re-check."
+            : `Finish installing ${choice.name}, start it, then press Re-check.`}
+        </p>
       )}
       {!ready && isWin && (
         <p className="text-[0.75rem] text-muted-foreground">A reboot may be needed after enabling WSL. If Docker says virtualization is off, go back a step.</p>

@@ -20,10 +20,17 @@ pub(super) const PORTS_FILE: &str = ".cyberctf-ports.yml";
 
 /// A `docker compose -p <project> -f <the lab's Compose file> [-f .cyberctf-ports.yml] <rest...>`
 /// argv (the file Isoloom generated, under the lab's output folder, and its pinned ports).
+/// Without that file (a lab upgraded or re-instanced while its containers run), the project
+/// alone: Compose finds its containers by their labels, so `ps`, `stop`, `start` and `down`
+/// still reach them, where a missing `-f` made every one of them fail.
 fn args(dir: &Path, project: &str, rest: &[&str]) -> Vec<String> {
-    let mut a = vec!["compose".to_string(), "-p".into(), project.into(), "-f".into(), crate::runtime::lab::compose_file(dir).display().to_string()];
-    if dir.join(PORTS_FILE).is_file() {
-        a.extend(["-f".into(), PORTS_FILE.into()]);
+    let file = crate::runtime::lab::compose_file(dir);
+    let mut a = vec!["compose".to_string(), "-p".into(), project.into()];
+    if file.is_file() {
+        a.extend(["-f".into(), file.display().to_string()]);
+        if dir.join(PORTS_FILE).is_file() {
+            a.extend(["-f".into(), PORTS_FILE.into()]);
+        }
     }
     a.extend(rest.iter().map(|s| s.to_string()));
     a
@@ -253,6 +260,21 @@ mod tests {
         assert_eq!(names, vec!["db", "web"]);
         assert!(serving_services_from_config("{}").is_empty());
         assert!(serving_services_from_config("garbage").is_empty());
+    }
+
+    #[test]
+    fn without_its_compose_file_a_lab_is_reached_by_project() {
+        use super::{PORTS_FILE, args};
+        let dir = std::env::temp_dir().join(format!("cyberctf-compose-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(PORTS_FILE), "services: {}\n").unwrap();
+        assert_eq!(args(&dir, "cyberctf-x", &["down"]), ["compose", "-p", "cyberctf-x", "down"]);
+        let file = crate::runtime::lab::compose_file(&dir);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, "services: {}\n").unwrap();
+        let a = args(&dir, "cyberctf-x", &["ps"]);
+        assert_eq!(a[3..], ["-f".to_string(), file.display().to_string(), "-f".into(), PORTS_FILE.into(), "ps".into()]);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

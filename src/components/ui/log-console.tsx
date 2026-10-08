@@ -91,7 +91,7 @@ export function LogConsole({
         {open ? <ChevronDown className="size-3.5 text-muted-foreground" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
       </button>
       {open && (
-        <pre ref={pre} className="max-h-40 overflow-auto p-3 font-mono text-xs leading-relaxed text-muted-foreground">
+        <pre ref={pre} className="max-h-40 overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-relaxed text-muted-foreground">
           {/* Tools print blank lines around their messages: trim them, keep one between paragraphs. */}
           {lines
             .join("\n")

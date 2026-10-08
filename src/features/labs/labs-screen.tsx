@@ -112,6 +112,9 @@ export function Labs({
   if (detail) {
     return (
       <LabDetail
+        // Its own state per lab (a pending action, an open remove dialog, the attack box's
+        // auto-start): opening another lab from the sidebar or palette must not inherit it.
+        key={detail.id}
         lab={detail}
         status={statuses[detail.id]}
         busy={!!runs[detail.id]?.busy}
@@ -139,6 +142,7 @@ export function Labs({
       lab={lab}
       status={statuses[lab.id]}
       busy={!!runs[lab.id]?.busy}
+      operation={runs[lab.id]?.op}
       loggedIn={loggedIn}
       onLogin={onLogin}
       hostArch={hostArch}

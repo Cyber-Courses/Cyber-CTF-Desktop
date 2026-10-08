@@ -31,17 +31,11 @@ fn upsert(dir: &Path, spec: &Spec, target: Target, cloud: Option<&str>, project:
         project,
         started: registry::now(),
     };
-    let _ = registry::load().and_then(|mut reg| {
-        reg.upsert(entry);
-        registry::save(&reg)
-    });
+    let _ = registry::update(|reg| reg.upsert(entry));
 }
 
 /// Forgets every entry of the lab (whatever target it ran on).
 pub fn forget(dir: &Path) {
     let dir = key(dir);
-    let _ = registry::load().and_then(|mut reg| {
-        reg.environments.retain(|e| e.dir != dir);
-        registry::save(&reg)
-    });
+    let _ = registry::update(|reg| reg.environments.retain(|e| e.dir != dir));
 }

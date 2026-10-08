@@ -145,20 +145,14 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
     #[cfg(target_os = "linux")]
     {
         // pkexec raises a graphical password prompt (polkit) for the privileged install.
+        let root = |script: String| Step { program: "pkexec".into(), args: vec!["sh".into(), "-c".into(), script], note: None };
         Ok(match dep {
             Dependency::Wsl => return Err(Error::Invalid("WSL is only available on Windows.".into())),
-            Dependency::Docker => vec![step("pkexec", &["sh", "-c", "curl -fsSL https://get.docker.com | sh"])],
+            Dependency::Docker => vec![root(docker_script(crate::exec::login_name().as_deref()))],
             Dependency::Vagrant => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y vagrant"])],
             // Terraform via HashiCorp's official apt repo (best effort across Debian/Ubuntu).
-            Dependency::Terraform => vec![step(
-                "pkexec",
-                &[
-                    "sh",
-                    "-c",
-                    "wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg && echo \"deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main\" > /etc/apt/sources.list.d/hashicorp.list && apt-get update && apt-get install -y terraform",
-                ],
-            )],
-            Dependency::Virtualbox => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y virtualbox"])],
+            Dependency::Terraform => vec![root(TERRAFORM_SCRIPT.into())],
+            Dependency::Virtualbox => vec![root(VIRTUALBOX_SCRIPT.into())],
             Dependency::Qemu => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y qemu-system qemu-utils"])],
             Dependency::Libvirt => vec![step("pkexec", &["sh", "-c", "apt-get update && apt-get install -y libvirt-daemon-system virt-manager"])],
             Dependency::Utm => return Err(Error::Invalid("UTM is only available on macOS.".into())),
@@ -174,10 +168,66 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
                 ],
             )],
             Dependency::Azurecli => vec![step("pkexec", &["sh", "-c", "curl -sL https://aka.ms/InstallAzureCLIDeb | bash"])],
-            Dependency::Gcloud => vec![step("pkexec", &["sh", "-c", "curl -sSL https://sdk.cloud.google.com | bash -s -- --disable-prompts"])],
+            // The SDK installs per user, without root: under pkexec it landed in /root, which the
+            // player can't read. It goes to ~/google-cloud-sdk, whose bin the app adds to PATH.
+            Dependency::Gcloud => vec![step("sh", &["-c", "curl -sSL https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir=\"$HOME\""])],
         })
     }
 }
+
+/// HashiCorp's apt repo, then terraform. The codename is the distro's as the vendors' repos name
+/// it (an Ubuntu derivative like Mint uses its Ubuntu base's). `--batch --yes`: a second run (after a partial one)
+/// overwrites the keyring instead of asking on a terminal it doesn't have.
+#[cfg(any(target_os = "linux", test))]
+const TERRAFORM_SCRIPT: &str = concat!(
+    "set -e; ",
+    r#"codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")"; [ -n "$codename" ] || codename="$(lsb_release -cs)""#,
+    "; curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg",
+    "; echo \"deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $codename main\" > /etc/apt/sources.list.d/hashicorp.list",
+    "; apt-get update && apt-get install -y terraform"
+);
+
+/// The distro's own `virtualbox` when it has one (Ubuntu), else Oracle's apt repo and its
+/// newest `virtualbox-X.Y` (Debian ships none in main, so `apt-get install virtualbox` failed).
+#[cfg(any(target_os = "linux", test))]
+const VIRTUALBOX_SCRIPT: &str = concat!(
+    "set -e; apt-get update; ",
+    "if apt-cache policy virtualbox 2>/dev/null | grep -q 'Candidate: [0-9]'; then apt-get install -y virtualbox; exit 0; fi; ",
+    r#"codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")"; [ -n "$codename" ] || codename="$(lsb_release -cs)""#,
+    "; repo=https://download.virtualbox.org/virtualbox/debian",
+    "; curl -fsI \"$repo/dists/$codename/Release\" >/dev/null || { echo \"Oracle has no VirtualBox packages for $codename yet. Install it from https://www.virtualbox.org/wiki/Linux_Downloads\" >&2; exit 1; }",
+    "; curl -fsSL https://www.virtualbox.org/download/oracle_vbox_2016.asc | gpg --batch --yes --dearmor -o /usr/share/keyrings/oracle-virtualbox-2016.gpg",
+    "; echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/oracle-virtualbox-2016.gpg] $repo $codename contrib\" > /etc/apt/sources.list.d/virtualbox.list",
+    "; apt-get update",
+    "; pkg=\"$(apt-cache search --names-only '^virtualbox-[0-9]+\\.[0-9]+$' | awk '{print $1}' | sort -V | tail -n 1)\"",
+    "; [ -n \"$pkg\" ] || { echo \"No VirtualBox package found in Oracle's repo. Install it from https://www.virtualbox.org/wiki/Linux_Downloads\" >&2; exit 1; }",
+    "; apt-get install -y \"$pkg\""
+);
+
+/// Docker's convenience script, then the player into the `docker` group so the CLI can reach
+/// the daemon without root (pkexec runs as root, so `$USER` there is root: the name comes from
+/// the app). The group applies from the next login.
+#[cfg(any(target_os = "linux", test))]
+fn docker_script(user: Option<&str>) -> String {
+    let mut s = "curl -fsSL https://get.docker.com | sh".to_string();
+    if let Some(u) = user.filter(|u| valid_user(u)) {
+        s.push_str(&format!(" && usermod -aG docker {u} && echo 'Added {u} to the docker group: log out and back in (or restart) for it to apply.'"));
+    }
+    s
+}
+
+/// A login name safe to put in a shell script unquoted.
+#[cfg(any(target_os = "linux", test))]
+fn valid_user(u: &str) -> bool {
+    !u.is_empty()
+        && u.len() <= 32
+        && u.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c == '_')
+        && u.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+}
+
+/// Without pkexec there is no graphical password prompt (Debian ships it apart from polkit).
+pub const NO_PKEXEC: &str =
+    "pkexec isn't installed, so Cyber CTF can't ask for your password. Install it once in a terminal (sudo apt install pkexec), then try again.";
 
 async fn run_step(step: &Step, on_line: &mut impl FnMut(String)) -> Result<()> {
     if let Some(note) = &step.note {
@@ -189,6 +239,7 @@ async fn run_step(step: &Step, on_line: &mut impl FnMut(String)) -> Result<()> {
     // output streams into the app's setup log instead of a window flashing on screen.
     crate::exec::headless(&mut cmd);
     let mut child = cmd.spawn().map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound if step.program == "pkexec" => Error::Invalid(NO_PKEXEC.into()),
         std::io::ErrorKind::NotFound => Error::Invalid(format!("{} is not available on this machine.", step.program)),
         _ => Error::Io(e),
     })?;
@@ -202,6 +253,15 @@ async fn run_step(step: &Step, on_line: &mut impl FnMut(String)) -> Result<()> {
         }
     }
     let status = child.wait().await?;
+    // pkexec's own codes: 126 when the password prompt was dismissed or refused, 127 when no
+    // polkit agent could show one.
+    if step.program == "pkexec" && matches!(status.code(), Some(126 | 127)) {
+        return Err(Error::Invalid(if status.code() == Some(126) {
+            "The password prompt was cancelled, so nothing was installed. Try again and enter your password.".into()
+        } else {
+            "No password prompt could be shown (no polkit agent is running). Install it in a terminal instead.".into()
+        }));
+    }
     if !status.success() {
         return Err(Error::Invalid(format!("`{}` exited with {status}", step.program)));
     }
@@ -243,4 +303,30 @@ pub async fn install_vagrant_plugin(plugin: String, logs: Channel<String>) -> Re
     run_step(&step, &mut on_line).await?;
     on_line("Done. Re-checking this machine…".into());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TERRAFORM_SCRIPT, VIRTUALBOX_SCRIPT, docker_script, valid_user};
+
+    #[test]
+    fn docker_install_adds_the_player_to_the_docker_group() {
+        let s = docker_script(Some("florianamette"));
+        assert!(s.contains("get.docker.com") && s.contains("usermod -aG docker florianamette"), "{s}");
+        // A name that isn't a plain login name never reaches the script.
+        assert!(!docker_script(Some("a; rm -rf /")).contains("usermod"));
+        assert!(!docker_script(None).contains("usermod"));
+        assert!(valid_user("_svc-1.x") && !valid_user("Root") && !valid_user(""));
+    }
+
+    #[test]
+    fn repo_scripts_rerun_without_a_terminal_and_parse() {
+        // gpg asked "overwrite?" on a second run, with no tty to answer it.
+        for s in [TERRAFORM_SCRIPT, VIRTUALBOX_SCRIPT] {
+            assert!(s.contains("gpg --batch --yes --dearmor"), "{s}");
+            let ok = std::process::Command::new("sh").args(["-n", "-c", s]).status().unwrap();
+            assert!(ok.success(), "not valid sh: {s}");
+        }
+        assert!(VIRTUALBOX_SCRIPT.contains("download.virtualbox.org/virtualbox/debian"));
+    }
 }

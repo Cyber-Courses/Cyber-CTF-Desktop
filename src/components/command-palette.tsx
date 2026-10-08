@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CornerDownLeft, Search, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export type Command = {
   id: string;
@@ -23,6 +24,10 @@ export function CommandPalette({ open, onClose, commands }: { open: boolean; onC
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // A modal: Tab stays in the palette instead of reaching the page behind it, and focus goes
+  // back where it was when it closes.
+  useFocusTrap(dialogRef, open);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -73,7 +78,9 @@ export function CommandPalette({ open, onClose, commands }: { open: boolean; onC
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
+        aria-modal="true"
         aria-label="Command palette"
         className="w-full max-w-xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
         onKeyDown={onKey}

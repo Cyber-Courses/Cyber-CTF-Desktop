@@ -4,6 +4,8 @@ export interface AuthStatus {
   loggedIn: boolean;
   name: string | null;
   email: string | null;
+  /** The OS keychain couldn't be read (locked, or no Secret Service): why signed out. */
+  keychainError?: string | null;
 }
 
 export const authStatus = () => invoke<AuthStatus>("auth_status");
