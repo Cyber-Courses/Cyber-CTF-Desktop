@@ -164,6 +164,12 @@ pub async fn start(
         server::mark_lab(dir, None)?;
         // A parked lab (paused or shut down) is one the player wants back as it was, not rebuilt:
         // its stopped machines would otherwise read as leftovers and be cleared below.
+        // Unless nothing of it is left to resume: a parked container lab whose stopped containers
+        // were pruned (or Docker reset) can only start fresh, and resuming would fail every time.
+        if parked(dir).is_some() && runtime == Runtime::Docker && local_vm(dir).is_none() && docker::containers(dir, id).await.is_ok_and(|n| n == 0) {
+            log("This lab was shut down here, but its stopped containers are gone: starting it fresh.".into());
+            mark_parked(dir, None)?;
+        }
         if parked(dir).is_some() {
             log("This lab is parked on this machine: resuming it as it was. Stop it first if you want a fresh copy.".into());
             return resume_locked(app, dir, id, runtime, &mut log).await;
@@ -379,6 +385,29 @@ async fn start_local_vm(dir: &Path, provider: providers::Provider, env: &[(Strin
     }
 }
 
+/// Whether the lab runs on this machine right now: its containers, or a local VM of it. An
+/// upgrade must not swap the folder out from under it (its containers bind-mount files from it).
+pub async fn running_here(dir: &Path, id: &str) -> bool {
+    if docker::status(dir, id).await.is_ok_and(|s| s.running) {
+        return true;
+    }
+    for rt in [Runtime::Docker, Runtime::Vm] {
+        let vdir = lab::vagrant_dir(dir, rt);
+        if vdir.join("Vagrantfile").exists() && vm::status(&vdir, &[]).await.is_ok_and(|s| s.running) {
+            return true;
+        }
+    }
+    false
+}
+
+/// [`running_here`] for a lab by id; false when it isn't installed.
+pub async fn lab_running_here(app: &AppHandle, id: &str) -> bool {
+    match lab_dir(app, id) {
+        Ok(dir) if dir.exists() => running_here(&dir, id).await,
+        _ => false,
+    }
+}
+
 async fn ensure_local_slot_free(dir: &Path, id: &str, log: &mut impl FnMut(String)) -> Result<()> {
     // Docker containers of this lab on this machine (best effort: before the first start the
     // compose file may not exist yet, and status then errors, which just means nothing to clear).
@@ -386,7 +415,7 @@ async fn ensure_local_slot_free(dir: &Path, id: &str, log: &mut impl FnMut(Strin
         if s.running {
             return Err(Error::Invalid("This lab is already running on this machine. Stop it before starting it again.".into()));
         }
-        if !s.machines.is_empty() {
+        if docker::containers(dir, id).await.is_ok_and(|n| n > 0) {
             log("Clearing a previous, stopped run…".into());
             let _ = docker::stop(dir, id, |_l: String| {}).await;
         }
@@ -557,7 +586,9 @@ pub async fn clear_parked(dir: &Path, id: &str, log: &impl Fn(String)) {
     }
     log("A parked copy of an older version of this lab is here: removing it…".into());
     let mut sink = |l: String| log(l);
-    if dir.join("docker-compose.yml").exists() || dir.join("compose.yml").exists() {
+    // A container lab here: its containers go by their Compose project, wherever (or whether)
+    // its generated Compose file is (Isoloom labs keep it under .isoloom-<n>/, not at the root).
+    if local_vm(dir).is_none() {
         let _ = docker::stop(dir, id, &mut sink).await;
     }
     for rt in [Runtime::Docker, Runtime::Vm] {
@@ -793,8 +824,8 @@ pub async fn lab_stop(app: AppHandle, id: String, runtime: Runtime, logs: Channe
     // A deploy still running in its worker process is stopped first, so the teardown never races
     // a `vagrant up` or `compose up` that would recreate what it removes; same for an attack VM
     // start beside it.
-    crate::deploy_worker::kill(&app, &id);
-    crate::deploy_worker::kill(&app, &crate::deploy_worker::attack_key(&id));
+    crate::deploy_worker::kill_and_wait(&app, &id).await;
+    crate::deploy_worker::kill_and_wait(&app, &crate::deploy_worker::attack_key(&id)).await;
     stop(&app, &dir, &id, runtime, log).await
 }
 
@@ -996,7 +1027,7 @@ pub async fn attack_vm_stop(app: AppHandle, id: String, logs: Channel<String>) -
         let _ = logs.send(line);
     };
     // A start still downloading or booting it is stopped first, so the removal is final.
-    crate::deploy_worker::kill(&app, &crate::deploy_worker::attack_key(&id));
+    crate::deploy_worker::kill_and_wait(&app, &crate::deploy_worker::attack_key(&id)).await;
     attack_vm::stop(&dir, log).await;
     Ok(())
 }

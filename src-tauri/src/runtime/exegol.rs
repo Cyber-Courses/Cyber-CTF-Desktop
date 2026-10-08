@@ -95,14 +95,19 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
     let _ = run("docker", &["rm", "-f", &name], None).await;
     log(format!("Starting the attack box on {attack_net}…"));
     // --init: `sleep` as PID 1 ignores SIGTERM, so every `docker stop` waited out its timeout.
-    stream(
+    if let Err(e) = stream(
         "docker",
         &["run", "-d", "--init", "--name", &name, "--network", &attack_net, "--hostname", "attacker", "--cap-add", "NET_ADMIN", image, "sleep", "infinity"],
         None,
         &[],
         &mut log,
     )
-    .await?;
+    .await
+    {
+        // No box, so no use for its own network either: it would only hold a subnet.
+        let _ = run("docker", &["network", "rm", &attack_net], None).await;
+        return Err(e);
+    }
     // Every lab network, so labs with their own segments (dmz, internal...) are reachable. If a
     // connect fails, tear the half-wired box down so a retry starts clean instead of leaving an
     // attacker that can only reach some of the lab.
@@ -110,6 +115,7 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
         log(format!("Connecting to the lab network {}…", super::docker::short_network(id, lab_net)));
         if let Err(e) = run("docker", &["network", "connect", lab_net, &name], None).await {
             let _ = run("docker", &["rm", "-f", &name], None).await;
+            let _ = run("docker", &["network", "rm", &attack_net], None).await;
             return Err(e);
         }
     }

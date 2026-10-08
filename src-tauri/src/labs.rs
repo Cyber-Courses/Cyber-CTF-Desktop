@@ -89,6 +89,14 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
         return Ok(dir);
     }
 
+    // A new version of a lab that is up here: swapping the folder would pull its files out from
+    // under the running containers (they bind-mount them) and lose track of them. Stop it first.
+    if dir.exists() && runtime::running_here(&dir, lab_id).await {
+        return Err(Error::Invalid(
+            "A new version of this lab is out, but it is still running here. Stop it, then start it again to get the new version.".into(),
+        ));
+    }
+
     log(format!("Downloading {repository}@{}", &commit[..12]));
     let url = format!("https://codeload.github.com/{repository}/tar.gz/{commit}");
     let res = reqwest::get(&url).await.map_err(|e| Error::Invalid(format!("download failed: {e}")))?;

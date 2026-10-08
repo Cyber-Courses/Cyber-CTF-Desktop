@@ -211,6 +211,13 @@ fn down_serving(entries: &[compose::PsEntry], serving: &[String]) -> Vec<(String
     entries.iter().filter(|e| e.state != "running" && serving.iter().any(|s| s == &e.service)).map(|e| (e.service.clone(), e.state.clone())).collect()
 }
 
+/// How many containers the lab's project has, running or not (its status lists only the live
+/// ones): what tells a parked or cut-off lab with machines left from one with nothing left.
+pub async fn containers(dir: &Path, id: &str) -> Result<usize> {
+    let out = compose::output(dir, &compose::project(id), &["ps", "--all", "--format", "json"]).await?;
+    Ok(compose::parse_ps(&out).len())
+}
+
 pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     let project = compose::project(id);
     let out = compose::output(dir, &project, &["ps", "--all", "--format", "json"]).await?;

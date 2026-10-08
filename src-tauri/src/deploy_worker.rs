@@ -337,6 +337,31 @@ pub fn kill(app: &AppHandle, key: &str) {
     let _ = std::fs::remove_file(&f.pid);
 }
 
+/// [`kill`], then waits until the worker is gone (SIGKILL to its group after 20 s), so what
+/// follows (a teardown) never races a `compose up` or `vagrant up` that is still creating what
+/// it removes.
+pub async fn kill_and_wait(app: &AppHandle, key: &str) {
+    let Ok(d) = dir(app) else { return };
+    let Some(pid) = read_pid(&files(&d, key).pid).filter(|p| alive(*p)) else { return };
+    kill(app, key);
+    for _ in 0..40 {
+        if !alive(pid) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("kill").args(["-KILL", &format!("-{pid}")]).status();
+    }
+    for _ in 0..10 {
+        if !alive(pid) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
 /// The log of a lab's latest deploy so far, for an app that (re)attaches to a running worker.
 pub fn log_so_far(app: &AppHandle, lab_id: &str) -> Result<String> {
     crate::runtime::validate_id(lab_id)?;
