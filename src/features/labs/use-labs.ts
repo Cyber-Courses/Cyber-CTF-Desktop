@@ -68,21 +68,39 @@ export function useLabs(reloadKey: unknown = 0) {
   }, []);
 
   // One status read per lab at a time: a slow read (a busy VirtualBox can take seconds) must not
-  // let the poll interval stack a second, third, … read on top of it.
-  const inFlight = useRef<Set<string>>(new Set());
+  // let the poll interval stack a second, third, … read on top of it; a poll joins the read in
+  // flight. A `fresh` read (right after an operation) always starts, and only the newest read of
+  // a lab may set its status: a poll that began before a shutdown ended must not land after it
+  // with the old "running" and bring back the running lab's buttons.
+  const inFlight = useRef<Map<string, Promise<void>>>(new Map());
+  const latest = useRef<Map<string, number>>(new Map());
+  // When each lab's latest fresh read began: an infrastructure scan begun before it is older news
+  // for that lab, and must not keep it "running" (see the scan below).
+  const freshAt = useRef<Map<string, number>>(new Map());
   const refreshStatus = useCallback(
-    (lab: Lab) => {
-      if (!lab.runtime || inFlight.current.has(lab.id)) return;
-      inFlight.current.add(lab.id);
-      labStatus(lab.id, lab.runtime.runtime)
-        .then((s) => setStatuses((m) => ({ ...m, [lab.id]: s })))
+    (lab: Lab, { fresh = false }: { fresh?: boolean } = {}): Promise<void> => {
+      if (!lab.runtime) return Promise.resolve();
+      const pending = inFlight.current.get(lab.id);
+      if (pending && !fresh) return pending;
+      const mine = (latest.current.get(lab.id) ?? 0) + 1;
+      latest.current.set(lab.id, mine);
+      if (fresh) freshAt.current.set(lab.id, Date.now());
+      const read: Promise<void> = labStatus(lab.id, lab.runtime.runtime)
+        .then((s) => {
+          if (latest.current.get(lab.id) !== mine) return;
+          setStatuses((m) => ({ ...m, [lab.id]: s }));
+          // Down now: the last scan's "running" for it is out of date.
+          if (fresh && !s.running) setScanRunning((r) => (r.has(lab.id) ? new Set([...r].filter((id) => id !== lab.id)) : r));
+        })
         .catch(() => {
           /* not installed / not running - leave status unknown */
         })
         .finally(() => {
-          inFlight.current.delete(lab.id);
+          if (inFlight.current.get(lab.id) === read) inFlight.current.delete(lab.id);
           setProbed((p) => (p.has(lab.id) ? p : new Set(p).add(lab.id)));
         });
+      inFlight.current.set(lab.id, read);
+      return read;
     },
     [setStatuses, setProbed],
   );
@@ -97,7 +115,7 @@ export function useLabs(reloadKey: unknown = 0) {
         lastCatalogue = { key: reloadKey, labs: d.labs };
         setLabs(d.labs);
         setError(null);
-        d.labs.forEach(refreshStatus);
+        d.labs.forEach((l) => void refreshStatus(l));
       })
       .catch((e) => alive && setError(String(e)));
     // Best effort: logged out (or a backend without the query) just shows no progress.
@@ -113,7 +131,7 @@ export function useLabs(reloadKey: unknown = 0) {
   // surface here within a few seconds without a manual refresh.
   useEffect(() => {
     if (!labs) return;
-    const t = setInterval(() => labs.forEach(refreshStatus), 6000);
+    const t = setInterval(() => labs.forEach((l) => void refreshStatus(l)), 6000);
     return () => clearInterval(t);
   }, [labs, refreshStatus]);
 
@@ -123,14 +141,18 @@ export function useLabs(reloadKey: unknown = 0) {
   // truth; refreshStatus then fills in each running lab's machines and URL.
   useEffect(() => {
     let alive = true;
-    const scan = () =>
-      runningLabs()
-        .then((ids) => {
+    const scan = () => {
+      const began = Date.now();
+      return runningLabs()
+        .then((all) => {
           if (!alive) return;
+          // A lab read fresh after this scan began (an operation just ended on it) is left out.
+          const ids = all.filter((id) => (freshAt.current.get(id) ?? 0) < began);
           setScanRunning(new Set(ids));
-          (labs ?? []).filter((l) => ids.includes(l.id)).forEach(refreshStatus);
+          (labs ?? []).filter((l) => ids.includes(l.id)).forEach((l) => void refreshStatus(l));
         })
         .catch(() => {});
+    };
     scan();
     const t = setInterval(scan, 6000);
     return () => {

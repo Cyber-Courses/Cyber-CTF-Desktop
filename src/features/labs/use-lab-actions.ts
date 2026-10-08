@@ -15,8 +15,19 @@ import { appendDeployLog, beginDeploy, endDeploy, useDeploy } from "@/lib/deploy
  * opens Settings) and comes back. Keyed per lab, so two deploys at once keep separate logs; the
  * UI reads each lab's run from `runs[labId]`.
  */
-export function useLabActions(refresh: (lab: Lab) => void) {
+export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) => Promise<void> | void) {
   const { runs } = useDeploy();
+
+  // An operation stays busy until the lab's status after it has been read: cleared earlier, the
+  // page showed the old status's buttons (Shut down on a lab just shut down) for a few seconds,
+  // and a click there started the same operation again. Capped, so a hung read never pins it.
+  const settle = useCallback(
+    async (lab: Lab) => {
+      await Promise.race([Promise.resolve(refresh(lab, { fresh: true })), new Promise((r) => setTimeout(r, 20_000))]);
+      endDeploy(lab.id);
+    },
+    [refresh],
+  );
 
   /**
    * `host` = a server host id to run a VM lab on, null for this machine. Omitted, VM labs
@@ -88,11 +99,10 @@ export function useLabActions(refresh: (lab: Lab) => void) {
       } catch (e) {
         appendDeployLog(lab.id, `✗ ${String(e)}`);
       } finally {
-        endDeploy(lab.id);
-        refresh(lab);
+        await settle(lab);
       }
     },
-    [refresh],
+    [settle],
   );
 
   const stop = useCallback(
@@ -105,11 +115,10 @@ export function useLabActions(refresh: (lab: Lab) => void) {
       } catch (e) {
         appendDeployLog(lab.id, `✗ ${String(e)}`);
       } finally {
-        endDeploy(lab.id);
-        refresh(lab);
+        await settle(lab);
       }
     },
-    [refresh],
+    [settle],
   );
 
   /** Pause (state saved) or shut down (powered off) a lab, keeping its machines for `resume`. */
@@ -123,11 +132,10 @@ export function useLabActions(refresh: (lab: Lab) => void) {
       } catch (e) {
         appendDeployLog(lab.id, `✗ ${String(e)}`);
       } finally {
-        endDeploy(lab.id);
-        refresh(lab);
+        await settle(lab);
       }
     },
-    [refresh],
+    [settle],
   );
 
   /** Bring a parked lab back as it was: no rebuild, no new launch. */
@@ -143,11 +151,10 @@ export function useLabActions(refresh: (lab: Lab) => void) {
       } catch (e) {
         appendDeployLog(lab.id, `✗ ${String(e)}`);
       } finally {
-        endDeploy(lab.id);
-        refresh(lab);
+        await settle(lab);
       }
     },
-    [refresh],
+    [settle],
   );
 
   /** Re-run a VM lab's provisioning on one machine (or all), streamed into its deploy log. */
@@ -161,11 +168,10 @@ export function useLabActions(refresh: (lab: Lab) => void) {
       } catch (e) {
         appendDeployLog(lab.id, `✗ ${String(e)}`);
       } finally {
-        endDeploy(lab.id);
-        refresh(lab);
+        await settle(lab);
       }
     },
-    [refresh],
+    [settle],
   );
 
   return { runs, launch, stop, park, resume, provision };
