@@ -450,6 +450,8 @@ Vagrant.configure("2") do |config|
   config.vm.hostname = "cyberctf-selftest"
   config.vm.box = "bento/debian-12"
   config.vm.synced_folder ".", "/vagrant", disabled: true
+  # Set on macOS, where Vagrant's own SSH can't reach the LAN (see lan_relay).
+  config.ssh.proxy_command = ENV["ISOLOOM_SSH_PROXY_COMMAND"] if ENV["ISOLOOM_SSH_PROXY_COMMAND"]
   config.vm.provider "vmware_esxi" do |esxi|
     esxi.esxi_hostname = ENV["CYBERCTF_ESXI_HOSTNAME"]
     esxi.esxi_hostport = Integer(ENV.fetch("CYBERCTF_ESXI_HOSTPORT", "22"))
