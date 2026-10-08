@@ -312,7 +312,17 @@ export function useHostSetup({
     }
   }
 
-  const title = saved ? `${saved.name} connected` : editing ? `Edit ${initial.name}` : cloud ? "Set up cloud provider" : "Connect a host";
+  // "connected" only once the test says so: a saved host whose test failed isn't.
+  const failed = !!test && test !== "testing" && !test.ok;
+  const title = saved
+    ? failed
+      ? `${saved.name} saved, not connected yet`
+      : `${saved.name} connected`
+    : editing
+      ? `Edit ${initial.name}`
+      : cloud
+        ? "Set up cloud provider"
+        : "Connect a host";
 
   return {
     initial,
