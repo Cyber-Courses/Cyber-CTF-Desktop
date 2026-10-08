@@ -237,8 +237,23 @@ pub async fn detect(vagrant_installed: bool) -> Vec<ProviderStatus> {
             Some(p) => vagrant_installed && plugins.iter().any(|i| i == p),
         };
 
+        // Installed is not the same as working: `VBoxManage --version` never talks to VirtualBox's
+        // service (VBoxSVC), which can wedge so that every real call hangs (a deploy then sits on
+        // "Bringing machine up" forever). Ask it something that needs the service, briefly.
+        let unresponsive = provider == Provider::Virtualbox
+            && hypervisor == Some(true)
+            && matches!(
+                crate::exec::run_env_timed("VBoxManage", &["list", "runningvms"], None, &[], std::time::Duration::from_secs(8)).await,
+                Err(crate::error::Error::CommandFailed { ref stderr, .. }) if stderr.contains("timed out")
+            );
+
         let reason = if !vagrant_installed {
             Some("Vagrant is not installed".to_string())
+        } else if unresponsive {
+            Some(
+                "VirtualBox isn't responding (its background service is stuck). Quit VirtualBox and any VM windows, or restart the Mac, then re-check."
+                    .to_string(),
+            )
         } else if hypervisor == Some(false) {
             provider.probe().map(|(program, _)| format!("`{program}` was not found")).or_else(|| Some("not installed".to_string()))
         } else if let Some(why) = (provider == Provider::Libvirt).then(kvm_problem).flatten() {
