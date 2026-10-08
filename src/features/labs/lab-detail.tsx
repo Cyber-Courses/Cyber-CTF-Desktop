@@ -16,7 +16,7 @@ import { HealthBanner, useLabCheck } from "@/features/labs/lab-health";
 import { AutoStop, StartTimer } from "@/features/labs/lab-timers";
 import { NetworkDiagram } from "@/features/labs/network-diagram";
 import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on";
-import { runPlaces } from "@/features/labs/lab-row";
+import { runPlaces, runsNatively } from "@/features/labs/lab-row";
 import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
 import { OPERATION_STATUS, useActiveOperations, useDeployingLabs, useWorkerLog } from "@/lib/deploy-store";
@@ -108,7 +108,8 @@ export function LabDetail({
   // local log of it, so follow the worker's log file instead.
   const workerLines = useWorkerLog(lab.id, backendDeploying.has(lab.id) && !busy && logs.length === 0);
   const rt = lab.runtime;
-  const native = rt?.architectures.includes(hostArch) ?? true;
+  // Unknown host (report not in yet) or a lab for any CPU: native, never a wrong "emulated".
+  const native = !hostArch || !rt || runsNatively(rt, hostArch);
   const running = status?.running ?? false;
   // A deploy this session started sets `busy`; one still running after a window reload (which
   // loses the in-memory deploy state) is recovered from the backend, so the page shows "Starting"

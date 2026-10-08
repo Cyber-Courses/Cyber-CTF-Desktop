@@ -72,7 +72,9 @@ export function HomeScreen({
     };
   }, []);
 
-  const dockerReady = report ? report.docker.installed && report.dockerRunning : false;
+  // Unknown until the machine report is in: no "set up" call to action for a Docker that is
+  // simply not probed yet.
+  const dockerReady = report ? report.docker.installed && report.dockerRunning : null;
   const running = (labs ?? []).filter((l) => statuses[l.id]?.running);
   const preview = (labs ?? []).slice(0, 6);
 
@@ -87,11 +89,14 @@ export function HomeScreen({
   const memPct = metrics ? (metrics.memUsed / metrics.memTotal) * 100 : null;
   const capacity = metrics ? assessRam(metrics.memTotal) : null;
 
-  const heroStatus = !dockerReady
-    ? "Set up Docker to start running labs."
-    : running.length > 0
-      ? `${running.length} lab${running.length > 1 ? "s" : ""} running on this machine.`
-      : "This machine is ready. Pick a lab to attack.";
+  const heroStatus =
+    dockerReady === null
+      ? "Checking this machine…"
+      : !dockerReady
+        ? "Set up Docker to start running labs."
+        : running.length > 0
+          ? `${running.length} lab${running.length > 1 ? "s" : ""} running on this machine.`
+          : "This machine is ready. Pick a lab to attack.";
 
   return (
     <div className="space-y-5">
@@ -102,7 +107,7 @@ export function HomeScreen({
           <p className="mt-1 text-[0.8125rem] text-muted-foreground">{heroStatus}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {!dockerReady ? (
+          {dockerReady === false ? (
             <button
               onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))}
               className="inline-flex items-center gap-1.5 rounded-lg border border-learn bg-learn px-3.5 py-2 text-[0.8125rem] font-medium text-[#140b2e] transition-colors hover:bg-learn/90"
