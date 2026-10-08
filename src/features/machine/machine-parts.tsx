@@ -14,7 +14,7 @@ function Sparkline({ values, className }: { values: number[]; className?: string
   if (values.length < 2) return <div className={cn("h-7", className)} />;
   const pts = values.map((v, i) => `${(i / (values.length - 1)) * 100},${28 - (Math.max(0, Math.min(100, v)) / 100) * 26 - 1}`);
   return (
-    <svg viewBox="0 0 100 28" preserveAspectRatio="none" className={cn("h-7 w-full text-learn", className)} aria-hidden>
+    <svg viewBox="0 0 100 28" preserveAspectRatio="none" className={cn("h-7 w-full text-jewel-text", className)} aria-hidden>
       <polygon points={`0,28 ${pts.join(" ")} 100,28`} className="fill-current opacity-10" />
       <polyline points={pts.join(" ")} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
     </svg>
@@ -50,7 +50,7 @@ export function DetailRow({ name, value, bad }: { name: string; value: string; b
   return (
     <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2 text-[0.78125rem] last:border-b-0">
       <span className="text-muted-foreground">{name}</span>
-      <span className={cn("ml-auto font-mono text-[0.71875rem]", bad ? "text-amber-500" : "text-foreground")}>{value}</span>
+      <span className={cn("ml-auto font-mono text-[0.71875rem]", bad ? "text-warning" : "text-foreground")}>{value}</span>
     </div>
   );
 }
@@ -102,7 +102,7 @@ export function LabTypeRow({
             <StatusPill tone={tone}>{status}</StatusPill>
           </p>
           <p className="mt-0.5 text-[0.75rem] text-muted-foreground">{detail}</p>
-          {hint && <p className="mt-1 text-[0.75rem] text-amber-500">{hint}</p>}
+          {hint && <p className="mt-1 text-[0.75rem] text-warning">{hint}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-2">{actions}</div>
       </div>

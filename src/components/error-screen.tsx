@@ -47,21 +47,21 @@ export function ErrorPanel({
       .catch(tell("Couldn't copy to the clipboard"));
 
   return (
-    <div className={cn("flex flex-col items-center rounded-xl border border-border px-6 py-10 text-center", className)}>
-      <div className="flex size-11 items-center justify-center rounded-lg border border-rose-500/25 bg-rose-500/10 text-rose-400">
+    <div className={cn("flex flex-col items-center rounded-panel border border-border px-6 py-10 text-center", className)}>
+      <div className="flex size-11 items-center justify-center rounded-control border border-destructive/25 bg-destructive/10 text-destructive">
         <AlertTriangle className="size-5" />
       </div>
       <p className="mt-4 text-sm font-medium text-foreground">{title}</p>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
       <p
         role="alert"
-        className="mt-4 max-h-32 w-full max-w-md overflow-auto rounded-lg border border-rose-500/25 bg-rose-500/10 p-3 text-left font-mono text-[0.71875rem] break-words whitespace-pre-wrap text-rose-300"
+        className="mt-4 max-h-32 w-full max-w-md overflow-auto rounded-control border border-destructive/25 bg-destructive/10 p-3 text-left font-mono text-[0.71875rem] break-words whitespace-pre-wrap text-destructive"
       >
         {error.message || String(error) || "Unknown error"}
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         {retry && (
-          <Button variant="learn" size="sm" onClick={retry}>
+          <Button variant="primary" size="sm" onClick={retry}>
             <RotateCcw className="size-3.5" /> Try again
           </Button>
         )}

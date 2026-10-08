@@ -45,7 +45,7 @@ export function OptionsStep({ s }: { s: HostSetup }) {
             />
           </Field>
           {mtdCost != null && (
-            <p className={cn("mt-1.5 text-[0.71875rem]", v.monthlyLimit && mtdCost >= v.monthlyLimit ? "text-rose-400" : "text-muted-foreground")}>
+            <p className={cn("mt-1.5 text-[0.71875rem]", v.monthlyLimit && mtdCost >= v.monthlyLimit ? "text-destructive" : "text-muted-foreground")}>
               Spent this month: ${mtdCost.toFixed(2)}
               {v.monthlyLimit ? ` of $${v.monthlyLimit.toFixed(2)}` : ""}.
             </p>
@@ -60,7 +60,7 @@ export function OptionsStep({ s }: { s: HostSetup }) {
           </Button>
         }
         right={
-          <Button variant="learn" onClick={saveAndTest} disabled={saving || !connectionOk}>
+          <Button variant="primary" onClick={saveAndTest} disabled={saving || !connectionOk}>
             {saving && <Spinner className="size-4" />} Save and test
           </Button>
         }

@@ -18,12 +18,12 @@ export function TestStep({ s }: { s: HostSetup }) {
       ) : (
         <div
           className={cn(
-            "flex items-start gap-3 rounded-lg border p-3.5",
-            test.ok ? "border-emerald-500/25 bg-emerald-500/10" : "border-rose-500/25 bg-rose-500/10",
+            "flex items-start gap-3 rounded-control border p-3.5",
+            test.ok ? "border-success/25 bg-success/10" : "border-destructive/25 bg-destructive/10",
           )}
         >
-          {test.ok ? <CheckCircle2 className="mt-px size-5 shrink-0 text-emerald-500" /> : <XCircle className="mt-px size-5 shrink-0 text-rose-400" />}
-          <p className={cn("text-[0.8125rem]", test.ok ? "text-foreground" : "text-rose-300")}>
+          {test.ok ? <CheckCircle2 className="mt-px size-5 shrink-0 text-success" /> : <XCircle className="mt-px size-5 shrink-0 text-destructive" />}
+          <p className={cn("text-[0.8125rem]", test.ok ? "text-foreground" : "text-destructive")}>
             {test.message}
             {test.latencyMs != null && <span className="ml-1.5 font-mono text-[0.71875rem] text-muted-foreground">{test.latencyMs} ms</span>}
           </p>
@@ -36,7 +36,7 @@ export function TestStep({ s }: { s: HostSetup }) {
           </Button>
         }
         right={
-          <Button variant="learn" onClick={onDone}>
+          <Button variant="primary" onClick={onDone}>
             <Play className="size-4" /> Done
           </Button>
         }

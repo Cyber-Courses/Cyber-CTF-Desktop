@@ -69,7 +69,7 @@ export function ConnectionStep({ s }: { s: HostSetup }) {
         </Field>
       </div>
       {isToken && (
-        <div className="mt-3 rounded-lg border border-border bg-surface px-3 py-2.5">
+        <div className="mt-3 rounded-control border border-border bg-surface px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-[0.75rem] font-medium">
             <KeyRound className="size-3.5 text-muted-foreground" /> Authorize the launcher&apos;s SSH key
           </div>
@@ -82,7 +82,7 @@ export function ConnectionStep({ s }: { s: HostSetup }) {
               {pubkey ?? "Loading the launcher's public key…"}
             </code>
             <Button variant="outline" size="sm" onClick={copyKey} disabled={!pubkey}>
-              {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy"}
+              {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy"}
             </Button>
           </div>
         </div>
@@ -94,7 +94,7 @@ export function ConnectionStep({ s }: { s: HostSetup }) {
           </Button>
         }
         right={
-          <Button variant="learn" onClick={next} disabled={!connectionOk}>
+          <Button variant="primary" onClick={next} disabled={!connectionOk}>
             Continue
           </Button>
         }

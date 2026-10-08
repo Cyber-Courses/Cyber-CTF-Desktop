@@ -33,7 +33,7 @@ export function CliRow({
       <span className="ml-auto flex items-center gap-3">
         <Status tool={tool} />
         {!installed && tool && (
-          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy || locked}>
+          <Button variant="primary" size="sm" onClick={onInstall} disabled={busy || locked}>
             {busy ? "Installing…" : "Install"}
           </Button>
         )}
@@ -65,7 +65,7 @@ export function ToolRow({
       <span className="ml-auto flex items-center gap-3">
         <Status tool={tool} />
         {!installed && tool && (
-          <Button variant="learn" size="sm" onClick={onInstall} disabled={busy || locked}>
+          <Button variant="primary" size="sm" onClick={onInstall} disabled={busy || locked}>
             {busy ? "Installing…" : "Install"}
           </Button>
         )}
@@ -92,12 +92,12 @@ export function ImageRow({
       <span className="font-medium text-foreground">{image.name}</span>
       <span className="truncate text-[0.71875rem] text-muted-foreground">{note}</span>
       <span className="ml-auto flex items-center gap-3">
-        <span className={cn("flex items-center gap-1.5", image.present ? "text-emerald-500" : "text-muted-foreground")}>
-          {image.present && <span className="size-1.5 rounded-full bg-emerald-500" />}
+        <span className={cn("flex items-center gap-1.5", image.present ? "text-success" : "text-muted-foreground")}>
+          {image.present && <span className="size-1.5 rounded-full bg-success" />}
           {image.present ? "pulled" : "not pulled"}
         </span>
         {!image.present && (
-          <Button variant="learn" size="sm" onClick={onPull} disabled={busy || locked}>
+          <Button variant="primary" size="sm" onClick={onPull} disabled={busy || locked}>
             {busy ? "Pulling…" : "Pull"}
           </Button>
         )}

@@ -33,7 +33,7 @@ export function AttackStep({ report }: { report: SystemReport }) {
             selected={image === p.image}
             onSelect={() => pick(p.image)}
             mark={
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-control border border-border bg-surface">
                 <Terminal className="size-4 text-muted-foreground" />
               </span>
             }
@@ -50,7 +50,7 @@ export function AttackStep({ report }: { report: SystemReport }) {
           Using a custom image from Settings: <span className="font-mono">{image}</span>
         </p>
       )}
-      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border bg-card px-3.5 py-2.5 text-left">
+      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-control border border-border bg-card px-3.5 py-2.5 text-left">
         <span>
           <span className="block text-[0.8125rem] font-medium">Start it with each lab</span>
           <span className="block text-[0.75rem] text-muted-foreground">Otherwise launch it from the lab’s page when you need it.</span>
@@ -62,7 +62,7 @@ export function AttackStep({ report }: { report: SystemReport }) {
             setAutoAttackBox(e.target.checked);
             setAuto(e.target.checked);
           }}
-          className="size-4 accent-[var(--color-learn)]"
+          className="size-4 accent-[var(--jewel)]"
         />
       </label>
       {!isDockerReady(report) && (

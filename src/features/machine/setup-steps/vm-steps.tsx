@@ -48,7 +48,7 @@ export function VmStep({ report, setup }: { report: SystemReport; setup: Machine
             <>
               <span className="text-[0.8125rem] text-muted-foreground">Cyber CTF can install {label} for you.</span>
               <Button
-                variant="learn"
+                variant="primary"
                 size="sm"
                 onClick={() => install(choice.provider, INSTALLABLE[choice.provider]!, `Installing ${label}…`)}
                 disabled={installing !== null}
@@ -102,13 +102,13 @@ export function VagrantStep({ report, setup }: { report: SystemReport; setup: Ma
   return (
     <div className="space-y-3">
       {/* For the hypervisor picked on the previous step. */}
-      <div className="overflow-hidden rounded-lg border border-border">
+      <div className="overflow-hidden rounded-control border border-border">
         <Requirement
           ok={report.vagrant.installed}
           title="Vagrant"
           detail={report.vagrant.installed ? (report.vagrant.version ?? "Installed") : "Creates and starts the lab VMs."}
           action={
-            <Button variant="learn" size="sm" onClick={() => install("vagrant", "vagrant", "Installing Vagrant…")} disabled={installing !== null}>
+            <Button variant="primary" size="sm" onClick={() => install("vagrant", "vagrant", "Installing Vagrant…")} disabled={installing !== null}>
               {installing === "vagrant" ? (
                 <>
                   <Spinner className="size-3.5" /> Installing…
@@ -125,7 +125,12 @@ export function VagrantStep({ report, setup }: { report: SystemReport; setup: Ma
             title={`${label} add-on for Vagrant`}
             detail={choice.pluginInstalled || report.vagrant.installed ? choice.plugin : `${choice.plugin}, once Vagrant is installed.`}
             action={
-              <Button variant="learn" size="sm" onClick={() => setup.installPlugin(choice.plugin!)} disabled={installing !== null || !report.vagrant.installed}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setup.installPlugin(choice.plugin!)}
+                disabled={installing !== null || !report.vagrant.installed}
+              >
                 {installing === choice.plugin ? (
                   <>
                     <Spinner className="size-3.5" /> Installing…

@@ -23,9 +23,9 @@ export function Requirement({
     <div className="flex min-h-12 items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
       <span className="flex size-4 shrink-0 items-center justify-center">
         {ok ? (
-          <Check className="size-3.5 text-emerald-500" />
+          <Check className="size-3.5 text-success" />
         ) : (
-          <span className={cn("size-1.5 rounded-full", optional ? "bg-muted-foreground/40" : "bg-amber-500")} />
+          <span className={cn("size-1.5 rounded-full", optional ? "bg-muted-foreground/40" : "bg-warning")} />
         )}
       </span>
       <span className="min-w-0 flex-1 text-left">
@@ -45,7 +45,7 @@ export function Log({ setup }: { setup: MachineSetupState }) {
   useEffect(() => end.current?.scrollIntoView({ block: "end" }), [logs]);
   if (logs.length === 0) return null;
   return (
-    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-[#070707] p-3 text-left font-mono text-[0.71875rem] leading-relaxed text-muted-foreground">
+    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-control border border-border bg-[var(--log)] p-3 text-left font-mono text-[0.71875rem] leading-relaxed text-muted-foreground">
       {logs.join("\n")}
       <div ref={end} />
     </pre>
@@ -55,7 +55,7 @@ export function Log({ setup }: { setup: MachineSetupState }) {
 export function CmdRow({ cmd }: { cmd: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border bg-[#070707] px-3 py-2">
+    <div className="flex items-center gap-2 rounded-control border border-border bg-[var(--log)] px-3 py-2">
       <code className="flex-1 overflow-x-auto text-left font-mono text-[0.75rem] text-foreground">{cmd}</code>
       <button
         onClick={() =>
@@ -69,7 +69,7 @@ export function CmdRow({ cmd }: { cmd: string }) {
         }
         className="inline-flex shrink-0 items-center gap-1 text-[0.71875rem] text-muted-foreground hover:text-foreground"
       >
-        {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy"}
+        {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy"}
       </button>
     </div>
   );
@@ -90,10 +90,7 @@ export function Outcome({ title, ok, detail }: { title: string; ok: boolean; det
   return (
     <div className="flex items-center gap-3 border-b border-border px-3.5 py-3 text-left last:border-b-0">
       <span
-        className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-full",
-          ok ? "bg-emerald-500/15 text-emerald-500" : "bg-muted text-muted-foreground",
-        )}
+        className={cn("flex size-7 shrink-0 items-center justify-center rounded-full", ok ? "bg-success/15 text-success" : "bg-muted text-muted-foreground")}
       >
         <CheckCircle2 className="size-4" />
       </span>
@@ -107,7 +104,7 @@ export function Outcome({ title, ok, detail }: { title: string; ok: boolean; det
 
 export function Skipped({ title, reason }: { title: string; reason: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-border px-3.5 py-2.5 text-left">
+    <div className="rounded-control border border-dashed border-border px-3.5 py-2.5 text-left">
       <p className="text-[0.8125rem] font-medium text-muted-foreground">{title}</p>
       <p className="text-[0.75rem] text-muted-foreground">{reason}</p>
     </div>

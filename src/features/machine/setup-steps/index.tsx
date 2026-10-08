@@ -26,7 +26,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
   if (step === "pkgmgr") {
     if (report.pkgManager.installed) {
       return (
-        <div className="overflow-hidden rounded-lg border border-border">
+        <div className="overflow-hidden rounded-control border border-border">
           <Requirement ok title={report.pkgManager.name} detail={report.pkgManager.version ?? "Installed"} action={null} />
         </div>
       );
@@ -37,18 +37,18 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
           <div className="space-y-2">
             <p className="text-[0.78125rem] text-muted-foreground">Run this in Terminal, then come back, it’s detected automatically:</p>
             <CmdRow cmd={'/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'} />
-            <button onClick={() => openExternal("https://brew.sh")} className="inline-flex items-center gap-1.5 text-[0.75rem] text-learn hover:underline">
+            <button onClick={() => openExternal("https://brew.sh")} className="inline-flex items-center gap-1.5 text-[0.75rem] text-jewel-text hover:underline">
               <ExternalLink className="size-3.5" /> brew.sh
             </button>
           </div>
         )}
         {isWin && (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-[#0f0f0f] p-3.5">
+          <div className="flex items-center justify-between gap-3 rounded-control border border-border bg-glass p-3.5">
             <div>
               <p className="text-[0.8125rem] font-medium">App Installer (winget)</p>
               <p className="text-[0.75rem] text-muted-foreground">Install it from the Microsoft Store, then come back.</p>
             </div>
-            <Button variant="learn" onClick={() => openExternal("https://apps.microsoft.com/detail/9nblggh4nns1")}>
+            <Button variant="primary" onClick={() => openExternal("https://apps.microsoft.com/detail/9nblggh4nns1")}>
               <ExternalLink className="size-3.5" /> Get
             </Button>
           </div>
@@ -71,7 +71,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
           Cyber CTF turns on WSL 2 for you. Windows asks for permission once (the usual admin prompt), then needs a restart.
         </p>
         <Button
-          variant="learn"
+          variant="primary"
           className="mt-4"
           disabled={setup.busy}
           onClick={() => setup.install("wsl", "wsl", "Turning on WSL 2. Accept the Windows prompt to continue…")}
@@ -82,7 +82,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
           <Log setup={setup} />
         </div>
         {tried && (
-          <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[0.8125rem] text-amber-200">
+          <p className="mt-3 rounded-control border border-warning/30 bg-warning/10 p-3 text-[0.8125rem] text-warning">
             Restart Windows to finish, then open Cyber CTF again to continue setup.
           </p>
         )}
@@ -105,7 +105,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
           </ol>
           <button
             onClick={() => openExternal("https://learn.microsoft.com/windows/wsl/install")}
-            className="mt-4 inline-flex items-center gap-1.5 text-[0.75rem] text-learn hover:underline"
+            className="mt-4 inline-flex items-center gap-1.5 text-[0.75rem] text-jewel-text hover:underline"
           >
             <ExternalLink className="size-3.5" /> Microsoft’s WSL install guide
           </button>
@@ -138,7 +138,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
 export function SetupOutcome({ report, setup }: { report: SystemReport | null; setup: MachineSetupState }) {
   const { dockerTest, vmTest } = setup;
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div className="overflow-hidden rounded-control border border-border">
       <Outcome
         title="Container labs"
         ok={dockerTest === "ok"}

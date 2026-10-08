@@ -124,7 +124,7 @@ export function AboutSection({ version, report, agent }: { version: string | nul
         description={updateText}
         control={
           upd.phase === "available" || upd.phase === "installing" ? (
-            <Button variant="learn" size="sm" onClick={install} disabled={upd.phase === "installing"}>
+            <Button variant="primary" size="sm" onClick={install} disabled={upd.phase === "installing"}>
               {upd.phase === "installing" ? (
                 <>
                   <Spinner className="size-3.5" /> Installing…
@@ -134,7 +134,7 @@ export function AboutSection({ version, report, agent }: { version: string | nul
               )}
             </Button>
           ) : upd.phase === "installed" ? (
-            <Button variant="learn" size="sm" onClick={() => restartApp().catch(tell("Couldn't restart Cyber CTF"))}>
+            <Button variant="primary" size="sm" onClick={() => restartApp().catch(tell("Couldn't restart Cyber CTF"))}>
               Restart now
             </Button>
           ) : (
@@ -157,7 +157,7 @@ export function AboutSection({ version, report, agent }: { version: string | nul
           <Button variant="outline" size="sm" onClick={copyDiagnostics}>
             {copied ? (
               <>
-                <Check className="size-3.5 text-emerald-500" /> Copied
+                <Check className="size-3.5 text-success" /> Copied
               </>
             ) : (
               <>

@@ -51,8 +51,8 @@ export function HealthBanner({
   onResume?: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-3.5">
-      <AlertTriangle className="size-4 shrink-0 text-amber-500" />
+    <div className="flex flex-wrap items-center gap-3 rounded-panel border border-warning/30 bg-warning/[0.06] p-3.5">
+      <AlertTriangle className="size-4 shrink-0 text-warning" />
       <div className="min-w-0 flex-1 text-[0.78125rem]">
         <p className="text-foreground">
           {down.join(", ")} {down.length > 1 ? "are" : "is"} down. The lab may not work.
@@ -64,7 +64,7 @@ export function HealthBanner({
         )}
         {check && check !== "checking" && check.available && (
           <>
-            <p className={cn("mt-0.5 flex items-center gap-1.5", check.ok ? "text-emerald-500" : "text-rose-400")}>
+            <p className={cn("mt-0.5 flex items-center gap-1.5", check.ok ? "text-success" : "text-destructive")}>
               {check.ok ? <ShieldCheck className="size-3.5" /> : <ShieldAlert className="size-3.5" />}
               {check.ok ? "Still solvable." : "It can no longer be solved. Reset it to get a clean lab."}
             </p>

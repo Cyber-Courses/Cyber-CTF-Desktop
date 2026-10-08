@@ -67,7 +67,7 @@ export function MachineSetup({
 
             <div className="mt-5 flex gap-1.5">
               {steps.map((_, n) => (
-                <div key={n} className={cn("h-1 flex-1 rounded-full transition-colors", n <= at ? "bg-learn" : "bg-muted")} />
+                <div key={n} className={cn("h-1 flex-1 rounded-full transition-colors", n <= at ? "bg-jewel-solid" : "bg-muted")} />
               ))}
             </div>
 
@@ -77,7 +77,7 @@ export function MachineSetup({
                   Step {at + 1} of {steps.length}
                 </p>
                 <div className="mt-2 flex items-start gap-3.5">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-panel border border-border bg-surface">
                     <meta.icon className="size-5 text-foreground" />
                   </span>
                   <div className="min-w-0 pt-0.5">
@@ -99,11 +99,11 @@ export function MachineSetup({
                     )}
                   </div>
                   {key === "ready" ? (
-                    <Button variant="learn" onClick={onClose}>
+                    <Button variant="primary" onClick={onClose}>
                       <Play className="size-4" /> Done
                     </Button>
                   ) : (
-                    <Button variant="learn" onClick={next} disabled={setup.busy || !canContinue(key, report, setup)}>
+                    <Button variant="primary" onClick={next} disabled={setup.busy || !canContinue(key, report, setup)}>
                       {nextLabel(key, report)}
                     </Button>
                   )}

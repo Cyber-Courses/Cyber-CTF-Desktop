@@ -41,7 +41,7 @@ export function UpdateBanner() {
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border bg-learn/10 px-6 py-2.5 text-sm">
+    <div className="flex items-center justify-between gap-3 border-b border-border bg-jewel/10 px-6 py-2.5 text-sm">
       <span className="text-foreground">
         {phase === "ready"
           ? "Update installed. Restarting Cyber CTF…"
@@ -50,11 +50,11 @@ export function UpdateBanner() {
             : `Version ${update.version} is available.`}
       </span>
       {phase === "ready" ? (
-        <Button variant="learn" size="sm" onClick={() => restartApp().catch(tell("Couldn't restart Cyber CTF"))}>
+        <Button variant="primary" size="sm" onClick={() => restartApp().catch(tell("Couldn't restart Cyber CTF"))}>
           Restart now
         </Button>
       ) : (
-        <Button variant="learn" size="sm" onClick={install} disabled={phase === "downloading"}>
+        <Button variant="primary" size="sm" onClick={install} disabled={phase === "downloading"}>
           {phase === "downloading" ? "Updating…" : "Update"}
         </Button>
       )}

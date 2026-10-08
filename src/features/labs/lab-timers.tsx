@@ -26,7 +26,7 @@ export function AutoStop({ at }: { at: number }) {
   const h = Math.floor(left / 3600);
   const m = Math.floor((left % 3600) / 60);
   return (
-    <p className="text-[0.71875rem] text-amber-500">
+    <p className="text-[0.71875rem] text-warning">
       Auto-stops at {time} · in {h > 0 ? `${h}h ` : ""}
       {m}m
     </p>

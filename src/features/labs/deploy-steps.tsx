@@ -168,7 +168,7 @@ export function DeploySteps({
         )}
         <span className="ml-auto flex items-center gap-2 text-[0.75rem]">
           {failed ? (
-            <span className="flex items-center gap-1.5 text-rose-400">
+            <span className="flex items-center gap-1.5 text-destructive">
               <X className="size-3.5" /> Failed
             </span>
           ) : busy ? (
@@ -176,12 +176,12 @@ export function DeploySteps({
               <Spinner className="size-3.5" /> {op?.busy ?? "Building"}
             </span>
           ) : ready || (done && !op) ? (
-            <span className="flex items-center gap-1.5 text-emerald-500">
-              <span className="size-1.5 rounded-full bg-emerald-500" /> Ready
+            <span className="flex items-center gap-1.5 text-success">
+              <span className="size-1.5 rounded-full bg-success" /> Ready
             </span>
           ) : op && timed.length > 0 ? (
             <span className="flex items-center gap-1.5 text-muted-foreground">
-              <Check className="size-3.5 text-emerald-500" /> {op.done}
+              <Check className="size-3.5 text-success" /> {op.done}
             </span>
           ) : null}
           {start && end && <span className="font-mono tabular-nums text-muted-foreground">{formatDuration(end - start)}</span>}
@@ -208,12 +208,12 @@ export function DeploySteps({
                   {state === "running" ? (
                     <Spinner className="size-3.5" />
                   ) : state === "fail" ? (
-                    <X className="size-3.5 text-rose-400" />
+                    <X className="size-3.5 text-destructive" />
                   ) : (
-                    <Check className="size-3.5 text-emerald-500" />
+                    <Check className="size-3.5 text-success" />
                   )}
                 </span>
-                <span className={cn("flex-1", state === "fail" ? "text-rose-300" : "text-foreground")}>{p.label}</span>
+                <span className={cn("flex-1", state === "fail" ? "text-destructive" : "text-foreground")}>{p.label}</span>
                 <span className="font-mono text-[0.6875rem] tabular-nums text-muted-foreground">{formatDuration(to - from)}</span>
                 <ChevronRight className={cn("size-3.5 text-muted-foreground/60 transition-transform", expanded && "rotate-90")} />
               </button>
@@ -233,7 +233,7 @@ export function DeploySteps({
         {done && !op && (
           <li className="flex items-center gap-2.5 px-3.5 py-2 text-[0.78125rem]">
             <span className="flex size-4 shrink-0 items-center justify-center">
-              <Check className="size-3.5 text-emerald-500" />
+              <Check className="size-3.5 text-success" />
             </span>
             <span className="flex-1 text-foreground">Ready</span>
           </li>
@@ -248,7 +248,7 @@ export function DeploySteps({
         )}
       </ul>
 
-      {failed && <p className="border-t border-border px-3.5 py-2.5 font-mono text-[0.6875rem] text-rose-400">{failed.line.replace(/^✗\s*/, "")}</p>}
+      {failed && <p className="border-t border-border px-3.5 py-2.5 font-mono text-[0.6875rem] text-destructive">{failed.line.replace(/^✗\s*/, "")}</p>}
 
       {timed.length > 0 && (
         <div className="border-t border-border px-3.5 py-2">
@@ -279,7 +279,7 @@ function TimedLog({ rows, origin }: { rows: Timed[]; origin: number }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [rows]);
   return (
-    <div ref={box} className="max-h-48 overflow-auto rounded-md border border-border bg-[#070707] p-2 font-mono text-[0.6875rem] leading-relaxed">
+    <div ref={box} className="max-h-48 overflow-auto rounded-sm border border-border bg-[var(--log)] p-2 font-mono text-[0.6875rem] leading-relaxed">
       {rows.map((r, i) => (
         <div key={i} className="flex gap-3">
           <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground/60">{formatDuration(r.at - origin)}</span>

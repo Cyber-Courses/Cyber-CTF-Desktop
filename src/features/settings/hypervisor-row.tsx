@@ -123,7 +123,7 @@ export function HypervisorRow({
         </RadioList>
       )}
       {notReady.length > 0 && (
-        <div className="mt-3 overflow-hidden rounded-lg border border-border">
+        <div className="mt-3 overflow-hidden rounded-control border border-border">
           {notReady.map((h) => (
             <div key={h.provider} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
               <HypervisorLogo provider={h.provider} size="sm" />

@@ -44,7 +44,7 @@ export function HostSetupPage({
       {/* Segmented progress, one bar per step. */}
       <div className="mt-5 flex gap-1.5">
         {steps.map((s, n) => (
-          <div key={s} className={cn("h-1 flex-1 rounded-full transition-colors", n <= i ? "bg-learn" : "bg-muted")} />
+          <div key={s} className={cn("h-1 flex-1 rounded-full transition-colors", n <= i ? "bg-jewel-solid" : "bg-muted")} />
         ))}
       </div>
 

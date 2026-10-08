@@ -115,7 +115,7 @@ export function MachineScreen({
     ) : t.result === "ok" ? (
       <span>tested {formatAgo(t.at, now)}</span>
     ) : (
-      <span className="text-rose-500">last test failed {formatAgo(t.at, now)}</span>
+      <span className="text-destructive">last test failed {formatAgo(t.at, now)}</span>
     );
 
   const dockerReady = report.docker.installed && report.dockerRunning;
@@ -150,10 +150,10 @@ export function MachineScreen({
         <span
           className={cn(
             "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.75rem] font-medium",
-            needsSetup ? "border-amber-500/30 text-amber-500" : "border-emerald-500/30 text-emerald-500",
+            needsSetup ? "border-warning/30 text-warning" : "border-success/30 text-success",
           )}
         >
-          <span className={cn("size-1.5 rounded-full", needsSetup ? "bg-amber-500" : "bg-emerald-500")} />
+          <span className={cn("size-1.5 rounded-full", needsSetup ? "bg-warning" : "bg-success")} />
           {needsSetup ? `${needsSetup} lab ${needsSetup === 1 ? "type needs" : "types need"} setup` : "Ready for labs"}
         </span>
         <span className="text-[0.75rem] text-muted-foreground">
@@ -162,7 +162,7 @@ export function MachineScreen({
         </span>
         <Button
           className="ml-auto"
-          variant={needsSetup ? "learn" : "outline"}
+          variant={needsSetup ? "primary" : "outline"}
           size="sm"
           onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))}
         >
@@ -191,9 +191,9 @@ export function MachineScreen({
 
       {/* Low disk: labs and the attack box are several GB each, so say so before a download fails. */}
       {m && m.diskTotal > 0 && (diskPct >= 90 || m.diskTotal - m.diskUsed < LOW_DISK_BYTES) && (
-        <div role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-sm text-amber-200">
-          <p className="font-medium text-amber-300">Low disk space</p>
-          <p className="mt-1 text-[0.8125rem] text-amber-200/80">
+        <div role="alert" className="rounded-control border border-warning/30 bg-warning/10 p-3.5 text-sm text-warning">
+          <p className="font-medium text-warning">Low disk space</p>
+          <p className="mt-1 text-[0.8125rem] text-warning/80">
             Only {formatBytes(m.diskTotal - m.diskUsed)} free. The attack box alone is about 3.4 GB, and each lab image adds more. Free up space before you
             start a lab.
           </p>
@@ -246,7 +246,7 @@ export function MachineScreen({
             dockerReady ? (
               testBtn("docker")
             ) : report.dockerDenied ? null : (
-              <Button variant="learn" size="sm" onClick={() => fix("docker")}>
+              <Button variant="primary" size="sm" onClick={() => fix("docker")}>
                 Fix
               </Button>
             )
@@ -296,7 +296,7 @@ export function MachineScreen({
                 Use a server
               </Button>
             ) : (
-              <Button variant="learn" size="sm" onClick={() => fix(hasHypervisor ? "vagrant" : "vm")}>
+              <Button variant="primary" size="sm" onClick={() => fix(hasHypervisor ? "vagrant" : "vm")}>
                 Fix
               </Button>
             )

@@ -53,7 +53,7 @@ export function AccountRow({
             <span
               className={cn(
                 "size-1.5 shrink-0 rounded-full",
-                dot === null ? "bg-muted-foreground/40" : dot === "ok" ? "bg-emerald-500" : dot === "warn" ? "bg-amber-500" : "bg-rose-500",
+                dot === null ? "bg-muted-foreground/40" : dot === "ok" ? "bg-success" : dot === "warn" ? "bg-warning" : "bg-destructive",
               )}
             />
           </p>
@@ -101,13 +101,13 @@ export function AccountRow({
             ))}
           </ul>
         ) : (
-          <p className={cn("mt-2 flex items-start gap-1.5 pl-9 text-[0.75rem]", ok ? "text-emerald-500" : "text-rose-400")}>
+          <p className={cn("mt-2 flex items-start gap-1.5 pl-9 text-[0.75rem]", ok ? "text-success" : "text-destructive")}>
             {ok ? <CheckCircle2 className="mt-px size-3.5 shrink-0" /> : <XCircle className="mt-px size-3.5 shrink-0" />}
             <span>{result.message}</span>
           </p>
         ))}
       {host.monthlyLimit != null && (
-        <p className={cn("mt-1.5 pl-9 text-[0.71875rem]", spent != null && spent >= host.monthlyLimit ? "text-rose-400" : "text-muted-foreground")}>
+        <p className={cn("mt-1.5 pl-9 text-[0.71875rem]", spent != null && spent >= host.monthlyLimit ? "text-destructive" : "text-muted-foreground")}>
           Budget ${host.monthlyLimit.toFixed(0)}/mo{spent != null ? ` · $${spent.toFixed(2)} this month` : ""}
           {spent != null && spent >= host.monthlyLimit ? " — over budget" : ""}
         </p>
@@ -117,9 +117,9 @@ export function AccountRow({
 }
 
 function CheckGlyph({ state }: { state: ServerCheck["state"] }) {
-  if (state === "ok") return <CheckCircle2 className="mt-px size-3.5 shrink-0 text-emerald-500" />;
-  if (state === "warn") return <AlertTriangle className="mt-px size-3.5 shrink-0 text-amber-500" />;
-  return <XCircle className="mt-px size-3.5 shrink-0 text-rose-400" />;
+  if (state === "ok") return <CheckCircle2 className="mt-px size-3.5 shrink-0 text-success" />;
+  if (state === "warn") return <AlertTriangle className="mt-px size-3.5 shrink-0 text-warning" />;
+  return <XCircle className="mt-px size-3.5 shrink-0 text-destructive" />;
 }
 
 function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
@@ -129,7 +129,7 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
       title={label}
       aria-label={label}
       onClick={onClick}
-      className="grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="grid size-8 place-items-center rounded-control text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
     >
       {children}
     </button>
@@ -139,8 +139,8 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
 export function Status({ tool }: { tool?: Tool }) {
   const installed = !!tool?.installed;
   return (
-    <span className={cn("flex items-center gap-1.5 text-[0.75rem]", installed ? "text-emerald-500" : "text-muted-foreground")}>
-      {installed && <span className="size-1.5 rounded-full bg-emerald-500" />}
+    <span className={cn("flex items-center gap-1.5 text-[0.75rem]", installed ? "text-success" : "text-muted-foreground")}>
+      {installed && <span className="size-1.5 rounded-full bg-success" />}
       {tool ? (installed ? (tool.version ?? "installed") : "not installed") : "…"}
     </span>
   );

@@ -107,15 +107,15 @@ export function CloudScreen() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-4">
         <h1 className="min-w-0 flex-1 text-xl font-semibold tracking-tight">Cloud</h1>
-        <Button variant="learn" size="sm" onClick={() => openSetup()}>
+        <Button variant="primary" size="sm" onClick={() => openSetup()}>
           <Plus className="size-3.5" /> Set up cloud provider
         </Button>
       </div>
 
-      {error && <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.78125rem] text-destructive">{error}</p>}
+      {error && <p className="rounded-control border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.78125rem] text-destructive">{error}</p>}
 
       {over.length > 0 && (
-        <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[0.78125rem] text-rose-300">
+        <p className="rounded-control border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.78125rem] text-destructive">
           {over.length === 1 ? `${over[0].name} is over its monthly budget` : `${over.length} accounts are over their monthly budget`} — new labs there are
           blocked until you raise the budget or next month.
         </p>
@@ -128,7 +128,7 @@ export function CloudScreen() {
             const s = statuses[l.id];
             return (
               <div key={l.id} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 text-[0.78125rem] last:border-b-0">
-                <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
+                <span className="size-2 shrink-0 rounded-full bg-success" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{l.title}</p>
                   <p className="truncate text-[0.6875rem] text-muted-foreground">

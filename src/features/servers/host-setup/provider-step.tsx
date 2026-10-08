@@ -29,11 +29,11 @@ export function ProviderStep({ s }: { s: HostSetup }) {
               disabled={!p.ready}
               onClick={() => p.ready && pickProvider(p.id as CloudProvider)}
               className={cn(
-                "relative rounded-xl border p-4 text-left transition-colors",
+                "relative rounded-panel border p-4 text-left transition-colors",
                 !p.ready
                   ? "cursor-default border-border opacity-55"
                   : selected
-                    ? "border-learn bg-learn/5 ring-1 ring-learn/40"
+                    ? "border-jewel bg-jewel/5 ring-1 ring-jewel/40"
                     : "border-border hover:border-ring/60",
               )}
             >
@@ -41,7 +41,7 @@ export function ProviderStep({ s }: { s: HostSetup }) {
                 <span
                   className={cn(
                     "absolute right-3 top-3 grid size-4 place-items-center rounded-full border transition-colors",
-                    selected ? "border-learn bg-learn text-white" : "border-muted-foreground/30",
+                    selected ? "border-jewel bg-jewel-solid text-jewel-on" : "border-muted-foreground/30",
                   )}
                 >
                   {selected && <CheckCircle2 className="size-3" />}
@@ -66,7 +66,7 @@ export function ProviderStep({ s }: { s: HostSetup }) {
           </Button>
         }
         right={
-          <Button variant="learn" onClick={next} disabled={!CLOUD_META[cloudProvider]?.ready}>
+          <Button variant="primary" onClick={next} disabled={!CLOUD_META[cloudProvider]?.ready}>
             Continue
           </Button>
         }

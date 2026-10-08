@@ -51,7 +51,7 @@ export function Step({ icon: Icon, title, description, children }: { icon: typeo
     // mt-2 separates the icon row from the "Step N of M" line above it, as in machine-setup.
     <div className="mt-2">
       <div className="flex items-start gap-3.5">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-panel border border-border bg-surface">
           <Icon className="size-5 text-foreground" />
         </span>
         <div className="min-w-0 pt-0.5">
@@ -90,7 +90,7 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
     <input
       spellCheck={false}
       {...props}
-      className="w-full rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring"
+      className="w-full rounded-sm border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-ring"
     />
   );
 }
@@ -101,7 +101,7 @@ export function Select({ className, children, ...props }: React.SelectHTMLAttrib
       <select
         {...props}
         className={cn(
-          "w-full cursor-pointer appearance-none rounded-md border border-border bg-card px-3 py-2 pr-9 text-[0.8125rem] text-foreground outline-none transition-colors hover:border-ring/60 focus:border-ring",
+          "w-full cursor-pointer appearance-none rounded-sm border border-border bg-card px-3 py-2 pr-9 text-[0.8125rem] text-foreground outline-none transition-colors hover:border-ring/60 focus:border-ring",
           className,
         )}
       >

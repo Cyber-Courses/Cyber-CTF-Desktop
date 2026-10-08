@@ -68,7 +68,7 @@ export function HostRow({
               title={isDefault ? "The default host for website launches. Click to unset." : "Make this the default host for website launches."}
               className={cn(
                 "inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[0.59375rem] font-medium uppercase tracking-wide transition-colors",
-                isDefault ? "border-learn/50 bg-learn/10 text-learn" : "border-border text-muted-foreground/70 hover:border-ring/60 hover:text-foreground",
+                isDefault ? "border-jewel/50 bg-jewel/10 text-jewel-text" : "border-border text-muted-foreground/70 hover:border-ring/60 hover:text-foreground",
               )}
             >
               <Star className={cn("size-2.5", isDefault && "fill-current")} /> Default
@@ -88,18 +88,18 @@ export function HostRow({
               </>
             )}
             {online && running > 0 && (
-              <span className="inline-flex items-center gap-1 font-medium text-learn">
-                <span className="size-1.5 rounded-full bg-learn" /> {running} lab{running > 1 ? "s" : ""} running
+              <span className="inline-flex items-center gap-1 font-medium text-jewel-text">
+                <span className="size-1.5 rounded-full bg-jewel-solid" /> {running} lab{running > 1 ? "s" : ""} running
               </span>
             )}
             {lastVm && (
-              <span className={cn("inline-flex items-center gap-1", lastVm.result === "ok" ? "text-emerald-500" : "text-rose-500")}>
+              <span className={cn("inline-flex items-center gap-1", lastVm.result === "ok" ? "text-success" : "text-destructive")}>
                 {lastVm.result === "ok" ? <Check className="size-3" /> : <X className="size-3" />} VM test {lastVm.result === "ok" ? "passed" : "failed"} ·{" "}
                 {formatAgo(lastVm.at, now)}
               </span>
             )}
           </p>
-          {result && !result.ok && <p className="mt-1 text-[0.75rem] text-rose-500">{result.message}</p>}
+          {result && !result.ok && <p className="mt-1 text-[0.75rem] text-destructive">{result.message}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <Button variant="outline" size="sm" onClick={onTest} disabled={test === "testing"}>
@@ -154,7 +154,7 @@ function Menu({ items }: { items: MenuItem[] }) {
         type="button"
         aria-label="More actions"
         onClick={() => (pos ? setPos(null) : open())}
-        className="grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="grid size-8 place-items-center rounded-control text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         <MoreHorizontal className="size-4" />
       </button>
@@ -163,7 +163,7 @@ function Menu({ items }: { items: MenuItem[] }) {
           <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-40 cursor-default" onClick={() => setPos(null)} />
           <div
             style={{ position: "fixed", top: pos.top, right: pos.right }}
-            className="z-50 w-36 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-lg"
+            className="z-50 w-36 overflow-hidden rounded-control border border-border bg-card py-1 shadow-lg"
           >
             {items.map((it) => (
               <button
@@ -175,7 +175,7 @@ function Menu({ items }: { items: MenuItem[] }) {
                 }}
                 className={cn(
                   "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[0.78125rem] transition-colors hover:bg-muted",
-                  it.danger ? "text-rose-500" : "text-foreground",
+                  it.danger ? "text-destructive" : "text-foreground",
                 )}
               >
                 <it.icon className="size-3.5" /> {it.label}

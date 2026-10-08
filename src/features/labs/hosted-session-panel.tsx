@@ -40,7 +40,7 @@ export function HostedSessionPanel({
         <div className="min-w-0 flex-1">
           {state === "RUNNING" ? (
             <>
-              <p className="flex items-center gap-1.5 text-[0.8125rem] font-medium text-emerald-500">
+              <p className="flex items-center gap-1.5 text-[0.8125rem] font-medium text-success">
                 <CheckCircle2 className="size-3.5" /> Running, hosted by Cyber CTF
               </p>
               <p className="mt-0.5 text-[0.75rem] text-muted-foreground">
@@ -68,7 +68,7 @@ export function HostedSessionPanel({
             {session &&
               state === "RUNNING" &&
               session.endpoints.map((e) => (
-                <Button key={e.port} variant="learn" size="sm" onClick={() => openExternal(e.url)}>
+                <Button key={e.port} variant="primary" size="sm" onClick={() => openExternal(e.url)}>
                   Open{session.endpoints.length > 1 ? ` :${e.port}` : ""} <ExternalLink className="size-3.5" />
                 </Button>
               ))}

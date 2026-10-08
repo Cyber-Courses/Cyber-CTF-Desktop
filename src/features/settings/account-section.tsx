@@ -26,7 +26,7 @@ export function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus
       ) : auth.loggedIn ? (
         <>
           <div className="flex items-center gap-3.5 px-5 py-4">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-learn/15 text-sm font-semibold text-learn">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-jewel/15 text-sm font-semibold text-jewel-text">
               {initials(auth.name, auth.email)}
             </span>
             <div className="min-w-0 flex-1">
@@ -79,7 +79,7 @@ export function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus
             )
           }
           control={
-            <Button variant="learn" size="sm" onClick={login} disabled={busy}>
+            <Button variant="primary" size="sm" onClick={login} disabled={busy}>
               {busy ? (
                 <>
                   <Spinner className="size-3.5" /> Waiting for the browser…

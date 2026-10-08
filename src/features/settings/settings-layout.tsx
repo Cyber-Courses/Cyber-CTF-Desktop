@@ -17,7 +17,7 @@ export function Section({ title, description, saved, children }: { title: string
         </div>
         <span
           aria-live="polite"
-          className={cn("flex items-center gap-1 text-xs text-emerald-500 transition-opacity duration-300", saved ? "opacity-100" : "opacity-0")}
+          className={cn("flex items-center gap-1 text-xs text-success transition-opacity duration-300", saved ? "opacity-100" : "opacity-0")}
         >
           <Check className="size-3.5" /> Saved
         </span>

@@ -36,7 +36,7 @@ export function AttackBoxPanel({
       />
       <div className="space-y-3 p-4">
         <div className="flex items-center gap-2 text-[0.8125rem]">
-          <Crosshair className="size-4 text-learn" />
+          <Crosshair className="size-4 text-jewel-text" />
           {remote && running ? (
             <span>Running on {host}</span>
           ) : status?.running ? (
@@ -59,12 +59,12 @@ export function AttackBoxPanel({
               : "Your machine on the lab network. Open its shell to attack the targets from inside the lab."}
         </p>
         {onShell && shellReady && (
-          <Button variant="learn" className="w-full" onClick={onShell}>
+          <Button variant="primary" className="w-full" onClick={onShell}>
             <Terminal className="size-4" /> Open attacker shell
           </Button>
         )}
         {!remote && status && !status.imagePresent && !status.running && (
-          <p className="text-[0.71875rem] text-amber-500">
+          <p className="text-[0.71875rem] text-warning">
             The first start downloads <span className="font-mono">{name}</span> (several GB).
           </p>
         )}

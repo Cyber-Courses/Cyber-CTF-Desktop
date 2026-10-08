@@ -343,8 +343,8 @@ export function LabDetail({
                 <Spinner className="size-3" /> {OPERATION_STATUS[operation]}
               </span>
             ) : running ? (
-              <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-emerald-500">
-                <span className="size-1.5 rounded-full bg-emerald-500" />
+              <span className="inline-flex items-center gap-1.5 text-[0.75rem] font-medium text-success">
+                <span className="size-1.5 rounded-full bg-success" />
                 Running on {status?.host ?? "this machine"}
                 {whereLabel && !status?.host && <span className="text-muted-foreground"> · {whereLabel}</span>}
               </span>
@@ -368,7 +368,7 @@ export function LabDetail({
               </span>
             )}
             <span>· {lab.category}</span>
-            {rt && !native && isDocker && <span className="text-amber-500">· emulated (slower)</span>}
+            {rt && !native && isDocker && <span className="text-warning">· emulated (slower)</span>}
             {(lab.skills ?? []).map((sk) => (
               <span key={sk.id} className="rounded border border-border px-1.5 py-px text-[0.6875rem]">
                 {sk.name}
@@ -381,7 +381,7 @@ export function LabDetail({
           {running ? (
             <>
               {url && (
-                <Button variant="learn" onClick={() => openExternal(url)} title={`Open ${url} in your browser`}>
+                <Button variant="primary" onClick={() => openExternal(url)} title={`Open ${url} in your browser`}>
                   <ExternalLink className="size-4" /> Open in browser
                 </Button>
               )}
@@ -430,7 +430,7 @@ export function LabDetail({
           ) : parked && onResume ? (
             <>
               <Tip key="resume" text="Bring the lab back as it was">
-                <Button variant="learn" onClick={() => void act("resume")} disabled={busy}>
+                <Button variant="primary" onClick={() => void act("resume")} disabled={busy}>
                   {busy ? (
                     <>
                       <Spinner className="size-4" /> Resuming…
@@ -449,7 +449,7 @@ export function LabDetail({
               </Tip>
             </>
           ) : starting ? (
-            <Button variant="learn" disabled>
+            <Button variant="primary" disabled>
               <Spinner className="size-4" /> Starting… <StartTimer />
             </Button>
           ) : interrupted ? (
@@ -471,13 +471,13 @@ export function LabDetail({
             </Button>
           ) : !loggedIn && onLogin ? (
             // Logged out: say so on the button and log in from it, rather than a greyed-out Start.
-            <Button variant="learn" onClick={() => void onLogin().catch(tell("Couldn't start signing in"))}>
+            <Button variant="primary" onClick={() => void onLogin().catch(tell("Couldn't start signing in"))}>
               <LogIn className="size-4" /> Sign in to start
             </Button>
           ) : (
             <div className="relative">
               <Button
-                variant="learn"
+                variant="primary"
                 // With servers saved, ask where to run first; otherwise start here right away.
                 onClick={() => (hasChoice ? setChoosing(true) : onStart({ kind: "local" }))}
                 disabled={!loggedIn || !rt || hostedLive}
@@ -503,7 +503,7 @@ export function LabDetail({
                         Cancel
                       </Button>
                       <Button
-                        variant="learn"
+                        variant="primary"
                         size="sm"
                         onClick={() => {
                           setChoosing(false);
@@ -533,7 +533,7 @@ export function LabDetail({
           )}
         </div>
       </div>
-      {shellError && <p className="-mt-3 text-[0.71875rem] text-rose-400">{shellError}</p>}
+      {shellError && <p className="-mt-3 text-[0.71875rem] text-destructive">{shellError}</p>}
       {(mySession || (hostedTried && (hosted.busyLab === lab.id || hosted.error))) && (
         <HostedSessionPanel
           session={mySession}
@@ -650,7 +650,7 @@ export function LabDetail({
                     ))}
                   </div>
                 </div>
-                {!native && <p className="text-amber-500">Emulated on your CPU (slower than native).</p>}
+                {!native && <p className="text-warning">Emulated on your CPU (slower than native).</p>}
               </div>
             </Panel>
           )}
@@ -702,7 +702,7 @@ export function LabDetail({
                       value={provisionTarget}
                       onChange={(e) => setProvisionTarget(e.target.value)}
                       disabled={busy}
-                      className="h-8 w-full rounded-md border border-border bg-background px-2 text-[0.71875rem] text-foreground outline-none focus:border-ring"
+                      className="h-8 w-full rounded-sm border border-border bg-background px-2 text-[0.71875rem] text-foreground outline-none focus:border-ring"
                     >
                       <option value="">All machines</option>
                       {(status?.machines ?? [])

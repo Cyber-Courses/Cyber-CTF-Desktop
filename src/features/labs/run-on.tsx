@@ -33,7 +33,7 @@ export function RunOnDialog({ onClose, children, footer }: { onClose: () => void
   useFocusTrap(ref);
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--scrim)] p-4 backdrop-blur-[2px]"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
@@ -42,7 +42,7 @@ export function RunOnDialog({ onClose, children, footer }: { onClose: () => void
         role="dialog"
         aria-modal="true"
         aria-label="Where should the lab run?"
-        className="flex max-h-[85vh] w-full max-w-[28rem] flex-col rounded-xl border border-border bg-card shadow-2xl shadow-black/50 outline-none"
+        className="flex max-h-[85vh] w-full max-w-[28rem] flex-col rounded-panel border border-border bg-card shadow-2xl shadow-black/50 outline-none"
       >
         <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
         <div className="flex justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>

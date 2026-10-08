@@ -74,9 +74,9 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
     >
       {oci ? (
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem]">
+          <div className="flex flex-wrap items-center gap-2 rounded-control border border-border px-3 py-2.5 text-[0.75rem]">
             {ociCfg?.configured ? (
-              <span className="flex items-center gap-1.5 text-emerald-500">
+              <span className="flex items-center gap-1.5 text-success">
                 <CheckCircle2 className="size-3.5" /> Found ~/.oci/config
               </span>
             ) : (
@@ -119,14 +119,14 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
       ) : azure ? (
         <div className="space-y-3">
           {azureChecking ? (
-            <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem] text-muted-foreground">
+            <div className="flex items-center gap-2 rounded-control border border-border px-3 py-2.5 text-[0.75rem] text-muted-foreground">
               <Spinner className="size-3.5" /> Checking the Azure CLI…
             </div>
           ) : azureSubs.length > 0 ? (
             <>
               {/* The sign-in, its log, then the subscription it gives access to (as for GCP). */}
-              <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
-                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+              <div className="flex items-center gap-2 rounded-control border border-border px-3 py-2 text-[0.75rem]">
+                <CheckCircle2 className="size-3.5 shrink-0 text-success" />
                 <span className="text-muted-foreground">Signed in to the Azure CLI.</span>
                 <button
                   type="button"
@@ -152,7 +152,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             </>
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
+              <div className="flex flex-wrap items-center gap-2 rounded-control border border-border px-3 py-2 text-[0.75rem]">
                 <span className="text-muted-foreground">Sign in with the Azure CLI to list your subscriptions.</span>
                 <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
                   {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (az login)
@@ -168,14 +168,14 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
       ) : gcp ? (
         <div className="space-y-3">
           {gcpChecking ? (
-            <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-[0.75rem] text-muted-foreground">
+            <div className="flex items-center gap-2 rounded-control border border-border px-3 py-2.5 text-[0.75rem] text-muted-foreground">
               <Spinner className="size-3.5" /> Checking the gcloud CLI…
             </div>
           ) : gcpEmail ? (
             <>
               {/* The sign-in, its log, then the billing account it gives access to. */}
-              <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
-                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+              <div className="flex items-center gap-2 rounded-control border border-border px-3 py-2 text-[0.75rem]">
+                <CheckCircle2 className="size-3.5 shrink-0 text-success" />
                 <span className="min-w-0 truncate">
                   <span className="text-muted-foreground">Signed in as </span>
                   <span className="text-foreground">{gcpEmail}</span>
@@ -220,7 +220,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             </>
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
+              <div className="flex flex-wrap items-center gap-2 rounded-control border border-border px-3 py-2 text-[0.75rem]">
                 <span className="text-muted-foreground">Sign in with the gcloud CLI to list your billing accounts.</span>
                 <Button variant="outline" size="sm" className="ml-auto" onClick={signIn} disabled={signingIn}>
                   {signingIn ? <Spinner className="size-3.5" /> : null} Sign in (gcloud)
@@ -236,14 +236,14 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
       ) : v.useCliCreds ? (
         <div className="space-y-3">
           {/* The sign-in, its log, then the profile (as for GCP and Azure). */}
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-[0.75rem]">
+          <div className="flex flex-wrap items-center gap-2 rounded-control border border-border px-3 py-2 text-[0.75rem]">
             {checkingId ? (
               <span className="flex items-center gap-1.5 text-muted-foreground">
                 <Spinner className="size-3.5" /> Checking…
               </span>
             ) : awsIdentity ? (
               <span className="flex min-w-0 items-center gap-1.5">
-                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+                <CheckCircle2 className="size-3.5 shrink-0 text-success" />
                 <span className="text-muted-foreground">Signed in as</span>
                 <span className="truncate text-foreground">{awsIdentity}</span>
               </span>
@@ -321,7 +321,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
           </Button>
         }
         right={
-          <Button variant="learn" onClick={next} disabled={!connectionOk}>
+          <Button variant="primary" onClick={next} disabled={!connectionOk}>
             Continue
           </Button>
         }

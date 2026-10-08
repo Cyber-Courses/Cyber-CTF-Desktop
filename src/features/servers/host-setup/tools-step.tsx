@@ -47,7 +47,7 @@ export function ToolsStep({ s }: { s: HostSetup }) {
           : `What the launcher needs here to run labs on ${KIND[v.provider].label}.`
       }
     >
-      <div className="overflow-hidden rounded-lg border border-border">
+      <div className="overflow-hidden rounded-control border border-border">
         {!report ? (
           <div className="flex items-center gap-2 px-3.5 py-3 text-[0.78125rem] text-muted-foreground">
             <Spinner className="size-4" /> Checking this machine…
@@ -61,7 +61,7 @@ export function ToolsStep({ s }: { s: HostSetup }) {
                 detail={cloudCliOk ? (cloudCliTool?.version ?? "Installed") : `The ${CLOUD_META[cloudProvider].cli} CLI, needed to connect and provision.`}
                 action={
                   <Button
-                    variant="learn"
+                    variant="primary"
                     size="sm"
                     disabled={toolBusy}
                     onClick={() => installTool(`${CLOUD_META[cloudProvider].cli} CLI`, (log) => installDependency(cloudDep, log))}
@@ -80,7 +80,7 @@ export function ToolsStep({ s }: { s: HostSetup }) {
                   : "Creates and destroys the cloud lab. Its provider plugins are fetched automatically on first run."
               }
               action={
-                <Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool("Terraform", (log) => installDependency("terraform", log))}>
+                <Button variant="primary" size="sm" disabled={toolBusy} onClick={() => installTool("Terraform", (log) => installDependency("terraform", log))}>
                   Install Terraform
                 </Button>
               }
@@ -93,7 +93,7 @@ export function ToolsStep({ s }: { s: HostSetup }) {
               title="Vagrant"
               detail={vagrantOk ? (report?.vagrant.version ?? "Installed") : "Builds and runs the lab VMs on the host."}
               action={
-                <Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool("Vagrant", (log) => installDependency("vagrant", log))}>
+                <Button variant="primary" size="sm" disabled={toolBusy} onClick={() => installTool("Vagrant", (log) => installDependency("vagrant", log))}>
                   Install Vagrant
                 </Button>
               }
@@ -104,7 +104,7 @@ export function ToolsStep({ s }: { s: HostSetup }) {
               detail={vagrantOk || esxiPluginOk ? kind.plugin : `${kind.plugin}, once Vagrant is installed.`}
               action={
                 <Button
-                  variant="learn"
+                  variant="primary"
                   size="sm"
                   disabled={toolBusy || !vagrantOk}
                   onClick={() => installTool(kind.plugin, (log) => installVagrantPlugin(kind.plugin, log))}
@@ -138,7 +138,7 @@ export function ToolsStep({ s }: { s: HostSetup }) {
             title="Terraform"
             detail={report?.terraform.installed ? (report.terraform.version ?? "Installed") : "Drives the Proxmox API. Install it to run Proxmox labs."}
             action={
-              <Button variant="learn" size="sm" disabled={toolBusy} onClick={() => installTool("Terraform", (log) => installDependency("terraform", log))}>
+              <Button variant="primary" size="sm" disabled={toolBusy} onClick={() => installTool("Terraform", (log) => installDependency("terraform", log))}>
                 Install Terraform
               </Button>
             }
@@ -163,7 +163,7 @@ export function ToolsStep({ s }: { s: HostSetup }) {
                 Re-check
               </Button>
             )}
-            <Button variant="learn" onClick={next} disabled={!toolsOk}>
+            <Button variant="primary" onClick={next} disabled={!toolsOk}>
               Continue
             </Button>
           </span>

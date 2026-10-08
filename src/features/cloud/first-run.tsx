@@ -32,7 +32,7 @@ export function FirstRun({ onSetup }: { onSetup: () => void }) {
         <Step n={2} title="Pick it on a lab" body="Terraform creates one instance, reachable over SSH from your IP." />
         <Step n={3} title="Attack, then Stop" body="Stop destroys the instance, so billing stops with it." />
       </div>
-      <Button variant="learn" size="sm" className="mt-5" onClick={onSetup}>
+      <Button variant="primary" size="sm" className="mt-5" onClick={onSetup}>
         <Plus className="size-3.5" /> Set up cloud provider
       </Button>
     </div>

@@ -39,8 +39,8 @@ function RowButton({
   tone = "default",
   onClick,
   ...props
-}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & { tone?: "default" | "learn" | "danger"; onClick: () => void }) {
-  const variant = tone === "learn" ? "learn" : tone === "danger" ? "destructive" : "outline";
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & { tone?: "default" | "primary" | "danger"; onClick: () => void }) {
+  const variant = tone === "primary" ? "primary" : tone === "danger" ? "destructive" : "outline";
   return (
     <Button
       size="xs"
@@ -115,15 +115,15 @@ export function LabRow({
         e.preventDefault();
         onOpen();
       }}
-      className="group flex cursor-pointer items-center gap-3 border-t border-border px-4 py-3 outline-none transition-colors first:border-t-0 hover:bg-[#0e0e0e] focus-visible:bg-[#0e0e0e] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      className="group flex cursor-pointer items-center gap-3 border-t border-border px-4 py-3 outline-none transition-colors first:border-t-0 hover:bg-glass focus-visible:bg-glass focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
     >
-      <span className="grid size-[1.875rem] shrink-0 place-items-center rounded-lg border border-border bg-[#121212] text-muted-foreground">
+      <span className="grid size-[1.875rem] shrink-0 place-items-center rounded-control border border-border bg-glass-2 text-muted-foreground">
         <RuntimeIcon className="size-4" />
       </span>
 
       <div className="w-56 shrink-0">
         <p className="flex items-center gap-1.5 truncate text-[0.84375rem] font-medium text-foreground">
-          {solved && <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" aria-label="Solved" />}
+          {solved && <CheckCircle2 className="size-3.5 shrink-0 text-success" aria-label="Solved" />}
           <span className="truncate">{lab.title}</span>
         </p>
         <div className="mt-0.5 flex items-center gap-1.5 text-[0.71875rem] text-muted-foreground">
@@ -143,7 +143,7 @@ export function LabRow({
         {running ? (
           <>
             {status?.url && (
-              <RowButton tone="learn" onClick={() => openExternal(status.url!)}>
+              <RowButton tone="primary" onClick={() => openExternal(status.url!)}>
                 <ExternalLink className="size-3" /> Open
               </RowButton>
             )}
@@ -155,7 +155,7 @@ export function LabRow({
           <>
             <span className="text-[0.6875rem] text-muted-foreground">{parked === "pause" ? "Paused" : "Shut down"}</span>
             {onResume && (
-              <RowButton tone="learn" onClick={onResume} disabled={busy} title="Bring it back as it was">
+              <RowButton tone="primary" onClick={onResume} disabled={busy} title="Bring it back as it was">
                 {doing ?? "Resume"}
               </RowButton>
             )}
@@ -165,7 +165,7 @@ export function LabRow({
             <Wrench className="size-3" /> {setup}
           </RowButton>
         ) : !loggedIn && onLogin ? (
-          <RowButton tone="learn" onClick={() => void onLogin().catch(tell("Couldn't start signing in"))} title="Sign in to start labs">
+          <RowButton tone="primary" onClick={() => void onLogin().catch(tell("Couldn't start signing in"))} title="Sign in to start labs">
             <LogIn className="size-3" /> Sign in
           </RowButton>
         ) : null}
@@ -173,7 +173,7 @@ export function LabRow({
 
         {rt && (
           <span className="hidden items-center gap-1.5 text-[0.6875rem] text-muted-foreground lg:inline-flex">
-            {!native && <span className="text-amber-500">emulated</span>}
+            {!native && <span className="text-warning">emulated</span>}
             <span className="inline-flex items-center gap-1">
               {/* Every place is shown: where it runs (emerald), where it can (accent), and where
                   it can't (greyed), so the row reads as the full set of options at a glance. */}
@@ -182,7 +182,7 @@ export function LabRow({
                 const hint = inUse ? `Running on: ${status?.host ?? label}` : available ? `Can run on: ${label}` : `Not available: ${label}`;
                 return (
                   <span key={key} title={hint} aria-label={hint} className="inline-flex">
-                    <Icon className={cn("size-3", inUse ? "text-emerald-500" : available ? "text-learn" : "text-muted-foreground/60")} />
+                    <Icon className={cn("size-3", inUse ? "text-success" : available ? "text-jewel-text" : "text-muted-foreground/60")} />
                   </span>
                 );
               })}

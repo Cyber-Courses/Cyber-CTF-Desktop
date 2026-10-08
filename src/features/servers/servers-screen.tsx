@@ -141,24 +141,24 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
           className={cn(
             "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.75rem] font-medium",
             summaryTone === "ok"
-              ? "border-emerald-500/30 text-emerald-500"
+              ? "border-success/30 text-success"
               : summaryTone === "fail"
-                ? "border-rose-500/30 text-rose-500"
+                ? "border-destructive/30 text-destructive"
                 : summaryTone === "muted"
                   ? "border-border text-muted-foreground"
-                  : "border-amber-500/30 text-amber-500",
+                  : "border-warning/30 text-warning",
           )}
         >
           <span
             className={cn(
               "size-1.5 rounded-full",
               summaryTone === "ok"
-                ? "bg-emerald-500"
+                ? "bg-success"
                 : summaryTone === "fail"
-                  ? "bg-rose-500"
+                  ? "bg-destructive"
                   : summaryTone === "muted"
                     ? "bg-muted-foreground/50"
-                    : "bg-amber-500",
+                    : "bg-warning",
             )}
           />
           {summaryText}
@@ -170,13 +170,13 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
               {anyTesting ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} Test all
             </Button>
           )}
-          <Button variant="learn" size="sm" onClick={() => open(null)}>
+          <Button variant="primary" size="sm" onClick={() => open(null)}>
             <Plus className="size-3.5" /> Add host
           </Button>
         </div>
       </div>
 
-      {error && <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.78125rem] text-destructive">{error}</p>}
+      {error && <p className="rounded-control border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.78125rem] text-destructive">{error}</p>}
 
       {/* Hosts: the hero. */}
       <Panel>
@@ -228,7 +228,7 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
 
       {/* Only worth suggesting when this machine can't already run VM labs itself. */}
       {report && !canRunVmHere && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-border px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-panel border border-dashed border-border px-4 py-3">
           <p className="min-w-0 flex-1 text-[0.75rem] text-muted-foreground">
             No server? If this machine can handle it, install a local hypervisor and run VM labs here.
           </p>

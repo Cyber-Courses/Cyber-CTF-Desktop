@@ -92,7 +92,7 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
                   onClick={(e) => e.stopPropagation()}
                   spellCheck={false}
                   placeholder="registry/image:tag"
-                  className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 font-mono text-xs text-foreground outline-none focus:border-ring"
+                  className="h-8 min-w-0 flex-1 rounded-sm border border-border bg-background px-2.5 font-mono text-xs text-foreground outline-none focus:border-ring"
                 />
                 <Button type="submit" variant="outline" size="sm" disabled={!customDirty} onClick={(e) => e.stopPropagation()}>
                   Save
@@ -191,7 +191,7 @@ function AttackVmRow({ onSaved }: { onSaved: () => void }) {
                 onClick={(e) => e.stopPropagation()}
                 spellCheck={false}
                 placeholder="owner/name"
-                className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 font-mono text-xs text-foreground outline-none focus:border-ring"
+                className="h-8 min-w-0 flex-1 rounded-sm border border-border bg-background px-2.5 font-mono text-xs text-foreground outline-none focus:border-ring"
               />
               <Button type="submit" variant="outline" size="sm" disabled={!customDirty} onClick={(e) => e.stopPropagation()}>
                 Save

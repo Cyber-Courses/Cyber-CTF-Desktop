@@ -72,7 +72,7 @@ export function ServerSelfTest({ id, provider, onDone }: { id: string; provider:
   const fmt = formatElapsed(now - startAt);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-surface">
+    <div className="overflow-hidden rounded-control border border-border bg-surface">
       <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
         <span className="text-[0.71875rem] font-medium">{running ? "Running a real VM on the host…" : failed ? "VM test failed" : "VM test passed"}</span>
         <span className="ml-auto font-mono text-[0.6875rem] tabular-nums text-muted-foreground">{fmt}</span>
@@ -84,11 +84,11 @@ export function ServerSelfTest({ id, provider, onDone }: { id: string; provider:
             <div key={p.step} className="flex items-start gap-2.5 px-3 py-2">
               <span className="mt-0.5">
                 {st === "ok" ? (
-                  <Check className="size-3.5 text-emerald-500" />
+                  <Check className="size-3.5 text-success" />
                 ) : st === "fail" ? (
-                  <X className="size-3.5 text-rose-500" />
+                  <X className="size-3.5 text-destructive" />
                 ) : st === "running" ? (
-                  <Spinner className="size-3.5 text-learn" />
+                  <Spinner className="size-3.5 text-jewel-text" />
                 ) : (
                   <Circle className={cn("size-3.5", st === "skip" ? "text-muted-foreground/40" : "text-muted-foreground/30")} />
                 )}
@@ -101,7 +101,7 @@ export function ServerSelfTest({ id, provider, onDone }: { id: string; provider:
           );
         })}
       </div>
-      {error && <p className="border-t border-border px-3 py-2 text-[0.71875rem] text-rose-500">{error}</p>}
+      {error && <p className="border-t border-border px-3 py-2 text-[0.71875rem] text-destructive">{error}</p>}
     </div>
   );
 }

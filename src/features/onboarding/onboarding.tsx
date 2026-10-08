@@ -40,7 +40,7 @@ const STEP_NAMES: Record<OnboardingStep, string> = {
 function StepHeader({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
   return (
     <div className="text-center">
-      <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-border bg-surface">{icon}</div>
+      <div className="mx-auto flex size-14 items-center justify-center rounded-panel border border-border bg-surface">{icon}</div>
       <h1 className="mt-6 text-2xl font-semibold tracking-tight">{title}</h1>
       <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">{description}</p>
     </div>
@@ -49,8 +49,8 @@ function StepHeader({ icon, title, description }: { icon: ReactNode; title: stri
 
 function Feature({ icon, title, description }: { icon: IconName; title: string; description: string }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+    <div className="flex items-start gap-3 rounded-control border border-border bg-card p-3">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground">
         <Icon name={icon} className="size-4" />
       </div>
       <div className="min-w-0">
@@ -63,16 +63,14 @@ function Feature({ icon, title, description }: { icon: IconName; title: string; 
 
 function SummaryRow({ ok, label, value }: { ok: boolean; label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-card p-3">
+    <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-card p-3">
       <div className="flex items-center gap-2.5">
-        <span
-          className={cn("flex size-6 items-center justify-center rounded-full", ok ? "bg-emerald-500/15 text-emerald-500" : "bg-muted text-muted-foreground")}
-        >
+        <span className={cn("flex size-6 items-center justify-center rounded-full", ok ? "bg-success/15 text-success" : "bg-muted text-muted-foreground")}>
           <Icon name={ok ? "check" : "arrowRight"} className="size-3.5" />
         </span>
         <span className="text-sm text-foreground">{label}</span>
       </div>
-      <span className={cn("text-xs", ok ? "text-emerald-500" : "text-muted-foreground")}>{value}</span>
+      <span className={cn("text-xs", ok ? "text-success" : "text-muted-foreground")}>{value}</span>
     </div>
   );
 }
@@ -138,7 +136,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
       <div className="mx-auto w-full max-w-lg px-6 pt-1">
         <div className="flex gap-1.5">
           {steps.map((_, n) => (
-            <div key={n} className={cn("h-1 flex-1 rounded-full transition-colors", n <= i ? "bg-learn" : "bg-muted")} />
+            <div key={n} className={cn("h-1 flex-1 rounded-full transition-colors", n <= i ? "bg-jewel-solid" : "bg-muted")} />
           ))}
         </div>
         <p className="mt-2 text-center text-xs text-muted-foreground">
@@ -151,7 +149,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
           {step === "welcome" && (
             <div>
               <div className="text-center">
-                <div className="mx-auto flex size-16 items-center justify-center rounded-2xl border border-border bg-surface">
+                <div className="mx-auto flex size-16 items-center justify-center rounded-panel border border-border bg-surface">
                   <Image src="/logo-mark.svg" alt="" width={36} height={36} className="size-9" priority />
                 </div>
                 <h1 className="mt-6 text-2xl font-semibold tracking-tight">Welcome to Cyber CTF</h1>
@@ -181,7 +179,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                   description="Start a lab from the website, even on your phone; it runs on the machine you pick."
                 />
               </div>
-              <Button variant="learn" size="lg" className="mt-8 w-full" onClick={next}>
+              <Button variant="primary" size="lg" className="mt-8 w-full" onClick={next}>
                 Get started
               </Button>
             </div>
@@ -196,8 +194,8 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
               />
               <div className="mt-8">
                 {auth?.loggedIn ? (
-                  <div className="flex items-center gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3.5">
-                    <span className="flex size-7 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
+                  <div className="flex items-center gap-3 rounded-control border border-success/25 bg-success/10 p-3.5">
+                    <span className="flex size-7 items-center justify-center rounded-full bg-success/15 text-success">
                       <Icon name="check" className="size-4" />
                     </span>
                     <div>
@@ -207,7 +205,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                   </div>
                 ) : (
                   <>
-                    <Button variant="learn" size="lg" className="w-full" onClick={login} disabled={loggingIn}>
+                    <Button variant="primary" size="lg" className="w-full" onClick={login} disabled={loggingIn}>
                       {loggingIn ? (
                         <>
                           <Spinner className="size-4" /> Waiting for the browser… (up to 5 minutes)
@@ -218,7 +216,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                     </Button>
                     <p className="mt-2 text-center text-xs text-muted-foreground">Opens cyberauth.co in your browser. You can also do this later.</p>
                     {loginError && (
-                      <p role="alert" className="mt-3 rounded-lg border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-300">
+                      <p role="alert" className="mt-3 rounded-control border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
                         {loginError}
                       </p>
                     )}
@@ -286,7 +284,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
               <div className="mt-2.5">
                 <SetupOutcome report={report} setup={setup} />
               </div>
-              <Button variant="learn" size="lg" className="mt-8 w-full" onClick={onComplete}>
+              <Button variant="primary" size="lg" className="mt-8 w-full" onClick={onComplete}>
                 Browse labs
               </Button>
             </div>

@@ -128,4 +128,4 @@ export function useLabs(reloadKey: unknown = 0) {
 }
 
 export const DIFFICULTY_LABEL = ["", "Easy", "Medium", "Hard"];
-export const DIFFICULTY_DOT = ["", "bg-emerald-500", "bg-amber-500", "bg-rose-500"];
+export const DIFFICULTY_DOT = ["", "bg-success", "bg-warning", "bg-destructive"];

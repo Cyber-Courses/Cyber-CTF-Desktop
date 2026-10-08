@@ -26,17 +26,17 @@ export function QuitGuard() {
   if (count === null) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[var(--scrim)] p-4 backdrop-blur-[2px]">
       <div
         ref={ref}
         tabIndex={-1}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="quit-guard-title"
-        className="w-full max-w-[26rem] rounded-xl border border-border bg-card p-5 shadow-2xl shadow-black/50 outline-none"
+        className="w-full max-w-[26rem] rounded-panel border border-border bg-card p-5 shadow-2xl shadow-black/50 outline-none"
       >
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-500">
+          <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-control border border-warning/30 bg-warning/10 text-warning">
             <AlertTriangle className="size-4" />
           </span>
           <div className="min-w-0">
@@ -55,7 +55,7 @@ export function QuitGuard() {
             Keep waiting
           </Button>
           <Button
-            variant="learn"
+            variant="primary"
             size="sm"
             disabled={quitting}
             onClick={() => {

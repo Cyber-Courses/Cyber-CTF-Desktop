@@ -30,7 +30,7 @@ export function PlacementStep({ s }: { s: HostSetup }) {
             type="checkbox"
             checked={v.insecureTls}
             onChange={(e) => set("insecureTls", e.target.checked)}
-            className="mt-0.5 size-3.5 accent-[var(--learn)]"
+            className="mt-0.5 size-3.5 accent-[var(--jewel)]"
           />
           <span>
             <span className="block text-[0.78125rem]">Self-signed certificate</span>
@@ -46,7 +46,7 @@ export function PlacementStep({ s }: { s: HostSetup }) {
           </Button>
         }
         right={
-          <Button variant="learn" onClick={saveAndTest} disabled={saving}>
+          <Button variant="primary" onClick={saveAndTest} disabled={saving}>
             {saving && <Spinner className="size-4" />} Save and test
           </Button>
         }

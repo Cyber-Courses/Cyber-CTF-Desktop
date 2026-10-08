@@ -103,7 +103,7 @@ export function SelfTest({
   }, [auto, runTest]);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div className="overflow-hidden rounded-control border border-border">
       <div className="flex items-center gap-3 border-b border-border px-3.5 py-2.5">
         <div className="min-w-0">
           <p className="text-[0.8125rem] font-medium">{title}</p>
@@ -116,8 +116,8 @@ export function SelfTest({
             </span>
           ) : result === "ok" ? (
             <span className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 text-[0.75rem] text-emerald-500">
-                <span className="size-1.5 rounded-full bg-emerald-500" /> Passed
+              <span className="flex items-center gap-1.5 text-[0.75rem] text-success">
+                <span className="size-1.5 rounded-full bg-success" /> Passed
                 {run?.end ? <span className="font-mono tabular-nums text-muted-foreground">· {formatElapsed(run.end - run.start)}</span> : null}
               </span>
               <Button variant="ghost" size="sm" onClick={runTest} aria-label="Run again">
@@ -129,7 +129,7 @@ export function SelfTest({
               {result === "fail" && run?.end && (
                 <span className="font-mono text-[0.75rem] tabular-nums text-muted-foreground">{formatElapsed(run.end - run.start)}</span>
               )}
-              <Button variant={result === "fail" ? "outline" : "learn"} size="sm" onClick={runTest}>
+              <Button variant={result === "fail" ? "outline" : "primary"} size="sm" onClick={runTest}>
                 {result === "fail" ? (
                   <>
                     <RefreshCw className="size-3.5" /> Retry
@@ -153,9 +153,9 @@ export function SelfTest({
                   {state === "running" ? (
                     <Spinner className="size-3.5" />
                   ) : state === "ok" ? (
-                    <Check className="size-3.5 text-emerald-500" />
+                    <Check className="size-3.5 text-success" />
                   ) : state === "fail" ? (
-                    <X className="size-3.5 text-rose-500" />
+                    <X className="size-3.5 text-destructive" />
                   ) : (
                     <Circle className="size-2 text-muted-foreground/40" />
                   )}
@@ -163,7 +163,7 @@ export function SelfTest({
                 <span className="min-w-0 flex-1">
                   <span className={cn(state === "pending" || state === "skip" ? "text-muted-foreground" : "text-foreground")}>{label}</span>
                   {e?.detail && (
-                    <span className={cn("block break-words font-mono text-[0.6875rem]", state === "fail" ? "text-rose-400" : "text-muted-foreground")}>
+                    <span className={cn("block break-words font-mono text-[0.6875rem]", state === "fail" ? "text-destructive" : "text-muted-foreground")}>
                       {e.detail}
                     </span>
                   )}

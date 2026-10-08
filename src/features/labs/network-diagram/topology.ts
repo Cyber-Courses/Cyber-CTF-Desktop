@@ -9,6 +9,7 @@ import {
   ComputerData,
   GREEN,
   GREY,
+  IDLE,
   LinkData,
   Machine,
   PIVOT,
@@ -109,7 +110,7 @@ export function topology(machines: Machine[], networks: LabNetwork[], attacker: 
       data: { label: "Attack box", subtitle: atkOn ? attacker.ip || "attached" : "not attached", running: atkOn },
     });
     members.get(entry)!.push("__attacker");
-    edges.push(link("e-attach", `bridge-${entry}`, "__attacker", atkOn ? attack : "#5a5a5a", { animated: atkOn }));
+    edges.push(link("e-attach", `bridge-${entry}`, "__attacker", atkOn ? attack : IDLE, { animated: atkOn }));
   }
 
   // The provisioning controller is plumbing, not a target: it has no place on the map.

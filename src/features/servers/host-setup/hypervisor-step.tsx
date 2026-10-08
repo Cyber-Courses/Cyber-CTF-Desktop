@@ -20,14 +20,14 @@ export function HypervisorStep({ s }: { s: HostSetup }) {
               type="button"
               onClick={() => setV((s) => ({ ...s, provider: p, port: null }))}
               className={cn(
-                "relative rounded-xl border p-4 text-left transition-colors",
-                selected ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60",
+                "relative rounded-panel border p-4 text-left transition-colors",
+                selected ? "border-jewel bg-jewel/5 ring-1 ring-jewel/40" : "border-border hover:border-ring/60",
               )}
             >
               <span
                 className={cn(
                   "absolute right-3 top-3 grid size-4 place-items-center rounded-full border transition-colors",
-                  selected ? "border-learn bg-learn text-white" : "border-muted-foreground/30",
+                  selected ? "border-jewel bg-jewel-solid text-jewel-on" : "border-muted-foreground/30",
                 )}
               >
                 {selected && <CheckCircle2 className="size-3" />}
@@ -40,7 +40,7 @@ export function HypervisorStep({ s }: { s: HostSetup }) {
       </div>
       <Nav
         right={
-          <Button variant="learn" onClick={next}>
+          <Button variant="primary" onClick={next}>
             Continue
           </Button>
         }

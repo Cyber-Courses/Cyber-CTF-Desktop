@@ -22,8 +22,8 @@ function StatusRow({ name, value, tone }: { name: string; value: string; tone?: 
   return (
     <div className="flex items-center border-b border-border px-3.5 py-2.5 text-[0.78125rem] last:border-b-0">
       <span className="text-muted-foreground">{name}</span>
-      <span className={cn("ml-auto flex items-center gap-1.5", tone === "ok" ? "text-emerald-500" : tone === "warn" ? "text-amber-500" : "text-foreground")}>
-        {(tone === "ok" || tone === "warn") && <span className={cn("size-1.5 rounded-full", tone === "ok" ? "bg-emerald-500" : "bg-amber-500")} />}
+      <span className={cn("ml-auto flex items-center gap-1.5", tone === "ok" ? "text-success" : tone === "warn" ? "text-warning" : "text-foreground")}>
+        {(tone === "ok" || tone === "warn") && <span className={cn("size-1.5 rounded-full", tone === "ok" ? "bg-success" : "bg-warning")} />}
         {value}
       </span>
     </div>
@@ -96,7 +96,7 @@ export function HomeScreen({
   return (
     <div className="space-y-5">
       {/* ---- Hero ---- */}
-      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-gradient-to-br from-[#141414] to-[#0a0a0a] p-5">
+      <div className="flex flex-wrap items-center gap-4 rounded-panel border border-border surface-panel p-5">
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold tracking-tight">{auth?.loggedIn ? `Welcome back${name ? `, ${name}` : ""}` : "Welcome to Cyber CTF"}</h1>
           <p className="mt-1 text-[0.8125rem] text-muted-foreground">{heroStatus}</p>
@@ -105,14 +105,14 @@ export function HomeScreen({
           {!dockerReady ? (
             <button
               onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-learn bg-learn px-3.5 py-2 text-[0.8125rem] font-medium text-[#140b2e] transition-colors hover:bg-learn/90"
+              className="inline-flex items-center gap-1.5 rounded-control border border-jewel bg-jewel-solid px-3.5 py-2 text-[0.8125rem] font-medium text-jewel-on transition-colors hover:bg-jewel/90"
             >
               <Play className="size-4" /> Set up this machine
             </button>
           ) : (
             <button
               onClick={() => onNavigate("labs")}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-learn bg-learn px-3.5 py-2 text-[0.8125rem] font-medium text-[#140b2e] transition-colors hover:bg-learn/90"
+              className="inline-flex items-center gap-1.5 rounded-control border border-jewel bg-jewel-solid px-3.5 py-2 text-[0.8125rem] font-medium text-jewel-on transition-colors hover:bg-jewel/90"
             >
               Browse labs <ArrowRight className="size-4" />
             </button>
@@ -121,8 +121,8 @@ export function HomeScreen({
       </div>
 
       {capacity && capacity.level === "low" && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
-          <TriangleAlert className="size-4 shrink-0 text-rose-400" />
+        <div className="flex flex-wrap items-center gap-3 rounded-panel border border-destructive/30 bg-destructive/5 p-4">
+          <TriangleAlert className="size-4 shrink-0 text-destructive" />
           <div className="min-w-0 flex-1">
             <p className="text-[0.8125rem] font-medium">
               {capacity.title} <span className="ml-1 font-mono text-[0.6875rem] text-muted-foreground">{capacity.totalGB.toFixed(1)} GB</span>
@@ -132,13 +132,13 @@ export function HomeScreen({
           <div className="flex shrink-0 gap-2">
             <button
               onClick={() => onNavigate("cloud")}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[0.75rem] text-foreground transition-colors hover:border-ring/60"
+              className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-card px-2.5 py-1.5 text-[0.75rem] text-foreground transition-colors hover:border-ring/60"
             >
               <Cloud className="size-3.5" /> Cloud
             </button>
             <button
               onClick={() => onNavigate("server")}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[0.75rem] text-foreground transition-colors hover:border-ring/60"
+              className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-card px-2.5 py-1.5 text-[0.75rem] text-foreground transition-colors hover:border-ring/60"
             >
               <Server className="size-3.5" /> Server
             </button>
@@ -180,11 +180,11 @@ export function HomeScreen({
               <Panel>
                 {recent.map(({ lab, ts }) => (
                   <div key={lab.id} className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 last:border-b-0">
-                    <span className="grid size-7 shrink-0 place-items-center rounded-md border border-border bg-muted text-muted-foreground">
+                    <span className="grid size-7 shrink-0 place-items-center rounded-sm border border-border bg-muted text-muted-foreground">
                       <RotateCcw className="size-3.5" />
                     </span>
                     <button onClick={() => onNavigate("labs", lab.slug)} className="min-w-0 flex-1 text-left">
-                      <p className="truncate text-[0.78125rem] font-medium hover:text-learn">{lab.title}</p>
+                      <p className="truncate text-[0.78125rem] font-medium hover:text-jewel-text">{lab.title}</p>
                       <p className="text-[0.65625rem] text-muted-foreground">last run {formatAgo(ts, now)}</p>
                     </button>
                     <button
@@ -192,7 +192,7 @@ export function HomeScreen({
                       // start over on top of its kept machines.
                       onClick={() => (statuses[lab.id]?.parked ? resume(lab) : launch(lab, undefined, undefined, report))}
                       disabled={!!runs[lab.id]?.busy || !(auth?.loggedIn ?? false) || !lab.runtime}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-learn bg-learn px-2 py-1 text-[0.6875rem] font-medium text-[#140b2e] hover:bg-learn/90 disabled:opacity-40"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-jewel bg-jewel-solid px-2 py-1 text-[0.6875rem] font-medium text-jewel-on hover:bg-jewel/90 disabled:opacity-40"
                     >
                       {runs[lab.id]?.busy ? (
                         "…"

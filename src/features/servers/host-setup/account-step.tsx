@@ -10,7 +10,7 @@ export function AccountStep({ s }: { s: HostSetup }) {
   const { onDone, v, i, set, next, back } = s;
   return (
     <Step icon={Cloud} title="How to connect" description="Choose how the launcher signs in to AWS.">
-      <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[0.75rem] text-amber-500">
+      <p className="mb-4 rounded-control border border-warning/30 bg-warning/5 px-3 py-2.5 text-[0.75rem] text-warning">
         Labs run in your account and are billed while they run; the cost depends on each lab&apos;s size. Stopping a lab, or its auto-stop, destroys what it
         created.
       </p>
@@ -22,8 +22,8 @@ export function AccountStep({ s }: { s: HostSetup }) {
           aria-label="Use the AWS CLI"
           onClick={() => set("useCliCreds", true)}
           className={cn(
-            "rounded-lg border p-3 text-left transition-colors",
-            v.useCliCreds ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60",
+            "rounded-control border p-3 text-left transition-colors",
+            v.useCliCreds ? "border-jewel bg-jewel/5 ring-1 ring-jewel/40" : "border-border hover:border-ring/60",
           )}
         >
           <span className="block text-[0.78125rem] font-medium">Use the AWS CLI</span>
@@ -36,8 +36,8 @@ export function AccountStep({ s }: { s: HostSetup }) {
           aria-label="Access keys"
           onClick={() => set("useCliCreds", false)}
           className={cn(
-            "rounded-lg border p-3 text-left transition-colors",
-            !v.useCliCreds ? "border-learn bg-learn/5 ring-1 ring-learn/40" : "border-border hover:border-ring/60",
+            "rounded-control border p-3 text-left transition-colors",
+            !v.useCliCreds ? "border-jewel bg-jewel/5 ring-1 ring-jewel/40" : "border-border hover:border-ring/60",
           )}
         >
           <span className="block text-[0.78125rem] font-medium">Access keys</span>
@@ -57,7 +57,7 @@ export function AccountStep({ s }: { s: HostSetup }) {
           )
         }
         right={
-          <Button variant="learn" onClick={next}>
+          <Button variant="primary" onClick={next}>
             Continue
           </Button>
         }
