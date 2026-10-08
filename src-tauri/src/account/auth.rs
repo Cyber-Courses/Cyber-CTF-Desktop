@@ -364,6 +364,9 @@ pub async fn auth_login(app: AppHandle) -> Result<AuthStatus> {
         .append_pair("state", &state)
         .append_pair("code_challenge", &code_challenge(&verifier))
         .append_pair("code_challenge_method", "S256")
+        // The system browser may already be signed in, possibly as someone else: let the player
+        // confirm the account or pick another instead of signing in silently.
+        .append_pair("prompt", "select_account")
         .append_pair("resource", &api);
     app.opener()
         .open_url(authorize.as_str(), None::<&str>)
