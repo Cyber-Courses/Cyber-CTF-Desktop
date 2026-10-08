@@ -226,6 +226,35 @@ async fn bind_loopback() -> Result<(TcpListener, u16)> {
     Err(Error::Invalid("no free login callback port (47290-47292)".into()))
 }
 
+/// The page the browser shows once Cyber Auth sends the player back: the family look (the launcher's
+/// dark tokens, light when the browser is), the app mark, and a button back to the app.
+fn login_page(ok: bool) -> String {
+    const TEMPLATE: &str = include_str!("login-page.html");
+    const LOGO: &str = include_str!("../../../public/logo-mark.svg");
+    const CHECK: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>"#;
+    const CROSS: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>"#;
+    // The SVG file starts with an XML prolog, which can't sit inside HTML.
+    let logo = LOGO.find("<svg").map_or("", |i| &LOGO[i..]);
+    let (state, icon, title, body, button) = if ok {
+        (
+            "ok",
+            CHECK,
+            "You're signed in",
+            "Cyber CTF is connected to your account. Labs you launch from the website now run on this machine.",
+            "Return to Cyber CTF",
+        )
+    } else {
+        ("error", CROSS, "Sign-in didn't finish", "It was cancelled or the link expired. Go back to Cyber CTF and press Sign in again.", "Back to Cyber CTF")
+    };
+    TEMPLATE
+        .replace("__STATE__", state)
+        .replace("__LOGO__", logo)
+        .replace("__ICON__", icon)
+        .replace("__TITLE__", title)
+        .replace("__BODY__", body)
+        .replace("__BUTTON__", button)
+}
+
 /// Waits for the browser's redirect and returns (code, state) from its query.
 async fn receive_callback(listener: TcpListener) -> Result<(String, String)> {
     loop {
@@ -241,24 +270,7 @@ async fn receive_callback(listener: TcpListener) -> Result<(String, String)> {
         }
         let param = |k: &str| url.query_pairs().find(|(key, _)| key == k).map(|(_, v)| v.into_owned());
         let failed = param("error").is_some();
-        let body = if failed {
-            "Login was cancelled or failed. You can close this tab and try again from Cyber CTF."
-        } else {
-            "You are logged in. You can close this tab and return to Cyber CTF."
-        };
-        // A button that reopens the app (the cyberctf:// scheme brings the running window to the
-        // front) and then closes this tab. window.close() only works for a script-opened tab, so
-        // it's best effort; the deep link raises the app either way, and the text covers the rest.
-        let label = if failed { "Back to Cyber CTF" } else { "Return to Cyber CTF" };
-        let page = format!(
-            "<!doctype html><meta charset=utf-8><title>Cyber CTF</title>\
-             <body style=\"font-family:system-ui;background:#0a0a0a;color:#e5e5e5;display:grid;place-items:center;height:100vh;margin:0\">\
-             <div style=\"text-align:center;max-width:30rem;padding:1.5rem\">\
-             <p style=\"line-height:1.5\">{body}</p>\
-             <button id=\"r\" style=\"margin-top:1rem;padding:.6rem 1.2rem;border:0;border-radius:.5rem;background:#7c5cff;color:#fff;font:inherit;font-weight:600;cursor:pointer\">{label}</button>\
-             </div>\
-             <script>var b=document.getElementById('r');function go(){{location.href='cyberctf://';setTimeout(function(){{window.open('','_self');window.close();}},300);}}b.addEventListener('click',go);</script>"
-        );
+        let page = login_page(!failed);
         let _ = stream
             .write_all(
                 format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{page}", page.len())
