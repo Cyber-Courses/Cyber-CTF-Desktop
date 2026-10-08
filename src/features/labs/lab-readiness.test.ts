@@ -34,4 +34,18 @@ describe("setupNeeded", () => {
     const r = report([provider("virtualbox", false, true)]);
     expect(setupNeeded(vmLab(["virtualbox"]), r, [])).toBeNull();
   });
+
+  describe("a VM lab built for another CPU (x86 on Apple Silicon)", () => {
+    const arm = (vmProviders: ProviderStatus[]) => ({ ...report(vmProviders), arch: "aarch64", vagrant: { installed: true } }) as unknown as SystemReport;
+    const x86Lab = { runtime: { runtime: "VM", providers: ["virtualbox", "vmware_desktop"], architectures: ["x86_64"] } } as unknown as Lab;
+
+    it("needs QEMU, not the hypervisors it lists, which can't run it here", () => {
+      const r = arm([provider("virtualbox", false, true), provider("qemu")]);
+      expect(setupNeeded(x86Lab, r, [])).toBe("Needs QEMU, or a server");
+    });
+
+    it("runs emulated once QEMU is ready", () => {
+      expect(setupNeeded(x86Lab, arm([provider("qemu", false, true)]), [])).toBeNull();
+    });
+  });
 });

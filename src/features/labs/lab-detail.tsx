@@ -20,7 +20,7 @@ import { HealthBanner, useLabCheck } from "@/features/labs/lab-health";
 import { AutoStop, StartTimer } from "@/features/labs/lab-timers";
 import { NetworkDiagram } from "@/features/labs/network-diagram";
 import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on";
-import { runPlaces, runsNatively } from "@/features/labs/lab-row";
+import { EMULATORS, localProviders, runPlaces, runsNatively } from "@/features/labs/lab-row";
 import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
 import { OPERATION_STATUS, useActiveOperations, useDeployingLabs, useWorkerLog } from "@/lib/deploy-store";
@@ -114,6 +114,8 @@ export function LabDetail({
   const rt = lab.runtime;
   // Unknown host (report not in yet) or a lab for any CPU: native, never a wrong "emulated".
   const native = !hostArch || !rt || runsNatively(rt, hostArch);
+  // A VM lab built for another CPU runs here only through an emulator (QEMU), when one is ready.
+  const emulates = readyVms.some((p) => EMULATORS.includes(p));
   const running = status?.running ?? false;
   // A deploy this session started sets `busy`; one still running after a window reload (which
   // loses the in-memory deploy state) is recovered from the backend, so the page shows "Starting"
@@ -212,7 +214,7 @@ export function LabDetail({
   );
   // Prefer this machine when a local hypervisor can run the lab; fall back to the default server
   // only when none can. A default server shouldn't silently capture every VM lab.
-  const localReady = isDocker || (readyVms ?? []).some((p) => rt?.providers.includes(p));
+  const localReady = isDocker || (!!rt && (readyVms ?? []).some((p) => localProviders(rt, hostArch).includes(p)));
   useEffect(() => {
     serverList()
       .then((l) => {
@@ -337,7 +339,7 @@ export function LabDetail({
   if (running) strip.push(<span key="where">on {status?.host ?? (whereLabel ? `this machine · ${whereLabel}` : "this machine")}</span>);
   else if (parked && whereLabel) strip.push(<span key="where">{whereLabel}</span>);
   if (rt) strip.push(<span key="rt">{isDocker ? "containers" : "vm"}</span>);
-  if (rt && !native && isDocker)
+  if (rt && !native && (isDocker || emulates))
     strip.push(
       <span key="emu" className="text-warning">
         emulated (slower)
@@ -681,7 +683,7 @@ export function LabDetail({
             <Panel>
               <PanelHeader title="Where it runs" meta={isDocker ? "containers" : "vm"} />
               <div>
-                {runPlaces(rt, hostArch).map(({ key, icon: Icon, label, available }) => (
+                {runPlaces(rt, hostArch, emulates).map(({ key, icon: Icon, label, available }) => (
                   <div
                     key={key}
                     className="flex items-center gap-2.5 border-t border-border px-4 py-2 text-[0.8125rem] first:border-t-0"
@@ -694,7 +696,12 @@ export function LabDetail({
                 ))}
                 {!native && (
                   <div className="flex items-center gap-2.5 border-t border-border px-4 py-2.5 text-[0.75rem] text-muted-foreground">
-                    <StatusDot tone="warn" /> Emulated on your CPU (slower than native).
+                    <StatusDot tone="warn" />{" "}
+                    {isDocker
+                      ? "Emulated on your CPU (slower than native)."
+                      : emulates
+                        ? "Emulated with QEMU, many times slower than native: a Windows machine takes 15 to 40 minutes to boot."
+                        : "Built for another CPU: install QEMU from the Machine page to run it emulated (slow), or run it on a server or in your cloud account."}
                   </div>
                 )}
               </div>

@@ -5,6 +5,7 @@ import { serverList, labLaunch, labPark, labProvision, labResume, labStop, type 
 import { getAttackBox, getAttackImage, getAutoAttackBox, getVmProvider } from "@/lib/settings";
 import { notify } from "@/lib/notify";
 import type { Lab } from "@/features/labs/use-labs";
+import { localProviders, runsNatively } from "@/features/labs/lab-row";
 import { setLastRun } from "@/lib/last-run";
 import { appendDeployLog, beginDeploy, endDeploy, useDeploy } from "@/lib/deploy-store";
 
@@ -67,8 +68,10 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
         // Locally: a ready hypervisor among those the lab supports. Never the lab's first
         // listed provider: the catalogue lists them alphabetically, and picking e.g. "parallels"
         // on a VirtualBox machine fails at once with "prlctl was not found". With no report yet,
-        // fall back to the Settings preference, then the first supported one.
-        const local: Provider[] = lab.runtime.providers.filter((p) => p !== "vmware_esxi" && p !== "proxmox");
+        // fall back to the Settings preference, then the first supported one. A VM lab built for
+        // another CPU (x86 Windows on Apple Silicon) runs here only emulated, on QEMU.
+        const local: Provider[] = localProviders(lab.runtime, report?.arch);
+        const foreign = vm && !!report?.arch && !runsNatively(lab.runtime, report.arch);
         const inLocalVm = !vm && !remote && !!vmProvider;
         const provider = inLocalVm
           ? vmProvider!
@@ -77,12 +80,11 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
               ? ((preferred && local.includes(preferred) ? preferred : local[0]) ?? null)
               : (ready.find((p) => local.includes(p)) ?? null)
             : null;
-        // x86 VMs (Windows AD labs) can't boot on an Apple Silicon hypervisor; say so up front
-        // instead of failing deep in Vagrant.
-        const archs = lab.runtime.architectures;
-        if (vm && !remote && report?.arch && archs.length && !archs.includes(report.arch)) {
+        // x86 VMs (Windows AD labs) boot on an Apple Silicon Mac only under QEMU's emulation; say
+        // so up front instead of failing deep in Vagrant.
+        if (!remote && foreign && provider === null) {
           throw new Error(
-            `This lab's VMs are built for ${archs.join(", ")} and this machine is ${report.arch}, so its hypervisors can't run them. Run it on a server or in your cloud account instead.`,
+            `This lab's VMs are built for ${lab.runtime.architectures.join(", ")} and this machine is ${report!.arch}. Install QEMU from the Machine page to run them emulated (many times slower), or run the lab on a server or in your cloud account.`,
           );
         }
         if (vm && !remote && provider === null) {
