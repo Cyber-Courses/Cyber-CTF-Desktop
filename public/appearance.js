@@ -4,7 +4,7 @@
   try {
     var m = localStorage.getItem("cyberctf.appearance");
     if (m === "black" || m === "light") document.documentElement.classList.add(m);
-  } catch (e) {
+  } catch {
     /* storage unavailable: Dark */
   }
 })();
