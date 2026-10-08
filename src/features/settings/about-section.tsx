@@ -5,6 +5,7 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { Check, Copy, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { KeyValue } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
 import { restartApp, type AgentInfo, type SystemReport } from "@/lib/tauri";
 import { getAttackBox, getAttackImage, getVmProvider } from "@/lib/settings";
@@ -57,7 +58,7 @@ export function AboutSection({ version, report, agent }: { version: string | nul
         ? `Docker: ${report.dockerRunning ? `running (${report.dockerEngine ?? "unknown engine"})` : report.docker.installed ? "installed, not running" : "not installed"}`
         : null,
       report
-        ? `Vagrant: ${report.vagrant.installed ? "installed" : "not installed"} · Terraform: ${report.terraform.installed ? "installed" : "not installed"}`
+        ? `Vagrant: ${report.vagrant.installed ? "installed" : "not installed"}, Terraform: ${report.terraform.installed ? "installed" : "not installed"}`
         : null,
       report
         ? `Hypervisors ready: ${
@@ -113,18 +114,25 @@ export function AboutSection({ version, report, agent }: { version: string | nul
   })();
 
   return (
-    <Section title="About">
+    <Section title="About" description="Version, updates and what to send us when something breaks.">
+      <KeyValue k="Version">{version ? `v${version}` : "…"}</KeyValue>
+      {report && (
+        <KeyValue k="System">
+          {report.os} {report.arch}
+        </KeyValue>
+      )}
+      {agent && <KeyValue k="Install ID">{agent.installId}</KeyValue>}
       <Row
         title={
           <span className="flex items-center gap-2">
-            Cyber CTF <span className="font-mono text-[0.8125rem] font-normal text-muted-foreground">{version ? `v${version}` : "…"}</span>
+            Updates
             {upd.phase === "available" && <Badge variant="accent">Update available</Badge>}
           </span>
         }
         description={updateText}
         control={
           upd.phase === "available" || upd.phase === "installing" ? (
-            <Button variant="primary" size="sm" onClick={install} disabled={upd.phase === "installing"}>
+            <Button size="xs" onClick={install} disabled={upd.phase === "installing"}>
               {upd.phase === "installing" ? (
                 <>
                   <Spinner className="size-3.5" /> Installing…
@@ -134,11 +142,11 @@ export function AboutSection({ version, report, agent }: { version: string | nul
               )}
             </Button>
           ) : upd.phase === "installed" ? (
-            <Button variant="primary" size="sm" onClick={() => restartApp().catch(tell("Couldn't restart Cyber CTF"))}>
+            <Button size="xs" onClick={() => restartApp().catch(tell("Couldn't restart Cyber CTF"))}>
               Restart now
             </Button>
           ) : (
-            <Button variant="outline" size="sm" onClick={checkUpdates} disabled={upd.phase === "checking"}>
+            <Button variant="outline" size="xs" onClick={checkUpdates} disabled={upd.phase === "checking"}>
               {upd.phase === "checking" ? (
                 <>
                   <Spinner className="size-3.5" /> Checking…
@@ -154,7 +162,7 @@ export function AboutSection({ version, report, agent }: { version: string | nul
         title="Diagnostics"
         description="Copies your version, OS and setup status, for a bug report or a support request."
         control={
-          <Button variant="outline" size="sm" onClick={copyDiagnostics}>
+          <Button variant="outline" size="xs" onClick={copyDiagnostics}>
             {copied ? (
               <>
                 <Check className="size-3.5 text-success" /> Copied
@@ -171,7 +179,7 @@ export function AboutSection({ version, report, agent }: { version: string | nul
         title="First-run setup"
         description="Walk through the onboarding again. Your settings and labs are kept."
         control={
-          <Button variant="ghost" size="sm" onClick={replayOnboarding}>
+          <Button variant="ghost" size="xs" onClick={replayOnboarding}>
             <RotateCcw className="size-3.5" /> Replay
           </Button>
         }

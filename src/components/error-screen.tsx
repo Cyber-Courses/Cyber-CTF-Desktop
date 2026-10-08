@@ -20,7 +20,7 @@ function errorDetails(error: Error & { digest?: string }): string {
 }
 
 /**
- * A crash, in the app's own style (the empty-state frame, the alert box the sign-in errors use):
+ * A crash, in the app's own style (a lit panel, the message in a log well):
  * what went wrong, a retry, and the details to copy. Used inline in a step and as a full window.
  */
 export function ErrorPanel({
@@ -47,21 +47,21 @@ export function ErrorPanel({
       .catch(tell("Couldn't copy to the clipboard"));
 
   return (
-    <div className={cn("flex flex-col items-center rounded-panel border border-border px-6 py-10 text-center", className)}>
-      <div className="flex size-11 items-center justify-center rounded-control border border-destructive/25 bg-destructive/10 text-destructive">
+    <div className={cn("surface-panel flex flex-col items-center rounded-panel px-6 py-9 text-center", className)}>
+      <div className="flex size-11 items-center justify-center rounded-control bg-destructive/10 text-destructive shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--destructive)_30%,transparent)]">
         <AlertTriangle className="size-5" />
       </div>
-      <p className="mt-4 text-sm font-medium text-foreground">{title}</p>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
+      <h2 className="serif-title mt-4 text-[1.5rem] text-foreground">{title}</h2>
+      <p className="mt-2 max-w-sm text-[0.8125rem] leading-relaxed text-muted-foreground">{description}</p>
       <p
         role="alert"
-        className="mt-4 max-h-32 w-full max-w-md overflow-auto rounded-control border border-destructive/25 bg-destructive/10 p-3 text-left font-mono text-[0.71875rem] break-words whitespace-pre-wrap text-destructive"
+        className="surface-log mt-5 max-h-32 w-full max-w-md overflow-auto rounded-control p-3 text-left font-mono text-[0.71875rem] break-words whitespace-pre-wrap text-destructive"
       >
         {error.message || String(error) || "Unknown error"}
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         {retry && (
-          <Button variant="primary" size="sm" onClick={retry}>
+          <Button size="sm" onClick={retry}>
             <RotateCcw className="size-3.5" /> Try again
           </Button>
         )}

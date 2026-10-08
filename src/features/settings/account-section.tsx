@@ -2,9 +2,9 @@
 
 import { LogOut } from "lucide-react";
 import { initials, useAuthActions } from "@/features/account/account";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { StatusPill } from "@/components/ui/status-pill";
 import { type AgentInfo, type AuthStatus } from "@/lib/tauri";
 import { Row, Section } from "@/features/settings/settings-layout";
 
@@ -25,15 +25,15 @@ export function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus
         />
       ) : auth.loggedIn ? (
         <>
-          <div className="flex items-center gap-3.5 px-5 py-4">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-jewel/15 text-sm font-semibold text-jewel-text">
+          <div className="flex items-center gap-3.5 px-4 py-3.5">
+            <span className="avatar flex size-10 shrink-0 items-center justify-center rounded-full text-[0.8125rem] font-semibold">
               {initials(auth.name, auth.email)}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{auth.name ?? "Signed in"}</p>
-              {auth.email && <p className="truncate text-[0.8125rem] text-muted-foreground">{auth.email}</p>}
+              <p className="truncate text-[0.8125rem] font-medium text-foreground">{auth.name ?? "Signed in"}</p>
+              {auth.email && <p className="truncate font-mono text-[0.6875rem] text-faint">{auth.email}</p>}
             </div>
-            <Button variant="outline" size="sm" onClick={logout}>
+            <Button variant="outline" size="xs" onClick={logout}>
               <LogOut className="size-3.5" /> Sign out
             </Button>
           </div>
@@ -41,19 +41,17 @@ export function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus
             title={
               <span className="flex items-center gap-2">
                 This machine
-                <Badge variant="success" dot>
-                  Online
-                </Badge>
+                <StatusPill tone="ok">Online</StatusPill>
               </span>
             }
             description={
               agent ? (
                 <>
-                  {agent.name} <span className="text-muted-foreground/60">·</span> <span className="font-mono text-xs">{agent.arch}</span>
+                  {agent.name} <span className="text-faint">·</span> <span className="font-mono text-[0.6875rem] text-faint">{agent.arch}</span>
                   {agent.capabilities.length > 0 && (
                     <>
                       {" "}
-                      <span className="text-muted-foreground/60">·</span> runs {agent.capabilities.join(", ")}
+                      <span className="text-faint">·</span> runs {agent.capabilities.join(", ")}
                     </>
                   )}
                 </>
@@ -68,7 +66,7 @@ export function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus
           title={
             <span className="flex items-center gap-2">
               Not signed in
-              <Badge variant="outline">Offline</Badge>
+              <StatusPill tone="muted">Offline</StatusPill>
             </span>
           }
           description={
@@ -79,7 +77,7 @@ export function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus
             )
           }
           control={
-            <Button variant="primary" size="sm" onClick={login} disabled={busy}>
+            <Button size="sm" onClick={login} disabled={busy}>
               {busy ? (
                 <>
                   <Spinner className="size-3.5" /> Waiting for the browser…

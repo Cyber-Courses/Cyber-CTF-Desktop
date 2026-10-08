@@ -2,9 +2,13 @@
 
 import { ErrorBoundary } from "@/components/error-screen";
 
-import Image from "next/image";
 import { useEffect, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
+import { CtfMark } from "@/components/brand/mark";
 import { Button } from "@/components/ui/button";
+import { Panel } from "@/components/ui/panel";
+import { StatusDot } from "@/components/ui/status-pill";
+import { TypeIcon } from "@/components/ui/type-icon";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -37,25 +41,24 @@ const STEP_NAMES: Record<OnboardingStep, string> = {
   done: "Done",
 };
 
-function StepHeader({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
+function StepHeader({ title, description }: { title: ReactNode; description: string }) {
   return (
     <div className="text-center">
-      <div className="mx-auto flex size-14 items-center justify-center rounded-panel border border-border bg-surface">{icon}</div>
-      <h1 className="mt-6 text-2xl font-semibold tracking-tight">{title}</h1>
-      <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">{description}</p>
+      <h1 className="page-title">{title}</h1>
+      <p className="mx-auto mt-3 max-w-sm text-[0.875rem] leading-relaxed text-muted-foreground">{description}</p>
     </div>
   );
 }
 
 function Feature({ icon, title, description }: { icon: IconName; title: string; description: string }) {
   return (
-    <div className="flex items-start gap-3 rounded-control border border-border bg-card p-3">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-muted text-muted-foreground">
+    <div className="flex items-start gap-3 border-t border-border px-4 py-3 first:border-t-0">
+      <TypeIcon>
         <Icon name={icon} className="size-4" />
-      </div>
+      </TypeIcon>
       <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground">{title}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <p className="text-[0.8125rem] font-medium text-foreground">{title}</p>
+        <p className="mt-0.5 text-[0.75rem] leading-relaxed text-muted-foreground">{description}</p>
       </div>
     </div>
   );
@@ -63,14 +66,38 @@ function Feature({ icon, title, description }: { icon: IconName; title: string; 
 
 function SummaryRow({ ok, label, value }: { ok: boolean; label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-control border border-border bg-card p-3">
+    <Panel className="flex min-h-[3.25rem] items-center justify-between gap-4 px-4">
       <div className="flex items-center gap-2.5">
-        <span className={cn("flex size-6 items-center justify-center rounded-full", ok ? "bg-success/15 text-success" : "bg-muted text-muted-foreground")}>
-          <Icon name={ok ? "check" : "arrowRight"} className="size-3.5" />
-        </span>
-        <span className="text-sm text-foreground">{label}</span>
+        <StatusDot tone={ok ? "ok" : "muted"} />
+        <span className="text-[0.8125rem] font-medium text-foreground">{label}</span>
       </div>
-      <span className={cn("text-xs", ok ? "text-success" : "text-muted-foreground")}>{value}</span>
+      <span className={cn("text-[0.75rem]", ok ? "text-foreground" : "text-muted-foreground")}>{value}</span>
+    </Panel>
+  );
+}
+
+/** Back (ghost) on the left, the step's single primary action on the right. */
+function StepActions({
+  onBack,
+  onNext,
+  nextLabel,
+  disabled,
+  backDisabled,
+}: {
+  onBack: () => void;
+  onNext: () => void;
+  nextLabel: ReactNode;
+  disabled?: boolean;
+  backDisabled?: boolean;
+}) {
+  return (
+    <div className="mt-8 flex items-center justify-between gap-2">
+      <Button variant="ghost" onClick={onBack} disabled={backDisabled}>
+        <ArrowLeft className="size-4" /> Back
+      </Button>
+      <Button onClick={onNext} disabled={disabled}>
+        {nextLabel}
+      </Button>
     </div>
   );
 }
@@ -117,178 +144,175 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
     }
   }
 
+  const pos = Math.min(i, steps.length - 1);
+  const meta = step !== "welcome" && step !== "signin" && step !== "done" && report !== null ? stepMeta(step, report) : null;
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       {/* Draggable title bar (Overlay style has no native bar); room for traffic lights. */}
-      <div data-tauri-drag-region className="flex h-11 shrink-0 items-center justify-between pr-4 pl-20">
-        <div className="pointer-events-none flex items-center gap-2">
-          <Image src="/logo-mark.svg" alt="" width={18} height={18} className="size-[1.125rem]" priority />
-          <span className="text-xs font-medium tracking-tight text-muted-foreground">Cyber CTF</span>
-        </div>
+      <div data-tauri-drag-region className="flex h-11 shrink-0 items-center justify-end pr-4 pl-20">
         {step !== "done" && (
-          <button onClick={onComplete} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
+          <Button variant="ghost" size="xs" onClick={onComplete}>
             Skip setup
-          </button>
+          </Button>
         )}
       </div>
 
-      {/* Progress segments, with the step's name and position */}
-      <div className="mx-auto w-full max-w-lg px-6 pt-1">
-        <div className="flex gap-1.5">
-          {steps.map((_, n) => (
-            <div key={n} className={cn("h-1 flex-1 rounded-full transition-colors", n <= i ? "bg-jewel-solid" : "bg-muted")} />
-          ))}
-        </div>
-        <p className="mt-2 text-center text-xs text-muted-foreground">
-          Step {Math.min(i, steps.length - 1) + 1} of {steps.length} · {STEP_NAMES[step]}
-        </p>
-      </div>
-
-      <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-8">
-        <div key={step} className="w-full max-w-lg animate-rise-in">
-          {step === "welcome" && (
-            <div>
-              <div className="text-center">
-                <div className="mx-auto flex size-16 items-center justify-center rounded-panel border border-border bg-surface">
-                  <Image src="/logo-mark.svg" alt="" width={36} height={36} className="size-9" priority />
-                </div>
-                <h1 className="mt-6 text-2xl font-semibold tracking-tight">Welcome to Cyber CTF</h1>
-                <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
-                  Run realistic, isolated security labs on your machine, your own server or the cloud, launched from the app or straight from the website.
-                </p>
-              </div>
-              <div className="mt-8 space-y-2.5">
-                <Feature
-                  icon="container"
-                  title="Container & VM labs"
-                  description="Docker containers and full virtual machines, each lab on its own isolated network."
+      <div className="flex flex-1 justify-center overflow-y-auto px-6 pt-6 pb-12">
+        <div className="my-auto w-full max-w-lg">
+          {/* The mark, then the step position: dots and a mono "3 / 9 · Step name". */}
+          <div className="flex flex-col items-center">
+            <CtfMark className="size-12" />
+            <div className="mt-6 flex items-center gap-1.5" aria-hidden>
+              {steps.map((_, n) => (
+                <span
+                  key={n}
+                  className={cn(
+                    "h-1.5 rounded-full transition-all duration-300",
+                    n === pos ? "w-4 bg-jewel-solid" : n < pos ? "w-1.5 bg-muted-foreground" : "w-1.5 bg-border-strong",
+                  )}
                 />
-                <Feature
-                  icon="cloud"
-                  title="Run it where you want"
-                  description="On this machine, your own server (Proxmox, ESXi) or your cloud account (AWS, Azure, Google Cloud and more), which stops itself when you're done."
-                />
-                <Feature
-                  icon="shield"
-                  title="Real targets"
-                  description="Exploit genuinely vulnerable systems from an attack box plugged into the lab network."
-                />
-                <Feature
-                  icon="plug"
-                  title="Launch from anywhere"
-                  description="Start a lab from the website, even on your phone; it runs on the machine you pick."
-                />
-              </div>
-              <Button variant="primary" size="lg" className="mt-8 w-full" onClick={next}>
-                Get started
-              </Button>
+              ))}
             </div>
-          )}
+            <p className="mt-2.5 flex items-center gap-1.5 font-mono text-[0.6875rem] text-faint">
+              {meta && <meta.icon className="size-3" />}
+              {pos + 1} / {steps.length} · {STEP_NAMES[step]}
+            </p>
+          </div>
 
-          {step === "signin" && (
-            <div>
-              <StepHeader
-                icon={<Icon name="user" className="size-6 text-foreground" />}
-                title="Sign in"
-                description="Connect your Cyber CTF account to register this machine and launch labs from any device."
-              />
-              <div className="mt-8">
-                {auth?.loggedIn ? (
-                  <div className="flex items-center gap-3 rounded-control border border-success/25 bg-success/10 p-3.5">
-                    <span className="flex size-7 items-center justify-center rounded-full bg-success/15 text-success">
-                      <Icon name="check" className="size-4" />
-                    </span>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Signed in{auth.name ? ` as ${auth.name}` : ""}</p>
-                      {auth.email && <p className="text-xs text-muted-foreground">{auth.email}</p>}
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <Button variant="primary" size="lg" className="w-full" onClick={login} disabled={loggingIn}>
-                      {loggingIn ? (
-                        <>
-                          <Spinner className="size-4" /> Waiting for the browser… (up to 5 minutes)
-                        </>
-                      ) : (
-                        "Sign in"
-                      )}
-                    </Button>
-                    <p className="mt-2 text-center text-xs text-muted-foreground">Opens cyberauth.co in your browser. You can also do this later.</p>
-                    {loginError && (
-                      <p role="alert" className="mt-3 rounded-control border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
-                        {loginError}
+          <div key={step} className="mt-8 animate-rise-in">
+            {step === "welcome" && (
+              <div>
+                <StepHeader
+                  title={
+                    <>
+                      Welcome to Cyber <em>CTF</em>
+                    </>
+                  }
+                  description="Run realistic, isolated security labs on your machine, your own server or the cloud, launched from the app or straight from the website."
+                />
+                <Panel className="mt-8">
+                  <Feature
+                    icon="container"
+                    title="Container & VM labs"
+                    description="Docker containers and full virtual machines, each lab on its own isolated network."
+                  />
+                  <Feature
+                    icon="cloud"
+                    title="Run it where you want"
+                    description="On this machine, your own server (Proxmox, ESXi) or your cloud account (AWS, Azure, Google Cloud and more), which stops itself when you're done."
+                  />
+                  <Feature
+                    icon="shield"
+                    title="Real targets"
+                    description="Exploit genuinely vulnerable systems from an attack box plugged into the lab network."
+                  />
+                  <Feature
+                    icon="plug"
+                    title="Launch from anywhere"
+                    description="Start a lab from the website, even on your phone; it runs on the machine you pick."
+                  />
+                </Panel>
+                <div className="mt-8 flex justify-center">
+                  <Button size="lg" className="min-w-48" onClick={next}>
+                    Get started <ArrowRight className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {step === "signin" && (
+              <div>
+                <StepHeader title="Sign in" description="Connect your Cyber CTF account to register this machine and launch labs from any device." />
+                <div className="mt-8">
+                  {auth?.loggedIn ? (
+                    <Panel className="flex items-center gap-3 px-4 py-3.5">
+                      <StatusDot tone="ok" />
+                      <div className="min-w-0">
+                        <p className="text-[0.8125rem] font-medium text-foreground">Signed in{auth.name ? ` as ${auth.name}` : ""}</p>
+                        {auth.email && <p className="truncate font-mono text-[0.6875rem] text-faint">{auth.email}</p>}
+                      </div>
+                    </Panel>
+                  ) : (
+                    <Panel className="px-5 py-5 text-center">
+                      <Button variant="outline" size="lg" className="w-full" onClick={login} disabled={loggingIn}>
+                        {loggingIn ? (
+                          <>
+                            <Spinner className="size-4" /> Waiting for the browser… (up to 5 minutes)
+                          </>
+                        ) : (
+                          <>
+                            <Icon name="user" className="size-4" /> Sign in with your browser
+                          </>
+                        )}
+                      </Button>
+                      <p className="mt-2.5 text-[0.75rem] text-muted-foreground">
+                        Opens <span className="font-mono text-[0.6875rem]">cyberauth.co</span> in your browser. You can also do this later.
                       </p>
-                    )}
-                  </>
-                )}
-              </div>
-              <div className="mt-8 flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={back}>
-                  Back
-                </Button>
-                <Button className="flex-1" onClick={next}>
-                  Continue
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* A machine step before the machine check answers: just the loader, no step header. */}
-          {step !== "welcome" && step !== "signin" && step !== "done" && report === null && (
-            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Spinner className="size-4" /> Checking this machine…
-            </div>
-          )}
-
-          {step !== "welcome" &&
-            step !== "signin" &&
-            step !== "done" &&
-            report !== null &&
-            (() => {
-              const meta = stepMeta(step, report);
-              return (
-                <div>
-                  <StepHeader icon={<meta.icon className="size-6 text-foreground" />} title={meta.title} description={meta.description} />
-                  <div className="mt-8">
-                    <ErrorBoundary resetKey={step} title="This step couldn’t load">
-                      <MachineStepBody step={step} report={report} setup={setup} />
-                    </ErrorBoundary>
-                  </div>
-                  <div className="mt-8 flex gap-2">
-                    <Button variant="outline" className="flex-1" onClick={back} disabled={setup.busy}>
-                      Back
-                    </Button>
-                    <Button className="flex-1" onClick={next} disabled={setup.busy || !canContinue(step, report, setup)}>
-                      {nextLabel(step, report)}
-                    </Button>
-                  </div>
+                      {loginError && (
+                        <p role="alert" className="surface-log mt-4 flex items-start gap-2 rounded-control p-3 text-left text-[0.75rem] text-foreground">
+                          <StatusDot tone="fail" className="mt-[0.3rem]" />
+                          <span className="min-w-0 break-words">{loginError}</span>
+                        </p>
+                      )}
+                    </Panel>
+                  )}
                 </div>
-              );
-            })()}
+                <StepActions onBack={back} onNext={next} nextLabel="Continue" />
+              </div>
+            )}
 
-          {step === "done" && (
-            <div>
-              <StepHeader
-                icon={<Icon name="sparkles" className="size-6 text-foreground" />}
-                title="You’re all set"
-                description="You can change any of this later in Settings or This machine."
-              />
-              <div className="mt-8 space-y-2.5">
-                <SummaryRow
-                  ok={!!auth?.loggedIn}
-                  label="Account"
-                  value={auth?.loggedIn ? `Signed in${auth.name ? ` as ${auth.name}` : ""}` : "Not signed in"}
+            {/* A machine step before the machine check answers: just the loader, no step header. */}
+            {step !== "welcome" && step !== "signin" && step !== "done" && report === null && (
+              <div className="flex items-center justify-center gap-2 text-[0.8125rem] text-muted-foreground">
+                <Spinner className="size-4" /> Checking this machine…
+              </div>
+            )}
+
+            {step !== "welcome" && step !== "signin" && step !== "done" && report !== null && meta && (
+              <div>
+                <StepHeader title={meta.title} description={meta.description} />
+                <div className="mt-8">
+                  <ErrorBoundary resetKey={step} title="This step couldn’t load">
+                    <MachineStepBody step={step} report={report} setup={setup} />
+                  </ErrorBoundary>
+                </div>
+                <StepActions
+                  onBack={back}
+                  backDisabled={setup.busy}
+                  onNext={next}
+                  disabled={setup.busy || !canContinue(step, report, setup)}
+                  nextLabel={nextLabel(step, report)}
                 />
               </div>
-              <div className="mt-2.5">
-                <SetupOutcome report={report} setup={setup} />
+            )}
+
+            {step === "done" && (
+              <div>
+                <StepHeader
+                  title={
+                    <>
+                      You’re all <em>set</em>
+                    </>
+                  }
+                  description="You can change any of this later in Settings or This machine."
+                />
+                <div className="mt-8 space-y-2.5">
+                  <SummaryRow
+                    ok={!!auth?.loggedIn}
+                    label="Account"
+                    value={auth?.loggedIn ? `Signed in${auth.name ? ` as ${auth.name}` : ""}` : "Not signed in"}
+                  />
+                  <SetupOutcome report={report} setup={setup} />
+                </div>
+                <div className="mt-8 flex justify-center">
+                  <Button size="lg" className="min-w-48" onClick={onComplete}>
+                    Browse labs <ArrowRight className="size-4" />
+                  </Button>
+                </div>
               </div>
-              <Button variant="primary" size="lg" className="mt-8 w-full" onClick={onComplete}>
-                Browse labs
-              </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

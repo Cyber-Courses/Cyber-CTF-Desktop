@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
   ATTACK_PRESETS,
@@ -71,7 +72,7 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
               }
               subtitle={
                 <>
-                  <span className="font-mono">{p.image}</span> <span className="text-muted-foreground/60">·</span> {p.note}
+                  <span className="font-mono">{p.image}</span> <span className="text-faint">·</span> {p.note}
                 </>
               }
             />
@@ -85,16 +86,18 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
                   if (customDirty) choose(draft);
                 }}
               >
-                <input
+                <Input
+                  fieldSize="sm"
+                  mono
                   autoFocus
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onClick={(e) => e.stopPropagation()}
                   spellCheck={false}
                   placeholder="registry/image:tag"
-                  className="h-8 min-w-0 flex-1 rounded-sm border border-border bg-background px-2.5 font-mono text-xs text-foreground outline-none focus:border-ring"
+                  className="min-w-0 flex-1"
                 />
-                <Button type="submit" variant="outline" size="sm" disabled={!customDirty} onClick={(e) => e.stopPropagation()}>
+                <Button type="submit" variant="outline" size="xs" disabled={!customDirty} onClick={(e) => e.stopPropagation()}>
                   Save
                 </Button>
               </form>
@@ -164,7 +167,7 @@ function AttackVmRow({ onSaved }: { onSaved: () => void }) {
             }
             subtitle={
               <>
-                <span className="font-mono">{p.box}</span> <span className="text-muted-foreground/60">·</span> {p.note}
+                <span className="font-mono">{p.box}</span> <span className="text-faint">·</span> {p.note}
               </>
             }
           />
@@ -184,16 +187,18 @@ function AttackVmRow({ onSaved }: { onSaved: () => void }) {
                 if (customDirty) choose(draft);
               }}
             >
-              <input
+              <Input
+                fieldSize="sm"
+                mono
                 autoFocus
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
                 spellCheck={false}
                 placeholder="owner/name"
-                className="h-8 min-w-0 flex-1 rounded-sm border border-border bg-background px-2.5 font-mono text-xs text-foreground outline-none focus:border-ring"
+                className="min-w-0 flex-1"
               />
-              <Button type="submit" variant="outline" size="sm" disabled={!customDirty} onClick={(e) => e.stopPropagation()}>
+              <Button type="submit" variant="outline" size="xs" disabled={!customDirty} onClick={(e) => e.stopPropagation()}>
                 Save
               </Button>
             </form>

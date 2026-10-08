@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { Button } from "@/components/ui/button";
 import { restartApp } from "@/lib/tauri";
+import { cn } from "@/lib/utils";
 import { tell } from "@/lib/failure";
 
 /**
@@ -21,7 +22,7 @@ export function UpdateBanner() {
         if (u) setUpdate(u);
       })
       .catch(() => {
-        /* offline, dev, or no update endpoint - stay silent */
+        /* offline, dev, or no update endpoint: stay silent */
       });
   }, []);
 
@@ -41,20 +42,25 @@ export function UpdateBanner() {
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border bg-jewel/10 px-6 py-2.5 text-sm">
-      <span className="text-foreground">
-        {phase === "ready"
-          ? "Update installed. Restarting Cyber CTF…"
-          : phase === "error"
-            ? "Update failed. Try again later."
-            : `Version ${update.version} is available.`}
+    <div role="status" className="flex h-10 shrink-0 items-center gap-2.5 border-b border-border bg-jewel/[0.06] px-6 text-[0.8125rem]">
+      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", phase === "error" ? "bg-destructive" : "bg-jewel")} />
+      <span className="min-w-0 flex-1 truncate text-foreground">
+        {phase === "ready" ? (
+          "Update installed. Restarting Cyber CTF…"
+        ) : phase === "error" ? (
+          "Update failed. Try again later."
+        ) : (
+          <>
+            Version <span className="font-mono text-[0.75rem]">{update.version}</span> is available.
+          </>
+        )}
       </span>
       {phase === "ready" ? (
-        <Button variant="primary" size="sm" onClick={() => restartApp().catch(tell("Couldn't restart Cyber CTF"))}>
+        <Button size="xs" onClick={() => restartApp().catch(tell("Couldn't restart Cyber CTF"))}>
           Restart now
         </Button>
       ) : (
-        <Button variant="primary" size="sm" onClick={install} disabled={phase === "downloading"}>
+        <Button size="xs" onClick={install} disabled={phase === "downloading"}>
           {phase === "downloading" ? "Updating…" : "Update"}
         </Button>
       )}

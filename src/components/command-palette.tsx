@@ -40,7 +40,7 @@ export function CommandPalette({ open, onClose, commands }: { open: boolean; onC
   // The selection, kept in range as results shrink (clamped during render, not in an effect).
   const selected = Math.min(active, Math.max(0, results.length - 1));
 
-  // Focus the field when it appears, and keep the selected row visible — DOM side effects only.
+  // Focus the field when it appears, and keep the selected row visible: DOM side effects only.
   useEffect(() => {
     requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
