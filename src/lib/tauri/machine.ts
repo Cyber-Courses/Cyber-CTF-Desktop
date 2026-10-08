@@ -42,6 +42,10 @@ export interface SystemReport {
   pkgManager: { name: string; installed: boolean; version: string | null };
   docker: Tool;
   dockerRunning: boolean;
+  /** Docker answers "permission denied": the user isn't in the docker group (yet). */
+  dockerDenied?: boolean;
+  /** What to run about it (the usermod command, then log out and back in). */
+  dockerDeniedHint?: string | null;
   /** The Docker-compatible engine that answers, when one does. */
   dockerEngine: DockerEngine | null;
   /** Every engine whose Docker context answers; several can run side by side. */

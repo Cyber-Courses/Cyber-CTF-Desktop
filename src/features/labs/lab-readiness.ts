@@ -13,6 +13,7 @@ export function setupNeeded(lab: Lab, report: SystemReport | null, servers: Serv
   if (!rt || !report) return null;
   if (rt.runtime === "DOCKER") {
     if (!report.docker.installed) return "Needs a container engine";
+    if (report.dockerDenied) return "Docker needs permission (see Machine)";
     if (!report.dockerRunning) return "Start your container engine";
     return null;
   }

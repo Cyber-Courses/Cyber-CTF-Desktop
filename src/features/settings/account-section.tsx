@@ -71,7 +71,13 @@ export function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus
               <Badge variant="outline">Offline</Badge>
             </span>
           }
-          description={error ? <span className="text-destructive">{error}</span> : "Sign in with your Cyber account to sync labs and run them from any device."}
+          description={
+            (error ?? auth.keychainError) ? (
+              <span className="text-destructive">{error ?? auth.keychainError}</span>
+            ) : (
+              "Sign in with your Cyber account to sync labs and run them from any device."
+            )
+          }
           control={
             <Button variant="learn" size="sm" onClick={login} disabled={busy}>
               {busy ? (

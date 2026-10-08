@@ -216,12 +216,24 @@ export function MachineScreen({
           }
           title="Container labs"
           tone={dockerReady ? (last.docker?.result === "fail" ? "fail" : "ok") : "warn"}
-          status={dockerReady ? (last.docker?.result === "fail" ? "Test failed" : "Ready") : report.docker.installed ? "Engine stopped" : "Needs setup"}
+          status={
+            dockerReady
+              ? last.docker?.result === "fail"
+                ? "Test failed"
+                : "Ready"
+              : report.dockerDenied
+                ? "No permission"
+                : report.docker.installed
+                  ? "Engine stopped"
+                  : "Needs setup"
+          }
           detail={
             dockerReady ? (
               <>
                 {report.dockerEngine ? engineName(report.dockerEngine) : "Docker"} · {testLine(last.docker)}
               </>
+            ) : report.dockerDenied ? (
+              (report.dockerDeniedHint ?? "Docker is running, but this user may not use it: add yourself to the docker group, then log out and back in.")
             ) : report.docker.installed ? (
               "A container engine is installed but not running. Start it to run labs."
             ) : (
@@ -233,7 +245,7 @@ export function MachineScreen({
           actions={
             dockerReady ? (
               testBtn("docker")
-            ) : (
+            ) : report.dockerDenied ? null : (
               <Button variant="learn" size="sm" onClick={() => fix("docker")}>
                 Fix
               </Button>
