@@ -3,13 +3,11 @@
   "identifier": "default",
   "description": "enables the default permissions",
   "windows": [
-    "main",
-    "settings"
+    "main"
   ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
-    "core:window:allow-close",
     "opener:default",
     "deep-link:default",
     "updater:default",

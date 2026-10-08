@@ -13,16 +13,21 @@ import { openExternal, tell } from "@/lib/failure";
 
 const SERVERS = new Set(["vmware_esxi", "proxmox"]);
 
+/** Whether the lab is built for this CPU (no architectures listed = any). */
+export const runsNatively = (rt: NonNullable<Lab["runtime"]>, hostArch: string) => !rt.architectures.length || rt.architectures.includes(hostArch);
+
 type PlaceKey = NonNullable<LabStatus["place"]> | "hosted";
 
-/** Every place a lab could run, and whether this one can (its runtime here, then its providers). */
-export function runPlaces(rt: NonNullable<Lab["runtime"]>): { key: PlaceKey; icon: LucideIcon; label: string; available: boolean }[] {
+/** Every place a lab could run, and whether this one can (its runtime here, then its providers).
+ *  A VM lab built for another CPU can't run on this machine's hypervisors (x86 Windows on Apple
+ *  Silicon), so `hostArch` takes "VM on this machine" away; containers still run emulated. */
+export function runPlaces(rt: NonNullable<Lab["runtime"]>, hostArch?: string): { key: PlaceKey; icon: LucideIcon; label: string; available: boolean }[] {
   // providers also carries "hosted" (not a launcher Provider), so compare as strings.
   const local = rt.providers.some((p: string) => !SERVERS.has(p) && !CLOUDS.has(p) && p !== "hosted");
   const vm = rt.runtime === "VM";
   return [
     { key: "container", icon: Container, label: "Container on this machine", available: !vm },
-    { key: "local_vm", icon: Monitor, label: "VM on this machine", available: vm || local },
+    { key: "local_vm", icon: Monitor, label: "VM on this machine", available: (vm || local) && !(vm && hostArch && !runsNatively(rt, hostArch)) },
     { key: "server", icon: Server, label: "Your server", available: rt.providers.some((p) => SERVERS.has(p)) },
     { key: "cloud", icon: Cloud, label: "Your cloud account", available: rt.providers.some((p) => CLOUDS.has(p)) },
     { key: "hosted", icon: Globe, label: "Hosted by Cyber CTF", available: rt.hosted ?? false },
@@ -172,7 +177,7 @@ export function LabRow({
             <span className="inline-flex items-center gap-1">
               {/* Every place is shown: where it runs (emerald), where it can (accent), and where
                   it can't (greyed), so the row reads as the full set of options at a glance. */}
-              {runPlaces(rt).map(({ key, icon: Icon, label, available }) => {
+              {runPlaces(rt, hostArch).map(({ key, icon: Icon, label, available }) => {
                 const inUse = running && status?.place === key;
                 const hint = inUse ? `Running on: ${status?.host ?? label}` : available ? `Can run on: ${label}` : `Not available: ${label}`;
                 return (

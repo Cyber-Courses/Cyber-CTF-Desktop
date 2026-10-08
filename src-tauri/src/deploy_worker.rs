@@ -425,6 +425,10 @@ pub fn worker_main(job_path: PathBuf, mut context: tauri::Context) {
     context.config_mut().app.windows.clear();
     tauri::Builder::default()
         .setup(move |app| {
+            // A background process, not an app: on macOS keep it out of the Dock, the app
+            // switcher and Apple Events aimed at "Cyber CTF".
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Prohibited);
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let code = deploy(&handle, job).await;
@@ -434,7 +438,14 @@ pub fn worker_main(job_path: PathBuf, mut context: tauri::Context) {
         })
         .build(context)
         .expect("error while starting the deploy worker")
-        .run(|_, _| {});
+        .run(|_, event| {
+            // Only the deploy ends the worker (`handle.exit(code)` carries its code). A quit from
+            // outside (a script or tool quitting "Cyber CTF") reached it once and killed a deploy
+            // mid-way, orphaning vagrant with no status written.
+            if let tauri::RunEvent::ExitRequested { code: None, api, .. } = event {
+                api.prevent_exit();
+            }
+        });
 }
 
 /// Runs the job, logging to its file (also this process's stdout/stderr, for panics), and leaves

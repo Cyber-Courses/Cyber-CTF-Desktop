@@ -172,8 +172,14 @@ pub fn open_terminal(command: &str) -> Result<()> {
         // do script types the line into a new window; escape it for the AppleScript string.
         // The leading space keeps it out of shell history where HIST_IGNORE_SPACE is on.
         let line = applescript_string(&format!(" clear; DOCKER_CLI_HINTS=false exec {command}"));
-        let script =
-            format!("tell application \"Terminal\"\nactivate\ndo script \"{line}\"\nset custom title of front window to \"Cyber CTF attack box\"\nend tell");
+        // Title: ours alone where AppleScript allows it (no size, device or shell path). The working
+        // folder and the running command are Terminal profile settings it can't turn off.
+        let script = format!(
+            "tell application \"Terminal\"\nactivate\nset t to do script \"{line}\"\nset custom title of t to \"Cyber CTF attack box\"\n\
+             set title displays custom title of t to true\nset title displays window size of t to false\n\
+             set title displays device name of t to false\nset title displays shell path of t to false\n\
+             set title displays file name of t to false\nend tell"
+        );
         std::process::Command::new("osascript").arg("-e").arg(script).spawn()?;
         Ok(())
     }
