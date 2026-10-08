@@ -525,6 +525,13 @@ async fn resume_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, 
     match runtime {
         Runtime::Docker if local_vm(dir).is_some() => vm::resume(&lab::vagrant_dir(dir, runtime), &[], &mut *log).await?,
         Runtime::Docker => {
+            // Its stopped containers pruned (or Docker reset): nothing to bring back. Say so and
+            // drop the parked mark, so the page offers a fresh start instead of a resume that
+            // fails on "no container to start" every time.
+            if docker::containers(dir, id).await.is_ok_and(|n| n == 0) {
+                mark_parked(dir, None)?;
+                return Err(Error::Invalid("Nothing is left of this lab to resume (its stopped containers are gone). Start it again for a fresh copy.".into()));
+            }
             docker::resume(dir, id, &mut *log).await?;
             // Recorded again, with its Compose project (labs started before it was recorded).
             if let Ok(spec) = lab::instanced(dir) {

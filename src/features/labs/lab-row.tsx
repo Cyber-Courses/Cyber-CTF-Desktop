@@ -110,7 +110,7 @@ export function LabRow({
         e.preventDefault();
         onOpen();
       }}
-      className="group flex cursor-pointer items-center gap-3 border-t border-border px-4 py-3 outline-none transition-colors first:border-t-0 hover:bg-[#0e0e0e] focus-visible:bg-[#0e0e0e] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring/60"
+      className="group flex cursor-pointer items-center gap-3 border-t border-border px-4 py-3 outline-none transition-colors first:border-t-0 hover:bg-[#0e0e0e] focus-visible:bg-[#0e0e0e] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
     >
       <span className="grid size-[1.875rem] shrink-0 place-items-center rounded-lg border border-border bg-[#121212] text-muted-foreground">
         <RuntimeIcon className="size-4" />

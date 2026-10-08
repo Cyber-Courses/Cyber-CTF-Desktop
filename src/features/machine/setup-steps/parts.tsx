@@ -45,7 +45,7 @@ export function Log({ setup }: { setup: MachineSetupState }) {
   useEffect(() => end.current?.scrollIntoView({ block: "end" }), [logs]);
   if (logs.length === 0) return null;
   return (
-    <pre className="max-h-40 overflow-auto rounded-lg border border-border bg-[#070707] p-3 text-left font-mono text-[0.71875rem] leading-relaxed text-muted-foreground">
+    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-[#070707] p-3 text-left font-mono text-[0.71875rem] leading-relaxed text-muted-foreground">
       {logs.join("\n")}
       <div ref={end} />
     </pre>

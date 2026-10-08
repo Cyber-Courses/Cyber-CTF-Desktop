@@ -9,6 +9,7 @@
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
+    "core:window:allow-close",
     "opener:default",
     "deep-link:default",
     "updater:default",

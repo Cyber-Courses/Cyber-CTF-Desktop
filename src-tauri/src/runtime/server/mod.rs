@@ -514,7 +514,7 @@ pub async fn server_open_setup(app: AppHandle, id: Option<String>, kind: Option<
         let _ = existing.destroy();
     }
     let mut builder = tauri::WebviewWindowBuilder::new(&app, LABEL, tauri::WebviewUrl::App(path.into()))
-        .title(if cloud { "Connect AWS" } else { "Connect a host" })
+        .title(if cloud { "Connect a cloud account" } else { "Connect a host" })
         .inner_size(680.0, 760.0)
         .min_inner_size(560.0, 560.0)
         .resizable(true);
