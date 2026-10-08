@@ -175,17 +175,8 @@ pub fn message(dir: &Path, spec: &Spec, target: Target) -> Option<String> {
 /// Addresses are the ones machines have on `target` (their Docker blocks on the Compose targets).
 pub fn message_at(dir: &Path, spec: &Spec, target: Target, published: &[(String, u16, u16)]) -> Option<String> {
     let text = spec.message.as_deref()?;
-    let mut snapshot = isoloom_core::resolved::on_target(isoloom_core::resolved::resolve_with(spec, instance(dir)), target);
-    for (machine, port, host) in published {
-        let services = snapshot.pointer_mut(&format!("/machines/{machine}/services")).and_then(|s| s.as_array_mut());
-        for s in services.into_iter().flatten().filter(|s| s["port"] == *port) {
-            s["publish"] = (*host).into();
-        }
-        let listed = snapshot.get_mut("published").and_then(|p| p.as_array_mut());
-        for p in listed.into_iter().flatten().filter(|p| p["machine"] == machine.as_str() && p["port"] == *port) {
-            p["host_port"] = (*host).into();
-        }
-    }
+    let snapshot = isoloom_core::resolved::on_target(isoloom_core::resolved::resolve_with(spec, instance(dir)), target);
+    let snapshot = isoloom_core::resolved::with_published(snapshot, published);
     isoloom_core::resolved::fill(text, &snapshot).ok().map(|m| m.trim_end().to_string())
 }
 

@@ -195,7 +195,7 @@ pub async fn start(
                 mark_local_vm(dir, None)?;
                 docker::start(dir, id, env, &mut log).await?;
                 exegol::rejoin(id).await;
-                registry::record(dir, &spec, isoloom_core::Target::Docker, None);
+                registry::record_docker(dir, &spec, docker::project(id));
                 // Its ports here are the ones picked at its first start, not the spec's.
                 let published = docker::published(dir, id, env).await;
                 if let Some(m) = lab::message_at(dir, &spec, isoloom_core::Target::Docker, &published) {
@@ -494,7 +494,13 @@ async fn resume_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, 
     log("Resuming the lab…".into());
     match runtime {
         Runtime::Docker if local_vm(dir).is_some() => vm::resume(&lab::vagrant_dir(dir, runtime), &[], &mut *log).await?,
-        Runtime::Docker => docker::resume(dir, id, &mut *log).await?,
+        Runtime::Docker => {
+            docker::resume(dir, id, &mut *log).await?;
+            // Recorded again, with its Compose project (labs started before it was recorded).
+            if let Ok(spec) = lab::instanced(dir) {
+                registry::record_docker(dir, &spec, docker::project(id));
+            }
+        }
         Runtime::Vm => {
             vm::resume(&lab::vagrant_dir(dir, runtime), &[], &mut *log).await?;
             if let Err(e) = attack_vm::resume(dir, &mut *log).await {
