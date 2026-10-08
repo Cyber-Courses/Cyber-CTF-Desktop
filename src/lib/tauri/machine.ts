@@ -107,6 +107,21 @@ export function installDependency(dependency: Dependency, onLog: (line: string) 
   return invoke<void>("install_dependency", { dependency, logs });
 }
 
+/** A tool Cyber CTF installed (and can therefore offer to remove). `at` is in epoch seconds. */
+export interface InstalledTool {
+  dependency: Dependency;
+  at: number;
+}
+
+export const installedTools = () => invoke<InstalledTool[]>("installed_tools");
+
+/** Removes a tool Cyber CTF installed, streaming the output. */
+export function uninstallDependency(dependency: Dependency, onLog: (line: string) => void) {
+  const logs = new Channel<string>();
+  logs.onmessage = onLog;
+  return invoke<void>("uninstall_dependency", { dependency, logs });
+}
+
 /** Installs a Vagrant plugin (userland), streaming the output. */
 export function installVagrantPlugin(plugin: string, onLog: (line: string) => void) {
   const logs = new Channel<string>();

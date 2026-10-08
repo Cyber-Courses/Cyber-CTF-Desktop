@@ -2,3 +2,4 @@
 
 pub mod env_path;
 pub mod install;
+pub mod uninstall;

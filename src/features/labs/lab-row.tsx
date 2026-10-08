@@ -99,7 +99,8 @@ export function LabRow({
   deploying?: boolean;
 }) {
   const rt = lab.runtime;
-  const native = rt ? runsNatively(rt, hostArch) : true;
+  // Unknown host (report not in yet) or a lab for any CPU: native, never a wrong "emulated".
+  const native = !hostArch || !rt || runsNatively(rt, hostArch);
   const running = status?.running ?? false;
   const parked = !running && (status?.parked ?? null);
   // While busy, what is actually happening: a lab being started reports running long before

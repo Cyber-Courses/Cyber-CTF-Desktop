@@ -18,7 +18,9 @@ export function stepMeta(step: MachineStep, report: SystemReport | null): { icon
   const pm = report?.pkgManager.name ?? "a package manager";
   // macOS asks for a few things along the way; say so before the step that triggers each prompt.
   const mac = report?.os === "macos";
-  const localNetwork = mac ? " macOS may ask to let Cyber CTF find devices on your local network: choose Allow, labs need it." : "";
+  const localNetwork = mac
+    ? " macOS may ask to let Cyber CTF find devices on your local network, and to show notifications (lab ready, failures): choose Allow, labs need the first."
+    : "";
   switch (step) {
     case "pkgmgr":
       return {
@@ -46,7 +48,8 @@ export function stepMeta(step: MachineStep, report: SystemReport | null): { icon
         icon: Crosshair,
         title: "Attack machine",
         description:
-          "The machine you attack labs from: a container that starts next to each lab, on its network. Pick a toolset; you can change it later in Settings.",
+          "The machine you attack labs from: a container that starts next to each lab, on its network. Pick a toolset; you can change it later in Settings." +
+          (mac ? " Its shell opens in Terminal: the first time, macOS asks to let Cyber CTF control Terminal; choose OK." : ""),
       };
     case "vm":
       return {

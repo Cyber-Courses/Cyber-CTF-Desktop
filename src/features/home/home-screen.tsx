@@ -122,7 +122,9 @@ export function HomeScreen({
     };
   }, []);
 
-  const dockerReady = report ? report.docker.installed && report.dockerRunning : false;
+  // Unknown until the machine report is in: no "set up" call to action for a Docker that is
+  // simply not probed yet.
+  const dockerReady = report ? report.docker.installed && report.dockerRunning : null;
   const running = (labs ?? []).filter((l) => statuses[l.id]?.running);
   const preview = (labs ?? []).slice(0, 6);
   const activeOps = [...ops.values()];
@@ -140,11 +142,14 @@ export function HomeScreen({
   const capacity = metrics ? assessRam(metrics.memTotal) : null;
   const hello = greeting(new Date(now).getHours());
 
-  const heroStatus = !dockerReady
-    ? "Set up Docker to start running labs."
-    : running.length > 0
-      ? `${running.length} lab${running.length > 1 ? "s" : ""} running on this machine.`
-      : "This machine is ready. Pick a lab to attack.";
+  const heroStatus =
+    dockerReady === null
+      ? "Checking this machine…"
+      : !dockerReady
+        ? "Set up Docker to start running labs."
+        : running.length > 0
+          ? `${running.length} lab${running.length > 1 ? "s" : ""} running on this machine.`
+          : "This machine is ready. Pick a lab to attack.";
 
   const labRow = (lab: Lab) => (
     <LabRow
@@ -181,7 +186,7 @@ export function HomeScreen({
         }
         lead={heroStatus}
         actions={
-          !dockerReady ? (
+          dockerReady === false ? (
             <Button size="sm" onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))}>
               <Play className="size-3.5" /> Set up this machine
             </Button>

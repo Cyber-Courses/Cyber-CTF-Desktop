@@ -12,6 +12,12 @@ import { StatusDot, StatusPill, type Tone } from "@/components/ui/status-pill";
 import { ProviderGlyph } from "@/features/servers/provider-glyph";
 import { formatAgo, formatBytes } from "@/lib/format";
 import { VmTest } from "@/features/servers/vm-tests";
+import { openExternal } from "@/lib/failure";
+
+/** A host on a private LAN address: what macOS's Local Network permission governs. */
+const isPrivateHost = (h: string) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h) || h.endsWith(".local");
+const onMac = () => typeof navigator !== "undefined" && /Mac/.test(navigator.userAgent);
+const LOCAL_NETWORK_SETTINGS = "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork";
 
 export function HostRow({
   host,
@@ -45,8 +51,10 @@ export function HostRow({
   onRemove: () => void;
 }) {
   const result = test && test !== "testing" ? test : null;
-  const tone: Tone = test === "testing" || !test ? "muted" : result!.ok ? "ok" : "fail";
-  const status = test === "testing" ? "Testing…" : !test ? "Not tested" : result!.ok ? "Online" : "Unreachable";
+  // A missing password is a credential to enter, not a host that is down.
+  const needsPassword = !!result && !result.ok && /no password stored/i.test(result.message);
+  const tone: Tone = test === "testing" || !test ? "muted" : result!.ok ? "ok" : needsPassword ? "warn" : "fail";
+  const status = test === "testing" ? "Testing…" : !test ? "Not tested" : result!.ok ? "Online" : needsPassword ? "Needs password" : "Unreachable";
   // The running-labs count is filesystem-only and can go stale when a host drops. Only trust it
   // once the host answers as Online; an unreachable host must not report a phantom count.
   const online = !!result && result.ok;
@@ -96,10 +104,19 @@ export function HostRow({
               )}
               {result && !result.ok && (
                 <span className="inline-flex min-w-0 items-start gap-1.5">
-                  <StatusDot tone="fail" className="mt-1.5" />
+                  <StatusDot tone={needsPassword ? "warn" : "fail"} className="mt-1.5" />
                   <span className="min-w-0 break-words">{result.message}</span>
                 </span>
               )}
+            </p>
+          )}
+          {/* A denied Local Network permission looks exactly like a host that is down. */}
+          {result && !result.ok && onMac() && isPrivateHost(host.host) && (
+            <p className="mt-1 text-[0.75rem] text-muted-foreground">
+              If the host is up, macOS may be blocking Cyber CTF from your local network.{" "}
+              <button type="button" className="text-link underline underline-offset-2" onClick={() => openExternal(LOCAL_NETWORK_SETTINGS)}>
+                Open Local Network settings
+              </button>
             </p>
           )}
         </div>

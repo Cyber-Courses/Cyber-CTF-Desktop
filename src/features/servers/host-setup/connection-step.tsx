@@ -63,7 +63,7 @@ export function ConnectionStep({ s }: { s: HostSetup }) {
             type="password"
             value={v.password ?? ""}
             onChange={(e) => set("password", e.target.value || null)}
-            placeholder={editing ? "Unchanged" : ""}
+            placeholder={editing ? "Empty keeps the current one, if any" : ""}
             autoComplete="off"
           />
         </Field>

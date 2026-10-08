@@ -96,6 +96,9 @@ pub(crate) fn vagrantfile(lab: &str, box_name: &str, links: &[Link]) -> String {
     out
 }
 
+/// How many times a start that hit Vagrant's machine lock is tried again.
+const LOCK_RETRIES: u32 = 4;
+
 /// Starts the attacker beside the lab (whose Vagrantfile is in `lab_vagrant_dir`), on the same
 /// hypervisor. The first start downloads the box.
 pub async fn start(lab_dir: &Path, lab_vagrant_dir: &Path, provider: Provider, box_name: &str, mut log: impl FnMut(String)) -> Result<()> {
@@ -109,7 +112,33 @@ pub async fn start(lab_dir: &Path, lab_vagrant_dir: &Path, provider: Provider, b
     std::fs::write(d.join("Vagrantfile"), vagrantfile(&lab, box_name, &links)).map_err(Error::Io)?;
     log(format!("Starting the attack VM ({box_name}) next to the lab; the first start downloads the box, which can take a while…"));
     vm::discard_aborted_saved(&d, &mut log).await;
-    stream("vagrant", &["up", "--provider", provider.id()], Some(&d), &[], &mut log).await?;
+    // Another Vagrant run touching the machine (a lab operation, a manual command) makes `up` fail
+    // with "machine is locked" half-way: the VM then runs without its key swap or its lab network
+    // card, and looks started. Wait for the lock and finish the boot sequence properly: `reload`
+    // replays it (networks included) on a VM that exists; a plain second `up` would see it
+    // running and do nothing.
+    let mut args: Vec<&str> = vec!["up", "--provider", provider.id()];
+    for attempt in 1..=LOCK_RETRIES {
+        let mut locked = false;
+        let result = stream("vagrant", &args, Some(&d), &[], |line: String| {
+            locked |= line.contains("because it is locked");
+            log(line)
+        })
+        .await;
+        match result {
+            Ok(()) => break,
+            Err(e) if attempt == LOCK_RETRIES => return Err(e),
+            Err(_) if locked && attempt < LOCK_RETRIES => {
+                log("Another Vagrant run is using this machine; finishing the start when it's done…".into());
+                tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+                args = vec!["reload", "--provision"];
+            }
+            Err(e) if args[0] == "reload" && attempt < LOCK_RETRIES && e.to_string().contains("not created") => {
+                args = vec!["up", "--provider", provider.id()];
+            }
+            Err(e) => return Err(e),
+        }
+    }
     log("Attack VM ready.".into());
     Ok(())
 }

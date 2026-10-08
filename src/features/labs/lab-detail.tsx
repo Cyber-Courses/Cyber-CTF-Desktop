@@ -112,7 +112,8 @@ export function LabDetail({
   // local log of it, so follow the worker's log file instead.
   const workerLines = useWorkerLog(lab.id, backendDeploying.has(lab.id) && !busy && logs.length === 0);
   const rt = lab.runtime;
-  const native = rt ? runsNatively(rt, hostArch) : true;
+  // Unknown host (report not in yet) or a lab for any CPU: native, never a wrong "emulated".
+  const native = !hostArch || !rt || runsNatively(rt, hostArch);
   const running = status?.running ?? false;
   // A deploy this session started sets `busy`; one still running after a window reload (which
   // loses the in-memory deploy state) is recovered from the backend, so the page shows "Starting"
@@ -228,7 +229,13 @@ export function LabDetail({
   // a local VM lab; a remote container lab's runs next to it on its host.
   // Not while the lab itself is starting, resuming or stopping: a resume brings the attack VM
   // back on its own, and a second `vagrant up` in its folder at the same time would collide.
-  const box = useAttackBox(lab.id, { running, holding: deployingHere, local: !remote, kind: isDocker ? "container" : "vm" });
+  // This session's own log of the run when it has one; else the worker's log file, for a deploy
+  // that kept running through a reload or relaunch. A run that ended in ✗ failed.
+  const shownLogs = logs.length > 0 ? logs : workerLines;
+  const deployFailed = shownLogs.some((l) => l.startsWith("✗"));
+  // A failed deploy can leave the VMs up (a provisioning step broke): the lab then reads as
+  // running, but its attack box must not start beside a lab that isn't ready.
+  const box = useAttackBox(lab.id, { running, holding: deployingHere, local: !remote, kind: isDocker ? "container" : "vm", failed: deployFailed });
   const exegol = box.status;
   const [check, clearCheck] = useLabCheck(lab.id, { running, downCount: down.length, enabled: isDocker });
   // The lab's observers (`tools:` in its spec), read once it runs: static addresses, so the
@@ -277,9 +284,6 @@ export function LabDetail({
         : whereLabel
           ? `this machine · ${whereLabel}`
           : "this machine");
-  // This session's own log of the run when it has one; else the worker's log file, for a deploy
-  // that kept running through a reload or relaunch.
-  const shownLogs = logs.length > 0 ? logs : workerLines;
   const shownTimes = logs.length > 0 ? times : [];
   const deploy = (
     <Panel>
@@ -291,12 +295,24 @@ export function LabDetail({
         where={destLabel}
         operation={operation ?? lastOperation}
       />
+      {/* A VM lab whose setup broke on one step (a Windows domain join timing out on a busy host)
+          still has every machine built: running the setup again continues it in minutes, where
+          a clean start would rebuild everything. */}
+      {deployFailed && canProvision && !busy && (running || interrupted) && (
+        <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3">
+          <p className="min-w-0 flex-1 text-[0.75rem] text-muted-foreground">
+            The setup stopped, but the machines are built. Run it again to continue from where it failed, or Stop &amp; clean up to start over.
+          </p>
+          <Button variant="primary" size="sm" onClick={() => void act("provision")} disabled={busy}>
+            {acting === "provision" ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} Re-run setup
+          </Button>
+        </div>
+      )}
     </Panel>
   );
   // The deploy panel is worth showing while a run is in progress, once the lab is up, or when
   // the last run failed. Once a lab is stopped the leftover "✓ Lab is running" logs are stale
   // (they'd otherwise read "Ready" with nothing running), so we don't show them.
-  const deployFailed = shownLogs.some((l) => l.startsWith("✗"));
   const showDeploy = deployingHere || running || deployFailed;
 
   // The page's state as one dot and one word, for the status strip under the title.
@@ -603,7 +619,9 @@ export function LabDetail({
               <PanelHeader title="Network" meta={rt ? (isDocker ? "containers" : "vm") : undefined} />
               <p className="dotted-canvas px-6 py-14 text-center text-[0.8125rem] text-muted-foreground">
                 {interrupted
-                  ? "A previous start was interrupted and left machines behind. Use “Stop & clean up”, then start again."
+                  ? canProvision
+                    ? "A previous start didn't finish and left machines behind. Re-run setup to continue it, or use “Stop & clean up”, then start again."
+                    : "A previous start was interrupted and left machines behind. Use “Stop & clean up”, then start again."
                   : parked
                     ? parked === "pause"
                       ? "The lab is paused with its state saved. Resume it to pick up where you left off."

@@ -29,6 +29,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { cn } from "@/lib/utils";
 import { ignore, tell, warn } from "@/lib/failure";
 import { useLabLinks } from "@/lib/deep-link";
+import { useLabState } from "@/features/labs/lab-store";
 import { AUTH_CHANGED_EVENT, NAVIGATE_EVENT, REPLAY_ONBOARDING_EVENT, showInMainWindow } from "@/lib/app-events";
 import { Button } from "@/components/ui/button";
 import { installDevMock } from "@/lib/dev-mock";
@@ -250,8 +251,13 @@ export function AppShell() {
       clearInterval(t);
     };
   }, [busyKey]);
+  // A lab's own status, once known, has the last word over the workload scan: the scan counts
+  // any VM a lab left behind (a half-started VM lab), so the sidebar said "Running" while the
+  // Overview, from the same statuses, counted one lab fewer.
+  const statuses = useLabState("statuses");
+  const scanSaysRunning = (id: string) => runningIds.has(id) && (statuses[id] ? statuses[id].running : true);
   const activeLabs = palLabs
-    .filter((l) => deploying.has(l.id) || ops.has(l.id) || runningIds.has(l.id))
+    .filter((l) => deploying.has(l.id) || ops.has(l.id) || scanSaysRunning(l.id))
     .map((l) => ({ ...l, op: ops.get(l.id) ?? (deploying.has(l.id) ? { labId: l.id, op: "launch" as const, machine: null, step: null } : null) }));
 
   const paletteCommands: Command[] = [
