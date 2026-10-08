@@ -291,6 +291,19 @@ export function LabDetail({
         where={destLabel}
         operation={operation ?? lastOperation}
       />
+      {/* A VM lab whose setup broke on one step (a Windows domain join timing out on a busy host)
+          still has every machine built: running the setup again continues it in minutes, where
+          a clean start would rebuild everything. */}
+      {deployFailed && canProvision && !busy && (running || interrupted) && (
+        <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3">
+          <p className="min-w-0 flex-1 text-[0.75rem] text-muted-foreground">
+            The setup stopped, but the machines are built. Run it again to continue from where it failed, or Stop &amp; clean up to start over.
+          </p>
+          <Button variant="learn" size="sm" onClick={() => void act("provision")} disabled={busy}>
+            {acting === "provision" ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} Re-run setup
+          </Button>
+        </div>
+      )}
     </Panel>
   );
   // The deploy panel is worth showing while a run is in progress, once the lab is up, or when
@@ -590,7 +603,9 @@ export function LabDetail({
               <PanelHeader title="Network" />
               <p className="px-4 py-10 text-center text-[0.78125rem] text-muted-foreground">
                 {interrupted
-                  ? "A previous start was interrupted and left machines behind. Use “Stop & clean up”, then start again."
+                  ? canProvision
+                    ? "A previous start didn't finish and left machines behind. Re-run setup to continue it, or use “Stop & clean up”, then start again."
+                    : "A previous start was interrupted and left machines behind. Use “Stop & clean up”, then start again."
                   : parked
                     ? parked === "pause"
                       ? "The lab is paused with its state saved. Resume it to pick up where you left off."
