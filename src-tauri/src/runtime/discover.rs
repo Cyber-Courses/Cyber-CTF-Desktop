@@ -119,6 +119,31 @@ fn is_lab_id(id: &str) -> bool {
 /// Best effort: an engine that is absent or errors simply contributes nothing. Read-only and
 /// timed (never hangs the caller), so it is safe to poll.
 pub async fn running_lab_ids(app: &AppHandle) -> Vec<String> {
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    // One scan at a time: the UI polls every few seconds, and a wedged hypervisor makes each
+    // probe wait out its timeout, so overlapping scans only stacked up stuck VBoxManage calls.
+    // A poll during a scan gets the last answer.
+    static IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+    static LAST: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    if IN_FLIGHT.swap(true, Ordering::AcqRel) {
+        return LAST.lock().map(|l| l.clone()).unwrap_or_default();
+    }
+    struct Done;
+    impl Drop for Done {
+        fn drop(&mut self) {
+            IN_FLIGHT.store(false, Ordering::Release);
+        }
+    }
+    let _done = Done;
+    let ids = scan(app).await;
+    if let Ok(mut last) = LAST.lock() {
+        last.clone_from(&ids);
+    }
+    ids
+}
+
+async fn scan(app: &AppHandle) -> Vec<String> {
     let mut ids = BTreeSet::new();
     // Docker: the Compose project of every running container. A failure here is worth a warning
     // (the engine is missing or broken); an empty result is simply "nothing running".
@@ -130,9 +155,13 @@ pub async fn running_lab_ids(app: &AppHandle) -> Vec<String> {
     // not be installed; that is not a problem for the scan.
     let by_name = app.path().app_data_dir().map(|d| lab_names(&d.join("labs"))).unwrap_or_default();
     if !by_name.is_empty() {
-        if let Ok(out) = run_read("VBoxManage", &["list", "runningvms"], None).await {
-            let names = vbox_vm_names(&out);
-            ids.extend(lab_ids_from_vm_names(names.iter().map(String::as_str), &by_name));
+        match run_read("VBoxManage", &["list", "runningvms"], None).await {
+            Ok(out) => {
+                let names = vbox_vm_names(&out);
+                ids.extend(lab_ids_from_vm_names(names.iter().map(String::as_str), &by_name));
+            }
+            Err(e) if e.to_string().contains("timed out") => log::warn!("running-labs scan: VirtualBox isn't responding ({e})"),
+            Err(_) => {}
         }
         if let Ok(out) = run_read("prlctl", &["list", "--running", "--no-header", "-o", "name"], None).await {
             ids.extend(lab_ids_from_vm_names(out.lines().map(str::trim), &by_name));
