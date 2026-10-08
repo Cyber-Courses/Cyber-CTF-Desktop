@@ -94,7 +94,7 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
               </span>
               <span className="flex shrink-0 gap-2">
                 {startError && (
-                  <Button variant="outline" size="sm" onClick={() => openUrl(choice.url).catch(() => {})}>
+                  <Button variant="outline" size="sm" onClick={() => openExternal(choice.url)}>
                     <ExternalLink className="size-3.5" /> Get {choice.name}
                   </Button>
                 )}
