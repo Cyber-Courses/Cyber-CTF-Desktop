@@ -18,6 +18,7 @@ import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useRequestedLab } from "@/lib/deep-link";
 import { apiQuery, authLogin, authStatus, machineWorkloads, openSettings, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { operationLabel, SIGNED_OUT_EVENT, useActiveOperations, useDeployingLabs } from "@/lib/deploy-store";
 import { Spinner } from "@/components/ui/spinner";
@@ -90,6 +91,12 @@ export function AppShell() {
     }
     setReady(true);
   }, []);
+
+  // A website "Open in the launcher" link (cyberctf://labs/<slug>) opens that lab's page from any
+  // screen; the Settings window leaves it to the main one.
+  useRequestedLab((slug) => {
+    if (new URLSearchParams(window.location.search).get("window") !== "settings") navigate("labs", slug);
+  });
 
   function navigate(next: Tab, slug?: string) {
     // Setup now lives inside the Machine dashboard; "setup" just lands on Machine.
