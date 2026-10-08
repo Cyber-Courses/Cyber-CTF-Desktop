@@ -16,6 +16,9 @@ export const hasHypervisor = (r: SystemReport | null) => !!r && usableHypervisor
 
 export function stepMeta(step: MachineStep, report: SystemReport | null): { icon: LucideIcon; title: string; description: string } {
   const pm = report?.pkgManager.name ?? "a package manager";
+  // macOS asks for a few things along the way; say so before the step that triggers each prompt.
+  const mac = report?.os === "macos";
+  const localNetwork = mac ? " macOS may ask to let Cyber CTF find devices on your local network: choose Allow, labs need it." : "";
   switch (step) {
     case "pkgmgr":
       return {
@@ -50,26 +53,32 @@ export function stepMeta(step: MachineStep, report: SystemReport | null): { icon
         icon: Server,
         title: "Virtual machines",
         description:
-          "Labs built from full VMs (Active Directory domains, Windows hosts, routers, multi-host networks) need one hypervisor, whichever you prefer. You can also add one later from the Machine page.",
+          "Labs built from full VMs (Active Directory domains, Windows hosts, routers, multi-host networks) need one hypervisor, whichever you prefer. You can also add one later from the Machine page." +
+          (mac
+            ? " Its installer opens in its own window and asks for your password; VirtualBox may also need approval in System Settings > Privacy & Security."
+            : ""),
       };
     case "vagrant":
       return {
         icon: Package,
         title: "Provisioning",
         description:
-          "Cyber CTF creates and starts each lab's virtual machines with Vagrant, a free tool, on your hypervisor. Most hypervisors also need a small add-on (plugin) for it.",
+          "Cyber CTF creates and starts each lab's virtual machines with Vagrant, a free tool, on your hypervisor. Most hypervisors also need a small add-on (plugin) for it." +
+          (mac ? " Its installer opens in its own window and asks for your password." : ""),
       };
     case "docker-test":
       return {
         icon: FlaskConical,
         title: "Test container labs",
-        description: "Starts a tiny two-container lab, checks it works, then deletes it. About 2 MB to download.",
+        description: "Starts a tiny two-container lab, checks it works, then deletes it. About 2 MB to download." + localNetwork,
       };
     case "vm-test":
       return {
         icon: FlaskConical,
         title: "Test VM labs",
-        description: "Boots a real test VM, checks it works, then deletes it. Takes a few minutes; the first run downloads a small VM image (cached after).",
+        description:
+          "Boots a real test VM, checks it works, then deletes it. Takes a few minutes; the first run downloads a small VM image (cached after)." +
+          localNetwork,
       };
   }
 }

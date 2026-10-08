@@ -831,6 +831,7 @@ dependencies = [
  "flate2",
  "isoloom-core",
  "keyring",
+ "libc",
  "log",
  "rand 0.10.3",
  "reqwest",

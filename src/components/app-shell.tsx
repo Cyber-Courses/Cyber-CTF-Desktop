@@ -16,11 +16,15 @@ import { LaunchConfirm } from "@/features/app/launch-confirm";
 import { Onboarding } from "@/features/onboarding/onboarding";
 import { UpdateBanner } from "@/components/update-banner";
 import { EmptyState } from "@/components/ui/empty-state";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { apiQuery, authLogin, authStatus, machineWorkloads, openSettings, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { operationLabel, SIGNED_OUT_EVENT, useActiveOperations, useDeployingLabs } from "@/lib/deploy-store";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+
+/** Broadcast to every window when the session changes in one of them. */
+const AUTH_CHANGED_EVENT = "cyberctf:auth-changed";
 
 type Tab = "home" | "labs" | "machine" | "setup" | "server" | "cloud" | "events" | "settings";
 
@@ -134,10 +138,14 @@ export function AppShell() {
         .catch(() => {});
     window.addEventListener(SIGNED_OUT_EVENT, reread);
     window.addEventListener("focus", reread);
+    // Signing in or out in the Settings window: `focus` doesn't fire reliably when moving between
+    // the app's own windows, so the other windows hear it as an app event.
+    const unlisten = listen(AUTH_CHANGED_EVENT, reread);
     const t = loggedIn ? setInterval(reread, 30_000) : undefined;
     return () => {
       window.removeEventListener(SIGNED_OUT_EVENT, reread);
       window.removeEventListener("focus", reread);
+      unlisten.then((off) => off()).catch(() => {});
       clearInterval(t);
     };
   }, [loggedIn]);
@@ -226,7 +234,16 @@ export function AppShell() {
 
   if (!ready) return <div className="h-dvh bg-background" />;
   // Settings runs standalone in its own window: no sidebar, no onboarding, just the screen.
-  if (settingsWindow) return <SettingsWindowView auth={auth} onAuthChange={setAuth} />;
+  if (settingsWindow)
+    return (
+      <SettingsWindowView
+        auth={auth}
+        onAuthChange={(status) => {
+          setAuth(status);
+          emit(AUTH_CHANGED_EVENT).catch(() => {});
+        }}
+      />
+    );
   if (!onboarded) return <Onboarding onComplete={completeOnboarding} />;
 
   const CurrentIcon = NAV.find((n) => n.id === tab)?.icon ?? MonitorCog;

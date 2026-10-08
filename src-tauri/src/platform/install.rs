@@ -50,13 +50,35 @@ fn brew_bin() -> Option<String> {
 
 // Download the installer with brew (no admin needed), then open it so the tool's own
 // native installer runs and the user finishes there (trusted OS prompts, no custom dialog).
+// A disk image is mounted quietly and its .pkg opened in Installer, which comes to the front;
+// only an app to drag into Applications (Docker Desktop, UTM) is shown in Finder, brought
+// forward. Either way the log says where to finish: a window behind the app went unnoticed.
 #[cfg(target_os = "macos")]
 fn fetch_and_open(brew: &str, cask: &str, name: &str) -> Step {
-    Step {
-        program: "sh".into(),
-        args: vec!["-c".into(), format!("'{brew}' fetch --cask {cask} && open \"$('{brew}' --cache --cask {cask})\"")],
-        note: Some(format!("Downloading {name}; its native installer will open - follow the prompts, then re-check this machine.")),
-    }
+    let script = format!(
+        r#"set -e
+'{brew}' fetch --cask {cask}
+f="$('{brew}' --cache --cask {cask})"
+case "$f" in
+  *.dmg)
+    m="$(hdiutil attach -nobrowse -noautoopen "$f" | awk -F'\t' '/\/Volumes\//{{print $NF; exit}}')"
+    p="$(find "$m" -maxdepth 1 -name '*.pkg' | head -n 1)"
+    if [ -n "$p" ]; then
+      open "$p"
+      echo "The {name} installer is open in its own window. Finish it there; this step updates by itself."
+    else
+      open "$m"
+      osascript -e 'tell application "Finder" to activate' >/dev/null 2>&1 || true
+      echo "A Finder window with {name} is open. Drag it into Applications, then open it once; this step updates by itself."
+    fi
+    ;;
+  *)
+    open "$f"
+    echo "The {name} installer is open in its own window. Finish it there; this step updates by itself."
+    ;;
+esac"#
+    );
+    Step { program: "sh".into(), args: vec!["-c".into(), script], note: Some(format!("Downloading {name}…")) }
 }
 
 /// The ordered install steps for a dependency on this OS.

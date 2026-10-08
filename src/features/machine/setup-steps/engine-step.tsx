@@ -5,7 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { dockerUseEngine, type DockerEngine, type SystemReport } from "@/lib/tauri";
+import { dockerStartEngine, dockerUseEngine, type DockerEngine, type SystemReport } from "@/lib/tauri";
 import { ENGINES, Engine } from "@/features/machine/setup-steps/engines";
 import { CmdRow, Log } from "@/features/machine/setup-steps/parts";
 import { Choice, ChoiceAction, ChoiceGrid } from "@/components/ui/choice-card";
@@ -33,6 +33,19 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
       });
   };
   const inUse = report.dockerEngine === choice.id;
+  // Installed but stopped: start it from here instead of sending the player to do it.
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const start = () => {
+    setStarting(true);
+    setStartError(null);
+    dockerStartEngine(choice.id)
+      .catch((e) => setStartError(String(e)))
+      .finally(() => {
+        setStarting(false);
+        onRefresh();
+      });
+  };
   return (
     <div className="space-y-3">
       <ChoiceGrid>
@@ -74,6 +87,28 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
                 )}
               </Button>
             </>
+          ) : report.docker.installed && !ready ? (
+            <>
+              <span className="text-[0.8125rem] text-muted-foreground">
+                {startError ?? (starting ? `Starting ${choice.name}… the first start can take a minute.` : `${choice.name} is installed but not running.`)}
+              </span>
+              <span className="flex shrink-0 gap-2">
+                {startError && (
+                  <Button variant="outline" size="sm" onClick={() => openUrl(choice.url).catch(() => {})}>
+                    <ExternalLink className="size-3.5" /> Get {choice.name}
+                  </Button>
+                )}
+                <Button variant="learn" size="sm" disabled={starting} onClick={start}>
+                  {starting ? (
+                    <>
+                      <Spinner className="size-3.5" /> Starting…
+                    </>
+                  ) : (
+                    `Start ${choice.name}`
+                  )}
+                </Button>
+              </span>
+            </>
           ) : choice.id === recommended && !report.docker.installed ? (
             <>
               <span className="text-[0.8125rem] text-muted-foreground">Cyber CTF can install {choice.name} for you.</span>
@@ -112,14 +147,6 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
             </>
           )}
         </ChoiceAction>
-      )}
-      {!ready && report.docker.installed && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3.5 text-left">
-          <p className="text-[0.78125rem] text-foreground">An engine is installed but not running. Start it, then re-check.</p>
-          <Button variant="outline" size="sm" onClick={() => onRefresh()}>
-            <RefreshCw className="size-3.5" /> Re-check
-          </Button>
-        </div>
       )}
       {!ready && installerOpened && (
         <p className="text-[0.75rem] text-muted-foreground">Finish in Docker’s installer, launch Docker Desktop, then press Re-check.</p>
