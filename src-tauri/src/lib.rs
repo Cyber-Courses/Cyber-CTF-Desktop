@@ -346,6 +346,8 @@ pub fn run() {
             account::agent::agent_info,
             account::agent::confirm_launch,
             platform::install::install_dependency,
+            platform::uninstall::installed_tools,
+            platform::uninstall::uninstall_dependency,
             cloud::cloud_login,
             cloud::aws_cli_identity,
             cloud::aws_profiles,

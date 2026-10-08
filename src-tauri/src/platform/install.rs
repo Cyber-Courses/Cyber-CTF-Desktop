@@ -14,7 +14,7 @@ use tokio::process::Command;
 
 use crate::error::{Error, Result};
 
-#[derive(Deserialize, Clone, Copy)]
+#[derive(Deserialize, serde::Serialize, Clone, Copy, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum Dependency {
     Docker,
@@ -31,20 +31,20 @@ pub enum Dependency {
     Wsl,
 }
 
-struct Step {
-    program: String,
-    args: Vec<String>,
+pub(crate) struct Step {
+    pub(crate) program: String,
+    pub(crate) args: Vec<String>,
     /// A note shown before the step (e.g. when we open a download instead of installing).
-    note: Option<String>,
+    pub(crate) note: Option<String>,
 }
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]
-fn step(program: impl Into<String>, args: &[&str]) -> Step {
+pub(crate) fn step(program: impl Into<String>, args: &[&str]) -> Step {
     Step { program: program.into(), args: args.iter().map(|s| s.to_string()).collect(), note: None }
 }
 
 #[cfg(target_os = "macos")]
-fn brew_bin() -> Option<String> {
+pub(crate) fn brew_bin() -> Option<String> {
     ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].into_iter().find(|p| Path::new(p).exists()).map(String::from)
 }
 
@@ -229,7 +229,7 @@ fn valid_user(u: &str) -> bool {
 pub const NO_PKEXEC: &str =
     "pkexec isn't installed, so Cyber CTF can't ask for your password. Install it once in a terminal (sudo apt install pkexec), then try again.";
 
-async fn run_step(step: &Step, on_line: &mut impl FnMut(String)) -> Result<()> {
+pub(crate) async fn run_step(step: &Step, on_line: &mut impl FnMut(String)) -> Result<()> {
     if let Some(note) = &step.note {
         on_line(note.clone());
     }
@@ -270,7 +270,7 @@ async fn run_step(step: &Step, on_line: &mut impl FnMut(String)) -> Result<()> {
 
 /// Installs a dependency, streaming each command and its output to the UI.
 #[tauri::command]
-pub async fn install_dependency(dependency: Dependency, logs: Channel<String>) -> Result<()> {
+pub async fn install_dependency(app: tauri::AppHandle, dependency: Dependency, logs: Channel<String>) -> Result<()> {
     let mut on_line = move |line: String| {
         let _ = logs.send(line);
     };
@@ -281,6 +281,8 @@ pub async fn install_dependency(dependency: Dependency, logs: Channel<String>) -
         }
         run_step(step, &mut on_line).await?;
     }
+    // Remembered so Cleanup can offer to remove what Cyber CTF installed (and only that).
+    super::uninstall::record(&app, dependency);
     on_line("Done. Re-checking this machine…".into());
     Ok(())
 }
