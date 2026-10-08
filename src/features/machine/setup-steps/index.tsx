@@ -6,7 +6,6 @@
  * list, titles, bodies and install/test state all live here, so a change shows up in both.
  */
 
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SelfTest } from "@/features/machine/self-test";
@@ -17,6 +16,7 @@ import { CmdRow, Log, Num, Outcome, Requirement, Skipped } from "@/features/mach
 import { MachineStep, hasHypervisor, isDockerReady } from "@/features/machine/setup-steps/steps";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
 import { VagrantStep, VmStep } from "@/features/machine/setup-steps/vm-steps";
+import { openExternal } from "@/lib/failure";
 
 /** The body of one setup step (no header, no nav: the flow draws those). */
 export function MachineStepBody({ step, report, setup }: { step: MachineStep; report: SystemReport; setup: MachineSetupState }) {
@@ -37,10 +37,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
           <div className="space-y-2">
             <p className="text-[0.78125rem] text-muted-foreground">Run this in Terminal, then come back, it’s detected automatically:</p>
             <CmdRow cmd={'/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'} />
-            <button
-              onClick={() => openUrl("https://brew.sh").catch(() => {})}
-              className="inline-flex items-center gap-1.5 text-[0.75rem] text-learn hover:underline"
-            >
+            <button onClick={() => openExternal("https://brew.sh")} className="inline-flex items-center gap-1.5 text-[0.75rem] text-learn hover:underline">
               <ExternalLink className="size-3.5" /> brew.sh
             </button>
           </div>
@@ -51,7 +48,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
               <p className="text-[0.8125rem] font-medium">App Installer (winget)</p>
               <p className="text-[0.75rem] text-muted-foreground">Install it from the Microsoft Store, then come back.</p>
             </div>
-            <Button variant="learn" onClick={() => openUrl("https://apps.microsoft.com/detail/9nblggh4nns1").catch(() => {})}>
+            <Button variant="learn" onClick={() => openExternal("https://apps.microsoft.com/detail/9nblggh4nns1")}>
               <ExternalLink className="size-3.5" /> Get
             </Button>
           </div>
@@ -105,7 +102,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
             </Num>
           </ol>
           <button
-            onClick={() => openUrl("https://learn.microsoft.com/windows/wsl/install").catch(() => {})}
+            onClick={() => openExternal("https://learn.microsoft.com/windows/wsl/install")}
             className="mt-4 inline-flex items-center gap-1.5 text-[0.75rem] text-learn hover:underline"
           >
             <ExternalLink className="size-3.5" /> Microsoft’s WSL install guide

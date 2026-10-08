@@ -23,6 +23,7 @@ import {
 } from "@/lib/tauri";
 import { AccountRow } from "@/features/cloud/account-row";
 import { FirstRun } from "@/features/cloud/first-run";
+import { ignore } from "@/lib/failure";
 
 export function CloudScreen() {
   const [allHosts, setHosts] = useState<ServerHost[] | null>(null);
@@ -55,7 +56,7 @@ export function CloudScreen() {
   useEffect(() => {
     const off = listen(SERVER_CHANGED, reload);
     return () => {
-      off.then((f) => f()).catch(() => {});
+      off.then((f) => f()).catch(ignore("the listener never got set up"));
     };
   }, [reload]);
   // Month-to-date spend, only for accounts that set a budget (Cost Explorer costs per call).
@@ -65,7 +66,7 @@ export function CloudScreen() {
       .forEach((h) => {
         awsMonthToDateCost(h.awsProfile ?? undefined)
           .then((c) => setSpend((s) => ({ ...s, [h.id]: c })))
-          .catch(() => {});
+          .catch(ignore("the spend is shown only when it can be read"));
       });
   }, [allHosts]);
 

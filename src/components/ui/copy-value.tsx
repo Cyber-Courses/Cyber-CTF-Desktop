@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { tell } from "@/lib/failure";
 
 /** A value with a one-click copy. Shows a check for a moment after copying. `label` is what is
  *  displayed when it should differ from the copied `text` (e.g. show `:56235`, copy the full
@@ -20,7 +21,7 @@ export function CopyValue({ text, label, className }: { text: string; label?: st
             setCopied(true);
             setTimeout(() => setCopied(false), 1200);
           })
-          .catch(() => {})
+          .catch(tell("Couldn't copy to the clipboard"))
       }
       className={cn(
         "inline-flex items-center gap-1.5 rounded border border-border px-1.5 py-0.5 font-mono text-[0.71875rem] text-foreground transition-colors hover:bg-foreground/[0.04]",

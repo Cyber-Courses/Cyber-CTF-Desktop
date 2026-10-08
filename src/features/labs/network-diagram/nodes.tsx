@@ -5,6 +5,7 @@ import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Check, Copy, DoorOpen, Lock, Monitor, Network, ShieldCheck, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ComputerData, ServiceRow, ZoneData, attack, isIp, netLabel, serviceMeta } from "@/features/labs/network-diagram/model";
+import { tell } from "@/lib/failure";
 
 // React Flow node cards for the lab network diagram.
 
@@ -24,7 +25,7 @@ export function CopyText({ text, children }: { text: string; children: React.Rea
             setCopied(true);
             setTimeout(() => setCopied(false), 1000);
           })
-          .catch(() => {});
+          .catch(tell("Couldn't copy to the clipboard"));
       }}
     >
       {children}

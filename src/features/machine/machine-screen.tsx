@@ -15,6 +15,7 @@ import { formatAgo, formatBytes, formatUptime } from "@/lib/format";
 import { DownloadsPanel } from "@/features/machine/downloads-panel";
 import { RunningNowPanel } from "@/features/machine/running-now-panel";
 import { HypervisorLogo } from "@/features/machine/hypervisor-logo";
+import { ignore, tell } from "@/lib/failure";
 
 // ---------- formatting ----------
 
@@ -74,7 +75,7 @@ export function MachineScreen({
             disk: push(h.disk, x.diskTotal ? (x.diskUsed / x.diskTotal) * 100 : 0),
           }));
         })
-        .catch(() => {})
+        .catch(ignore("polled again in a moment"))
         .finally(() => {
           reading = false;
         });
@@ -131,7 +132,7 @@ export function MachineScreen({
     : undefined;
   const blockedReason = blocked?.reason ? `${blocked.reason.charAt(0).toUpperCase()}${blocked.reason.slice(1)}.` : null;
 
-  const fix = (step: string) => machineOpenSetup(step).catch(() => {});
+  const fix = (step: string) => machineOpenSetup(step).catch(tell("Couldn't open machine setup"));
   const testBtn = (kind: LabKind) => (
     <Button variant="outline" size="sm" onClick={() => setTesting(testing === kind ? null : kind)}>
       {testing === kind ? "Hide test" : "Test"}
@@ -159,7 +160,12 @@ export function MachineScreen({
           {OS_NAME[report.os] ?? report.os} · {report.arch}
           {m ? ` · up ${formatUptime(m.uptimeSecs)}` : ""}
         </span>
-        <Button className="ml-auto" variant={needsSetup ? "learn" : "outline"} size="sm" onClick={() => machineOpenSetup().catch(() => {})}>
+        <Button
+          className="ml-auto"
+          variant={needsSetup ? "learn" : "outline"}
+          size="sm"
+          onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))}
+        >
           <Wrench className="size-3.5" /> {needsSetup ? "Set up this machine" : "Setup"}
         </Button>
       </div>

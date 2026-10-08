@@ -27,6 +27,7 @@ import { HostRow } from "@/features/servers/host-row";
 import { ServersEmptyState } from "@/features/servers/servers-empty-state";
 import type { Tone } from "@/components/ui/status-pill";
 import { VmTest, loadVmTests, saveVmTest } from "@/features/servers/vm-tests";
+import { ignore, warn } from "@/lib/failure";
 
 type Tab = "setup";
 
@@ -64,7 +65,7 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
   const loadCapacity = useCallback((id: string) => {
     serverCapacity(id)
       .then((c) => setCaps((m) => ({ ...m, [id]: c })))
-      .catch(() => {});
+      .catch(ignore("capacity is shown only when it can be read"));
   }, []);
 
   // Auto-test and probe capacity for every host as it loads, so the row is live without a
@@ -89,16 +90,12 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
   useEffect(reload, [reload]);
 
   useEffect(() => {
-    systemCheck()
-      .then(setReport)
-      .catch(() => {});
+    systemCheck().then(setReport).catch(warn("system check"));
   }, []);
 
   // Running-labs-per-host, refreshed on a slow poll (labs start and stop from other screens).
   const loadRunning = useCallback(() => {
-    serverRunningLabs()
-      .then(setRunning)
-      .catch(() => {});
+    serverRunningLabs().then(setRunning).catch(ignore("read again on the next server change"));
   }, []);
   useEffect(() => {
     loadRunning();
@@ -114,7 +111,7 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
       loadRunning();
     });
     return () => {
-      off.then((f) => f()).catch(() => {});
+      off.then((f) => f()).catch(ignore("the listener never got set up"));
     };
   }, [reload, loadRunning]);
 

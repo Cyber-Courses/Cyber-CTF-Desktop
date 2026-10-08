@@ -1,6 +1,5 @@
 "use client";
 
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -11,6 +10,7 @@ import { Choice, ChoiceAction, ChoiceGrid } from "@/components/ui/choice-card";
 import { chosenHypervisor } from "@/features/machine/setup-steps/steps";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
 import { HypervisorLogo } from "@/features/machine/hypervisor-logo";
+import { openExternal } from "@/lib/failure";
 
 export function VmStep({ report, setup }: { report: SystemReport; setup: MachineSetupState }) {
   const hypervisors = usableHypervisors(report);
@@ -67,7 +67,7 @@ export function VmStep({ report, setup }: { report: SystemReport; setup: Machine
               <span className="text-[0.8125rem] text-muted-foreground">Install {label}, then re-check.</span>
               <span className="flex shrink-0 gap-2">
                 {DOWNLOAD[choice.provider] && (
-                  <Button variant="outline" size="sm" onClick={() => openUrl(DOWNLOAD[choice.provider]!).catch(() => {})}>
+                  <Button variant="outline" size="sm" onClick={() => openExternal(DOWNLOAD[choice.provider]!)}>
                     <ExternalLink className="size-3.5" /> Get {label}
                   </Button>
                 )}
@@ -144,7 +144,7 @@ export function VagrantStep({ report, setup }: { report: SystemReport; setup: Ma
             title="Vagrant VMware Utility"
             detail="HashiCorp's helper service the VMware plugin talks to. Install it once."
             action={
-              <Button variant="outline" size="sm" onClick={() => openUrl("https://developer.hashicorp.com/vagrant/install/vmware").catch(() => {})}>
+              <Button variant="outline" size="sm" onClick={() => openExternal("https://developer.hashicorp.com/vagrant/install/vmware")}>
                 <ExternalLink className="size-3.5" /> Get
               </Button>
             }

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, CheckCircle2, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
+import { tell } from "@/lib/failure";
 
 export function Requirement({
   ok,
@@ -64,7 +65,7 @@ export function CmdRow({ cmd }: { cmd: string }) {
               setCopied(true);
               setTimeout(() => setCopied(false), 1200);
             })
-            .catch(() => {})
+            .catch(tell("Couldn't copy to the clipboard"))
         }
         className="inline-flex shrink-0 items-center gap-1 text-[0.71875rem] text-muted-foreground hover:text-foreground"
       >

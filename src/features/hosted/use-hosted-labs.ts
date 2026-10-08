@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiQuery } from "@/lib/tauri";
+import { ignore, warn } from "@/lib/failure";
 
 export interface HostedEndpoint {
   port: number;
@@ -53,7 +54,7 @@ export function useHostedLabs() {
         const s = d.myActiveLabSession;
         if (s && s.target === "hosted" && !SETTLED.slice(1).includes(s.state)) setSession(s);
       })
-      .catch(() => {});
+      .catch(warn("reading the active hosted session"));
   }, []);
 
   const launch = useCallback(async (labId: string) => {
@@ -93,7 +94,7 @@ export function useHostedLabs() {
         .then((d) => {
           if (!cancelled && d.labSession) setSession(d.labSession);
         })
-        .catch(() => {});
+        .catch(ignore("polled again in a moment"));
     }, 2500);
     return () => {
       cancelled = true;
@@ -105,7 +106,8 @@ export function useHostedLabs() {
     const current = session;
     setSession(null);
     setBusyLab(null);
-    if (current) await apiQuery(STOP, { id: current.id }).catch(() => {});
+    // The session is already off the page; a stop that fails says so, or it would keep running unseen.
+    if (current) await apiQuery(STOP, { id: current.id }).catch((e) => setError(`Couldn't stop the hosted lab: ${String(e)}`));
   }, [session]);
 
   return { session, busyLab, error, launch, stop };

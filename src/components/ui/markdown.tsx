@@ -1,7 +1,7 @@
 "use client";
 
-import { openUrl } from "@tauri-apps/plugin-opener";
 import type { JSX, ReactNode } from "react";
+import { openExternal } from "@/lib/failure";
 
 /**
  * Minimal, dependency-free Markdown renderer that emits React elements (never
@@ -42,7 +42,7 @@ function inline(text: string, k: string): ReactNode[] {
           key={`${k}-${i}`}
           onClick={(e) => {
             e.preventDefault();
-            openUrl(href).catch(() => {});
+            openExternal(href);
           }}
           className="cursor-pointer text-learn underline-offset-4 hover:underline"
         >

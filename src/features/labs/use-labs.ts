@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiQuery, labStatus, runningLabs, type LabStatus, type Provider, type Runtime } from "@/lib/tauri";
+import { ignore } from "@/lib/failure";
 
 export interface LabRuntimeInfo {
   runtime: Runtime;
@@ -151,7 +152,7 @@ export function useLabs(reloadKey: unknown = 0) {
           setScanRunning(new Set(ids));
           (labs ?? []).filter((l) => ids.includes(l.id)).forEach((l) => void refreshStatus(l));
         })
-        .catch(() => {});
+        .catch(ignore("scanned again in a moment"));
     };
     scan();
     const t = setInterval(scan, 6000);

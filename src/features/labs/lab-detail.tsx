@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, ExternalLink, LogIn, Pause, Play, Power, RefreshCw, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -37,6 +36,7 @@ import {
   type LabStatus,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+import { openExternal, tell } from "@/lib/failure";
 
 const VM_CLOUDS_NOT_YET = ["azure", "gcp", "digitalocean", "linode", "oci"];
 
@@ -391,7 +391,7 @@ export function LabDetail({
           {running ? (
             <>
               {url && (
-                <Button variant="learn" onClick={() => openUrl(url).catch(() => {})} title={`Open ${url} in your browser`}>
+                <Button variant="learn" onClick={() => openExternal(url)} title={`Open ${url} in your browser`}>
                   <ExternalLink className="size-4" /> Open in browser
                 </Button>
               )}
@@ -481,7 +481,7 @@ export function LabDetail({
             </Button>
           ) : !loggedIn && onLogin ? (
             // Logged out: say so on the button and log in from it, rather than a greyed-out Start.
-            <Button variant="learn" onClick={() => void onLogin().catch(() => {})}>
+            <Button variant="learn" onClick={() => void onLogin().catch(tell("Couldn't start signing in"))}>
               <LogIn className="size-4" /> Sign in to start
             </Button>
           ) : (

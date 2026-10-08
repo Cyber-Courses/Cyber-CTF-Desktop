@@ -1,6 +1,5 @@
 "use client";
 
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, CheckCircle2, Cloud, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -8,6 +7,7 @@ import { LogConsole } from "@/components/ui/log-console";
 import { AWS_REGIONS, AZURE_LOCATIONS, DO_REGIONS, GCP_REGIONS, LINODE_REGIONS, OCI_REGIONS } from "@/features/servers/host-setup/constants";
 import { Field, Input, Nav, Select, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
+import { openExternal } from "@/lib/failure";
 
 export function CredentialsStep({ s }: { s: HostSetup }) {
   const {
@@ -84,7 +84,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             )}
             <button
               type="button"
-              onClick={() => openUrl("https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm").catch(() => {})}
+              onClick={() => openExternal("https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm")}
               className="ml-auto inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
             >
               How to set up <ExternalLink className="size-3" />
@@ -109,9 +109,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             No token?{" "}
             <button
               type="button"
-              onClick={() =>
-                openUrl(digitalocean ? "https://cloud.digitalocean.com/account/api/tokens" : "https://cloud.linode.com/profile/tokens").catch(() => {})
-              }
+              onClick={() => openExternal(digitalocean ? "https://cloud.digitalocean.com/account/api/tokens" : "https://cloud.linode.com/profile/tokens")}
               className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
             >
               Create one in the {digitalocean ? "DigitalOcean" : "Linode"} console <ExternalLink className="size-3" />
@@ -290,7 +288,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
             No keys yet?{" "}
             <button
               type="button"
-              onClick={() => openUrl("https://console.aws.amazon.com/iam/home#/security_credentials").catch(() => {})}
+              onClick={() => openExternal("https://console.aws.amazon.com/iam/home#/security_credentials")}
               className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
             >
               Create them in the AWS console <ExternalLink className="size-3" />

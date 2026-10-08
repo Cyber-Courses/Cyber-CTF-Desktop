@@ -6,6 +6,7 @@ import { Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { confirmLaunch } from "@/lib/tauri";
 import { useFocusTrap } from "@/lib/use-focus-trap";
+import { tell } from "@/lib/failure";
 
 type Request = { sessionId: string; repository: string; commit: string; target: string };
 
@@ -30,7 +31,7 @@ export function LaunchConfirm() {
   const answer = (approve: boolean) => {
     setBusy(true);
     void confirmLaunch(req.sessionId, approve)
-      .catch(() => {})
+      .catch(tell("Couldn't send your answer to Cyber CTF"))
       .finally(() => {
         setBusy(false);
         setReq(null);

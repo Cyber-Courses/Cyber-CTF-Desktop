@@ -1,5 +1,6 @@
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { useEffect, useState } from "react";
+import { warn } from "@/lib/failure";
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -28,12 +29,10 @@ export function useRequestedLab(): string | null {
       const found = urls?.map(labSlugFrom).find((s): s is string => s !== null);
       if (found) setSlug(found);
     };
-    getCurrent()
-      .then(take)
-      .catch(() => {});
+    getCurrent().then(take).catch(warn("reading the link the app was opened with"));
     onOpenUrl(take)
       .then((fn) => (unlisten = fn))
-      .catch(() => {});
+      .catch(warn("listening for deep links"));
     return () => unlisten?.();
   }, []);
   return slug;

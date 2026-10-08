@@ -1,0 +1,24 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { notify } from "@/lib/notify";
+
+/**
+ * `.catch` handlers that say what a failure means, instead of an anonymous `() => {}`:
+ * - `ignore(why)`: expected and harmless here (a poll read again on its next tick, a listener
+ *   that never got set up); `why` says so at the call site.
+ * - `warn(what)`: shouldn't happen and nobody is waiting on it; logged so it isn't lost.
+ * - `tell(title)`: the player asked for this and it didn't happen; tell them (an OS
+ *   notification, as for "Lab ready"), and log it.
+ */
+export const ignore = (why: string) => (e: unknown) => console.debug(`ignored (${why}):`, e);
+
+export const warn = (what: string) => (e: unknown) => console.warn(`${what}:`, e);
+
+export const tell = (title: string) => (e: unknown) => {
+  console.warn(`${title}:`, e);
+  void notify(title, String(e));
+};
+
+/** Opens a link in the player's browser; when that fails, says so with the link to open by hand. */
+export function openExternal(url: string) {
+  openUrl(url).catch((e) => tell("Couldn't open your browser")(`${url} (${String(e)})`));
+}

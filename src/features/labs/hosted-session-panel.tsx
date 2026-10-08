@@ -1,11 +1,11 @@
 "use client";
 
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { CheckCircle2, ExternalLink, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
 import type { HostedSession } from "@/features/hosted/use-hosted-labs";
+import { openExternal } from "@/lib/failure";
 
 const STAGE: Record<string, string> = {
   REQUESTED: "Asking Cyber CTF for an instance",
@@ -68,7 +68,7 @@ export function HostedSessionPanel({
             {session &&
               state === "RUNNING" &&
               session.endpoints.map((e) => (
-                <Button key={e.port} variant="learn" size="sm" onClick={() => openUrl(e.url).catch(() => {})}>
+                <Button key={e.port} variant="learn" size="sm" onClick={() => openExternal(e.url)}>
                   Open{session.endpoints.length > 1 ? ` :${e.port}` : ""} <ExternalLink className="size-3.5" />
                 </Button>
               ))}

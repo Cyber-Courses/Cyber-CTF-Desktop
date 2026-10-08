@@ -7,6 +7,7 @@ import { KIND } from "@/features/servers/host-setup/constants";
 import { Field, Input, Nav, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
 import { serverPublicKey } from "@/lib/tauri/servers";
+import { warn } from "@/lib/failure";
 
 export function ConnectionStep({ s }: { s: HostSetup }) {
   const { v, editing, kind, set, text, connectionOk, next, back } = s;
@@ -17,10 +18,7 @@ export function ConnectionStep({ s }: { s: HostSetup }) {
   const [pubkey, setPubkey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
-    if (isToken && pubkey === null)
-      serverPublicKey()
-        .then(setPubkey)
-        .catch(() => {});
+    if (isToken && pubkey === null) serverPublicKey().then(setPubkey).catch(warn("reading this machine's public key"));
   }, [isToken, pubkey]);
   const copyKey = async () => {
     if (!pubkey) return;

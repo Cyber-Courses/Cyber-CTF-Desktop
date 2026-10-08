@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MachineSetup } from "@/features/machine/machine-setup";
 import { systemCheck, type SystemReport } from "@/lib/tauri";
+import { ignore, warn } from "@/lib/failure";
 
 /** The guided machine-setup window (opened by `machine_open_setup`, optionally `?step=`). */
 export default function MachineSetupWindow() {
@@ -15,9 +16,7 @@ export default function MachineSetupWindow() {
     return step ? { step, nonce: 0 } : null;
   });
   const check = () => {
-    systemCheck()
-      .then(setReport)
-      .catch(() => {});
+    systemCheck().then(setReport).catch(warn("system check"));
   };
   // Poll so an install (incl. one the user finishes in a native installer) is detected as
   // done and the steps update, without a manual re-check.
@@ -29,13 +28,10 @@ export default function MachineSetupWindow() {
   useEffect(() => {
     const off = listen<string>("machine-setup-step", (e) => setStartAt({ step: e.payload, nonce: Date.now() }));
     return () => {
-      off.then((f) => f()).catch(() => {});
+      off.then((f) => f()).catch(ignore("the listener never got set up"));
     };
   }, []);
-  const close = () =>
-    getCurrentWindow()
-      .close()
-      .catch(() => {});
+  const close = () => getCurrentWindow().close().catch(warn("closing the window"));
 
   return <MachineSetup report={report} onRefresh={check} onClose={close} startAt={startAt} />;
 }
