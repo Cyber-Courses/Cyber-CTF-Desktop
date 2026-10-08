@@ -24,10 +24,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { ignore, tell, warn } from "@/lib/failure";
 import { useLabLinks } from "@/lib/deep-link";
+import { AUTH_CHANGED_EVENT, NAVIGATE_EVENT, REPLAY_ONBOARDING_EVENT, showInMainWindow } from "@/lib/app-events";
 import { Button } from "@/components/ui/button";
 
 /** Broadcast to every window when the session changes in one of them. */
-const AUTH_CHANGED_EVENT = "cyberctf:auth-changed";
 
 type Tab = "home" | "labs" | "machine" | "setup" | "server" | "cloud" | "events" | "settings";
 
@@ -121,6 +121,25 @@ export function AppShell() {
     setTab(next);
     setOpenLab((o) => ({ slug: slug ?? null, tick: o.tick + 1 }));
   }
+
+  // Asked from the Settings window: switch screens, or show the onboarding again. Brought to the
+  // front, since the request came from another window.
+  useEffect(() => {
+    if (!ready || settingsWindow) return;
+    const toFront = () => getCurrentWindow().setFocus().catch(ignore("the window manager keeps focus where it is"));
+    const nav = listen<string>(NAVIGATE_EVENT, (e) => {
+      if (NAV.some((n) => n.id === e.payload)) navigate(e.payload as Tab);
+      void toFront();
+    });
+    const replay = listen(REPLAY_ONBOARDING_EVENT, () => {
+      setOnboarded(false);
+      void toFront();
+    });
+    return () => {
+      nav.then((off) => off()).catch(ignore("the listener was never set up"));
+      replay.then((off) => off()).catch(ignore("the listener was never set up"));
+    };
+  }, [ready, settingsWindow]);
 
   // A cyberctf://labs/<slug> link (the one that opened the app, or one opened since) shows that
   // lab, whatever screen is open. Not in the Settings window: the main window takes it.
@@ -237,6 +256,12 @@ export function AppShell() {
     })),
   ];
 
+  // Signed in or out here: the Settings window (if open) hears it too.
+  function authChanged(status: AuthStatus) {
+    setAuth(status);
+    emit(AUTH_CHANGED_EVENT).catch(warn("Couldn't tell the other windows about the sign-in"));
+  }
+
   function completeOnboarding() {
     try {
       localStorage.setItem(ONBOARDED_KEY, "1");
@@ -254,16 +279,7 @@ export function AppShell() {
 
   if (!ready) return <div className="h-dvh bg-background" />;
   // Settings runs standalone in its own window: no sidebar, no onboarding, just the screen.
-  if (settingsWindow)
-    return (
-      <SettingsWindowView
-        auth={auth}
-        onAuthChange={(status) => {
-          setAuth(status);
-          emit(AUTH_CHANGED_EVENT).catch(warn("Couldn't tell the other windows about the sign-in"));
-        }}
-      />
-    );
+  if (settingsWindow) return <SettingsWindowView auth={auth} onAuthChange={authChanged} />;
   if (!onboarded) return <Onboarding onComplete={completeOnboarding} />;
 
   const CurrentIcon = NAV.find((n) => n.id === tab)?.icon ?? MonitorCog;
@@ -369,7 +385,7 @@ export function AppShell() {
         </nav>
 
         <div className="border-t border-border px-3 py-3">
-          <Account status={auth} onChange={setAuth} online={!!auth?.loggedIn} onSettings={() => openSettings().catch(tell("Couldn't open Settings"))} />
+          <Account status={auth} onChange={authChanged} online={!!auth?.loggedIn} onSettings={() => openSettings().catch(tell("Couldn't open Settings"))} />
         </div>
       </aside>
 
@@ -406,9 +422,8 @@ function ComingSoon({ icon, title, description }: { icon: "server" | "cloud" | "
 }
 
 // Settings rendered on its own in the dedicated `settings` window: just the titlebar band and
-// the screen. The "set up a hypervisor" link lives in the main window, so onNavigate closes here.
+// the screen. The "set up a hypervisor" link shows the Machine screen in the main window.
 function SettingsWindowView({ auth, onAuthChange }: { auth: AuthStatus | null; onAuthChange: (status: AuthStatus) => void }) {
-  const close = () => getCurrentWindow().close().catch(warn("closing the window"));
   return (
     <main className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <div data-tauri-drag-region className="h-9 shrink-0" />
@@ -418,7 +433,7 @@ function SettingsWindowView({ auth, onAuthChange }: { auth: AuthStatus | null; o
       </div>
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[70rem] px-5 py-5">
-          <SettingsScreen auth={auth} onAuthChange={onAuthChange} onNavigate={close} />
+          <SettingsScreen auth={auth} onAuthChange={onAuthChange} onNavigate={showInMainWindow} />
         </div>
       </div>
     </main>
