@@ -143,7 +143,7 @@ export function AppShell() {
     return () => {
       window.removeEventListener(SIGNED_OUT_EVENT, reread);
       window.removeEventListener("focus", reread);
-      unlisten.then((off) => off()).catch(() => {});
+      unlisten.then((off) => off()).catch(ignore("the listener was never set up"));
       clearInterval(t);
     };
   }, [loggedIn]);
@@ -236,7 +236,7 @@ export function AppShell() {
         auth={auth}
         onAuthChange={(status) => {
           setAuth(status);
-          emit(AUTH_CHANGED_EVENT).catch(() => {});
+          emit(AUTH_CHANGED_EVENT).catch(warn("Couldn't tell the other windows about the sign-in"));
         }}
       />
     );
