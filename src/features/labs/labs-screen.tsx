@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Input } from "@/components/ui/input";
 import { StatusDot } from "@/components/ui/status-pill";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LabRow } from "@/features/labs/lab-row";
+import { EMULATORS, LabRow } from "@/features/labs/lab-row";
 import { LabDetail } from "@/features/labs/lab-detail";
 import { DIFFICULTY_LABEL, useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
@@ -159,6 +159,7 @@ export function Labs({
       loggedIn={loggedIn}
       onLogin={onLogin}
       hostArch={hostArch}
+      emulates={readyVms.some((p) => EMULATORS.includes(p))}
       solved={completed.has(lab.id)}
       deploying={deploying.has(lab.id)}
       setup={isRunning(lab) ? null : setupNeeded(lab, report ?? null, servers)}

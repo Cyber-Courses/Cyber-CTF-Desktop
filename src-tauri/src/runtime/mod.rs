@@ -217,6 +217,9 @@ pub async fn start(
                 }
                 let spec = lab::prepare(dir, lab::vagrant_target(runtime))?;
                 warn_if_low_memory(&spec, &mut log);
+                if provider == providers::Provider::Qemu {
+                    check_qemu(&spec, &mut log).await?;
+                }
                 let vagrant = lab::vagrant_dir(dir, runtime);
                 start_local_vm(&vagrant, provider, env, &mut log).await?;
                 registry::record(dir, &spec, lab::vagrant_target(runtime), None);
@@ -348,6 +351,38 @@ fn warn_if_low_memory(spec: &isoloom_core::Spec, log: &mut impl FnMut(String)) {
             "This lab's VMs ask for about {needed_mb} MB, but only ~{available_mb} MB is free on this machine. It may run slowly or fail to boot; close other apps or stop other labs if it struggles."
         ));
     }
+}
+
+/// A lab on QEMU: its networks must fit QEMU's two-VM links, and a machine built for another CPU
+/// needs that CPU's emulator (`qemu-system-x86_64` for an x86 lab on an Apple Silicon Mac).
+async fn check_qemu(spec: &isoloom_core::Spec, log: &mut impl FnMut(String)) -> Result<()> {
+    if let Some(why) = isoloom_core::qemu_refusal(spec) {
+        return Err(Error::Invalid(format!("This lab can't run on QEMU yet: {why}. Run it on a server or in your cloud account.")));
+    }
+    let host = std::env::consts::ARCH;
+    let mut emulated: Vec<&'static str> = spec
+        .machines
+        .values()
+        .filter(|m| m.vm.is_some())
+        .map(|m| match m.arch {
+            isoloom_core::Arch::Amd64 => "x86_64",
+            isoloom_core::Arch::Arm64 => "aarch64",
+        })
+        .filter(|a| *a != host)
+        .collect();
+    emulated.dedup();
+    for arch in emulated {
+        let bin = if arch == "x86_64" { "qemu-system-x86_64" } else { "qemu-system-aarch64" };
+        if crate::exec::run(bin, &["--version"], None).await.is_err() {
+            return Err(Error::Invalid(format!(
+                "This lab's machines are {arch}, and QEMU's {arch} emulator ({bin}) isn't installed. Reinstall QEMU from the Machine page."
+            )));
+        }
+        log(format!(
+            "Emulating {arch} on this {host} machine with QEMU, many times slower than native: a Windows machine takes 15 to 40 minutes to boot, and the lab's setup can take hours."
+        ));
+    }
+    Ok(())
 }
 
 /// Starts local VMs with one automatic recovery. A `vagrant up` can fail because a crashed or
@@ -1014,7 +1049,7 @@ pub async fn attack_vm_status(app: AppHandle, id: String, box_name: String) -> R
     if !attack_vm::valid_box(&box_name) {
         return Err(Error::Invalid(format!("invalid attack VM box `{box_name}` (expected owner/name)")));
     }
-    Ok(attack_vm::status(&dir, &box_name).await)
+    attack_vm::status(&dir, &box_name).await
 }
 
 /// Starts the attack VM beside a running VM lab, on the lab's hypervisor (the first start

@@ -51,9 +51,9 @@ export function useAttackBox(
       .then((s) => {
         if (mine === seq.current) setStatus(s);
       })
-      .catch(() => {
-        if (mine === seq.current) setStatus(null);
-      });
+      // A failed read (Vagrant busy or slow, an emulated lab) says nothing about the box: keep
+      // what was last seen rather than flip it to "not started".
+      .catch(() => {});
   }, [labId, kind]);
   useEffect(() => {
     if (!active || !local) {

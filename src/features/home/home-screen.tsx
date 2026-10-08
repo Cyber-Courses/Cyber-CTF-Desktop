@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusDot, StatusPill } from "@/components/ui/status-pill";
 import { TypeIcon } from "@/components/ui/type-icon";
-import { LabRow } from "@/features/labs/lab-row";
+import { LabRow, emulatorReady } from "@/features/labs/lab-row";
 import { useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
 import { CalloutRow, StatCard } from "@/features/machine/machine-parts";
@@ -160,6 +160,7 @@ export function HomeScreen({
       operation={runs[lab.id]?.op}
       loggedIn={auth?.loggedIn ?? false}
       hostArch={report?.arch ?? ""}
+      emulates={emulatorReady(report)}
       onOpen={() => onNavigate("labs", lab.slug)}
       onStop={() => stop(lab)}
       onResume={() => resume(lab)}

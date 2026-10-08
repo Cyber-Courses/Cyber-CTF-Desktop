@@ -30,10 +30,17 @@ fn has_controller(dir: &Path) -> bool {
     std::fs::read_to_string(dir.join("Vagrantfile")).is_ok_and(|t| t.contains(&format!("config.vm.define \"{CONTROLLER}\"")))
 }
 
+/// Whether this folder's VMs run on QEMU (vagrant-qemu). Its private networks link exactly two
+/// VMs, so there is no room for an attack VM: the controller, on the lab network already, stays
+/// on as the player's attack position.
+pub fn on_qemu(dir: &Path) -> bool {
+    std::fs::read_dir(dir.join(".vagrant").join("machines")).is_ok_and(|it| it.flatten().any(|m| m.path().join(Provider::Qemu.id()).is_dir()))
+}
+
 /// Powers the controller off (state kept) once the lab is built: it has no part in the attack
-/// surface and would only cost memory. Best effort.
+/// surface and would only cost memory. Best effort. On QEMU it stays on: it is the attacker.
 async fn park_controller(dir: &Path, env: &[(String, String)], log: &mut impl FnMut(String)) {
-    if !has_controller(dir) {
+    if !has_controller(dir) || on_qemu(dir) {
         return;
     }
     log("Powering off the setup machine (it comes back for provisioning and checks)…".into());
@@ -459,7 +466,19 @@ fn cidr(ip: &str, mask: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{folder_candidates, is_stale_state_error, parse_status, vm_names_from};
+    use super::{folder_candidates, is_stale_state_error, on_qemu, parse_status, vm_names_from};
+
+    #[test]
+    fn tells_a_lab_on_qemu_from_vagrant_s_machine_folders() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-qemu-{}", std::process::id()));
+        let machines = dir.join(".vagrant").join("machines");
+        std::fs::create_dir_all(machines.join("dc01").join("virtualbox")).unwrap();
+        assert!(!on_qemu(&dir));
+        std::fs::create_dir_all(machines.join("isoloom-controller").join("qemu")).unwrap();
+        assert!(on_qemu(&dir), "the controller stays on as the attacker there");
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(!on_qemu(&dir), "never started");
+    }
 
     #[test]
     fn parses_machine_readable_status() {

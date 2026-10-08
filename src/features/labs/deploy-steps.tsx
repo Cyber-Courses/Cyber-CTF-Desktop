@@ -60,6 +60,14 @@ const isPrepLine = (l: string) => /left VM state behind|Clearing leftover|differ
 
 const machineLabel = (name: string) => name.replace(/^isoloom-/, "");
 
+/** The step of the machine a Vagrant failure names ("…while executing the action on the
+ *  'isoloom-controller' machine"), if it names one: that step failed, not necessarily the last
+ *  one shown (another machine's lines can come last, as in a parallel `vagrant up`). */
+export function failedMachineStep(failure: string): string | null {
+  const m = failure.match(/executing the action on the '([A-Za-z0-9_.-]+)'/);
+  return m ? `m:${m[1]}` : null;
+}
+
 /** Builds the ordered step list from the timed log, per the detected target. */
 function deriveSteps(timed: Timed[]): Step[] {
   const steps: Step[] = [];
@@ -157,6 +165,8 @@ export function DeploySteps({
   const op = OPERATIONS[operation];
   const steps = op ? (timed.length > 0 ? [{ id: operation, label: op.step, rows: timed }] : []) : deriveSteps(timed);
   const lastSeen = steps.at(-1)?.id;
+  const named = failed ? failedMachineStep(failed.line) : null;
+  const failedStep = failed ? (named && steps.some((s) => s.id === named) ? named : lastSeen) : null;
 
   return (
     <div>
@@ -194,7 +204,7 @@ export function DeploySteps({
           const rows = p.rows;
           const next = steps[i + 1]?.rows[0]?.at;
           const isLast = p.id === lastSeen;
-          const state = failed && isLast ? "fail" : isLast && busy ? "running" : "ok";
+          const state = p.id === failedStep ? "fail" : isLast && busy ? "running" : "ok";
           const from = rows[0].at;
           const to = next ?? (state === "running" ? now : (done?.at ?? failed?.at ?? rows.at(-1)!.at));
           const expanded = open === p.id;

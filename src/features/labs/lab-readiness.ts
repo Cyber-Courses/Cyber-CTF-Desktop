@@ -1,4 +1,5 @@
 import type { Lab } from "@/features/labs/use-labs";
+import { localProviders } from "@/features/labs/lab-row";
 import { providerLabel } from "@/features/machine/hypervisors";
 import type { ServerHost, SystemReport } from "@/lib/tauri";
 
@@ -17,12 +18,14 @@ export function setupNeeded(lab: Lab, report: SystemReport | null, servers: Serv
     if (!report.dockerRunning) return "Start your container engine";
     return null;
   }
-  const local = report.vmProviders.some((p) => !p.remote && p.available && rt.providers.includes(p.provider));
+  // Built for another CPU, only an emulator (QEMU) runs it here.
+  const here = localProviders(rt, report.arch);
+  const local = report.vmProviders.some((p) => !p.remote && p.available && here.includes(p.provider));
   const remote = servers.some((h) => rt.providers.includes(h.provider));
   if (local || remote) return null;
   // Name the hypervisors this lab supports, not a generic "a hypervisor": a lab that runs on
   // VirtualBox or VMware says so, instead of looking as if nothing is installed.
-  const supported = report.vmProviders.filter((p) => !p.remote && rt.providers.includes(p.provider)).map((p) => providerLabel(p, report.os));
+  const supported = report.vmProviders.filter((p) => !p.remote && here.includes(p.provider)).map((p) => providerLabel(p, report.os));
   if (supported.length === 0) return "Needs a server to run on";
   return `Needs ${joinOr(supported)}, or a server`;
 }

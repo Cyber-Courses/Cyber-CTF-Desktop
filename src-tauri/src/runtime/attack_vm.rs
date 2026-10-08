@@ -102,6 +102,10 @@ const LOCK_RETRIES: u32 = 4;
 /// Starts the attacker beside the lab (whose Vagrantfile is in `lab_vagrant_dir`), on the same
 /// hypervisor. The first start downloads the box.
 pub async fn start(lab_dir: &Path, lab_vagrant_dir: &Path, provider: Provider, box_name: &str, mut log: impl FnMut(String)) -> Result<()> {
+    if provider == Provider::Qemu {
+        log(QEMU_ATTACKER.into());
+        return Ok(());
+    }
     if !valid_box(box_name) {
         return Err(Error::Invalid(format!("invalid attack VM box `{box_name}` (expected owner/name)")));
     }
@@ -179,8 +183,17 @@ pub async fn resume(lab_dir: &Path, log: impl FnMut(String)) -> Result<()> {
 }
 
 /// The attacker's status, in the container attack box's shape: `image_present` is the box being
-/// downloaded already, `ip`/`lab_network` its first lab address once running.
-pub async fn status(lab_dir: &Path, box_name: &str) -> ExegolStatus {
+/// downloaded already, `ip`/`lab_network` its first lab address once running. On QEMU, the
+/// controller's; a read that fails there is an error, not a stopped attacker.
+pub async fn status(lab_dir: &Path, box_name: &str) -> Result<ExegolStatus> {
+    let lab = super::lab::vagrant_dir(lab_dir, super::Runtime::Vm);
+    if vm::on_qemu(&lab) {
+        return controller_status(&lab).await;
+    }
+    Ok(own_status(lab_dir, box_name).await)
+}
+
+async fn own_status(lab_dir: &Path, box_name: &str) -> ExegolStatus {
     let d = dir(lab_dir);
     let image_present =
         run_read("vagrant", &["box", "list"], None).await.map(|out| out.lines().any(|l| l.split_whitespace().next() == Some(box_name))).unwrap_or(false);
@@ -200,8 +213,33 @@ pub async fn status(lab_dir: &Path, box_name: &str) -> ExegolStatus {
     ExegolStatus { image_present, running, ip, lab_network, shell_cmd: format!("cd {} && vagrant ssh", ssh::sh_quote(&d.to_string_lossy())) }
 }
 
+/// On QEMU, the lab's network links two VMs: no room for an attack VM.
+pub const QEMU_ATTACKER: &str = "On QEMU, the lab network links exactly two VMs, so there is no attack VM: attack from the lab's controller (Debian, on the lab network), which stays on. Open its shell from the lab page.";
+
+/// The controller standing in for the attacker on QEMU, in the same status shape.
+async fn controller_status(lab_vagrant_dir: &Path) -> Result<ExegolStatus> {
+    let controller = vm::status(lab_vagrant_dir, &[]).await?.machines.into_iter().find(|m| m.name == vm::CONTROLLER);
+    let running = controller.as_ref().is_some_and(|m| m.state == "running");
+    let (ip, lab_network) = match controller.filter(|_| running) {
+        Some(m) => (m.ip.clone(), m.interfaces.into_iter().next().map(|i| i.network).unwrap_or_default()),
+        None => (String::new(), String::new()),
+    };
+    Ok(ExegolStatus {
+        image_present: true,
+        running,
+        ip,
+        lab_network,
+        shell_cmd: format!("cd {} && vagrant ssh {}", ssh::sh_quote(&lab_vagrant_dir.to_string_lossy()), vm::CONTROLLER),
+    })
+}
+
 /// Opens the player's terminal on an SSH session into the attacker.
 pub fn shell(lab_dir: &Path) -> Result<()> {
+    let lab = super::lab::vagrant_dir(lab_dir, super::Runtime::Vm);
+    if vm::on_qemu(&lab) {
+        let inner = format!("cd {} && exec vagrant ssh {}", ssh::sh_quote(&lab.to_string_lossy()), vm::CONTROLLER);
+        return exegol::open_terminal(&format!("sh -c {}", ssh::sh_quote(&inner)));
+    }
     let d = dir(lab_dir);
     if !d.join("Vagrantfile").exists() {
         return Err(Error::Invalid("the attack VM isn't started".into()));
