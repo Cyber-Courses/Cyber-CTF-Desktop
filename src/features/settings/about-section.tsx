@@ -6,7 +6,7 @@ import { Check, Copy, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { type AgentInfo, type SystemReport } from "@/lib/tauri";
+import { restartApp, type AgentInfo, type SystemReport } from "@/lib/tauri";
 import { getAttackBox, getAttackImage, getVmProvider } from "@/lib/settings";
 import { Row, Section } from "@/features/settings/settings-layout";
 import { ONBOARDED_KEY } from "@/features/settings/settings-screen";
@@ -40,7 +40,10 @@ export function AboutSection({ version, report, agent }: { version: string | nul
       setUpd({ phase: "installed", update });
     } catch {
       setUpd({ phase: "available", update });
+      return;
     }
+    // Reopen on the new version straight away; Restart now stays as the fallback.
+    await restartApp().catch(() => {});
   }
 
   async function copyDiagnostics() {
@@ -97,7 +100,7 @@ export function AboutSection({ version, report, agent }: { version: string | nul
       case "installing":
         return `Downloading and installing ${upd.update.version}…`;
       case "installed":
-        return `Version ${upd.update.version} is installed. Restart Cyber CTF to apply it.`;
+        return `Version ${upd.update.version} is installed. Restarting Cyber CTF…`;
       default:
         return "Updates install automatically when you accept them from the banner.";
     }
@@ -124,7 +127,11 @@ export function AboutSection({ version, report, agent }: { version: string | nul
                 "Install update"
               )}
             </Button>
-          ) : upd.phase === "installed" ? null : (
+          ) : upd.phase === "installed" ? (
+            <Button variant="learn" size="sm" onClick={() => restartApp().catch(() => {})}>
+              Restart now
+            </Button>
+          ) : (
             <Button variant="outline" size="sm" onClick={checkUpdates} disabled={upd.phase === "checking"}>
               {upd.phase === "checking" ? (
                 <>

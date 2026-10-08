@@ -119,11 +119,38 @@ async fn docker_workloads() -> Vec<Workload> {
         .collect()
 }
 
+/// `vagrant global-status`, one at a time: a poll that lands while the previous scan is still
+/// running reuses the last answer instead of starting another vagrant (they contend for one lock,
+/// so overlapping scans only get slower and pile up).
+async fn global_status() -> Option<String> {
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+    static LAST: Mutex<Option<String>> = Mutex::new(None);
+
+    if IN_FLIGHT.swap(true, Ordering::AcqRel) {
+        return LAST.lock().ok().and_then(|l| l.clone());
+    }
+    // Cleared on drop too, so a cancelled scan doesn't block every later one.
+    struct Done;
+    impl Drop for Done {
+        fn drop(&mut self) {
+            IN_FLIGHT.store(false, Ordering::Release);
+        }
+    }
+    let _done = Done;
+    let out = run_env_timed("vagrant", &["global-status", "--prune", "--machine-readable"], None, &[], std::time::Duration::from_secs(30)).await.ok();
+    if let (Some(o), Ok(mut last)) = (&out, LAST.lock()) {
+        *last = Some(o.clone());
+    }
+    out
+}
+
 /// Running local VMs from `vagrant global-status`, kept to the app's own folders.
 async fn vm_workloads(app: &AppHandle) -> Vec<Workload> {
     // Timed: `vagrant global-status` talks to VirtualBox, which can be wedged. Without a limit a
     // polled call would hang and stack up one blocked process per tick.
-    let Ok(out) = run_env_timed("vagrant", &["global-status", "--prune", "--machine-readable"], None, &[], std::time::Duration::from_secs(30)).await else {
+    let Some(out) = global_status().await else {
         return Vec::new();
     };
     let labs = labs_dir(app).ok();

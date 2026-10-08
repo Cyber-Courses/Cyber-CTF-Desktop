@@ -49,6 +49,12 @@ fn deploying_labs(app: tauri::AppHandle) -> Vec<String> {
     ids
 }
 
+/// Relaunches the app, so an installed update applies without the player quitting by hand.
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.restart();
+}
+
 /// The labs being stopped right now, so the UI says "Stopping", never "Deploying", for a teardown.
 #[tauri::command]
 fn stopping_labs() -> Vec<String> {
@@ -311,6 +317,7 @@ pub fn run() {
             machine::system::system_check,
             machine::images::image_download_size,
             machine::system::docker_use_engine,
+            machine::system::docker_start_engine,
             machine::system::machine_metrics,
             machine::system::machine_open_setup,
             machine::selftest::machine_selftest,
@@ -371,6 +378,7 @@ pub fn run() {
             deploy_in_progress,
             deploying_labs,
             stopping_labs,
+            restart_app,
             parking_labs,
             active_operations,
             lab_deploy_log,

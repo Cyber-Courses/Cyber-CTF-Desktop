@@ -73,6 +73,8 @@ export interface TargetReadiness {
 export const systemCheck = () => invoke<SystemReport>("system_check");
 /** Points the Docker CLI at another running engine (`docker context use`). */
 export const dockerUseEngine = (engine: DockerEngine) => invoke<void>("docker_use_engine", { engine });
+/** Starts an installed engine that isn't running and waits until Docker answers. */
+export const dockerStartEngine = (engine: DockerEngine) => invoke<void>("docker_start_engine", { engine });
 
 export interface MachineMetrics {
   cpu: number;

@@ -102,6 +102,27 @@ pub async fn run_env_timed(program: &'static str, args: &[&str], cwd: Option<&Pa
     run_inner(program, args, cwd, env, Some(timeout)).await
 }
 
+/// Kills a spawned tool's whole process group when dropped, unless disarmed after it exited.
+struct GroupGuard(Option<u32>);
+
+impl GroupGuard {
+    fn disarm(mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for GroupGuard {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Some(pid) = self.0 {
+            // SAFETY: plain syscall; the group was created by `process_group(0)` at spawn.
+            unsafe {
+                libc::killpg(pid as libc::pid_t, libc::SIGKILL);
+            }
+        }
+    }
+}
+
 async fn run_inner(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)], timeout: Option<std::time::Duration>) -> Result<String> {
     let mut cmd = build(program, args);
     cmd.stdin(Stdio::null());
@@ -123,8 +144,18 @@ async fn run_inner(program: &'static str, args: &[&str], cwd: Option<&Path>, env
             // explicit pipes `wait_with_output` returns an empty stdout even though the tool
             // printed plenty: every timed status probe then read as "nothing running".
             cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+            // Its own process group, so a timeout or cancellation kills the whole tree: `vagrant`
+            // is a wrapper that starts `ruby` as a child, and killing only the wrapper orphaned
+            // one ruby per timed-out poll until they all deadlocked on Vagrant's lock.
+            #[cfg(unix)]
+            cmd.process_group(0);
             let child = cmd.spawn().map_err(to_err)?;
-            match tokio::time::timeout(dur, child.wait_with_output()).await {
+            let group = GroupGuard(child.id());
+            let waited = tokio::time::timeout(dur, child.wait_with_output()).await;
+            if waited.is_ok() {
+                group.disarm();
+            }
+            match waited {
                 Ok(out) => out.map_err(to_err)?,
                 Err(_) => {
                     return Err(Error::CommandFailed {

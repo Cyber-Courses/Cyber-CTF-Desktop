@@ -205,6 +205,30 @@ pub async fn docker_use_engine(engine: String) -> Result<()> {
     Ok(())
 }
 
+/// Starts an installed engine that isn't running, the way the player would (open the app or run
+/// its CLI), points Docker at it and waits until it answers. Docker Desktop and OrbStack take a
+/// while on first start, hence the generous wait.
+#[tauri::command]
+pub async fn docker_start_engine(engine: String) -> Result<()> {
+    match (std::env::consts::OS, engine.as_str()) {
+        ("macos", "docker-desktop") => run("open", &["-a", "Docker"], None).await?,
+        ("macos", "orbstack") => run("open", &["-a", "OrbStack"], None).await?,
+        ("windows", "docker-desktop") => run("cmd", &["/C", "start", "", r"C:\Program Files\Docker\Docker\Docker Desktop.exe"], None).await?,
+        ("linux", "docker-engine") => run("pkexec", &["systemctl", "start", "docker"], None).await?,
+        (_, "colima") => run("colima", &["start"], None).await?,
+        _ => return Err(Error::Invalid(format!("Cyber CTF can't start {engine} here; start it yourself, then re-check."))),
+    };
+    for _ in 0..90 {
+        // The engine's context appears once it is up; point Docker at it, then ask the daemon.
+        let _ = docker_use_engine(engine.clone()).await;
+        if run_read("docker", &["info", "--format", "{{.OperatingSystem}}"], None).await.is_ok() {
+            return Ok(());
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+    Err(Error::Invalid(format!("{engine} didn't answer within 3 minutes. Check its window, then re-check.")))
+}
+
 async fn probe(program: &'static str, args: &[&str]) -> Tool {
     match run(program, args, None).await {
         Ok(out) => Tool { installed: true, version: out.lines().next().map(|l| l.trim().to_string()) },
