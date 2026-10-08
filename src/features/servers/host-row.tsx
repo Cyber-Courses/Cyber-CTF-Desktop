@@ -111,7 +111,7 @@ export function HostRow({
             </p>
           )}
           {/* A denied Local Network permission looks exactly like a host that is down. */}
-          {result && !result.ok && onMac() && isPrivateHost(host.host) && (
+          {result && !result.ok && !needsPassword && onMac() && isPrivateHost(host.host) && (
             <p className="mt-1 text-[0.75rem] text-muted-foreground">
               If the host is up, macOS may be blocking Cyber CTF from your local network: turn Cyber CTF on under Privacy &amp; Security &gt; Local Network.{" "}
               <button type="button" className="text-link underline underline-offset-2" onClick={() => openExternal(LOCAL_NETWORK_SETTINGS)}>
