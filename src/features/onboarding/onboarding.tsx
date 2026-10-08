@@ -168,7 +168,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                 <Feature
                   icon="cloud"
                   title="Run it where you want"
-                  description="On this machine, your own server (Proxmox, ESXi) or the cloud (AWS), which stops itself when you're done."
+                  description="On this machine, your own server (Proxmox, ESXi) or your cloud account (AWS, Azure, Google Cloud and more), which stops itself when you're done."
                 />
                 <Feature
                   icon="shield"
