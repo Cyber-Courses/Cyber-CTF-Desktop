@@ -225,7 +225,13 @@ export function LabDetail({
   // a local VM lab; a remote container lab's runs next to it on its host.
   // Not while the lab itself is starting, resuming or stopping: a resume brings the attack VM
   // back on its own, and a second `vagrant up` in its folder at the same time would collide.
-  const box = useAttackBox(lab.id, { running, holding: deployingHere, local: !remote, kind: isDocker ? "container" : "vm" });
+  // This session's own log of the run when it has one; else the worker's log file, for a deploy
+  // that kept running through a reload or relaunch. A run that ended in ✗ failed.
+  const shownLogs = logs.length > 0 ? logs : workerLines;
+  const deployFailed = shownLogs.some((l) => l.startsWith("✗"));
+  // A failed deploy can leave the VMs up (a provisioning step broke): the lab then reads as
+  // running, but its attack box must not start beside a lab that isn't ready.
+  const box = useAttackBox(lab.id, { running, holding: deployingHere, local: !remote, kind: isDocker ? "container" : "vm", failed: deployFailed });
   const exegol = box.status;
   const [check, clearCheck] = useLabCheck(lab.id, { running, downCount: down.length, enabled: isDocker });
   // The lab's observers (`tools:` in its spec), read once it runs: static addresses, so the
@@ -274,9 +280,6 @@ export function LabDetail({
         : whereLabel
           ? `this machine · ${whereLabel}`
           : "this machine");
-  // This session's own log of the run when it has one; else the worker's log file, for a deploy
-  // that kept running through a reload or relaunch.
-  const shownLogs = logs.length > 0 ? logs : workerLines;
   const shownTimes = logs.length > 0 ? times : [];
   const deploy = (
     <Panel>
@@ -293,7 +296,6 @@ export function LabDetail({
   // The deploy panel is worth showing while a run is in progress, once the lab is up, or when
   // the last run failed. Once a lab is stopped the leftover "✓ Lab is running" logs are stale
   // (they'd otherwise read "Ready" with nothing running), so we don't show them.
-  const deployFailed = shownLogs.some((l) => l.startsWith("✗"));
   const showDeploy = deployingHere || running || deployFailed;
 
   if (!ready) {

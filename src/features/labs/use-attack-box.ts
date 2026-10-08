@@ -17,7 +17,13 @@ export type AttackBoxKind = "container" | "vm";
  */
 export function useAttackBox(
   labId: string,
-  { running, holding = false, local, kind = "container" }: { running: boolean; holding?: boolean; local: boolean; kind?: AttackBoxKind },
+  {
+    running,
+    holding = false,
+    local,
+    kind = "container",
+    failed = false,
+  }: { running: boolean; holding?: boolean; local: boolean; kind?: AttackBoxKind; failed?: boolean },
 ) {
   const [status, setStatus] = useState<ExegolStatus | null>(null);
   const active = running && !holding;
@@ -109,10 +115,11 @@ export function useAttackBox(
       autoStarted.current = true;
       return;
     }
-    if (!autoStart || !local || busy || autoStarted.current) return;
+    // Never beside a lab whose last deploy failed (its VMs may be up, the lab isn't ready).
+    if (!autoStart || !local || busy || failed || autoStarted.current) return;
     autoStarted.current = true;
     void start();
-  }, [running, holding, active, autoStart, local, status, busy, start]);
+  }, [running, holding, active, autoStart, local, status, busy, failed, start]);
 
   return { status, busy, log, start, stop, kind, name };
 }
