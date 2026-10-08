@@ -19,7 +19,7 @@ import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on
 import { runPlaces } from "@/features/labs/lab-row";
 import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
-import { useActiveOperations, useDeployingLabs, useWorkerLog } from "@/lib/deploy-store";
+import { OPERATION_STATUS, useActiveOperations, useDeployingLabs, useWorkerLog } from "@/lib/deploy-store";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_DOT, DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
@@ -39,16 +39,6 @@ import { cn } from "@/lib/utils";
 import { openExternal, tell } from "@/lib/failure";
 
 const VM_CLOUDS_NOT_YET = ["azure", "gcp", "digitalocean", "linode", "oci"];
-
-// The header's status while something runs on the lab: the containers report "running" well
-// before a launch or resume is done, and until the end of a shut down or stop.
-const OPERATION_STATUS: Partial<Record<string, string>> = {
-  launch: "Starting",
-  resume: "Resuming",
-  pause: "Pausing",
-  shutdown: "Shutting down",
-  stop: "Stopping",
-};
 
 export function LabDetail({
   lab,

@@ -46,7 +46,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
       } | null,
     ) => {
       if (!lab.runtime) return;
-      beginDeploy(lab.id);
+      beginDeploy(lab.id, "launch");
       try {
         const vm = lab.runtime.runtime === "VM";
         if (vm && host === undefined) host = await defaultHostFor(lab);
@@ -108,7 +108,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
   const stop = useCallback(
     async (lab: Lab) => {
       if (!lab.runtime) return;
-      beginDeploy(lab.id);
+      beginDeploy(lab.id, "stop");
       try {
         await labStop(lab.id, lab.runtime.runtime, (line) => appendDeployLog(lab.id, line));
         appendDeployLog(lab.id, "✓ Lab stopped");
@@ -125,7 +125,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
   const park = useCallback(
     async (lab: Lab, mode: Park) => {
       if (!lab.runtime) return;
-      beginDeploy(lab.id);
+      beginDeploy(lab.id, mode);
       try {
         await labPark(lab.id, lab.runtime.runtime, mode, (line) => appendDeployLog(lab.id, line));
         appendDeployLog(lab.id, mode === "pause" ? "✓ Lab paused" : "✓ Lab shut down");
@@ -142,7 +142,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
   const resume = useCallback(
     async (lab: Lab) => {
       if (!lab.runtime) return;
-      beginDeploy(lab.id);
+      beginDeploy(lab.id, "resume");
       try {
         await labResume(lab.id, lab.runtime.runtime, (line) => appendDeployLog(lab.id, line));
         appendDeployLog(lab.id, "✓ Lab is running");
@@ -161,7 +161,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
   const provision = useCallback(
     async (lab: Lab, machine: string | null) => {
       if (!lab.runtime) return;
-      beginDeploy(lab.id);
+      beginDeploy(lab.id, "provision");
       try {
         await labProvision(lab.id, lab.runtime.runtime, machine, (line) => appendDeployLog(lab.id, line));
         appendDeployLog(lab.id, machine ? `✓ ${machine} provisioned` : "✓ Lab provisioned");

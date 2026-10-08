@@ -188,7 +188,9 @@ export function HomeScreen({
                       <p className="text-[0.65625rem] text-muted-foreground">last run {formatAgo(ts, now)}</p>
                     </button>
                     <button
-                      onClick={() => launch(lab, undefined, undefined, report)}
+                      // A shut-down or paused lab comes back as it was; a fresh launch would
+                      // start over on top of its kept machines.
+                      onClick={() => (statuses[lab.id]?.parked ? resume(lab) : launch(lab, undefined, undefined, report))}
                       disabled={!!runs[lab.id]?.busy || !(auth?.loggedIn ?? false) || !lab.runtime}
                       className="inline-flex shrink-0 items-center gap-1 rounded-md border border-learn bg-learn px-2 py-1 text-[0.6875rem] font-medium text-[#140b2e] hover:bg-learn/90 disabled:opacity-40"
                     >
@@ -231,6 +233,7 @@ export function HomeScreen({
                     lab={lab}
                     status={statuses[lab.id]}
                     busy={!!runs[lab.id]?.busy}
+                    operation={runs[lab.id]?.op}
                     loggedIn={auth?.loggedIn ?? false}
                     hostArch={report?.arch ?? ""}
                     onOpen={() => onNavigate("labs", lab.slug)}
