@@ -51,8 +51,10 @@ export function HostRow({
   onRemove: () => void;
 }) {
   const result = test && test !== "testing" ? test : null;
-  const tone: Tone = test === "testing" || !test ? "muted" : result!.ok ? "ok" : "fail";
-  const status = test === "testing" ? "Testing…" : !test ? "Not tested" : result!.ok ? "Online" : "Unreachable";
+  // A missing password is a credential to enter, not a host that is down.
+  const needsPassword = !!result && !result.ok && /no password stored/i.test(result.message);
+  const tone: Tone = test === "testing" || !test ? "muted" : result!.ok ? "ok" : needsPassword ? "warn" : "fail";
+  const status = test === "testing" ? "Testing…" : !test ? "Not tested" : result!.ok ? "Online" : needsPassword ? "Needs password" : "Unreachable";
   // The running-labs count is filesystem-only and can go stale when a host drops. Only trust it
   // once the host answers as Online; an unreachable host must not report a phantom count.
   const online = !!result && result.ok;

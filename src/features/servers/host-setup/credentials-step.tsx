@@ -101,7 +101,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
               type="password"
               value={v.password ?? ""}
               onChange={(e) => set("password", e.target.value || null)}
-              placeholder={editing ? "Unchanged" : digitalocean ? "dop_v1_…" : "…"}
+              placeholder={editing ? "Empty keeps the current one, if any" : digitalocean ? "dop_v1_…" : "…"}
               autoComplete="off"
             />
           </Field>
@@ -279,7 +279,7 @@ export function CredentialsStep({ s }: { s: HostSetup }) {
                 type="password"
                 value={v.password ?? ""}
                 onChange={(e) => set("password", e.target.value || null)}
-                placeholder={editing ? "Unchanged" : ""}
+                placeholder={editing ? "Empty keeps the current one, if any" : ""}
                 autoComplete="off"
               />
             </Field>
