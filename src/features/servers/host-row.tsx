@@ -12,6 +12,12 @@ import { StatusPill, type Tone } from "@/components/ui/status-pill";
 import { ProviderGlyph } from "@/features/servers/provider-glyph";
 import { formatAgo, formatBytes } from "@/lib/format";
 import { VmTest } from "@/features/servers/vm-tests";
+import { openExternal } from "@/lib/failure";
+
+/** A host on a private LAN address: what macOS's Local Network permission governs. */
+const isPrivateHost = (h: string) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h) || h.endsWith(".local");
+const onMac = () => typeof navigator !== "undefined" && /Mac/.test(navigator.userAgent);
+const LOCAL_NETWORK_SETTINGS = "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork";
 
 export function HostRow({
   host,
@@ -100,6 +106,15 @@ export function HostRow({
             )}
           </p>
           {result && !result.ok && <p className="mt-1 text-[0.75rem] text-rose-500">{result.message}</p>}
+          {/* A denied Local Network permission looks exactly like a host that is down. */}
+          {result && !result.ok && onMac() && isPrivateHost(host.host) && (
+            <p className="mt-1 text-[0.75rem] text-muted-foreground">
+              If the host is up, macOS may be blocking Cyber CTF from your local network.{" "}
+              <button type="button" className="text-foreground underline underline-offset-2" onClick={() => openExternal(LOCAL_NETWORK_SETTINGS)}>
+                Open Local Network settings
+              </button>
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <Button variant="outline" size="sm" onClick={onTest} disabled={test === "testing"}>
