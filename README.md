@@ -50,6 +50,13 @@ Production endpoints are built in ([`config.rs`](src-tauri/src/config.rs)). Each
 
 The OAuth client in cyber-auth must be public (`token_endpoint_auth_method: none`), use the `authorization_code` and `refresh_token` grants, and have these redirect URIs: `http://127.0.0.1:47290/callback`, `http://127.0.0.1:47291/callback`, `http://127.0.0.1:47292/callback`.
 
+## Design
+
+The UI follows the Cyber family design system, "Lit from within", at app density: tokens, modes
+(Dark, Black, Light), primitives and patterns are documented in [`docs/DESIGN.md`](docs/DESIGN.md).
+To preview the UI in a browser without the Rust core, run `pnpm dev` and open
+`http://localhost:3000/?mock` (sample data, development builds only).
+
 ## Development
 
 Requirements: Node 22+, pnpm, Rust (stable), and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.

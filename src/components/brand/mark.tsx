@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { cn } from "@/lib/utils";
 
-// CyberCTF's mark: the layered up-chevron (cyber-design-system/marks/paths.js). Two flat layers
+// Cyber CTF's mark: the layered up-chevron (cyber-design-system/marks/paths.js). Two flat layers
 // with a gradient where they overlap; the colours are tokens (--mark-top, --mark-base), so the
 // base darkens in Light mode.
 const CTF_TOP =

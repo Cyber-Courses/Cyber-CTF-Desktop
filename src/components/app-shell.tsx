@@ -32,6 +32,7 @@ import { useLabLinks } from "@/lib/deep-link";
 import { AUTH_CHANGED_EVENT, NAVIGATE_EVENT, REPLAY_ONBOARDING_EVENT, showInMainWindow } from "@/lib/app-events";
 import { Button } from "@/components/ui/button";
 import { installDevMock } from "@/lib/dev-mock";
+import { useAppearanceSync } from "@/lib/appearance";
 
 // Development only: ?mock in a plain browser answers the Tauri commands with sample data.
 installDevMock();
@@ -65,6 +66,7 @@ const TITLES: Record<Tab, string> = {
 };
 
 export function AppShell() {
+  useAppearanceSync();
   const [tab, setTab] = useState<Tab>("home");
   const [openLab, setOpenLab] = useState<{ slug: string | null; tick: number }>({ slug: null, tick: 0 });
   const [report, setReport] = useState<SystemReport | null>(null);
@@ -325,7 +327,7 @@ export function AppShell() {
         <div data-tauri-drag-region className="h-10 shrink-0" />
         <div data-tauri-drag-region className="flex items-center gap-2.5 px-3.5 pb-3">
           <CtfMark className="pointer-events-none size-[1.35rem]" />
-          <span className="pointer-events-none text-[0.875rem] font-semibold tracking-tight">CyberCTF</span>
+          <span className="pointer-events-none text-[0.875rem] font-semibold tracking-tight">Cyber CTF</span>
           {version && <span className="pointer-events-none ml-auto font-mono text-[0.625rem] text-faint">v{version}</span>}
         </div>
 

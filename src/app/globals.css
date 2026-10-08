@@ -3,7 +3,7 @@
 
 /*
  * Cyber design system ("Lit from within") at launcher density. Same tokens as the Cyber
- * websites (cyber-design-system/tokens.css), product jewel = CyberCTF emerald.
+ * websites (cyber-design-system/tokens.css), product jewel = Cyber CTF emerald.
  *
  * Modes: Dark is the default (bare :root). Black (true #000, OLED) and Light (Paper) are a
  * class on <html>, set from Settings > Appearance (src/lib/appearance.ts).
@@ -49,7 +49,7 @@
   --warning: #fbbf24;
   --destructive: #f87171;
 
-  /* Product jewel: CyberCTF emerald */
+  /* Product jewel: Cyber CTF emerald */
   --jewel: #34d399;
   --jewel-text: #6ee7b7;
   --jewel-top: #3ee0a3;
@@ -480,4 +480,10 @@
 .avatar {
   color: #ffffff;
   background: linear-gradient(135deg, var(--emerald), var(--sapphire));
+}
+
+/* A white tile behind third-party logos that need one (VirtualBox, QEMU...), in every mode. */
+.logo-tile {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgb(16 16 24 / 0.08);
 }

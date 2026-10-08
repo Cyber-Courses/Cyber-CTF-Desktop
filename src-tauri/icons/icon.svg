@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- CyberCTF app icon (source for `pnpm tauri icon src-tauri/icons/icon.svg`): the glass
+  <!-- Cyber CTF app icon (source for `pnpm tauri icon src-tauri/icons/icon.svg`): the glass
        emerald up-chevron on a dark, jewel-tinted tile with a 12% white edge. -->
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">

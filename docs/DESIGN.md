@@ -2,7 +2,7 @@
 
 The launcher implements the Cyber family identity, **Lit from within** (source of truth: the
 `cyber-design-system` repo: `tokens.css`, `components.css`, `IMPLEMENTATION.md`), at app density.
-The product jewel is **CyberCTF emerald**. This file describes the system as it is implemented here.
+The product jewel is **Cyber CTF emerald**. This file describes the system as it is implemented here.
 
 ## Principles
 
