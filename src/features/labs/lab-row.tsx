@@ -180,7 +180,8 @@ export function LabRow({
         <span className="hidden items-center gap-2 font-mono text-[0.6875rem] text-faint @min-[44rem]:flex">
           {rt && (
             <>
-              <span>{rt.runtime === "VM" ? "vm" : "docker"}</span>
+              {/* Fixed to the longest label ("docker") so the place icons line up from row to row. */}
+              <span className="w-[6ch] shrink-0">{rt.runtime === "VM" ? "vm" : "docker"}</span>
               <span className="inline-flex items-center gap-1">
                 {/* Every place is shown: where it runs (green), where it can (jewel), and where
                     it can't (greyed), so the row reads as the full set of options at a glance. */}
