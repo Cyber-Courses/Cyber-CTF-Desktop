@@ -369,6 +369,9 @@ pub fn log_so_far(app: &AppHandle, lab_id: &str) -> Result<String> {
     Ok(std::fs::read_to_string(&f.log).unwrap_or_default())
 }
 
+/// How a failed run's last log line starts (the UI marks a run failed by it).
+const FAILED_MARK: &str = "✗";
+
 /// The verdict in a status file: `Ok` for `ok`, the message otherwise.
 fn verdict(status: &str) -> Result<()> {
     let s = status.trim();
@@ -391,7 +394,10 @@ pub async fn tail(spawned: &Spawned, mut log: impl FnMut(String)) -> Result<()> 
             while let Some(i) = carry.find('\n') {
                 let line = carry[..i].to_string();
                 carry = carry[i + 1..].to_string();
-                log(line);
+                // The worker's closing ✗ line restates its verdict, which the caller reports.
+                if !line.starts_with(FAILED_MARK) {
+                    log(line);
+                }
             }
         }
         if let Ok(status) = std::fs::read_to_string(&f.status) {
@@ -461,7 +467,12 @@ async fn deploy(app: &AppHandle, job: Job) -> i32 {
             let _ = writeln!(file, "{line}");
         }
     };
-    let result = execute(app, job, log).await;
+    let result = execute(app, job, &log).await;
+    // The log file says how it ended too, so a page that re-attaches to it after a reload or a
+    // relaunch (it has no live verdict) still sees the run failed.
+    if let Err(e) = &result {
+        log(format!("{FAILED_MARK} {e}"));
+    }
     let (status, code) = match &result {
         Ok(_) => ("ok".to_string(), 0),
         Err(e) => (format!("error: {e}"), 1),
