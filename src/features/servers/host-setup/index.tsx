@@ -33,25 +33,25 @@ export function HostSetupPage({
   return (
     <>
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-        <p className="mt-1 text-[0.8125rem] text-muted-foreground">
+        <p className="font-mono text-[0.6875rem] tabular-nums text-faint">
+          Step {i + 1} of {steps.length}
+        </p>
+        <h1 className="serif-title mt-1.5 text-[1.75rem] text-foreground">{title}</h1>
+        <p className="mt-1.5 text-[0.8125rem] text-muted-foreground">
           {cloud
             ? "Run labs as throwaway instances in your own cloud account. Credentials stay on this machine, never with Cyber CTF."
             : "Point the launcher at your server. The password goes to your OS keychain, never to Cyber CTF."}
         </p>
       </div>
 
-      {/* Segmented progress, one bar per step. */}
-      <div className="mt-5 flex gap-1.5">
+      {/* Thin step indicator, one segment per step. */}
+      <div className="mt-5 flex gap-1" aria-hidden>
         {steps.map((s, n) => (
-          <div key={s} className={cn("h-1 flex-1 rounded-full transition-colors", n <= i ? "bg-jewel-solid" : "bg-muted")} />
+          <div key={s} className={cn("h-0.5 flex-1 rounded-full transition-colors", n <= i ? "bg-jewel-solid" : "bg-border")} />
         ))}
       </div>
 
-      <div key={key} className="mt-7 animate-rise-in">
-        <p className="text-[0.71875rem] font-medium tabular-nums text-muted-foreground">
-          Step {i + 1} of {steps.length}
-        </p>
+      <div key={key} className="mt-6 animate-rise-in">
         {key === "hypervisor" && <HypervisorStep s={s} />}
 
         {key === "tools" && <ToolsStep s={s} />}

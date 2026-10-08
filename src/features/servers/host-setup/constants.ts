@@ -125,13 +125,13 @@ export const CLOUD_DEFAULT_NAME: Record<CloudProvider, string> = {
   oci: "Oracle Cloud",
 };
 
-export const CLOUD_META: Record<CloudProvider, { label: string; cli: string; color: string; ready: boolean }> = {
-  aws: { label: "Amazon Web Services", cli: "aws", color: "#ff9900", ready: true },
-  azure: { label: "Microsoft Azure", cli: "az", color: "#3b8eea", ready: true },
-  gcp: { label: "Google Cloud", cli: "gcloud", color: "#34a853", ready: true },
-  digitalocean: { label: "DigitalOcean", cli: "", color: "#0080ff", ready: true },
-  linode: { label: "Linode", cli: "", color: "#00b155", ready: true },
-  oci: { label: "Oracle Cloud", cli: "", color: "#c74634", ready: true },
+export const CLOUD_META: Record<CloudProvider, { label: string; cli: string; ready: boolean }> = {
+  aws: { label: "Amazon Web Services", cli: "aws", ready: true },
+  azure: { label: "Microsoft Azure", cli: "az", ready: true },
+  gcp: { label: "Google Cloud", cli: "gcloud", ready: true },
+  digitalocean: { label: "DigitalOcean", cli: "", ready: true },
+  linode: { label: "Linode", cli: "", ready: true },
+  oci: { label: "Oracle Cloud", cli: "", ready: true },
 };
 
 /** The provider picker. AWS, Azure and GCP are live targets; the rest are coming soon.

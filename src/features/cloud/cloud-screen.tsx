@@ -3,19 +3,38 @@
 /** The Cloud page: connect a cloud account (AWS, Azure or GCP) and run labs as throwaway
  *  instances in it. Kept separate from the Server page so each evolves on its own. */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Plus, Square } from "lucide-react";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Meter } from "@/components/ui/meter";
+import { StatusDot, StatusPill } from "@/components/ui/status-pill";
 import { Spinner } from "@/components/ui/spinner";
 import { useLabs, type Lab } from "@/features/labs/use-labs";
-import { awsMonthToDateCost, SERVER_CHANGED, serverList, serverOpenSetup, serverRemove, serverTest, type ServerHost, type ServerTest } from "@/lib/tauri";
-import { AccountRow } from "@/features/cloud/account-row";
+import {
+  awsMonthToDateCost,
+  SERVER_CHANGED,
+  serverList,
+  serverOpenSetup,
+  serverRemove,
+  serverTest,
+  type CloudProvider,
+  type ServerHost,
+  type ServerTest,
+} from "@/lib/tauri";
+import { AccountRow, LogoTile } from "@/features/cloud/account-row";
 import { FirstRun } from "@/features/cloud/first-run";
 import { ignore } from "@/lib/failure";
 import { useLabActions } from "@/features/labs/use-lab-actions";
 import { getDeploySnapshot } from "@/lib/deploy-store";
+
+const MAIN_PROVIDERS: { id: CloudProvider; label: string }[] = [
+  { id: "aws", label: "Amazon Web Services" },
+  { id: "azure", label: "Microsoft Azure" },
+  { id: "gcp", label: "Google Cloud" },
+];
 
 export function CloudScreen() {
   const [allHosts, setHosts] = useState<ServerHost[] | null>(null);
@@ -103,41 +122,53 @@ export function CloudScreen() {
     return l.runtime && s?.running && !!s.host && accountNames.has(s.host);
   });
 
+  // Budget guard: AWS accounts that set a monthly budget.
+  const budgeted = (hosts ?? []).filter((h) => h.provider === "aws" && h.monthlyLimit != null);
+  const month = new Date().toLocaleString([], { month: "long" });
+
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-4">
-        <h1 className="min-w-0 flex-1 text-xl font-semibold tracking-tight">Cloud</h1>
-        <Button variant="primary" size="sm" onClick={() => openSetup()}>
-          <Plus className="size-3.5" /> Set up cloud provider
-        </Button>
-      </div>
+      <PageHeader
+        title="Cloud"
+        lead="Throwaway instances in your own account, billed to you, stopped automatically."
+        actions={
+          hosts && hosts.length > 0 ? (
+            <Button variant="outline" size="sm" onClick={() => openSetup()}>
+              <Plus className="size-3.5" /> Set up cloud provider
+            </Button>
+          ) : undefined
+        }
+      />
 
-      {error && <p className="rounded-control border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.78125rem] text-destructive">{error}</p>}
+      {error && <Callout tone="fail">{error}</Callout>}
 
       {over.length > 0 && (
-        <p className="rounded-control border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.78125rem] text-destructive">
-          {over.length === 1 ? `${over[0].name} is over its monthly budget` : `${over.length} accounts are over their monthly budget`} — new labs there are
+        <Callout tone="fail">
+          {over.length === 1 ? `${over[0].name} is over its monthly budget` : `${over.length} accounts are over their monthly budget`}. New labs there are
           blocked until you raise the budget or next month.
-        </p>
+        </Callout>
       )}
 
       {running.length > 0 && (
         <Panel>
-          <PanelHeader title="Running now" action={<span className="text-[0.71875rem] text-muted-foreground">Billing while they run</span>} />
+          <PanelHeader title="Running now" meta="billing while they run" />
           {running.map((l) => {
             const s = statuses[l.id];
             return (
-              <div key={l.id} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 text-[0.78125rem] last:border-b-0">
-                <span className="size-2 shrink-0 rounded-full bg-success" />
+              <div
+                key={l.id}
+                className="flex min-h-[3.25rem] items-center gap-3 border-t border-border px-4 py-2 transition-colors first:border-t-0 hover:bg-glass"
+              >
+                <StatusDot tone="ok" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{l.title}</p>
-                  <p className="truncate text-[0.6875rem] text-muted-foreground">
+                  <p className="truncate text-[0.8125rem] font-medium">{l.title}</p>
+                  <p className="truncate font-mono text-[0.6875rem] text-faint">
                     {s?.host}
                     {s?.expiresAt ? ` · auto-stops ${new Date(s.expiresAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
                   </p>
                 </div>
-                <Button variant="destructive" size="sm" onClick={() => void stopLab(l)} disabled={!!runs[l.id]?.busy}>
-                  {runs[l.id]?.busy ? <Spinner className="size-3.5" /> : <Square className="size-3.5" />} Stop
+                <Button variant="destructive" size="xs" onClick={() => void stopLab(l)} disabled={!!runs[l.id]?.busy}>
+                  {runs[l.id]?.busy ? <Spinner className="size-3" /> : <Square className="size-3" />} Stop
                 </Button>
               </div>
             );
@@ -145,23 +176,18 @@ export function CloudScreen() {
         </Panel>
       )}
 
-      <Panel>
-        <PanelHeader
-          title="Accounts"
-          action={
-            hosts && hosts.length > 0 ? (
-              <span className="text-[0.71875rem] text-muted-foreground">Billed only while a lab runs; idle accounts cost nothing</span>
-            ) : undefined
-          }
-        />
-        {hosts === null ? (
-          <div className="flex items-center gap-2 px-3.5 py-4 text-[0.78125rem] text-muted-foreground">
+      {hosts === null ? (
+        <Panel>
+          <div className="flex items-center gap-2 px-4 py-4 text-[0.8125rem] text-muted-foreground">
             <Spinner className="size-4" /> Loading…
           </div>
-        ) : hosts.length === 0 ? (
-          <FirstRun onSetup={() => openSetup()} />
-        ) : (
-          hosts.map((h) => (
+        </Panel>
+      ) : hosts.length === 0 ? (
+        <FirstRun onSetup={() => openSetup()} />
+      ) : (
+        <Panel>
+          <PanelHeader title="Accounts" meta="billed only while a lab runs" />
+          {hosts.map((h) => (
             <AccountRow
               key={h.id}
               host={h}
@@ -171,9 +197,61 @@ export function CloudScreen() {
               onEdit={() => openSetup(h.id)}
               onRemove={() => remove(h.id)}
             />
-          ))
-        )}
-      </Panel>
+          ))}
+          {/* The main providers not connected yet, one click from their setup. */}
+          {MAIN_PROVIDERS.filter((p) => !hosts.some((h) => h.provider === p.id)).map((p) => (
+            <div
+              key={p.id}
+              className="grid min-h-[3.25rem] grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3.5 border-t border-border px-4 py-2.5 transition-colors hover:bg-glass"
+            >
+              <LogoTile provider={p.id} />
+              <div className="min-w-0">
+                <p className="truncate text-[0.8125rem] font-medium text-foreground">{p.label}</p>
+                <p className="truncate font-mono text-[0.6875rem] text-faint">not connected</p>
+              </div>
+              <Button variant="outline" size="xs" onClick={() => openSetup()}>
+                Connect
+              </Button>
+            </div>
+          ))}
+        </Panel>
+      )}
+
+      {budgeted.map((h) => {
+        const spent = spend[h.id];
+        const limit = h.monthlyLimit!;
+        const isOver = spent != null && spent >= limit;
+        return (
+          <Panel key={h.id}>
+            <PanelHeader title={`Budget guard · ${h.name}`} meta={month} />
+            <div className="grid gap-3 px-4 pt-4 pb-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <span className="serif-title text-[1.75rem] leading-none text-foreground">
+                  {spent != null ? `$${spent.toFixed(2)}` : "$…"}{" "}
+                  <small className="font-sans text-[0.8125rem] tracking-normal text-faint">of ${limit.toFixed(2)}</small>
+                </span>
+                <span className="flex items-center gap-2 font-mono text-[0.6875rem] text-faint">
+                  {isOver && <StatusPill tone="fail">Over budget</StatusPill>}
+                  {h.autoStopHours ? `auto-stop after ${h.autoStopHours} h` : "no auto-stop"}
+                </span>
+              </div>
+              <Meter value={spent != null && limit > 0 ? (spent / limit) * 100 : 0} />
+            </div>
+          </Panel>
+        );
+      })}
     </div>
+  );
+}
+
+/** A compact warning or error row: a status dot, then the message in muted ink. */
+function Callout({ tone, children }: { tone: "warn" | "fail"; children: ReactNode }) {
+  return (
+    <Panel>
+      <div className="flex items-start gap-3 px-4 py-3 text-[0.8125rem]">
+        <StatusDot tone={tone} className="mt-1.5" />
+        <p className="min-w-0 break-words text-muted-foreground">{children}</p>
+      </div>
+    </Panel>
   );
 }

@@ -22,10 +22,12 @@ import {
   type ServerTest,
   type SystemReport,
 } from "@/lib/tauri";
-import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/ui/page-header";
+import { Meter } from "@/components/ui/meter";
+import { formatBytes } from "@/lib/format";
 import { HostRow } from "@/features/servers/host-row";
 import { ServersEmptyState } from "@/features/servers/servers-empty-state";
-import type { Tone } from "@/components/ui/status-pill";
+import { StatusDot, type Tone } from "@/components/ui/status-pill";
 import { VmTest, loadVmTests, saveVmTest } from "@/features/servers/vm-tests";
 import { ignore, warn } from "@/lib/failure";
 
@@ -95,7 +97,9 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
 
   // Running-labs-per-host, refreshed on a slow poll (labs start and stop from other screens).
   const loadRunning = useCallback(() => {
-    serverRunningLabs().then(setRunning).catch(ignore("read again on the next server change"));
+    serverRunningLabs()
+      .then((r) => setRunning(r ?? {}))
+      .catch(ignore("read again on the next server change"));
   }, []);
   useEffect(() => {
     loadRunning();
@@ -133,72 +137,59 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
   const summaryText = !hasHosts ? "No server connected" : anyTesting ? "Checking…" : `${online} of ${hosts!.length} online`;
   const canRunVmHere = !!report && report.vmProviders.some((p) => !p.remote && p.available && p.hypervisor !== false);
 
+  // Capacity panel: the default host when it answered, else the first host that did.
+  const capHost = hosts?.find((h) => h.id === defaultId && caps[h.id]) ?? hosts?.find((h) => caps[h.id]) ?? null;
+  const cap = capHost ? caps[capHost.id] : null;
+
   return (
     <div className="space-y-5">
-      {/* Summary strip, matching the machine page: status pill, muted meta, actions pinned right. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.75rem] font-medium",
-            summaryTone === "ok"
-              ? "border-success/30 text-success"
-              : summaryTone === "fail"
-                ? "border-destructive/30 text-destructive"
-                : summaryTone === "muted"
-                  ? "border-border text-muted-foreground"
-                  : "border-warning/30 text-warning",
-          )}
-        >
-          <span
-            className={cn(
-              "size-1.5 rounded-full",
-              summaryTone === "ok"
-                ? "bg-success"
-                : summaryTone === "fail"
-                  ? "bg-destructive"
-                  : summaryTone === "muted"
-                    ? "bg-muted-foreground/50"
-                    : "bg-warning",
+      <PageHeader
+        title="Servers"
+        lead="Run bigger, multi-machine labs on hardware you own. Proxmox or ESXi, over your network."
+        actions={
+          <>
+            {hasHosts && (
+              <Button variant="outline" size="sm" onClick={testAll} disabled={anyTesting}>
+                {anyTesting ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} Test all
+              </Button>
             )}
-          />
-          {summaryText}
-        </span>
-        <span className="text-[0.75rem] text-muted-foreground">Proxmox or ESXi, over your network</span>
-        <div className="ml-auto flex items-center gap-2">
-          {hasHosts && (
-            <Button variant="outline" size="sm" onClick={testAll} disabled={anyTesting}>
-              {anyTesting ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} Test all
+            <Button variant="outline" size="sm" onClick={() => open(null)}>
+              <Plus className="size-3.5" /> Add server
             </Button>
-          )}
-          <Button variant="primary" size="sm" onClick={() => open(null)}>
-            <Plus className="size-3.5" /> Add host
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      {error && <p className="rounded-control border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.78125rem] text-destructive">{error}</p>}
+      {error && (
+        <Panel>
+          <div className="flex items-start gap-3 px-4 py-3 text-[0.8125rem]">
+            <StatusDot tone="fail" className="mt-1.5" />
+            <p className="min-w-0 break-words text-muted-foreground">{error}</p>
+          </div>
+        </Panel>
+      )}
 
-      {/* Hosts: the hero. */}
-      <Panel>
-        <PanelHeader
-          title="Hosts"
-          action={
-            hasHosts ? (
-              <span className="text-[0.71875rem] tabular-nums text-muted-foreground">
-                {hosts!.length} host{hosts!.length > 1 ? "s" : ""}
-              </span>
-            ) : undefined
-          }
-        />
-        {hosts === null ? (
-          <div className="space-y-2 p-3.5">
+      {hosts === null ? (
+        <Panel>
+          <div className="space-y-2 p-4">
             <Skeleton className="h-4 w-2/3" />
             <Skeleton className="h-4 w-1/2" />
           </div>
-        ) : !hasHosts ? (
-          <ServersEmptyState onAdd={() => open(null)} />
-        ) : (
-          hosts.map((h) => (
+        </Panel>
+      ) : !hasHosts ? (
+        <ServersEmptyState onAdd={() => open(null)} />
+      ) : (
+        <Panel>
+          <PanelHeader
+            title={
+              <>
+                <StatusDot tone={summaryTone} pulse={anyTesting} />
+                Hosts
+              </>
+            }
+            meta={`${summaryText} · ${hosts.length} host${hosts.length > 1 ? "s" : ""}`}
+          />
+          {hosts.map((h) => (
             <HostRow
               key={h.id}
               host={h}
@@ -222,20 +213,38 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
                 if (confirm(`Remove ${h.name}? Its password is deleted from the keychain.`)) act(() => serverRemove(h.id));
               }}
             />
-          ))
-        )}
-      </Panel>
+          ))}
+        </Panel>
+      )}
+
+      {capHost && cap && (
+        <Panel>
+          <PanelHeader title={`Capacity on ${capHost.name}`} meta={`${cap.cores} vCPU`} />
+          <div className="grid gap-3 p-4">
+            <div className="grid grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-4 text-[0.8125rem]">
+              <span className="text-muted-foreground">Memory</span>
+              <Meter value={cap.memTotal > 0 ? ((cap.memTotal - cap.memFree) / cap.memTotal) * 100 : 0} />
+              <span className="text-right font-mono text-[0.6875rem] text-faint">
+                {formatBytes(cap.memTotal - cap.memFree)} of {formatBytes(cap.memTotal)} used
+              </span>
+            </div>
+          </div>
+        </Panel>
+      )}
 
       {/* Only worth suggesting when this machine can't already run VM labs itself. */}
       {report && !canRunVmHere && (
-        <div className="flex flex-wrap items-center gap-3 rounded-panel border border-dashed border-border px-4 py-3">
-          <p className="min-w-0 flex-1 text-[0.75rem] text-muted-foreground">
-            No server? If this machine can handle it, install a local hypervisor and run VM labs here.
-          </p>
-          <Button variant="ghost" size="sm" onClick={() => onNavigate("setup")}>
-            Set up this machine
-          </Button>
-        </div>
+        <Panel>
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <StatusDot tone="muted" />
+            <p className="min-w-0 flex-1 text-[0.8125rem] text-muted-foreground">
+              No server? If this machine can handle it, install a local hypervisor and run VM labs here.
+            </p>
+            <Button variant="ghost" size="xs" onClick={() => onNavigate("setup")}>
+              Set up this machine
+            </Button>
+          </div>
+        </Panel>
       )}
     </div>
   );

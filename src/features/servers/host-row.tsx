@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Cpu, FlaskConical, MemoryStick, MoreHorizontal, Pencil, Star, Trash2, X, Zap } from "lucide-react";
+import { Check, FlaskConical, MoreHorizontal, Pencil, Star, Trash2, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { KIND } from "@/features/servers/host-setup";
 import { type HostCapacity, type ServerHost, type ServerTest } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { ServerSelfTest } from "@/features/servers/server-self-test";
-import { StatusPill, type Tone } from "@/components/ui/status-pill";
+import { StatusDot, StatusPill, type Tone } from "@/components/ui/status-pill";
 import { ProviderGlyph } from "@/features/servers/provider-glyph";
 import { formatAgo, formatBytes } from "@/lib/format";
 import { VmTest } from "@/features/servers/vm-tests";
@@ -50,60 +50,66 @@ export function HostRow({
   // The running-labs count is filesystem-only and can go stale when a host drops. Only trust it
   // once the host answers as Online; an unreachable host must not report a phantom count.
   const online = !!result && result.ok;
-  const endpoint = `${KIND[host.provider].label} · ${host.username}@${host.host}:${host.port}${host.node ? ` · node ${host.node}` : ""}`;
+  const facts = [
+    KIND[host.provider].label,
+    `${host.username}@${host.host}:${host.port}`,
+    host.node ? `node ${host.node}` : null,
+    capacity ? `${capacity.cores} vCPU` : null,
+    capacity ? `${formatBytes(capacity.memFree)} free of ${formatBytes(capacity.memTotal)}` : null,
+  ].filter(Boolean);
+  const showExtras = (online && running > 0) || !!lastVm || (!!result && !result.ok);
   return (
-    <div className="border-b border-border last:border-b-0">
-      <div className="flex flex-wrap items-center gap-3 px-3.5 py-3">
+    <div className="border-t border-border first:border-t-0">
+      <div className="grid min-h-[3.25rem] grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3.5 px-4 py-2.5 transition-colors hover:bg-glass">
         <ProviderGlyph provider={host.provider} />
-        <div className="min-w-0 flex-1">
-          <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[0.8125rem] font-medium">
-            {host.name}
-            <StatusPill tone={tone}>
-              {status}
-              {result?.latencyMs != null && <span className="ml-1 font-mono text-[0.65625rem] tabular-nums text-muted-foreground">{result.latencyMs} ms</span>}
-            </StatusPill>
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.8125rem] font-medium text-foreground">
+            <span className="truncate">{host.name}</span>
             <button
               type="button"
               onClick={onDefault}
               title={isDefault ? "The default host for website launches. Click to unset." : "Make this the default host for website launches."}
               className={cn(
-                "inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[0.59375rem] font-medium uppercase tracking-wide transition-colors",
-                isDefault ? "border-jewel/50 bg-jewel/10 text-jewel-text" : "border-border text-muted-foreground/70 hover:border-ring/60 hover:text-foreground",
+                "inline-flex items-center gap-1 rounded-full px-2 py-px font-mono text-[0.625rem] font-medium transition-colors",
+                isDefault
+                  ? "text-jewel-text shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--jewel)_40%,transparent)]"
+                  : "text-faint shadow-[inset_0_0_0_1px_var(--border)] hover:text-foreground hover:shadow-[inset_0_0_0_1px_var(--input)]",
               )}
             >
-              <Star className={cn("size-2.5", isDefault && "fill-current")} /> Default
+              <Star className={cn("size-2.5", isDefault && "fill-current")} /> default
             </button>
           </p>
-          <p className="mt-0.5 truncate font-mono text-[0.71875rem] text-muted-foreground">{endpoint}</p>
-          {/* Capacity, running labs and the last VM test: only the ones we actually know. */}
-          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[0.6875rem] text-muted-foreground">
-            {capacity && (
-              <>
-                <span className="inline-flex items-center gap-1">
-                  <Cpu className="size-3" /> {capacity.cores} vCPU
+          <p className="mt-0.5 truncate font-mono text-[0.6875rem] text-faint">{facts.join(" · ")}</p>
+          {/* Running labs, the last VM test and a failure: only the ones we actually know. */}
+          {showExtras && (
+            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[0.75rem] text-muted-foreground">
+              {online && running > 0 && (
+                <span className="inline-flex items-center gap-1.5">
+                  <StatusDot tone="ok" /> {running} lab{running > 1 ? "s" : ""} running
                 </span>
+              )}
+              {lastVm && (
                 <span className="inline-flex items-center gap-1">
-                  <MemoryStick className="size-3" /> {formatBytes(capacity.memFree)} free of {formatBytes(capacity.memTotal)}
+                  {lastVm.result === "ok" ? <Check className="size-3 text-success" /> : <X className="size-3 text-destructive" />} VM test{" "}
+                  {lastVm.result === "ok" ? "passed" : "failed"} <span className="font-mono text-[0.6875rem] text-faint">{formatAgo(lastVm.at, now)}</span>
                 </span>
-              </>
-            )}
-            {online && running > 0 && (
-              <span className="inline-flex items-center gap-1 font-medium text-jewel-text">
-                <span className="size-1.5 rounded-full bg-jewel-solid" /> {running} lab{running > 1 ? "s" : ""} running
-              </span>
-            )}
-            {lastVm && (
-              <span className={cn("inline-flex items-center gap-1", lastVm.result === "ok" ? "text-success" : "text-destructive")}>
-                {lastVm.result === "ok" ? <Check className="size-3" /> : <X className="size-3" />} VM test {lastVm.result === "ok" ? "passed" : "failed"} ·{" "}
-                {formatAgo(lastVm.at, now)}
-              </span>
-            )}
-          </p>
-          {result && !result.ok && <p className="mt-1 text-[0.75rem] text-destructive">{result.message}</p>}
+              )}
+              {result && !result.ok && (
+                <span className="inline-flex min-w-0 items-start gap-1.5">
+                  <StatusDot tone="fail" className="mt-1.5" />
+                  <span className="min-w-0 break-words">{result.message}</span>
+                </span>
+              )}
+            </p>
+          )}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <Button variant="outline" size="sm" onClick={onTest} disabled={test === "testing"}>
-            {test === "testing" ? <Spinner className="size-3.5" /> : <Zap className="size-3.5" />} Test
+        <div className="flex shrink-0 items-center gap-2">
+          <StatusPill tone={tone} pulse={test === "testing"}>
+            {status}
+            {result?.latencyMs != null && <span className="font-mono text-[0.6875rem] font-normal tabular-nums text-faint">{result.latencyMs} ms</span>}
+          </StatusPill>
+          <Button variant="outline" size="xs" onClick={onTest} disabled={test === "testing"}>
+            {test === "testing" ? <Spinner className="size-3" /> : <Zap className="size-3" />} Test
           </Button>
           <Menu
             items={[
@@ -115,7 +121,7 @@ export function HostRow({
         </div>
       </div>
       {vmTesting && (
-        <div className="px-3.5 pb-3.5">
+        <div className="px-4 pb-3.5">
           <ServerSelfTest id={host.id} provider={host.provider} onDone={onVmTestDone} />
         </div>
       )}
@@ -154,17 +160,14 @@ function Menu({ items }: { items: MenuItem[] }) {
         type="button"
         aria-label="More actions"
         onClick={() => (pos ? setPos(null) : open())}
-        className="grid size-8 place-items-center rounded-control text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="grid size-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-glass-2 hover:text-foreground"
       >
         <MoreHorizontal className="size-4" />
       </button>
       {pos && (
         <>
           <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-40 cursor-default" onClick={() => setPos(null)} />
-          <div
-            style={{ position: "fixed", top: pos.top, right: pos.right }}
-            className="z-50 w-36 overflow-hidden rounded-control border border-border bg-card py-1 shadow-lg"
-          >
+          <div style={{ position: "fixed", top: pos.top, right: pos.right }} className="surface-glass z-50 w-36 overflow-hidden rounded-control p-1">
             {items.map((it) => (
               <button
                 key={it.label}
@@ -174,7 +177,7 @@ function Menu({ items }: { items: MenuItem[] }) {
                   it.onClick();
                 }}
                 className={cn(
-                  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[0.78125rem] transition-colors hover:bg-muted",
+                  "flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-[0.8125rem] transition-colors hover:bg-glass-2",
                   it.danger ? "text-destructive" : "text-foreground",
                 )}
               >

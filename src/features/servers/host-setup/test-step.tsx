@@ -3,8 +3,7 @@
 import { CheckCircle2, Play, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils";
-import { Nav, Step } from "@/features/servers/host-setup/form";
+import { Nav, Note, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
 
 export function TestStep({ s }: { s: HostSetup }) {
@@ -16,18 +15,13 @@ export function TestStep({ s }: { s: HostSetup }) {
           <Spinner className="size-4" /> Testing the connection…
         </p>
       ) : (
-        <div
-          className={cn(
-            "flex items-start gap-3 rounded-control border p-3.5",
-            test.ok ? "border-success/25 bg-success/10" : "border-destructive/25 bg-destructive/10",
-          )}
-        >
-          {test.ok ? <CheckCircle2 className="mt-px size-5 shrink-0 text-success" /> : <XCircle className="mt-px size-5 shrink-0 text-destructive" />}
-          <p className={cn("text-[0.8125rem]", test.ok ? "text-foreground" : "text-destructive")}>
+        <Note className="flex items-start gap-3 p-3.5">
+          {test.ok ? <CheckCircle2 className="mt-px size-4 shrink-0 text-success" /> : <XCircle className="mt-px size-4 shrink-0 text-destructive" />}
+          <p className="min-w-0 text-[0.8125rem] break-words text-foreground">
             {test.message}
-            {test.latencyMs != null && <span className="ml-1.5 font-mono text-[0.71875rem] text-muted-foreground">{test.latencyMs} ms</span>}
+            {test.latencyMs != null && <span className="ml-1.5 font-mono text-[0.6875rem] text-faint">{test.latencyMs} ms</span>}
           </p>
-        </div>
+        </Note>
       )}
       <Nav
         left={
@@ -36,7 +30,7 @@ export function TestStep({ s }: { s: HostSetup }) {
           </Button>
         }
         right={
-          <Button variant="primary" onClick={onDone}>
+          <Button onClick={onDone}>
             <Play className="size-4" /> Done
           </Button>
         }
