@@ -19,12 +19,23 @@ use crate::error::{Error, Result};
 /// The lab's spec, checked (fields and the files it names), with this machine's Isoloom
 /// defaults applied (its image table).
 pub fn spec(dir: &Path) -> Result<Spec> {
-    let spec = isoloom_core::load(dir).map_err(|e| Error::Invalid(format!("this lab's isoloom.yml: {e}")))?;
+    let spec = isoloom_core::load(dir).map_err(|e| Error::Invalid(load_error(&e.to_string())))?;
     let problems: Vec<String> = isoloom_core::validate(&spec).into_iter().chain(isoloom_core::validate_files(&spec, dir)).map(|p| p.to_string()).collect();
     if !problems.is_empty() {
         return Err(Error::Invalid(format!("this lab's isoloom.yml has mistakes:\n{}", problems.join("\n"))));
     }
     Ok(defaults(dir)?.images.apply(&spec))
+}
+
+/// A spec this build can't read. Fields or values it doesn't know mean the lab uses a newer
+/// format than this launcher (labs adopt spec additions before every player has updated), so
+/// say what to do instead of showing only the parser's message.
+fn load_error(e: &str) -> String {
+    if e.contains("unknown field") || e.contains("unknown variant") {
+        format!("This lab needs a newer version of Cyber CTF. Update it (Settings > About), then start the lab again.\n(isoloom.yml: {e})")
+    } else {
+        format!("this lab's isoloom.yml: {e}")
+    }
 }
 
 /// This machine's Isoloom defaults for the lab: the user's `~/.isoloom/defaults.yml`, the
@@ -278,6 +289,12 @@ pub fn inputs_json(spec: &Spec, env: &[(String, String)]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_newer_spec_asks_for_an_update() {
+        assert!(load_error("unknown field `common`, expected one of `version`").starts_with("This lab needs a newer version of Cyber CTF"));
+        assert!(load_error("invalid type: string, expected a map").starts_with("this lab's isoloom.yml:"));
+    }
 
     const SPEC: &str = "version: 1\nname: t\nnetworks:\n  lab: { cidr: 10.30.0.0/24 }\ninputs: [CTF_LAUNCH_TOKEN]\nmachines:\n  web:\n    networks: { lab: 10 }\n    services: [{ port: 80, http: true }]\n    inputs: [CTF_LAUNCH_TOKEN]\n    docker: { image: nginx:1.27 }\n";
 
