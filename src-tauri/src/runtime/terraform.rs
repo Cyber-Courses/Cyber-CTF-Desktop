@@ -17,6 +17,13 @@ use super::{LabStatus, Machine, ssh};
 use crate::error::{Error, Result};
 use crate::exec::{run_read, stream};
 
+/// Whether any resource instance in a Terraform state is tainted (a create or provisioner failed).
+fn has_tainted(state: &Value) -> bool {
+    state["resources"]
+        .as_array()
+        .is_some_and(|rs| rs.iter().any(|r| r["instances"].as_array().is_some_and(|is| is.iter().any(|i| i["status"].as_str() == Some("tainted")))))
+}
+
 /// Non-secret run parameters, kept next to the state so `destroy` can be replayed.
 const RUN_FILE: &str = "run.json";
 const EXPIRES_AT: &str = "expires_at";
@@ -321,11 +328,11 @@ pub fn ssh_endpoint(state: &Path) -> Option<(String, String)> {
 
 /// Status from the local state's outputs (no container run, so it's cheap to poll).
 pub fn status(state: &Path) -> LabStatus {
-    let outputs = std::fs::read_to_string(state.join("terraform.tfstate"))
-        .ok()
-        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-        .map(|v| v["outputs"].clone())
-        .unwrap_or(Value::Null);
+    let tfstate = std::fs::read_to_string(state.join("terraform.tfstate")).ok().and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
+    let outputs = tfstate.as_ref().map(|v| v["outputs"].clone()).unwrap_or(Value::Null);
+    // A step that failed (the lab's setup on the VM) leaves its resource tainted: the VM exists
+    // but the lab never came up, so it is not running; its machine stays listed as left behind.
+    let failed = tfstate.as_ref().is_some_and(has_tainted);
     let expires_at =
         std::fs::read_to_string(state.join(RUN_FILE)).ok().and_then(|raw| serde_json::from_str::<Value>(&raw).ok()).and_then(|v| v[EXPIRES_AT].as_u64());
     // Past its auto-stop, the cloud instance has terminated itself.
@@ -347,7 +354,7 @@ pub fn status(state: &Path) -> LabStatus {
         Vec::new()
     };
     LabStatus {
-        running: created,
+        running: created && !failed,
         parked: None,
         machines,
         networks: Vec::new(),
@@ -381,6 +388,15 @@ pub fn expired(state: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tainted_setup_is_not_running() {
+        let ok = serde_json::json!({"resources": [{"instances": [{"status": null}]}]});
+        let failed = serde_json::json!({"resources": [{"instances": [{}]}, {"instances": [{"status": "tainted"}]}]});
+        assert!(!has_tainted(&ok));
+        assert!(has_tainted(&failed));
+        assert!(!has_tainted(&serde_json::json!({})));
+    }
 
     #[test]
     fn container_mounts_the_whole_lab() {

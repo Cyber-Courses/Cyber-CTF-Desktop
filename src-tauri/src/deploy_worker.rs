@@ -163,6 +163,17 @@ fn dir(app: &AppHandle) -> Result<PathBuf> {
     Ok(d)
 }
 
+/// Whether the lab's last finished deploy failed (its worker wrote `error: …`). A run still in
+/// progress, or none at all, isn't a failure.
+pub fn last_deploy_failed(app: &AppHandle, lab_id: &str) -> bool {
+    let Ok(d) = dir(app) else { return false };
+    let f = files(&d, lab_id);
+    if read_pid(&f.pid).is_some_and(alive) {
+        return false;
+    }
+    std::fs::read_to_string(&f.status).is_ok_and(|s| s.trim_start().starts_with("error"))
+}
+
 fn files(dir: &Path, lab_id: &str) -> Files {
     Files {
         job: dir.join(format!("{lab_id}.json")),

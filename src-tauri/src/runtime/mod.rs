@@ -791,6 +791,8 @@ async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Resu
         Some(tf) => terraform::status(&state_dir(app, id, tf)?),
         None => vm::status(&lab::vagrant_dir(dir, runtime), &c.env).await?,
     };
+    // Its VMs can be up after a setup step failed (Vagrant on ESXi): not running, left behind.
+    let status = LabStatus { running: status.running && !crate::deploy_worker::last_deploy_failed(app, id), ..status };
     let place = if c.provider.is_cloud() { Place::Cloud } else { Place::Server };
     Ok(LabStatus { host: Some(c.name), place: Some(place), provider: Some(c.provider.id().to_string()), ..status })
 }

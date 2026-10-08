@@ -540,6 +540,13 @@ pub async fn server_test(app: AppHandle, id: String) -> Result<TestResult> {
         super::ssh::ensure_key(&app).await?;
     }
     let mut result = test_host(&host, &password).await;
+    // macOS answers the app's first connection to a LAN host after a launch with "no route to
+    // host" while it checks the Local Network permission; the next one goes through. One retry
+    // keeps every freshly opened app from listing reachable servers as Unreachable.
+    if !result.reachable && cfg!(target_os = "macos") {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        result = test_host(&host, &password).await;
+    }
     // GCP: the labs project (created on the first test), which needs a free billing slot.
     if host.provider == Provider::Gcp && result.ok {
         match gcp::labs_project(&app, &id).await {
