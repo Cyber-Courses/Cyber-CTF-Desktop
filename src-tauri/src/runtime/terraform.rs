@@ -84,6 +84,12 @@ async fn in_container(module: &Path) -> bool {
         && run_read("docker", &["info", "--format", "{{.ServerVersion}}"], None).await.is_ok()
 }
 
+/// The lab folder a module belongs to: the parent of its `.isoloom…` folder (the module itself
+/// when it isn't under one).
+fn lab_root(module: &Path) -> &Path {
+    module.ancestors().find(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(".isoloom"))).and_then(Path::parent).unwrap_or(module)
+}
+
 /// Runs terraform in the official image, with the module, its state and the files the variables
 /// name mounted at their own paths (so every path in the module and the state stays valid), and
 /// the variables passed through the environment (`-e NAME`, never their values on a command line).
@@ -91,7 +97,10 @@ async fn terraform_container(dir: &Path, state: &Path, env: &[(String, String)],
     let mut full = env.to_vec();
     full.push(("TF_DATA_DIR".to_string(), state.join(".terraform").display().to_string()));
     full.push(("TF_IN_AUTOMATION".to_string(), "1".to_string()));
-    let mut mounts: Vec<String> = vec![dir.display().to_string(), state.display().to_string()];
+    // The whole lab, not just the module: Isoloom modules reach the rest of the lab through
+    // `path.module/..` (the Proxmox module tars the lab folder to upload it; mounting only the
+    // module left the archive without the lab's compose file).
+    let mut mounts: Vec<String> = vec![lab_root(dir).display().to_string(), state.display().to_string()];
     // Files a variable points at (the SSH key), by their folder.
     for (_, v) in env.iter().filter(|(k, _)| k.ends_with("_file")) {
         if let Some(parent) = Path::new(v).parent().filter(|p| p.is_absolute()) {
@@ -372,6 +381,13 @@ pub fn expired(state: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn container_mounts_the_whole_lab() {
+        assert_eq!(lab_root(Path::new("/d/labs/x/.isoloom-1/docker-vm/proxmox")), Path::new("/d/labs/x"));
+        assert_eq!(lab_root(Path::new("/d/labs/x/.isoloom/proxmox")), Path::new("/d/labs/x"));
+        assert_eq!(lab_root(Path::new("/tmp/selftest/terraform/proxmox")), Path::new("/tmp/selftest/terraform/proxmox"));
+    }
 
     #[test]
     fn with_env_prefixes_vars_and_appends_raw_env() {
