@@ -1,45 +1,84 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight, Cloud, Cpu, ExternalLink, MemoryStick, Play, RotateCcw, Server, TriangleAlert } from "lucide-react";
-import { Panel, RailLabel } from "@/components/ui/panel";
-import { Meter } from "@/components/ui/meter";
+import { ArrowRight, Cloud, ExternalLink, Play, RotateCcw, Server, TriangleAlert } from "lucide-react";
+import { KeyValue, Panel, PanelHeader } from "@/components/ui/panel";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Spinner } from "@/components/ui/spinner";
+import { StatusDot, StatusPill } from "@/components/ui/status-pill";
+import { TypeIcon } from "@/components/ui/type-icon";
 import { LabRow } from "@/features/labs/lab-row";
 import { useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
+import { CalloutRow, StatCard } from "@/features/machine/machine-parts";
+import { StepRow } from "@/features/machine/step-row";
 import { getLastRun } from "@/lib/last-run";
 import { formatAgo } from "@/lib/format";
+import { operationLabel, useActiveOperations } from "@/lib/deploy-store";
 import { assessRam } from "@/features/home/capacity";
-import { machineMetrics, machineOpenSetup, type AuthStatus, type MachineMetrics, type SystemReport } from "@/lib/tauri";
-import { cn } from "@/lib/utils";
+import { machineMetrics, machineOpenSetup, type ActiveOperation, type AuthStatus, type MachineMetrics, type SystemReport } from "@/lib/tauri";
 import { ignore, tell } from "@/lib/failure";
 
 type Tab = "labs" | "machine" | "setup" | "server" | "cloud" | "settings";
 
-const gb = (bytes: number) => (bytes / 1e9).toFixed(1);
+/** Gigabytes with one decimal, without a trailing ".0" (19.5, 32). */
+const gb = (bytes: number) => String(Number((bytes / 1e9).toFixed(1)));
 
-function StatusRow({ name, value, tone }: { name: string; value: string; tone?: "ok" | "warn" | "mut" }) {
-  return (
-    <div className="flex items-center border-b border-border px-3.5 py-2.5 text-[0.78125rem] last:border-b-0">
-      <span className="text-muted-foreground">{name}</span>
-      <span className={cn("ml-auto flex items-center gap-1.5", tone === "ok" ? "text-success" : tone === "warn" ? "text-warning" : "text-foreground")}>
-        {(tone === "ok" || tone === "warn") && <span className={cn("size-1.5 rounded-full", tone === "ok" ? "bg-success" : "bg-warning")} />}
-        {value}
-      </span>
-    </div>
-  );
+const HISTORY = 20;
+const push = (a: number[], v: number) => [...a, v].slice(-HISTORY);
+
+/** "Good morning / afternoon / evening" from the local hour. */
+function greeting(hour: number) {
+  return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 }
 
-function MetricRow({ icon: Icon, label, pct, detail }: { icon: typeof Cpu; label: string; pct: number | null; detail: string }) {
+/** The second column of the Overview: what is being deployed right now, step by step. */
+function DeployPanel({ ops, labs, onOpen }: { ops: ActiveOperation[]; labs: Lab[]; onOpen: (slug: string) => void }) {
+  const one = ops.length === 1 ? ops[0] : null;
+  const labOf = (id: string) => labs.find((l) => l.id === id);
+  const oneLab = one ? labOf(one.labId) : undefined;
   return (
-    <div className="border-b border-border px-3.5 py-2.5 last:border-b-0">
-      <div className="flex items-center gap-2 text-[0.78125rem]">
-        <Icon className="size-3.5 text-muted-foreground" />
-        <span className="text-muted-foreground">{label}</span>
-        <span className="ml-auto font-mono text-[0.6875rem] text-muted-foreground">{detail}</span>
+    <Panel>
+      <PanelHeader
+        title={
+          <>
+            <StatusDot tone="warn" pulse />
+            <span className="truncate">{one ? (oneLab?.slug ?? one.labId) : "In progress"}</span>
+          </>
+        }
+        meta={one ? operationLabel(one).replace(/…$/, "").toLowerCase() : `${ops.length} labs`}
+        action={
+          oneLab && (
+            <Button variant="ghost" size="xs" onClick={() => onOpen(oneLab.slug)}>
+              View
+            </Button>
+          )
+        }
+      />
+      <div className="py-1.5">
+        {ops.map((o) => {
+          const lab = labOf(o.labId);
+          return (
+            <StepRow
+              key={o.labId}
+              state="run"
+              label={o.step ?? operationLabel(o)}
+              detail={one ? undefined : (lab?.title ?? o.labId)}
+              meta={o.machine?.replace(/^isoloom-/, "") ?? "running"}
+              action={
+                !one &&
+                lab && (
+                  <Button variant="ghost" size="xs" onClick={() => onOpen(lab.slug)}>
+                    View
+                  </Button>
+                )
+              }
+            />
+          );
+        })}
       </div>
-      <Meter value={pct ?? 0} className="mt-2" />
-    </div>
+    </Panel>
   );
 }
 
@@ -54,15 +93,26 @@ export function HomeScreen({
 }) {
   const { labs, statuses, refreshStatus } = useLabs(auth?.loggedIn ?? false);
   const { runs, launch, stop, resume } = useLabActions(refreshStatus);
+  const ops = useActiveOperations();
   const [metrics, setMetrics] = useState<MachineMetrics | null>(null);
-  // "Now" for the "last run" labels, taken once per visit.
+  // A rolling window of the 3 s polls, for the stat card sparklines.
+  const [hist, setHist] = useState<{ cpu: number[]; mem: number[]; disk: number[] }>({ cpu: [], mem: [], disk: [] });
+  // "Now" for the "last run" labels and the greeting, taken once per visit.
   const [now] = useState(() => Date.now());
 
   useEffect(() => {
     let alive = true;
     const tick = () =>
       machineMetrics()
-        .then((m) => alive && setMetrics(m))
+        .then((m) => {
+          if (!alive) return;
+          setMetrics(m);
+          setHist((h) => ({
+            cpu: push(h.cpu, m.cpu),
+            mem: push(h.mem, m.memTotal ? (m.memUsed / m.memTotal) * 100 : 0),
+            disk: push(h.disk, m.diskTotal ? (m.diskUsed / m.diskTotal) * 100 : 0),
+          }));
+        })
         .catch(ignore("polled again in a moment"));
     tick();
     const t = setInterval(tick, 3000);
@@ -75,6 +125,7 @@ export function HomeScreen({
   const dockerReady = report ? report.docker.installed && report.dockerRunning : false;
   const running = (labs ?? []).filter((l) => statuses[l.id]?.running);
   const preview = (labs ?? []).slice(0, 6);
+  const activeOps = [...ops.values()];
 
   // "Jump back in": recently launched labs (local history), most recent first, not already running.
   const recent = (labs ?? [])
@@ -84,8 +135,10 @@ export function HomeScreen({
     .slice(0, 3);
 
   const name = auth?.name?.split(" ")[0];
-  const memPct = metrics ? (metrics.memUsed / metrics.memTotal) * 100 : null;
+  const memPct = metrics && metrics.memTotal ? (metrics.memUsed / metrics.memTotal) * 100 : null;
+  const diskPct = metrics && metrics.diskTotal ? (metrics.diskUsed / metrics.diskTotal) * 100 : null;
   const capacity = metrics ? assessRam(metrics.memTotal) : null;
+  const hello = greeting(new Date(now).getHours());
 
   const heroStatus = !dockerReady
     ? "Set up Docker to start running labs."
@@ -93,165 +146,180 @@ export function HomeScreen({
       ? `${running.length} lab${running.length > 1 ? "s" : ""} running on this machine.`
       : "This machine is ready. Pick a lab to attack.";
 
+  const labRow = (lab: Lab) => (
+    <LabRow
+      key={lab.id}
+      lab={lab}
+      status={statuses[lab.id]}
+      busy={!!runs[lab.id]?.busy}
+      operation={runs[lab.id]?.op}
+      loggedIn={auth?.loggedIn ?? false}
+      hostArch={report?.arch ?? ""}
+      onOpen={() => onNavigate("labs", lab.slug)}
+      onStop={() => stop(lab)}
+      onResume={() => resume(lab)}
+    />
+  );
+
   return (
     <div className="space-y-5">
-      {/* ---- Hero ---- */}
-      <div className="flex flex-wrap items-center gap-4 rounded-panel border border-border surface-panel p-5">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold tracking-tight">{auth?.loggedIn ? `Welcome back${name ? `, ${name}` : ""}` : "Welcome to Cyber CTF"}</h1>
-          <p className="mt-1 text-[0.8125rem] text-muted-foreground">{heroStatus}</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {!dockerReady ? (
-            <button
-              onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))}
-              className="inline-flex items-center gap-1.5 rounded-control border border-jewel bg-jewel-solid px-3.5 py-2 text-[0.8125rem] font-medium text-jewel-on transition-colors hover:bg-jewel/90"
-            >
-              <Play className="size-4" /> Set up this machine
-            </button>
+      <PageHeader
+        title={
+          auth?.loggedIn ? (
+            name ? (
+              <>
+                {hello}, <em>{name}.</em>
+              </>
+            ) : (
+              `${hello}.`
+            )
           ) : (
-            <button
-              onClick={() => onNavigate("labs")}
-              className="inline-flex items-center gap-1.5 rounded-control border border-jewel bg-jewel-solid px-3.5 py-2 text-[0.8125rem] font-medium text-jewel-on transition-colors hover:bg-jewel/90"
-            >
-              Browse labs <ArrowRight className="size-4" />
-            </button>
-          )}
-        </div>
+            <>
+              Welcome to Cyber <em>CTF.</em>
+            </>
+          )
+        }
+        lead={heroStatus}
+        actions={
+          !dockerReady ? (
+            <Button size="sm" onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))}>
+              <Play className="size-3.5" /> Set up this machine
+            </Button>
+          ) : (
+            <Button size="sm" onClick={() => onNavigate("labs")}>
+              Browse labs <ArrowRight className="size-3.5" />
+            </Button>
+          )
+        }
+      />
+
+      {/* Live usage */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard label="CPU" detail={metrics ? `${metrics.cores} cores` : ""} value={metrics ? metrics.cpu : null} history={hist.cpu} />
+        <StatCard label="Memory" detail={metrics ? `${gb(metrics.memUsed)} of ${gb(metrics.memTotal)} GB` : ""} value={memPct} history={hist.mem} />
+        <StatCard label="Disk" detail={metrics ? `${gb(metrics.diskUsed)} of ${gb(metrics.diskTotal)} GB` : ""} value={diskPct} history={hist.disk} />
       </div>
 
       {capacity && capacity.level === "low" && (
-        <div className="flex flex-wrap items-center gap-3 rounded-panel border border-destructive/30 bg-destructive/5 p-4">
-          <TriangleAlert className="size-4 shrink-0 text-destructive" />
-          <div className="min-w-0 flex-1">
-            <p className="text-[0.8125rem] font-medium">
-              {capacity.title} <span className="ml-1 font-mono text-[0.6875rem] text-muted-foreground">{capacity.totalGB.toFixed(1)} GB</span>
-            </p>
-            <p className="mt-0.5 text-[0.75rem] text-muted-foreground">{capacity.detail}</p>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            <button
-              onClick={() => onNavigate("cloud")}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-card px-2.5 py-1.5 text-[0.75rem] text-foreground transition-colors hover:border-ring/60"
-            >
-              <Cloud className="size-3.5" /> Cloud
-            </button>
-            <button
-              onClick={() => onNavigate("server")}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-card px-2.5 py-1.5 text-[0.75rem] text-foreground transition-colors hover:border-ring/60"
-            >
-              <Server className="size-3.5" /> Server
-            </button>
-          </div>
-        </div>
+        <CalloutRow
+          tone="warn"
+          icon={<TriangleAlert className="size-4" />}
+          title={capacity.title}
+          meta={`${capacity.totalGB.toFixed(1)} GB`}
+          actions={
+            <>
+              <Button variant="outline" size="xs" onClick={() => onNavigate("cloud")}>
+                <Cloud /> Cloud
+              </Button>
+              <Button variant="outline" size="xs" onClick={() => onNavigate("server")}>
+                <Server /> Server
+              </Button>
+            </>
+          }
+        >
+          {capacity.detail}
+        </CalloutRow>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[18.75rem_minmax(0,1fr)]">
-        {/* LEFT RAIL */}
-        <div className="space-y-5">
-          <div>
-            <RailLabel
-              right={
-                <button onClick={() => onNavigate("machine")} className="text-[0.71875rem] text-muted-foreground hover:text-foreground">
-                  Open
-                </button>
-              }
-            >
-              This machine
-            </RailLabel>
-            <Panel>
-              <MetricRow icon={Cpu} label="CPU" pct={metrics ? metrics.cpu : null} detail={metrics ? `${Math.round(metrics.cpu)}%` : "…"} />
-              <MetricRow icon={MemoryStick} label="Memory" pct={memPct} detail={metrics ? `${gb(metrics.memUsed)} / ${gb(metrics.memTotal)} GB` : "…"} />
-              <StatusRow
-                name="Docker engine"
-                value={report ? (report.dockerRunning ? "Running" : "Stopped") : "…"}
-                tone={report?.dockerRunning ? "ok" : "warn"}
-              />
-              <StatusRow name="Containers" value={metrics ? `${metrics.containers}` : dockerReady ? "0" : "—"} tone="mut" />
-            </Panel>
-          </div>
-        </div>
-
-        {/* RIGHT */}
-        <div className="space-y-5">
-          {recent.length > 0 && (
-            <div>
-              <RailLabel>Jump back in</RailLabel>
-              <Panel>
-                {recent.map(({ lab, ts }) => (
-                  <div key={lab.id} className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5 last:border-b-0">
-                    <span className="grid size-7 shrink-0 place-items-center rounded-sm border border-border bg-muted text-muted-foreground">
-                      <RotateCcw className="size-3.5" />
-                    </span>
-                    <button onClick={() => onNavigate("labs", lab.slug)} className="min-w-0 flex-1 text-left">
-                      <p className="truncate text-[0.78125rem] font-medium hover:text-jewel-text">{lab.title}</p>
-                      <p className="text-[0.65625rem] text-muted-foreground">last run {formatAgo(ts, now)}</p>
-                    </button>
-                    <button
-                      // A shut-down or paused lab comes back as it was; a fresh launch would
-                      // start over on top of its kept machines.
-                      onClick={() => (statuses[lab.id]?.parked ? resume(lab) : launch(lab, undefined, undefined, report))}
-                      disabled={!!runs[lab.id]?.busy || !(auth?.loggedIn ?? false) || !lab.runtime}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-jewel bg-jewel-solid px-2 py-1 text-[0.6875rem] font-medium text-jewel-on hover:bg-jewel/90 disabled:opacity-40"
-                    >
-                      {runs[lab.id]?.busy ? (
-                        "…"
-                      ) : (
-                        <>
-                          <Play className="size-3" /> Resume
-                        </>
-                      )}
-                    </button>
-                  </div>
-                ))}
-              </Panel>
-            </div>
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+        <Panel>
+          <PanelHeader
+            title="Running now"
+            meta={
+              <span className="tabular-nums">
+                {running.length} lab{running.length === 1 ? "" : "s"}
+                {metrics ? ` · ${metrics.containers} container${metrics.containers === 1 ? "" : "s"}` : ""}
+              </span>
+            }
+          />
+          {running.length > 0 ? (
+            running.map(labRow)
+          ) : (
+            <p className="px-4 py-3.5 text-[0.8125rem] text-muted-foreground">Nothing running. Start a lab from its page.</p>
           )}
+        </Panel>
 
-          <div>
-            <RailLabel
-              right={
-                <button
-                  onClick={() => onNavigate("labs")}
-                  className="inline-flex items-center gap-1 text-[0.71875rem] text-muted-foreground hover:text-foreground"
-                >
-                  All labs <ArrowRight className="size-3.5" />
-                </button>
+        {activeOps.length > 0 ? (
+          <DeployPanel ops={activeOps} labs={labs ?? []} onOpen={(slug) => onNavigate("labs", slug)} />
+        ) : (
+          <Panel>
+            <PanelHeader
+              title="This machine"
+              action={
+                <Button variant="ghost" size="xs" onClick={() => onNavigate("machine")}>
+                  Open <ArrowRight />
+                </Button>
               }
-            >
-              Labs {labs && <span className="font-normal text-muted-foreground">{labs.length}</span>}
-            </RailLabel>
-            <Panel>
-              {!labs ? (
-                <p className="px-4 py-6 text-[0.78125rem] text-muted-foreground">Loading labs…</p>
-              ) : labs.length === 0 ? (
-                <p className="px-4 py-6 text-[0.78125rem] text-muted-foreground">No labs published yet.</p>
-              ) : (
-                preview.map((lab: Lab) => (
-                  <LabRow
-                    key={lab.id}
-                    lab={lab}
-                    status={statuses[lab.id]}
-                    busy={!!runs[lab.id]?.busy}
-                    operation={runs[lab.id]?.op}
-                    loggedIn={auth?.loggedIn ?? false}
-                    hostArch={report?.arch ?? ""}
-                    onOpen={() => onNavigate("labs", lab.slug)}
-                    onStop={() => stop(lab)}
-                    onResume={() => resume(lab)}
-                  />
-                ))
-              )}
-            </Panel>
-          </div>
-
-          {!auth?.loggedIn && (
-            <p className="flex items-center gap-1.5 text-[0.75rem] text-muted-foreground">
-              <ExternalLink className="size-3.5" /> Sign in (bottom-left) so labs launched from the website run here.
-            </p>
-          )}
-        </div>
+            />
+            <KeyValue k="Docker engine">
+              {report ? <StatusPill tone={report.dockerRunning ? "ok" : "warn"}>{report.dockerRunning ? "Running" : "Stopped"}</StatusPill> : "…"}
+            </KeyValue>
+            <KeyValue k="Containers">{metrics ? `${metrics.containers}` : dockerReady ? "0" : "none"}</KeyValue>
+            <KeyValue k="Cores">{metrics ? `${metrics.cores}` : "…"}</KeyValue>
+          </Panel>
+        )}
       </div>
+
+      {recent.length > 0 && (
+        <Panel>
+          <PanelHeader title="Jump back in" meta="recently launched" />
+          {recent.map(({ lab, ts }) => (
+            <div
+              key={lab.id}
+              className="flex h-13 items-center gap-3.5 border-t border-border px-4 text-[0.8125rem] transition-colors first:border-t-0 hover:bg-glass"
+            >
+              <TypeIcon>
+                <RotateCcw className="size-3.5" />
+              </TypeIcon>
+              <button onClick={() => onNavigate("labs", lab.slug)} className="min-w-0 flex-1 text-left">
+                <span className="block truncate font-medium text-foreground">{lab.title}</span>
+                <span className="block truncate font-mono text-[0.6875rem] text-faint">
+                  {lab.slug} · last run {formatAgo(ts, now)}
+                </span>
+              </button>
+              <Button
+                size="xs"
+                // A shut-down or paused lab comes back as it was; a fresh launch would
+                // start over on top of its kept machines.
+                onClick={() => (statuses[lab.id]?.parked ? resume(lab) : launch(lab, undefined, undefined, report))}
+                disabled={!!runs[lab.id]?.busy || !(auth?.loggedIn ?? false) || !lab.runtime}
+              >
+                {runs[lab.id]?.busy ? (
+                  <Spinner className="size-3" />
+                ) : (
+                  <>
+                    <Play /> Resume
+                  </>
+                )}
+              </Button>
+            </div>
+          ))}
+        </Panel>
+      )}
+
+      <Panel>
+        <PanelHeader
+          title={<>Labs {labs && <span className="font-mono text-[0.6875rem] font-normal text-faint">{labs.length}</span>}</>}
+          action={
+            <Button variant="ghost" size="xs" onClick={() => onNavigate("labs")}>
+              All labs <ArrowRight />
+            </Button>
+          }
+        />
+        {!labs ? (
+          <p className="px-4 py-3.5 text-[0.8125rem] text-muted-foreground">Loading labs…</p>
+        ) : labs.length === 0 ? (
+          <p className="px-4 py-3.5 text-[0.8125rem] text-muted-foreground">No labs published yet.</p>
+        ) : (
+          preview.map(labRow)
+        )}
+      </Panel>
+
+      {!auth?.loggedIn && (
+        <p className="flex items-center gap-1.5 text-[0.75rem] text-muted-foreground">
+          <ExternalLink className="size-3.5" /> Sign in (bottom-left) so labs launched from the website run here.
+        </p>
+      )}
     </div>
   );
 }

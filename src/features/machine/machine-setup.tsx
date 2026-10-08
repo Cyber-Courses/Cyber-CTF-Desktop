@@ -5,6 +5,8 @@ import { ErrorBoundary } from "@/components/error-screen";
 import { useState } from "react";
 import { ArrowLeft, Play, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
 import { MachineStepBody, SetupOutcome, canContinue, machineSteps, nextLabel, stepMeta, useMachineSetup } from "@/features/machine/setup-steps";
 import type { SystemReport } from "@/lib/tauri";
@@ -60,56 +62,63 @@ export function MachineSetup({
         /* Scrolls when a step is long; centered in the window when it's short. */
         <div className="min-h-0 flex-1 overflow-y-auto">
           <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-6 pt-2 pb-10">
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">Set up this machine</h1>
-              <p className="mt-1 text-[0.8125rem] text-muted-foreground">Get {osName} ready to run labs, one step at a time.</p>
-            </div>
+            <PageHeader
+              title={
+                <>
+                  Set up this <em>machine</em>
+                </>
+              }
+              lead={`Get ${osName} ready to run labs, one step at a time.`}
+            />
 
-            <div className="mt-5 flex gap-1.5">
+            {/* Progress: one segment per step, the jewel up to the current one. */}
+            <div className="mt-5 flex gap-1" aria-hidden>
               {steps.map((_, n) => (
-                <div key={n} className={cn("h-1 flex-1 rounded-full transition-colors", n <= at ? "bg-jewel-solid" : "bg-muted")} />
+                <div key={n} className={cn("h-1 flex-1 rounded-full transition-colors", n <= at ? "meter-fill" : "bg-border")} />
               ))}
             </div>
 
-            <div key={key} className="mt-7 animate-rise-in">
-              <>
-                <p className="text-[0.71875rem] font-medium tabular-nums text-muted-foreground">
-                  Step {at + 1} of {steps.length}
-                </p>
-                <div className="mt-2 flex items-start gap-3.5">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-panel border border-border bg-surface">
-                    <meta.icon className="size-5 text-foreground" />
+            <Panel key={key} className="mt-5 animate-rise-in">
+              <PanelHeader
+                title={
+                  <>
+                    <meta.icon className="size-4 shrink-0 text-muted-foreground" />
+                    {meta.title}
+                  </>
+                }
+                meta={
+                  <span className="tabular-nums">
+                    Step {at + 1} of {steps.length}
                   </span>
-                  <div className="min-w-0 pt-0.5">
-                    <h2 className="text-lg font-semibold tracking-tight">{meta.title}</h2>
-                    <p className="mt-1 text-[0.78125rem] leading-relaxed text-muted-foreground">{meta.description}</p>
-                  </div>
-                </div>
-                <div className="mt-6">
+                }
+              />
+              <div className="px-4 pt-3.5 pb-4">
+                <p className="text-[0.8125rem] leading-relaxed text-muted-foreground">{meta.description}</p>
+                <div className="mt-4">
                   <ErrorBoundary resetKey={key} title="This step couldn’t load">
                     {key === "ready" ? <SetupOutcome report={report} setup={setup} /> : <MachineStepBody step={key} report={report} setup={setup} />}
                   </ErrorBoundary>
                 </div>
-                <div className="mt-6 flex items-center justify-between gap-2 border-t border-border pt-4">
-                  <div>
-                    {at > 0 && (
-                      <Button variant="outline" onClick={back} disabled={setup.busy}>
-                        <ArrowLeft className="size-4" /> Back
-                      </Button>
-                    )}
-                  </div>
-                  {key === "ready" ? (
-                    <Button variant="primary" onClick={onClose}>
-                      <Play className="size-4" /> Done
-                    </Button>
-                  ) : (
-                    <Button variant="primary" onClick={next} disabled={setup.busy || !canContinue(key, report, setup)}>
-                      {nextLabel(key, report)}
+              </div>
+              <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
+                <div>
+                  {at > 0 && (
+                    <Button variant="outline" size="sm" onClick={back} disabled={setup.busy}>
+                      <ArrowLeft className="size-3.5" /> Back
                     </Button>
                   )}
                 </div>
-              </>
-            </div>
+                {key === "ready" ? (
+                  <Button variant="primary" size="sm" onClick={onClose}>
+                    <Play className="size-3.5" /> Done
+                  </Button>
+                ) : (
+                  <Button variant="primary" size="sm" onClick={next} disabled={setup.busy || !canContinue(key, report, setup)}>
+                    {nextLabel(key, report)}
+                  </Button>
+                )}
+              </div>
+            </Panel>
           </main>
         </div>
       )}

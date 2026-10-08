@@ -159,7 +159,7 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
         <p className="text-[0.75rem] text-muted-foreground">A reboot may be needed after enabling WSL. If Docker says virtualization is off, go back a step.</p>
       )}
       {!ready && !isMac && !isWin && choice.id === "docker-engine" && (
-        <div className="space-y-2 rounded-control border border-border bg-glass p-3 text-left text-[0.75rem] text-muted-foreground">
+        <div className="space-y-2 rounded-control bg-glass shadow-[inset_0_0_0_1px_var(--border)] p-3 text-left text-[0.75rem] text-muted-foreground">
           <p>After Docker Engine installs, let your user run it and start the service:</p>
           <CmdRow cmd="sudo usermod -aG docker $USER" />
           <CmdRow cmd="sudo systemctl enable --now docker" />
@@ -172,19 +172,20 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
   );
 }
 
-/** Brand mark in a fixed square. App icons (`tile`) fill it; bare marks sit on a light chip so dark artwork stays legible. */
 /** The logo of a Docker-compatible engine, for other screens (e.g. the Machine page). */
 export function EngineMark({ id }: { id: DockerEngine }) {
   const e = ENGINES.find((x) => x.id === id);
   return e ? <EngineLogo engine={e} /> : null;
 }
 
+/** Brand mark in a fixed square. App icons (`tile`) fill it; bare marks sit on a white logo
+ *  tile (white in every mode) so dark artwork stays legible. */
 function EngineLogo({ engine }: { engine: Engine }) {
   return engine.tile ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={engine.logo} alt="" className="size-8 shrink-0 rounded-control object-contain" />
   ) : (
-    <span className="flex size-8 shrink-0 items-center justify-center rounded-control bg-white p-1.5">
+    <span className="logo-tile flex size-8 shrink-0 items-center justify-center rounded-control p-1.5">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={engine.logo} alt="" className="size-full object-contain" />
     </span>
@@ -193,7 +194,7 @@ function EngineLogo({ engine }: { engine: Engine }) {
 
 function EngineTrademarks() {
   return (
-    <p className="pt-1 text-left text-[0.6875rem] leading-relaxed text-muted-foreground/70">
+    <p className="pt-1 text-left text-[0.6875rem] leading-relaxed text-faint">
       Docker and the Docker logo are trademarks of Docker, Inc. OrbStack and Colima marks belong to their respective owners. Cyber CTF isn&apos;t affiliated
       with any of them.
     </p>

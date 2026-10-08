@@ -5,6 +5,7 @@ import { Container, Server, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
+import { TypeIcon } from "@/components/ui/type-icon";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { ListSkeleton } from "@/features/machine/machine-parts";
 import { formatBytes } from "@/lib/format";
@@ -60,14 +61,11 @@ export function RunningNowPanel({ refreshKey }: { refreshKey: unknown }) {
   const labMem = (workloads ?? []).reduce((a, w) => a + w.memBytes, 0);
   return (
     <Panel>
-      <PanelHeader
-        title="Running now"
-        action={labMem > 0 ? <span className="text-[0.71875rem] tabular-nums text-muted-foreground">{formatBytes(labMem)} in use</span> : undefined}
-      />
+      <PanelHeader title="Running now" meta={labMem > 0 ? <span className="tabular-nums">{formatBytes(labMem)} in use</span> : undefined} />
       {workloads === null ? (
         <ListSkeleton />
       ) : workloads.length === 0 ? (
-        <p className="px-3.5 py-3 text-[0.78125rem] text-muted-foreground">Nothing running.</p>
+        <p className="px-4 py-3.5 text-[0.8125rem] text-muted-foreground">Nothing running.</p>
       ) : (
         workloads.map((w) => {
           const key = `${w.kind}:${w.id}`;
@@ -77,20 +75,19 @@ export function RunningNowPanel({ refreshKey }: { refreshKey: unknown }) {
               ? `${w.count} container${w.count === 1 ? "" : "s"}${w.memBytes ? ` · ${formatBytes(w.memBytes)}` : ""}`
               : `${w.count} VM${w.count === 1 ? "" : "s"}${w.provider ? ` · ${PROVIDER_LABELS[w.provider] ?? w.provider}` : ""}`;
           return (
-            <div key={key} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
-              {w.kind === "docker" ? (
-                <Container className="size-4 shrink-0 text-muted-foreground" />
-              ) : (
-                <Server className="size-4 shrink-0 text-muted-foreground" />
-              )}
+            <div
+              key={key}
+              className="flex min-h-[3.25rem] items-center gap-3 border-t border-border px-4 py-2 transition-colors first:border-t-0 hover:bg-glass"
+            >
+              <TypeIcon>{w.kind === "docker" ? <Container className="size-4" /> : <Server className="size-4" />}</TypeIcon>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[0.78125rem] font-medium">{name}</p>
-                <p className="text-[0.71875rem] tabular-nums text-muted-foreground">{meta}</p>
+                <p className="truncate text-[0.8125rem] font-medium text-foreground">{name}</p>
+                <p className="truncate font-mono text-[0.6875rem] tabular-nums text-faint">{meta}</p>
               </div>
-              <Button variant="outline" size="sm" onClick={() => stop(w)} disabled={stopping !== null}>
+              <Button variant="outline" size="xs" onClick={() => stop(w)} disabled={stopping !== null}>
                 {stopping === key ? (
                   <>
-                    <Spinner className="size-3.5" /> Stopping…
+                    <Spinner className="size-3" /> Stopping…
                   </>
                 ) : (
                   <>

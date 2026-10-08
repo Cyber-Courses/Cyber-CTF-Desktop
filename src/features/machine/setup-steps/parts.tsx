@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Check, CheckCircle2, Copy } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useState } from "react";
+import { Check, Copy } from "lucide-react";
+import { LogConsole } from "@/components/ui/log-console";
+import { StatusDot } from "@/components/ui/status-pill";
+import { StepCircle } from "@/features/machine/step-row";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
 import { tell } from "@/lib/failure";
 
@@ -20,17 +22,17 @@ export function Requirement({
   optional?: boolean;
 }) {
   return (
-    <div className="flex min-h-12 items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
-      <span className="flex size-4 shrink-0 items-center justify-center">
-        {ok ? (
-          <Check className="size-3.5 text-success" />
-        ) : (
-          <span className={cn("size-1.5 rounded-full", optional ? "bg-muted-foreground/40" : "bg-warning")} />
-        )}
-      </span>
+    <div className="flex min-h-[3.25rem] items-center gap-3 border-t border-border px-4 py-2.5 first:border-t-0">
+      {ok || optional ? (
+        <StepCircle state={ok ? "done" : "pending"} />
+      ) : (
+        <span className="grid size-[1.1rem] shrink-0 place-items-center">
+          <StatusDot tone="warn" />
+        </span>
+      )}
       <span className="min-w-0 flex-1 text-left">
         <span className="block text-[0.8125rem] text-foreground">{title}</span>
-        <span className="block break-words font-mono text-[0.6875rem] text-muted-foreground">{detail}</span>
+        <span className="block font-mono text-[0.6875rem] break-words text-faint">{detail}</span>
       </span>
       {!ok && <span className="shrink-0">{action}</span>}
     </div>
@@ -39,23 +41,15 @@ export function Requirement({
 
 // ---------- Small parts ----------
 
+/** The install output of the current step, in a log well with a live timer. */
 export function Log({ setup }: { setup: MachineSetupState }) {
-  const { logs } = setup;
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [logs]);
-  if (logs.length === 0) return null;
-  return (
-    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-control border border-border bg-[var(--log)] p-3 text-left font-mono text-[0.71875rem] leading-relaxed text-muted-foreground">
-      {logs.join("\n")}
-      <div ref={end} />
-    </pre>
-  );
+  return <LogConsole lines={setup.logs} running={setup.installing !== null} title="Install" />;
 }
 
 export function CmdRow({ cmd }: { cmd: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="flex items-center gap-2 rounded-control border border-border bg-[var(--log)] px-3 py-2">
+    <div className="surface-log flex items-center gap-2 rounded-control px-3 py-2">
       <code className="flex-1 overflow-x-auto text-left font-mono text-[0.75rem] text-foreground">{cmd}</code>
       <button
         onClick={() =>
@@ -67,7 +61,7 @@ export function CmdRow({ cmd }: { cmd: string }) {
             })
             .catch(tell("Couldn't copy to the clipboard"))
         }
-        className="inline-flex shrink-0 items-center gap-1 text-[0.71875rem] text-muted-foreground hover:text-foreground"
+        className="inline-flex shrink-0 items-center gap-1 text-[0.6875rem] text-muted-foreground transition-colors hover:text-foreground"
       >
         {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy"}
       </button>
@@ -78,24 +72,20 @@ export function CmdRow({ cmd }: { cmd: string }) {
 export function Num({ n, children }: { n: number; children: React.ReactNode }) {
   return (
     <li className="flex gap-3 text-left">
-      <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-border bg-card text-[0.6875rem] font-medium text-muted-foreground">
+      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-glass-2 font-mono text-[0.625rem] text-muted-foreground shadow-[inset_0_0_0_1px_var(--input)]">
         {n}
       </span>
-      <div className="min-w-0 text-[0.78125rem] leading-relaxed text-foreground">{children}</div>
+      <div className="min-w-0 text-[0.8125rem] leading-relaxed text-foreground">{children}</div>
     </li>
   );
 }
 
 export function Outcome({ title, ok, detail }: { title: string; ok: boolean; detail: string }) {
   return (
-    <div className="flex items-center gap-3 border-b border-border px-3.5 py-3 text-left last:border-b-0">
-      <span
-        className={cn("flex size-7 shrink-0 items-center justify-center rounded-full", ok ? "bg-success/15 text-success" : "bg-muted text-muted-foreground")}
-      >
-        <CheckCircle2 className="size-4" />
-      </span>
-      <div>
-        <p className="text-[0.8125rem] font-medium">{title}</p>
+    <div className="flex min-h-[3.25rem] items-center gap-3 border-t border-border px-4 py-2.5 text-left first:border-t-0">
+      <StepCircle state={ok ? "done" : "pending"} />
+      <div className="min-w-0">
+        <p className="text-[0.8125rem] font-medium text-foreground">{title}</p>
         <p className="text-[0.75rem] text-muted-foreground">{detail}</p>
       </div>
     </div>
@@ -104,9 +94,14 @@ export function Outcome({ title, ok, detail }: { title: string; ok: boolean; det
 
 export function Skipped({ title, reason }: { title: string; reason: string }) {
   return (
-    <div className="rounded-control border border-dashed border-border px-3.5 py-2.5 text-left">
-      <p className="text-[0.8125rem] font-medium text-muted-foreground">{title}</p>
-      <p className="text-[0.75rem] text-muted-foreground">{reason}</p>
+    <div className="flex items-start gap-3 rounded-control bg-glass px-4 py-3 text-left shadow-[inset_0_0_0_1px_var(--border)]">
+      <span className="mt-1">
+        <StatusDot tone="muted" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[0.8125rem] font-medium text-foreground">{title}</p>
+        <p className="text-[0.75rem] text-muted-foreground">{reason}</p>
+      </div>
     </div>
   );
 }
