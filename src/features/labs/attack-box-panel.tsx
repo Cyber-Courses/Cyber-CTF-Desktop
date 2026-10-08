@@ -9,22 +9,27 @@ import { StatusDot } from "@/components/ui/status-pill";
 import { Spinner } from "@/components/ui/spinner";
 import type { AttackBox } from "@/features/labs/use-attack-box";
 
-/** The attack box card in the lab page's side rail. `host` is the server a remote lab runs on. */
+/** The attack box card in the lab page's side rail. `host` is the server a remote lab runs on.
+ *  `controller`: the lab runs on QEMU, whose network links only its two VMs, so the lab's own
+ *  controller is the attacker (no attack VM to start or stop). */
 export function AttackBoxPanel({
   box,
   running,
   host,
   onShell,
   shellReady,
+  controller = false,
 }: {
   box: AttackBox;
   running: boolean;
   host: string | null;
   onShell?: () => void;
   shellReady?: boolean;
+  controller?: boolean;
 }) {
   const remote = host !== null;
-  const { status, busy, log, name } = box;
+  const { status, busy, log } = box;
+  const name = controller ? "isoloom-controller" : box.name;
   const vm = box.kind === "vm";
   const tone = (remote && running) || status?.running ? "ok" : busy ? "warn" : "muted";
   return (
@@ -33,7 +38,7 @@ export function AttackBoxPanel({
         title={
           <>
             <StatusDot tone={tone} pulse={busy} />
-            {vm ? "Attack VM" : "Attack box"}
+            {controller ? "Attacker" : vm ? "Attack VM" : "Attack box"}
           </>
         }
         action={
@@ -66,16 +71,18 @@ export function AttackBoxPanel({
         <p className="text-[0.75rem] leading-relaxed text-muted-foreground">
           {remote
             ? "Your machine on the lab network. Open its shell to attack the targets; it connects over SSH."
-            : vm
-              ? "Your own VM beside the lab, on every lab network, with the internet to install tools. Open its shell to attack the targets; it connects over SSH."
-              : "Your machine on the lab network. Open its shell to attack the targets from inside the lab."}
+            : controller
+              ? "On QEMU the lab network links only the lab's two VMs, so its controller (Debian, on the lab network, with the internet) is your attacker. Open its shell and install your tools with apt."
+              : vm
+                ? "Your own VM beside the lab, on every lab network, with the internet to install tools. Open its shell to attack the targets; it connects over SSH."
+                : "Your machine on the lab network. Open its shell to attack the targets from inside the lab."}
         </p>
         {onShell && shellReady && (
           <Button variant="primary" size="sm" className="w-full" onClick={onShell}>
             <Terminal className="size-3.5" /> Open attacker shell
           </Button>
         )}
-        {!remote && status && !status.imagePresent && !status.running && (
+        {!remote && !controller && status && !status.imagePresent && !status.running && (
           <p className="flex items-start gap-2 text-[0.75rem] text-muted-foreground">
             <StatusDot tone="warn" className="mt-1.5 shrink-0" />
             <span>
@@ -83,7 +90,7 @@ export function AttackBoxPanel({
             </span>
           </p>
         )}
-        {running && !remote && (
+        {running && !remote && !controller && (
           <div className="space-y-2">
             {status?.running ? (
               <Button variant="outline" size="sm" className="w-full" onClick={() => box.stop()} disabled={busy}>

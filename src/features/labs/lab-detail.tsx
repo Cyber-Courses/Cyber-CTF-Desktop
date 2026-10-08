@@ -674,6 +674,7 @@ export function LabDetail({
               host={remote ? (status?.host ?? null) : null}
               onShell={openShell}
               shellReady={attackReady}
+              controller={!isDocker && status?.provider === "qemu"}
             />
           )}
 

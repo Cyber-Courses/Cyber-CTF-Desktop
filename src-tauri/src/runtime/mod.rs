@@ -1049,7 +1049,7 @@ pub async fn attack_vm_status(app: AppHandle, id: String, box_name: String) -> R
     if !attack_vm::valid_box(&box_name) {
         return Err(Error::Invalid(format!("invalid attack VM box `{box_name}` (expected owner/name)")));
     }
-    Ok(attack_vm::status(&dir, &box_name).await)
+    attack_vm::status(&dir, &box_name).await
 }
 
 /// Starts the attack VM beside a running VM lab, on the lab's hypervisor (the first start
