@@ -252,7 +252,7 @@ export function MachineScreen({
               "No local hypervisor runs on this machine. VM labs can run on a server instead."
             ) : vmProvider ? (
               <>
-                {providerLabel(vmProvider)}
+                {providerLabel(vmProvider, report.os)}
                 {vmReadyList.length > 1 && !preferred ? " (automatic, change in Settings)" : ""} · {testLine(last.vm)}
               </>
             ) : blockedReason ? (
@@ -315,7 +315,7 @@ export function MachineScreen({
           {hypervisors.map((p) => (
             <DetailRow
               key={p.provider}
-              name={providerLabel(p)}
+              name={providerLabel(p, report.os)}
               value={
                 p.hypervisor === true
                   ? p.plugin

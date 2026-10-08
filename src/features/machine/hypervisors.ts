@@ -12,7 +12,12 @@ export const PROVIDER_LABELS: Record<string, string> = {
   proxmox: "Proxmox VE (remote)",
 };
 
-export const providerLabel = (p: ProviderStatus) => PROVIDER_LABELS[p.provider] ?? p.provider;
+/** A hypervisor's name on this OS: VMware's desktop hypervisor is Fusion on macOS and
+ *  Workstation elsewhere, so a Linux or Windows player isn't pointed at a Mac-only product. */
+export function providerLabel(p: ProviderStatus, os?: string): string {
+  if (p.provider === "vmware_desktop" && os) return os === "macos" ? "VMware Fusion" : "VMware Workstation";
+  return PROVIDER_LABELS[p.provider] ?? p.provider;
+}
 
 /** Hypervisors we can install in one click (per-OS plans live in the Rust installer). */
 export const INSTALLABLE: Record<string, Dependency> = {

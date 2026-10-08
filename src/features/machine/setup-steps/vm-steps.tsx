@@ -25,7 +25,7 @@ export function VmStep({ report, setup }: { report: SystemReport; setup: Machine
     );
   }
   const choice = picked ?? hypervisors[0];
-  const label = providerLabel(choice);
+  const label = providerLabel(choice, report.os);
   return (
     <div className="space-y-3">
       <ChoiceGrid>
@@ -35,7 +35,7 @@ export function VmStep({ report, setup }: { report: SystemReport; setup: Machine
             selected={p.provider === choice.provider}
             onSelect={() => setup.setHypervisor(p.provider)}
             mark={<HypervisorLogo provider={p.provider} />}
-            title={providerLabel(p)}
+            title={providerLabel(p, report.os)}
             note={INSTALLABLE[p.provider] ? "Cyber CTF can install it for you." : "Install it from the vendor's site."}
             badge={p.hypervisor === true ? "installed" : undefined}
           />
@@ -98,7 +98,7 @@ export function VagrantStep({ report, setup }: { report: SystemReport; setup: Ma
       </p>
     );
   }
-  const label = providerLabel(choice);
+  const label = providerLabel(choice, report.os);
   return (
     <div className="space-y-3">
       {/* For the hypervisor picked on the previous step. */}

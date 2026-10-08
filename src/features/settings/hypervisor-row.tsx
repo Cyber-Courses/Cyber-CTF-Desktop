@@ -88,7 +88,7 @@ export function HypervisorRow({
       title="Hypervisor for VM labs"
       description={
         current ? (
-          <>VM labs and the VM test run on {providerLabel(current)}.</>
+          <>VM labs and the VM test run on {providerLabel(current, report?.os)}.</>
         ) : (
           <>None of the installed hypervisors can run VM labs yet. Install its Vagrant add-on below.</>
         )
@@ -102,7 +102,7 @@ export function HypervisorRow({
               selected={effective === null}
               onSelect={() => choose(null)}
               title="Automatic"
-              subtitle={`Uses ${providerLabel(ready[0])}, the first ready hypervisor.`}
+              subtitle={`Uses ${providerLabel(ready[0], report?.os)}, the first ready hypervisor.`}
             />
           )}
           {ready.map((h) => (
@@ -114,7 +114,7 @@ export function HypervisorRow({
               title={
                 <span className="flex items-center gap-2">
                   <HypervisorLogo provider={h.provider} size="sm" />
-                  {providerLabel(h)}
+                  {providerLabel(h, report?.os)}
                 </span>
               }
               subtitle={h.plugin ? `Ready · Vagrant add-on ${h.plugin}` : "Ready · built into Vagrant"}
@@ -128,7 +128,7 @@ export function HypervisorRow({
             <div key={h.provider} className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0">
               <HypervisorLogo provider={h.provider} size="sm" />
               <div className="min-w-0 flex-1">
-                <p className="text-[0.8125rem] font-medium text-foreground">{providerLabel(h)}</p>
+                <p className="text-[0.8125rem] font-medium text-foreground">{providerLabel(h, report?.os)}</p>
                 <p className="truncate text-xs text-muted-foreground">
                   {h.plugin && !h.pluginInstalled ? `Installed · needs the Vagrant add-on ${h.plugin}` : (h.reason ?? "Installed · not ready for VM labs")}
                 </p>
