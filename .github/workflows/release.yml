@@ -67,6 +67,10 @@ jobs:
           - platform: windows-latest
             args: ""
             rust-targets: ""
+          # Windows on Arm (Snapdragon PCs), built natively on GitHub's Arm runner.
+          - platform: windows-11-arm
+            args: ""
+            rust-targets: ""
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -101,7 +105,7 @@ jobs:
       # signCommand on the app binary and the NSIS installer. Skipped (unsigned build) until the
       # AZURE_* secrets exist; the Store MSIX is signed by Microsoft either way.
       - name: Set up Authenticode signing (Windows)
-        if: matrix.platform == 'windows-latest' && env.AZURE_CLIENT_ID != ''
+        if: startsWith(matrix.platform, 'windows') && env.AZURE_CLIENT_ID != ''
         shell: bash
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
