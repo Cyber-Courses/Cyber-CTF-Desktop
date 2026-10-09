@@ -39,6 +39,9 @@ pub struct Check {
 /// networks that assert what the lab declares and that the intended exploit path still
 /// works, so a learner who broke their box is told to reset it instead of fighting a lab that
 /// can no longer be solved.
+/// How long one check runner may take.
+const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+
 pub async fn check(dir: &Path, id: &str) -> Result<Check> {
     let spec = crate::runtime::lab::spec(dir)?;
     let plan = checks::plan(&spec);
@@ -58,15 +61,25 @@ pub async fn check(dir: &Path, id: &str) -> Result<Check> {
         // piped in); the runner beside the machine reports the others.
         let (execs, group): (Vec<&checks::Resolved>, Vec<&checks::Resolved>) = group.into_iter().partition(|c| matches!(c.probe, checks::Probe::Exec { .. }));
         let before = results.len();
-        let res = compose::stream(dir, &project, &["--profile", "check", "run", "--rm", "--no-deps", &service], &[], |l| {
+        let run_args = ["--profile", "check", "run", "--rm", "--no-deps", service.as_str()];
+        let run = compose::stream(dir, &project, &run_args, &[], |l| {
             match checks::parse_line(&l) {
                 Some(Line::Pass(name)) => results.push(CheckResult { name, from: from.clone(), ok: true, reason: String::new() }),
                 Some(Line::Fail(name, why)) => results.push(CheckResult { name, from: from.clone(), ok: false, reason: why }),
                 Some(Line::End(..)) | None => {}
             }
             lines.push(l);
-        })
-        .await;
+        });
+        // A runner that hangs (a target that never answers) must not run forever: past the limit
+        // the CLI is dropped, and its container, which outlives it, removed.
+        let res = match tokio::time::timeout(CHECK_TIMEOUT, run).await {
+            Ok(r) => r,
+            Err(_) => {
+                compose::remove_one_off(&project, &service).await;
+                lines.push(format!("{service}: no answer within {} minutes, stopped", CHECK_TIMEOUT.as_secs() / 60));
+                Err(crate::error::Error::Invalid("the check timed out".into()))
+            }
+        };
         // A runner that stopped before reporting: the checks it owned, failed with that reason.
         let reported = results.len() - before;
         for c in group.iter().skip(reported) {

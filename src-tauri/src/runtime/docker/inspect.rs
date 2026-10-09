@@ -220,13 +220,13 @@ fn down_serving(entries: &[compose::PsEntry], serving: &[String]) -> Vec<(String
 /// ones): what tells a parked or cut-off lab with machines left from one with nothing left.
 pub async fn containers(dir: &Path, id: &str) -> Result<usize> {
     let out = compose::output(dir, &compose::project(id), &["ps", "--all", "--format", "json"]).await?;
-    Ok(compose::parse_ps(&out).len())
+    Ok(compose::parse_ps(&out).iter().filter(|e| !e.one_off()).count())
 }
 
 pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     let project = compose::project(id);
     let out = compose::output(dir, &project, &["ps", "--all", "--format", "json"]).await?;
-    let entries = compose::parse_ps(&out);
+    let entries: Vec<PsEntry> = compose::parse_ps(&out).into_iter().filter(|e| !e.one_off()).collect();
     // Labs have one-shot init services (e.g. evidence, place-evidence) that exit 0 after
     // doing their job, so the lab is "running" when at least one service is up, not when
     // every service is. Only the live services are reported to the UI.
@@ -277,7 +277,7 @@ impl HostProbe {
 /// A remote lab's machines and networks from a `HostProbe`, plus where the attack box (the
 /// `attacker` container the launcher runs next to the lab) sits: its address and network.
 pub fn status_from_host(project: &str, probe: &HostProbe) -> (LabStatus, Option<(String, String)>) {
-    let entries = compose::parse_ps(&probe.ps);
+    let entries: Vec<PsEntry> = compose::parse_ps(&probe.ps).into_iter().filter(|e| !e.one_off()).collect();
     let mut inspected = parse_inspect(project, &probe.inspect);
     let networks = parse_networks(project, &probe.networks);
     let attacker = inspected.remove("attacker").and_then(|a| {
