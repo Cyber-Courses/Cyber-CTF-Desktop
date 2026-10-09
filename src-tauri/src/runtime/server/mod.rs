@@ -529,6 +529,18 @@ pub async fn server_open_setup(app: AppHandle, id: Option<String>, kind: Option<
     Ok(())
 }
 
+static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+/// Notes the app's start, for `launched_recently`.
+pub fn mark_started() {
+    STARTED.get_or_init(std::time::Instant::now);
+}
+
+/// Whether the app started less than a minute ago.
+fn launched_recently() -> bool {
+    STARTED.get_or_init(std::time::Instant::now).elapsed() < std::time::Duration::from_secs(60)
+}
+
 #[tauri::command]
 pub async fn server_test(app: AppHandle, id: String) -> Result<TestResult> {
     let host = find(&load(&app)?, &id)?;
@@ -543,9 +555,17 @@ pub async fn server_test(app: AppHandle, id: String) -> Result<TestResult> {
     // macOS answers the app's first connection to a LAN host after a launch with "no route to
     // host" while it checks the Local Network permission; the next one goes through. One retry
     // keeps every freshly opened app from listing reachable servers as Unreachable.
+    // Right after an update (a new binary) that takes longer, so for the app's first minute it
+    // keeps trying for about 10 s; later, an unreachable host is reported after one retry.
     if !result.reachable && cfg!(target_os = "macos") {
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        result = test_host(&host, &password).await;
+        let delays: &[u64] = if launched_recently() { &[2, 3, 5] } else { &[2] };
+        for secs in delays {
+            tokio::time::sleep(std::time::Duration::from_secs(*secs)).await;
+            result = test_host(&host, &password).await;
+            if result.reachable {
+                break;
+            }
+        }
     }
     // GCP: the labs project (created on the first test), which needs a free billing slot.
     if host.provider == Provider::Gcp && result.ok {
