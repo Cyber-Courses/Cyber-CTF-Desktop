@@ -1,5 +1,7 @@
 /** Whether this machine has enough RAM to run labs comfortably. */
 
+import { translate } from "@/lib/i18n";
+
 export type RamLevel = "ok" | "tight" | "low";
 
 export interface Capacity {
@@ -18,13 +20,7 @@ export interface Capacity {
  */
 export function assessRam(memTotalBytes: number): Capacity {
   const totalGB = memTotalBytes / 1e9;
-  if (totalGB >= 16) return { level: "ok", totalGB, title: "Ready for labs", detail: "Plenty of RAM for container labs and most VM labs." };
-  if (totalGB >= 8)
-    return { level: "tight", totalGB, title: "Enough for container labs", detail: "Heavy multi-VM labs or the full Exegol image may run slowly here." };
-  return {
-    level: "low",
-    totalGB,
-    title: "Low on RAM for labs",
-    detail: "Labs may struggle on this machine. For heavier labs, run them in the cloud or on a server.",
-  };
+  const level: RamLevel = totalGB >= 16 ? "ok" : totalGB >= 8 ? "tight" : "low";
+  // In the current language: called while rendering, so a language change re-assesses it.
+  return { level, totalGB, title: translate(`home.capacity.${level}.title`), detail: translate(`home.capacity.${level}.detail`) };
 }

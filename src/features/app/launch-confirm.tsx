@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { confirmLaunch } from "@/lib/tauri";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 import { tell } from "@/lib/failure";
+import { useT } from "@/lib/i18n";
 
 type Request = { sessionId: string; repository: string; commit: string; target: string };
 
@@ -16,6 +17,7 @@ type Request = { sessionId: string; repository: string; commit: string; target: 
  * player to approve or decline on this machine.
  */
 export function LaunchConfirm() {
+  const t = useT();
   const [req, setReq] = useState<Request | null>(null);
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -31,7 +33,7 @@ export function LaunchConfirm() {
   const answer = (approve: boolean) => {
     setBusy(true);
     void confirmLaunch(req.sessionId, approve)
-      .catch(tell("Couldn't send your answer to Cyber CTF"))
+      .catch(tell(t("app.launchConfirm.failed")))
       .finally(() => {
         setBusy(false);
         setReq(null);
@@ -45,7 +47,7 @@ export function LaunchConfirm() {
         tabIndex={-1}
         role="alertdialog"
         aria-modal="true"
-        aria-label="Confirm a cloud lab launch"
+        aria-label={t("app.launchConfirm.label")}
         className="w-full max-w-[28rem] surface-glass rounded-[1rem] p-5 outline-none"
       >
         <div className="flex items-start gap-3">
@@ -53,23 +55,22 @@ export function LaunchConfirm() {
             <Cloud className="size-4" />
           </span>
           <div className="min-w-0">
-            <p className="text-[0.9375rem] font-medium text-foreground">Run this lab on your cloud account?</p>
+            <p className="text-[0.9375rem] font-medium text-foreground">{t("app.launchConfirm.title")}</p>
             <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">
-              A launch from the website wants to run on <span className="text-foreground">{req.target}</span>. This starts billable resources on your account
-              (they auto-stop later). Only approve a launch you started.
+              {t.rich("app.launchConfirm.body", { target: (s) => <span className="text-foreground">{s}</span> }, { target: req.target })}
             </p>
             <div className="mt-2.5 space-y-0.5 font-mono text-[0.6875rem] text-faint">
-              <p className="truncate">repo: {req.repository}</p>
-              <p className="truncate">commit: {req.commit.slice(0, 12)}</p>
+              <p className="truncate">{t("app.launchConfirm.repo", { repo: req.repository })}</p>
+              <p className="truncate">{t("app.launchConfirm.commit", { commit: req.commit.slice(0, 12) })}</p>
             </div>
           </div>
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => answer(false)}>
-            Decline
+            {t("app.launchConfirm.decline")}
           </Button>
           <Button size="sm" disabled={busy} onClick={() => answer(true)}>
-            Run on my cloud
+            {t("app.launchConfirm.approve")}
           </Button>
         </div>
       </div>

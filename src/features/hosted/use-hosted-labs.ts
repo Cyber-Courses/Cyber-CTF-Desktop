@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiQuery } from "@/lib/tauri";
 import { ignore, warn } from "@/lib/failure";
+import { translate } from "@/lib/i18n";
 
 export interface HostedEndpoint {
   port: number;
@@ -83,7 +84,7 @@ export function useHostedLabs() {
       pollDeadline.current = { id: session.id, until: Date.now() + 10 * 60 * 1000 };
     }
     if (Date.now() > pollDeadline.current.until) {
-      setError("This hosted lab is taking longer than expected to start. It may still come up shortly; otherwise stop it and try again.");
+      setError(translate("hosted.slowStart"));
       return;
     }
     // Cancelled when the session changes (e.g. stop() clears it): a poll already in flight must
@@ -107,7 +108,7 @@ export function useHostedLabs() {
     setSession(null);
     setBusyLab(null);
     // The session is already off the page; a stop that fails says so, or it would keep running unseen.
-    if (current) await apiQuery(STOP, { id: current.id }).catch((e) => setError(`Couldn't stop the hosted lab: ${String(e)}`));
+    if (current) await apiQuery(STOP, { id: current.id }).catch((e) => setError(translate("hosted.stopFailed", { error: String(e) })));
   }, [session]);
 
   return { session, busyLab, error, launch, stop };

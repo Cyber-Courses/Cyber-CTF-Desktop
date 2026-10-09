@@ -1,6 +1,7 @@
 import { type Edge, type Node } from "@xyflow/react";
 import type { LabInterface, LabNetwork } from "@/lib/tauri";
 import { link } from "@/features/labs/network-diagram/edges";
+import { translate } from "@/lib/i18n";
 import {
   // The lab as a graph (zones, machines, links), before layout.
   ANCHOR,
@@ -17,7 +18,7 @@ import {
   isIp,
   netLabel,
   publishHandle,
-  serviceMeta,
+  serviceLabel,
   serviceRows,
   serviceType,
   uniquePorts,
@@ -78,7 +79,7 @@ export function topology(machines: Machine[], networks: LabNetwork[], attacker: 
       type: "bridge",
       position: { x: 0, y: 0 },
       style: { width: BRIDGE.w, height: BRIDGE.h },
-      data: { label: `${netLabel(n.name)} bridge` },
+      data: { label: translate("diagram.bridge", { name: netLabel(n.name) }) },
       draggable: false,
     }),
   );
@@ -108,7 +109,11 @@ export function topology(machines: Machine[], networks: LabNetwork[], attacker: 
       id: "__attacker",
       type: "attacker",
       position: { x: 0, y: 0 },
-      data: { label: "Attack box", subtitle: atkOn ? attacker.ip || "attached" : "not attached", running: atkOn },
+      data: {
+        label: translate("diagram.attacker.label"),
+        subtitle: atkOn ? attacker.ip || translate("diagram.attacker.attached") : translate("diagram.attacker.notAttached"),
+        running: atkOn,
+      },
     });
     members.get(entry)!.push("__attacker");
     edges.push(link("e-attach", `bridge-${entry}`, "__attacker", atkOn ? attack : IDLE, { animated: atkOn }));
@@ -127,7 +132,7 @@ export function topology(machines: Machine[], networks: LabNetwork[], attacker: 
         position: { x: 0, y: 0 },
         data: {
           hostname: m.name,
-          image: m.image || serviceMeta[type].label,
+          image: m.image || serviceLabel(type),
           type,
           ifaces,
           running: m.state === "running",
@@ -168,14 +173,18 @@ export function topology(machines: Machine[], networks: LabNetwork[], attacker: 
           // From the service that publishes it (its box's right edge); a port no service row
           // shows keeps the card's own bottom handle.
           const shown = serviceRows(m, uniquePorts(m.ports), type).some((r) => r.ports.some((q) => q.published === p.published));
-          const e = link(`e-${hp}`, id, hp, GREEN, { dashed: true, label: "published" });
+          const e = link(`e-${hp}`, id, hp, GREEN, { dashed: true, label: translate("diagram.published") });
           edges.push(shown ? { ...e, sourceHandle: publishHandle(p.published) } : e);
         });
     });
 
   ordered.forEach((n) => {
     const ids = members.get(n.name)!;
-    zones.push({ id: `zone-${n.name}`, members: ids, data: { label: `${netLabel(n.name).toUpperCase()} NETWORK`, detail: n.subnet, isolated: n.internal } });
+    zones.push({
+      id: `zone-${n.name}`,
+      members: ids,
+      data: { label: translate("diagram.zone.network", { name: netLabel(n.name) }).toUpperCase(), detail: n.subnet, isolated: n.internal },
+    });
   });
 
   return { nodes, edges, zones };
