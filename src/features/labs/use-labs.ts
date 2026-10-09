@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiQuery, runningLabs, type LabStatus, type Provider, type Runtime } from "@/lib/tauri";
 import { catalogueFor, refreshStatus, setCatalogue, setScanRunning, useLabState } from "@/features/labs/lab-store";
 import { ignore } from "@/lib/failure";
+import type { T } from "@/lib/i18n";
 
 export interface LabRuntimeInfo {
   runtime: Runtime;
@@ -127,5 +128,10 @@ export function useLabs(reloadKey: unknown = 0) {
   return { labs, error, statuses: mergedStatuses, completed, refreshStatus, probed };
 }
 
-export const DIFFICULTY_LABEL = ["", "Easy", "Medium", "Hard"];
+const DIFFICULTY_KEYS = ["easy", "medium", "hard"] as const;
+/** A difficulty's word (1 Easy, 2 Medium, 3 Hard), empty for none. */
+export const difficultyLabel = (t: T, level: number) => {
+  const key = DIFFICULTY_KEYS[level - 1];
+  return key ? t(`labs.difficulty.${key}`) : "";
+};
 export const DIFFICULTY_DOT = ["", "bg-success", "bg-warning", "bg-destructive"];

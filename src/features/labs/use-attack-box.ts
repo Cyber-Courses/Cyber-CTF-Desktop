@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { attackVmStart, attackVmStatus, attackVmStop, exegolStart, exegolStatus, exegolStop, type ExegolStatus } from "@/lib/tauri";
 import { getAttackBox, getAttackImage, getAutoAttackBox } from "@/lib/settings";
+import { translate } from "@/lib/i18n";
 
 /** What the attack box is: a container on a container lab's networks, or the learner's own VM
  *  (a Vagrant box) beside a VM lab, on the same hypervisor. */
@@ -85,7 +86,7 @@ export function useAttackBox(
     () =>
       run(
         (l) => (kind === "vm" ? attackVmStart(labId, getAttackBox(), l) : exegolStart(labId, getAttackImage(), l)),
-        kind === "vm" ? "Starting the attack VM…" : "Starting the attack box…",
+        kind === "vm" ? translate("labs.attackBox.startingVm") : translate("labs.attackBox.startingBox"),
       ),
     [run, labId, kind],
   );
@@ -96,7 +97,7 @@ export function useAttackBox(
         // It's gone now: show it immediately (a later poll confirms), so the button flips on
         // the first click instead of waiting on the next status read.
         setStatus((s) => (s ? { ...s, running: false, ip: "" } : s));
-      }, "Removing the attack box…"),
+      }, translate("labs.attackBox.removing")),
     [run, labId, kind],
   );
 

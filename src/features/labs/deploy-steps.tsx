@@ -8,18 +8,20 @@ import { LogConsole } from "@/components/ui/log-console";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import type { ActiveOperation } from "@/lib/tauri";
+import { useT, type T } from "@/lib/i18n";
 
 type Operation = ActiveOperation["op"];
 
 // Operations on a lab that is already built: one step named after them, not the launch's
 // "Building" / "Preparing", which read as a new deploy while the lab was shutting down.
-const OPERATIONS: Partial<Record<Operation, { busy: string; step: string; done: string }>> = {
-  resume: { busy: "Resuming", step: "Bring the machines back", done: "Resumed" },
-  pause: { busy: "Pausing", step: "Save the machines' state", done: "Paused" },
-  shutdown: { busy: "Shutting down", step: "Power the machines off", done: "Shut down" },
-  stop: { busy: "Stopping", step: "Remove the machines", done: "Removed" },
-  attack_vm: { busy: "Starting", step: "Start the attack VM", done: "Started" },
-};
+const OPERATIONS = ["resume", "pause", "shutdown", "stop", "attack_vm"] as const;
+
+/** An operation's words (busy, its one step, done), when it is one of OPERATIONS. */
+function operationText(t: T, operation: Operation): { busy: string; step: string; done: string } | undefined {
+  const op = OPERATIONS.find((o) => o === operation);
+  if (!op) return undefined;
+  return { busy: t(`labs.deploy.ops.${op}.busy`), step: t(`labs.deploy.ops.${op}.step`), done: t(`labs.deploy.ops.${op}.done`) };
+}
 
 /**
  * A lab's start-up as named steps with their durations, Vercel-build style. The steps are read
@@ -37,12 +39,12 @@ type Timed = { line: string; at: number };
 type Step = { id: string; label: string; rows: Timed[] };
 
 // Docker Compose phases, matched line by line.
-type Phase = { id: string; label: string; match: (line: string) => boolean };
+type Phase = { id: "images" | "create" | "start" | "health"; match: (line: string) => boolean };
 const DOCKER_PHASES: Phase[] = [
-  { id: "images", label: "Get images", match: (l) => /\bImage\b.*\b(Pulling|Pulled|Building|Built)\b|^\s*(Pulling|Building)\b/.test(l) },
-  { id: "create", label: "Create the network and containers", match: (l) => /\b(Network|Volume|Container)\b.*\b(Creating|Created)\b/.test(l) },
-  { id: "start", label: "Start the containers", match: (l) => /\bContainer\b.*\b(Starting|Started)\b/.test(l) },
-  { id: "health", label: "Wait until healthy", match: (l) => /\bContainer\b.*\b(Waiting|Healthy|Exited)\b/.test(l) },
+  { id: "images", match: (l) => /\bImage\b.*\b(Pulling|Pulled|Building|Built)\b|^\s*(Pulling|Building)\b/.test(l) },
+  { id: "create", match: (l) => /\b(Network|Volume|Container)\b.*\b(Creating|Created)\b/.test(l) },
+  { id: "start", match: (l) => /\bContainer\b.*\b(Starting|Started)\b/.test(l) },
+  { id: "health", match: (l) => /\bContainer\b.*\b(Waiting|Healthy|Exited)\b/.test(l) },
 ];
 
 /** Which target's output this is, inferred from the lines seen so far. */
@@ -69,7 +71,7 @@ export function failedMachineStep(failure: string): string | null {
 }
 
 /** Builds the ordered step list from the timed log, per the detected target. */
-function deriveSteps(timed: Timed[]): Step[] {
+function deriveSteps(t: T, timed: Timed[]): Step[] {
   const steps: Step[] = [];
   const push = (id: string, label: string, t: Timed) => {
     let s = steps.find((x) => x.id === id);
@@ -82,31 +84,31 @@ function deriveSteps(timed: Timed[]): Step[] {
   const target = detectTarget(timed.map((t) => t.line).join("\n"));
   let machine: string | null = null;
   let docker: Phase | null = null;
-  for (const t of timed) {
-    const l = t.line;
+  for (const row of timed) {
+    const l = row.line;
     if (isDownloadLine(l)) {
-      push("download", "Download the lab", t);
+      push("download", t("labs.deploy.steps.download"), row);
       continue;
     }
     if (target === "vagrant") {
       const m = l.match(/^\s*==>\s*([A-Za-z0-9_.-]+):/);
       if (m) machine = m[1];
-      if (machine) push(`m:${machine}`, machineLabel(machine), t);
-      else push("prepare", isPrepLine(l) ? "Prepare this machine" : "Start", t);
+      if (machine) push(`m:${machine}`, machineLabel(machine), row);
+      else push("prepare", isPrepLine(l) ? t("labs.deploy.steps.prepareMachine") : t("labs.deploy.steps.start"), row);
     } else if (target === "terraform") {
-      if (/Initializing|terraform init|Installing|Finding .* versions|Reusing previous/.test(l)) push("tf-init", "Set up Terraform", t);
+      if (/Initializing|terraform init|Installing|Finding .* versions|Reusing previous/.test(l)) push("tf-init", t("labs.deploy.steps.tfInit"), row);
       else if (/Creating\.\.\.|Creation complete|Still creating|Destroying|Apply complete|Plan:|will perform|Modif/.test(l))
-        push("tf-apply", "Create the infrastructure", t);
+        push("tf-apply", t("labs.deploy.steps.tfApply"), row);
       else if (/Waiting for the lab host|running:|install Docker|cloud-init|bootstrap|is ready|ready/i.test(l))
-        push("tf-ready", "Install and start the lab", t);
-      else push(steps.at(-1)?.id ?? "tf-init", steps.at(-1)?.label ?? "Set up Terraform", t);
+        push("tf-ready", t("labs.deploy.steps.tfReady"), row);
+      else push(steps.at(-1)?.id ?? "tf-init", steps.at(-1)?.label ?? t("labs.deploy.steps.tfInit"), row);
     } else if (target === "docker") {
       const p = DOCKER_PHASES.find((ph) => ph.match(l));
       if (p) docker = p;
-      if (docker) push(docker.id, docker.label, t);
-      else push("prepare", "Prepare the lab", t);
+      if (docker) push(docker.id, t(`labs.deploy.phases.${docker.id}`), row);
+      else push("prepare", t("labs.deploy.steps.prepareLab"), row);
     } else {
-      push(steps.at(-1)?.id ?? "prepare", steps.at(-1)?.label ?? "Preparing", t);
+      push(steps.at(-1)?.id ?? "prepare", steps.at(-1)?.label ?? t("labs.deploy.steps.preparing"), row);
     }
   }
   return steps;
@@ -143,6 +145,7 @@ export function DeploySteps({
   /** What the log is of: a launch (steps read from the output) or an operation on the built lab. */
   operation?: Operation;
 }) {
+  const t = useT();
   const fallback = useTimedLines(lines);
   // Prefer the per-line timestamps kept in the deploy store (they survive leaving and returning
   // to the page, so the step durations don't reset); fall back to local timing if absent.
@@ -152,18 +155,18 @@ export function DeploySteps({
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!busy) return;
-    const t = setInterval(() => setNow(Date.now()), 100);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(timer);
   }, [busy]);
 
-  const failed = timed.find((t) => t.line.startsWith("✗"));
-  const done = timed.find((t) => t.line.startsWith("✓"));
+  const failed = timed.find((row) => row.line.startsWith("✗"));
+  const done = timed.find((row) => row.line.startsWith("✓"));
   const start = timed[0]?.at;
   const end = done?.at ?? failed?.at ?? (busy ? now : timed.at(-1)?.at);
 
   // The steps to show, built from the log per the detected target (Vagrant / Terraform / Docker).
-  const op = OPERATIONS[operation];
-  const steps = op ? (timed.length > 0 ? [{ id: operation, label: op.step, rows: timed }] : []) : deriveSteps(timed);
+  const op = operationText(t, operation);
+  const steps = op ? (timed.length > 0 ? [{ id: operation, label: op.step, rows: timed }] : []) : deriveSteps(t, timed);
   const lastSeen = steps.at(-1)?.id;
   const named = failed ? failedMachineStep(failed.line) : null;
   const failedStep = failed ? (named && steps.some((s) => s.id === named) ? named : lastSeen) : null;
@@ -173,10 +176,10 @@ export function DeploySteps({
       <PanelHeader
         title={
           <>
-            Deployment
+            {t("labs.deploy.title")}
             {where && (
               <span className="truncate font-normal text-muted-foreground">
-                on <span className="text-foreground">{where}</span>
+                {t.rich("labs.deploy.on", { where: (s) => <span className="text-foreground">{s}</span> }, { where })}
               </span>
             )}
           </>
@@ -184,13 +187,13 @@ export function DeploySteps({
         action={
           <span className="flex items-center gap-2.5">
             {failed ? (
-              <StatusPill tone="fail">Failed</StatusPill>
+              <StatusPill tone="fail">{t("labs.deploy.failed")}</StatusPill>
             ) : busy ? (
               <StatusPill tone="warn" pulse>
-                {op?.busy ?? "Building"}
+                {op?.busy ?? t("labs.deploy.building")}
               </StatusPill>
             ) : ready || (done && !op) ? (
-              <StatusPill tone="ok">Ready</StatusPill>
+              <StatusPill tone="ok">{t("labs.deploy.ready")}</StatusPill>
             ) : op && timed.length > 0 ? (
               <StatusPill tone="muted">{op.done}</StatusPill>
             ) : null}
@@ -237,13 +240,13 @@ export function DeploySteps({
         {done && !op && (
           <li className="grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-3 px-4 py-2 text-[0.8125rem]">
             <StepMark state="ok" />
-            <span className="text-foreground">Ready</span>
+            <span className="text-foreground">{t("labs.deploy.ready")}</span>
           </li>
         )}
         {busy && steps.length === 0 && (
           <li className="grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-3 px-4 py-2 text-[0.8125rem] text-muted-foreground">
             <StepMark state="pending" />
-            {op ? `${op.busy}…` : "Preparing…"}
+            {op ? `${op.busy}…` : t("labs.deploy.preparingEllipsis")}
           </li>
         )}
       </ul>
@@ -263,11 +266,12 @@ export function DeploySteps({
             onClick={() => setShowLog((v) => !v)}
             className="flex items-center gap-1.5 text-[0.75rem] text-muted-foreground transition-colors hover:text-foreground"
           >
-            <ChevronRight className={cn("size-3.5 transition-transform", showLog && "rotate-90")} /> {showLog ? "Hide" : "Show"} full log
+            <ChevronRight className={cn("size-3.5 transition-transform", showLog && "rotate-90")} />{" "}
+            {showLog ? t("labs.deploy.hideLog") : t("labs.deploy.showLog")}
           </button>
           {showLog && (
             <div className="mt-2 pb-1">
-              <LogConsole lines={timed.map((t) => `${formatDuration(t.at - start!).padStart(6)}  ${t.line}`)} />
+              <LogConsole lines={timed.map((row) => `${formatDuration(row.at - start!).padStart(6)}  ${row.line}`)} />
             </div>
           )}
         </div>

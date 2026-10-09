@@ -11,13 +11,14 @@ import { StatusDot } from "@/components/ui/status-pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EMULATORS, LabRow } from "@/features/labs/lab-row";
 import { LabDetail } from "@/features/labs/lab-detail";
-import { DIFFICULTY_LABEL, useLabs, type Lab } from "@/features/labs/use-labs";
+import { difficultyLabel, useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
 import { setupNeeded } from "@/features/labs/lab-readiness";
 import { useDeployingLabs } from "@/lib/deploy-store";
 import { serverList, type ServerHost, type SystemReport } from "@/lib/tauri";
 import { getVmProvider } from "@/lib/settings";
 import { Segmented } from "@/components/ui/segmented";
+import { useT } from "@/lib/i18n";
 
 type StatusFilter = "all" | "todo" | "running" | "solved";
 /** CLOUD = labs that can run in the player's cloud account (AWS is a supported target). */
@@ -43,6 +44,7 @@ export function Labs({
   /** Told the open lab's title (null on the list), for the shell's breadcrumb. */
   onDetailChange?: (title: string | null) => void;
 }) {
+  const t = useT();
   const { labs, error, statuses, completed, refreshStatus, probed } = useLabs(loggedIn);
   const { runs, launch, stop, park, resume, provision } = useLabActions(refreshStatus);
   // Deploys running in the backend (started from another window or before a reload), for the rows' dots.
@@ -111,7 +113,7 @@ export function Labs({
   useEffect(() => onDetailChange?.(detailTitle), [detailTitle, onDetailChange]);
   useEffect(() => () => onDetailChange?.(null), [onDetailChange]);
 
-  if (error) return <EmptyState icon="alert" title="Can’t reach the lab catalogue" description="Check your connection or sign in, then try again." />;
+  if (error) return <EmptyState icon="alert" title={t("labs.list.unreachableTitle")} description={t("labs.list.unreachableDescription")} />;
 
   // Opening a lab while the catalogue is still loading: show a placeholder, never the list, so
   // there is no flash of the list before the lab page.
@@ -177,14 +179,14 @@ export function Labs({
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Labs"
+        title={t("labs.list.title")}
         lead={
           labs ? (
             <span className="font-mono text-[0.75rem] tabular-nums">
-              {labs.length} in the catalogue · {runningCount} running on this machine · {solvedCount} solved
+              {t("labs.list.summary", { total: labs.length, running: runningCount, solved: solvedCount })}
             </span>
           ) : (
-            "Hands-on labs that run on this machine, your servers or your cloud."
+            t("labs.list.intro")
           )
         }
       />
@@ -196,38 +198,38 @@ export function Labs({
             data-lab-search
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search labs and skills"
-            aria-label="Search labs and skills"
+            placeholder={t("labs.list.search")}
+            aria-label={t("labs.list.search")}
             className="pl-8.5"
           />
         </div>
         <Segmented<StatusFilter>
-          label="Status"
+          label={t("labs.list.status")}
           value={status}
           onChange={setStatus}
           options={[
-            { value: "all", label: "All" },
-            { value: "todo", label: "To do" },
-            { value: "running", label: "Running" },
-            { value: "solved", label: "Solved" },
+            { value: "all", label: t("labs.list.all") },
+            { value: "todo", label: t("labs.list.todo") },
+            { value: "running", label: t("labs.list.running") },
+            { value: "solved", label: t("labs.list.solved") },
           ]}
         />
         <Segmented<RuntimeFilter>
-          label="Runtime"
+          label={t("labs.list.runtime")}
           value={runtime}
           onChange={setRuntime}
           options={[
-            { value: "all", label: "Any runtime" },
-            { value: "DOCKER", label: "Container" },
-            { value: "VM", label: "VM" },
-            { value: "CLOUD", label: "Cloud" },
+            { value: "all", label: t("labs.list.anyRuntime") },
+            { value: "DOCKER", label: t("labs.list.container") },
+            { value: "VM", label: t("labs.list.vm") },
+            { value: "CLOUD", label: t("labs.list.cloud") },
           ]}
         />
         <Segmented<number>
-          label="Level"
+          label={t("labs.list.level")}
           value={difficulty}
           onChange={setDifficulty}
-          options={[{ value: 0, label: "Any level" }, ...[1, 2, 3].map((d) => ({ value: d, label: DIFFICULTY_LABEL[d] }))]}
+          options={[{ value: 0, label: t("labs.list.anyLevel") }, ...[1, 2, 3].map((d) => ({ value: d, label: difficultyLabel(t, d) }))]}
         />
       </div>
 
@@ -247,9 +249,9 @@ export function Labs({
           ))}
         </Panel>
       ) : labs.length === 0 ? (
-        <EmptyState icon="labs" title="No labs published yet" description="Published labs will show up here, ready to run on this machine." />
+        <EmptyState icon="labs" title={t("labs.list.emptyTitle")} description={t("labs.list.emptyDescription")} />
       ) : filtered.length === 0 ? (
-        <EmptyState icon="labs" title="No labs match" description="Nothing matches these filters. Try another search or clear a filter." />
+        <EmptyState icon="labs" title={t("labs.list.noMatchTitle")} description={t("labs.list.noMatchDescription")} />
       ) : (
         <>
           {running.length > 0 && (
@@ -257,17 +259,17 @@ export function Labs({
               <PanelHeader
                 title={
                   <>
-                    <StatusDot tone="ok" /> Running now
+                    <StatusDot tone="ok" /> {t("labs.list.runningNow")}
                   </>
                 }
-                meta={`${running.length} ${running.length === 1 ? "lab" : "labs"}`}
+                meta={t("labs.list.labCount", { count: running.length })}
               />
               <div>{running.map(row)}</div>
             </Panel>
           )}
           {rest.length > 0 && (
             <Panel>
-              {running.length > 0 && <PanelHeader title="All labs" meta={`${rest.length}`} />}
+              {running.length > 0 && <PanelHeader title={t("labs.list.allLabs")} meta={`${rest.length}`} />}
               <div>{rest.map(row)}</div>
             </Panel>
           )}

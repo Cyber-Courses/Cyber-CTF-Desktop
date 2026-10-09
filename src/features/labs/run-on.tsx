@@ -11,6 +11,7 @@ import { HypervisorLogo } from "@/features/machine/hypervisor-logo";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 import type { PortMode } from "@/lib/settings";
+import { useT, type T } from "@/lib/i18n";
 
 export const CLOUDS = new Set(["aws", "azure", "gcp", "digitalocean", "linode", "oci"]);
 
@@ -25,6 +26,7 @@ export const targetKey = (t: RunTarget) => (t.kind === "local" || t.kind === "ho
  * scrolls; `footer` (the actions) stays pinned at the bottom.
  */
 export function RunOnDialog({ onClose, children, footer }: { onClose: () => void; children: React.ReactNode; footer: React.ReactNode }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -43,7 +45,7 @@ export function RunOnDialog({ onClose, children, footer }: { onClose: () => void
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        aria-label="Where should the lab run?"
+        aria-label={t("labs.runOn.dialogLabel")}
         className="surface-glass flex max-h-[85vh] w-full max-w-[28rem] flex-col rounded-panel outline-none"
       >
         <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
@@ -78,10 +80,14 @@ function useHostChecks(hosts: ServerHost[]) {
   return checks;
 }
 
-function hostStatus(check: ServerTest | "testing" | undefined): Status {
-  if (!check || check === "testing") return { tone: "muted", label: "Checking…" };
-  if (check.ok) return { tone: "ok", label: "Online", title: check.message };
-  return { tone: check.reachable ? "warn" : "fail", label: check.reachable ? "Needs attention" : "Unreachable", title: check.message };
+function hostStatus(t: T, check: ServerTest | "testing" | undefined): Status {
+  if (!check || check === "testing") return { tone: "muted", label: t("labs.runOn.checking") };
+  if (check.ok) return { tone: "ok", label: t("labs.runOn.online"), title: check.message };
+  return {
+    tone: check.reachable ? "warn" : "fail",
+    label: check.reachable ? t("labs.runOn.needsAttention") : t("labs.runOn.unreachable"),
+    title: check.message,
+  };
 }
 
 const CyberCtfLogo = () => (
@@ -132,6 +138,7 @@ export function RunOnPicker({
   /** Shown right under the "This machine" group (e.g. the host-port choice). */
   localExtra?: React.ReactNode;
 }) {
+  const t = useT();
   const checks = useHostChecks(hosts);
   const hostOption = (h: ServerHost): Option => {
     const kind = KIND[h.provider]?.label ?? h.provider;
@@ -140,17 +147,17 @@ export function RunOnPicker({
     return {
       target: { kind: "host", id: h.id },
       title: h.name,
-      subtitle: `${kind}${cloud ? ", billed to you" : ""} · ${h.host}`,
+      subtitle: t(cloud ? "labs.runOn.hostSubtitleCloud" : "labs.runOn.hostSubtitle", { kind, host: h.host }),
       ok,
-      why: `This lab doesn't support ${kind}`,
+      why: t("labs.runOn.unsupportedKind", { kind }),
       logo: <ProviderGlyph provider={h.provider} />,
-      status: ok ? hostStatus(checks[h.id]) : undefined,
+      status: ok ? hostStatus(t, checks[h.id]) : undefined,
     };
   };
   const local: Option[] = [
     {
       target: { kind: "local" },
-      title: "This machine",
+      title: t("labs.runOn.thisMachine"),
       subtitle: localNote,
       ok: true,
       logo: dockerRunning === null ? <HypervisorLogo provider={null} /> : <DockerLogo />,
@@ -158,49 +165,50 @@ export function RunOnPicker({
         dockerRunning === null
           ? undefined
           : dockerRunning
-            ? { tone: "ok", label: "Running" }
-            : { tone: "warn", label: "Engine stopped", title: "Start your container engine (Machine page)" },
+            ? { tone: "ok", label: t("labs.runOn.running") }
+            : { tone: "warn", label: t("labs.runOn.engineStopped"), title: t("labs.runOn.engineStoppedHint") },
     },
   ];
   if (localVm) {
     local.push({
       target: { kind: "local-vm", provider: localVm },
-      title: "This machine, in a VM",
-      subtitle: `${PROVIDER_LABELS[localVm] ?? localVm} · isolated from your system`,
+      title: t("labs.runOn.inVm"),
+      subtitle: t("labs.runOn.inVmSubtitle", { provider: PROVIDER_LABELS[localVm] ?? localVm }),
       ok: true,
       logo: <HypervisorLogo provider={localVm} />,
-      status: { tone: "ok", label: "Ready", title: "Hypervisor chosen in Settings" },
+      status: { tone: "ok", label: t("labs.runOn.ready"), title: t("labs.runOn.readyHint") },
     });
   }
-  const groups: { label: string; options: Option[] }[] = [
-    { label: "This machine", options: local },
+  const groups: { id: string; label: string; options: Option[] }[] = [
+    { id: "local", label: t("labs.runOn.thisMachine"), options: local },
     {
+      id: "hosted",
       label: "Cyber CTF",
       options: hosted
         ? [
             {
               target: { kind: "hosted" },
-              title: "Hosted by Cyber CTF",
-              subtitle: "Nothing to install · opens in your browser",
+              title: t("labs.runOn.hostedTitle"),
+              subtitle: t("labs.runOn.hostedSubtitle"),
               ok: true,
               logo: <CyberCtfLogo />,
-              status: { tone: "ok", label: "Available" },
+              status: { tone: "ok", label: t("labs.runOn.available") },
             } satisfies Option,
           ]
         : [],
     },
-    { label: "Servers", options: hosts.filter((h) => !CLOUDS.has(h.provider)).map(hostOption) },
-    { label: "Cloud", options: hosts.filter((h) => CLOUDS.has(h.provider)).map(hostOption) },
+    { id: "servers", label: t("labs.runOn.servers"), options: hosts.filter((h) => !CLOUDS.has(h.provider)).map(hostOption) },
+    { id: "cloud", label: t("labs.runOn.cloud"), options: hosts.filter((h) => CLOUDS.has(h.provider)).map(hostOption) },
   ].filter((g) => g.options.length > 0);
 
   return (
     <div className="space-y-4">
       <div>
-        <p className="serif-title text-[1.5rem] text-foreground">Where should it run?</p>
+        <p className="serif-title text-[1.5rem] text-foreground">{t("labs.runOn.heading")}</p>
         <p className="mt-1 text-[0.8125rem] text-muted-foreground">{title}</p>
       </div>
       {groups.flatMap((g) => [
-        <div key={g.label} className="space-y-1.5">
+        <div key={g.id} className="space-y-1.5">
           <p className="section-label">{g.label}</p>
           <RadioList label={g.label}>
             {g.options.map((o) => (
@@ -211,7 +219,7 @@ export function RunOnPicker({
                 disabled={disabled || !o.ok}
                 hint={o.ok ? o.status?.title : o.why}
                 title={o.title}
-                subtitle={o.ok ? o.subtitle : "Not supported by this lab"}
+                subtitle={o.ok ? o.subtitle : t("labs.runOn.notSupported")}
                 leading={o.logo}
                 trailing={
                   o.status && (
@@ -224,7 +232,7 @@ export function RunOnPicker({
             ))}
           </RadioList>
         </div>,
-        g.label === "This machine" && localExtra ? <div key="local-extra">{localExtra}</div> : null,
+        g.id === "local" && localExtra ? <div key="local-extra">{localExtra}</div> : null,
       ])}
     </div>
   );

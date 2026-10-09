@@ -8,6 +8,7 @@ import { KeyValue, Panel, PanelHeader } from "@/components/ui/panel";
 import { StatusDot } from "@/components/ui/status-pill";
 import { Spinner } from "@/components/ui/spinner";
 import type { AttackBox } from "@/features/labs/use-attack-box";
+import { useT } from "@/lib/i18n";
 
 /** The attack box card in the lab page's side rail. `host` is the server a remote lab runs on.
  *  `controller`: the lab runs on QEMU, whose network links only its two VMs, so the lab's own
@@ -27,6 +28,7 @@ export function AttackBoxPanel({
   shellReady?: boolean;
   controller?: boolean;
 }) {
+  const t = useT();
   const remote = host !== null;
   const { status, busy, log } = box;
   const name = controller ? "isoloom-controller" : box.name;
@@ -38,7 +40,7 @@ export function AttackBoxPanel({
         title={
           <>
             <StatusDot tone={tone} pulse={busy} />
-            {controller ? "Attacker" : vm ? "Attack VM" : "Attack box"}
+            {controller ? t("labs.attackBox.attacker") : vm ? t("labs.attackBox.attackVm") : t("labs.attackBox.attackBox")}
           </>
         }
         action={
@@ -47,63 +49,63 @@ export function AttackBoxPanel({
           </span>
         }
       />
-      <KeyValue k="Status">
+      <KeyValue k={t("labs.attackBox.status")}>
         {remote && running ? (
-          <>running on {host}</>
+          <>{t("labs.attackBox.runningOn", { host: host ?? "" })}</>
         ) : status?.running ? (
           <span className="inline-flex items-center gap-1.5">
-            <Crosshair className="size-3.5 text-you-text" /> running
+            <Crosshair className="size-3.5 text-you-text" /> {t("labs.attackBox.running")}
           </span>
         ) : busy ? (
           <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <Spinner className="size-3" /> starting
+            <Spinner className="size-3" /> {t("labs.attackBox.starting")}
           </span>
         ) : (
-          <span className="text-muted-foreground">{running ? "not started" : "starts with the lab"}</span>
+          <span className="text-muted-foreground">{running ? t("labs.attackBox.notStarted") : t("labs.attackBox.startsWithLab")}</span>
         )}
       </KeyValue>
       {status?.running && status.ip && (
-        <KeyValue k="Address">
+        <KeyValue k={t("labs.attackBox.address")}>
           <CopyValue text={status.ip} />
         </KeyValue>
       )}
       <div className="space-y-3 border-t border-border p-4">
         <p className="text-[0.75rem] leading-relaxed text-muted-foreground">
           {remote
-            ? "Your machine on the lab network. Open its shell to attack the targets; it connects over SSH."
+            ? t("labs.attackBox.remoteHint")
             : controller
-              ? "On QEMU the lab network links only the lab's two VMs, so its controller (Debian, on the lab network, with the internet) is your attacker. Open its shell and install your tools with apt."
+              ? t("labs.attackBox.controllerHint")
               : vm
-                ? "Your own VM beside the lab, on every lab network, with the internet to install tools. Open its shell to attack the targets; it connects over SSH."
-                : "Your machine on the lab network. Open its shell to attack the targets from inside the lab."}
+                ? t("labs.attackBox.vmHint")
+                : t("labs.attackBox.containerHint")}
         </p>
         {onShell && shellReady && (
           <Button variant="primary" size="sm" className="w-full" onClick={onShell}>
-            <Terminal className="size-3.5" /> Open attacker shell
+            <Terminal className="size-3.5" /> {t("labs.attackBox.openShell")}
           </Button>
         )}
         {!remote && !controller && status && !status.imagePresent && !status.running && (
           <p className="flex items-start gap-2 text-[0.75rem] text-muted-foreground">
             <StatusDot tone="warn" className="mt-1.5 shrink-0" />
-            <span>
-              The first start downloads <span className="font-mono text-foreground">{name}</span> (several GB).
-            </span>
+            <span>{t.rich("labs.attackBox.firstDownload", { name: (s) => <span className="font-mono text-foreground">{s}</span> }, { name })}</span>
           </p>
         )}
         {running && !remote && !controller && (
           <div className="space-y-2">
             {status?.running ? (
               <Button variant="outline" size="sm" className="w-full" onClick={() => box.stop()} disabled={busy}>
-                <Square className="size-3.5" /> {busy ? "Working…" : "Stop attack box"}
+                <Square className="size-3.5" /> {busy ? t("labs.attackBox.working") : t("labs.attackBox.stop")}
               </Button>
             ) : (
               <Button variant="outline" size="sm" className="w-full" onClick={() => box.start()} disabled={busy}>
-                {busy ? <Spinner className="size-3.5" /> : <Play className="size-3.5" />} Start attack box
+                {busy ? <Spinner className="size-3.5" /> : <Play className="size-3.5" />} {t("labs.attackBox.start")}
               </Button>
             )}
           </div>
         )}
-        {(busy || log.some((l) => l.startsWith("✗"))) && log.length > 0 && <LogConsole lines={log} running={busy} title={vm ? "Attack VM" : "Attack box"} />}
+        {(busy || log.some((l) => l.startsWith("✗"))) && log.length > 0 && (
+          <LogConsole lines={log} running={busy} title={vm ? t("labs.attackBox.attackVm") : t("labs.attackBox.attackBox")} />
+        )}
       </div>
     </Panel>
   );

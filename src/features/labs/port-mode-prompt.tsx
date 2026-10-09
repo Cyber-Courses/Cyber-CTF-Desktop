@@ -8,6 +8,7 @@ import { RadioList, RadioRow } from "@/components/ui/radio-row";
 import { Switch } from "@/components/ui/switch";
 import { setPortMode, type PortMode } from "@/lib/settings";
 import { useFocusTrap } from "@/lib/use-focus-trap";
+import { useT } from "@/lib/i18n";
 
 // Before a container lab starts on this machine: random host ports, or the lab's own ones.
 // `askPortMode` opens the dialog (mounted once, in the app shell) and resolves with the choice,
@@ -52,6 +53,7 @@ export function PortModePrompt() {
 }
 
 function Dialog({ title }: { title: string }) {
+  const t = useT();
   const [mode, setMode] = useState<PortMode>("random");
   const [remember, setRemember] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -91,9 +93,9 @@ function Dialog({ title }: { title: string }) {
           </span>
           <div className="min-w-0">
             <p id="ports-title" className="text-[0.9375rem] font-medium text-foreground">
-              Which ports should {title} use?
+              {t("labs.ports.question", { title })}
             </p>
-            <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">Where its services answer on this machine.</p>
+            <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">{t("labs.ports.where")}</p>
           </div>
         </div>
 
@@ -101,17 +103,17 @@ function Dialog({ title }: { title: string }) {
 
         <label className="mt-4 flex cursor-pointer items-center justify-between gap-3 text-[0.8125rem] text-muted-foreground">
           <span>
-            Use this for every lab <span className="text-faint">· change it in Settings › Labs</span>
+            {t("labs.ports.remember")} <span className="text-faint">{t("labs.ports.rememberHint")}</span>
           </span>
-          <Switch aria-label="Use this for every lab" checked={remember} onCheckedChange={setRemember} />
+          <Switch aria-label={t("labs.ports.remember")} checked={remember} onCheckedChange={setRemember} />
         </label>
 
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={() => answer(null)}>
-            Cancel
+            {t("labs.ports.cancel")}
           </Button>
           <Button size="sm" onClick={start}>
-            Start lab
+            {t("labs.ports.startLab")}
           </Button>
         </div>
       </div>
@@ -121,31 +123,24 @@ function Dialog({ title }: { title: string }) {
 
 /** Random free ports, or the lab's own ones with the collision warning. Also in "Where should it run?". */
 export function PortChoice({ value, onChange, className }: { value: PortMode; onChange: (mode: PortMode) => void; className?: string }) {
+  const t = useT();
   return (
-    <RadioList label="Host ports" className={className}>
+    <RadioList label={t("labs.ports.hostPorts")} className={className}>
       <RadioRow
         selected={value === "random"}
         onSelect={() => onChange("random")}
         title={
           <>
-            Random ports <Badge>Recommended</Badge>
+            {t("labs.ports.random")} <Badge>{t("labs.ports.recommended")}</Badge>
           </>
         }
-        subtitle="A free port per service, like :64645. Never collides."
+        subtitle={t("labs.ports.randomHint")}
       />
-      <RadioRow
-        selected={value === "default"}
-        onSelect={() => onChange("default")}
-        title="The lab's default ports"
-        subtitle="Each service on its own port, like CTFd on :8000."
-      >
+      <RadioRow selected={value === "default"} onSelect={() => onChange("default")} title={t("labs.ports.default")} subtitle={t("labs.ports.defaultHint")}>
         {value === "default" && (
           <p className="mt-2 flex items-start gap-2 rounded-control bg-warning/10 px-2.5 py-2 text-[0.75rem] leading-relaxed text-warning shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--warning)_30%,transparent)]">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-            <span>
-              These ports may already be taken by another lab or app (a local web server on 8000 or 3000, say). That is only known once the lab is downloaded:
-              the start then stops and names the port in use. Two services on the same port inside the lab: the second gets a random one.
-            </span>
+            <span>{t("labs.ports.defaultWarning")}</span>
           </p>
         )}
       </RadioRow>
