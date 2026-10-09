@@ -21,10 +21,29 @@ import { Row } from "@/features/settings/settings-layout";
 import { RadioList, RadioRow } from "@/components/ui/radio-row";
 import { formatBytes } from "@/lib/format";
 import { useImageSizes } from "@/lib/use-image-sizes";
+import { useT, type MessageKey } from "@/lib/i18n";
+
+/** The presets' notes and terms, by image / box (a preset not listed keeps its English note). */
+const IMAGE_NOTES: Record<string, MessageKey> = {
+  "cyberctf/attack-box": "settings.attackBox.presets.cyberctf",
+  "kalilinux/kali-rolling": "settings.attackBox.presets.kali",
+  "parrotsec/security": "settings.attackBox.presets.parrot",
+  "nwodtuhs/exegol:free": "settings.attackBox.presets.exegolFree",
+  "nwodtuhs/exegol:full": "settings.attackBox.presets.exegolFull",
+};
+const TERMS: Record<string, MessageKey> = {
+  "Non-commercial use": "settings.attackBox.terms.nonCommercial",
+  "Paid plan": "settings.attackBox.terms.paidPlan",
+};
+const BOX_NOTES: Record<string, MessageKey> = {
+  "kalilinux/rolling": "settings.attackVm.presets.kali",
+  "generic/debian12": "settings.attackVm.presets.debian12",
+};
 
 /* ------------------------------------------------------------------ labs */
 
 export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
+  const t = useT();
   const [image, setImage] = useState(() => getAttackImage());
   const isPreset = ATTACK_PRESETS.some((p) => p.image === image);
   const sizes = useImageSizes(ATTACK_PRESETS.map((p) => p.image));
@@ -43,12 +62,8 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
 
   return (
     <>
-      <Row
-        stacked
-        title="Attack box image"
-        description="Runs on each lab’s network as your toolbox. The first launch of an image downloads it, which can take a while."
-      >
-        <RadioList label="Attack box image" className="mt-3">
+      <Row stacked title={t("settings.attackBox.title")} description={t("settings.attackBox.description")}>
+        <RadioList label={t("settings.attackBox.title")} className="mt-3">
           {ATTACK_PRESETS.map((p) => (
             <RadioRow
               key={p.image}
@@ -61,23 +76,29 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
               title={
                 <>
                   {p.label}
-                  {p.image === DEFAULT_ATTACK_IMAGE && <Badge>Default</Badge>}
+                  {p.image === DEFAULT_ATTACK_IMAGE && <Badge>{t("settings.attackBox.default")}</Badge>}
                   {sizes[p.image] ? (
                     <Badge variant="outline">{formatBytes(sizes[p.image]!)}</Badge>
                   ) : (
-                    sizes[p.image] === null && p.large && <Badge variant="outline">Large download</Badge>
+                    sizes[p.image] === null && p.large && <Badge variant="outline">{t("settings.attackBox.largeDownload")}</Badge>
                   )}
-                  {p.terms && <Badge variant="warning">{p.terms}</Badge>}
+                  {p.terms && <Badge variant="warning">{TERMS[p.terms] ? t(TERMS[p.terms]) : p.terms}</Badge>}
                 </>
               }
               subtitle={
                 <>
-                  <span className="font-mono">{p.image}</span> <span className="text-faint">·</span> {p.note}
+                  <span className="font-mono">{p.image}</span> <span className="text-faint">·</span> {IMAGE_NOTES[p.image] ? t(IMAGE_NOTES[p.image]) : p.note}
                 </>
               }
             />
           ))}
-          <RadioRow compact selected={customOpen} onSelect={() => setCustomOpen(true)} title="Custom image" subtitle="Any Docker image or registry tag.">
+          <RadioRow
+            compact
+            selected={customOpen}
+            onSelect={() => setCustomOpen(true)}
+            title={t("settings.attackBox.customImage")}
+            subtitle={t("settings.attackBox.customImageNote")}
+          >
             {customOpen && (
               <form
                 className="mt-2.5 flex items-center gap-2"
@@ -98,7 +119,7 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
                   className="min-w-0 flex-1"
                 />
                 <Button type="submit" variant="outline" size="xs" disabled={!customDirty} onClick={(e) => e.stopPropagation()}>
-                  Save
+                  {t("settings.attackBox.save")}
                 </Button>
               </form>
             )}
@@ -109,11 +130,11 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
       <AttackVmRow onSaved={onSaved} />
 
       <Row
-        title="Start the attack box with the lab"
-        description="Starts it as soon as a lab is up on this machine: the container on a container lab, the VM beside a VM lab. You can still start or stop it from the lab."
+        title={t("settings.attackBox.autoStart")}
+        description={t("settings.attackBox.autoStartDescription")}
         control={
           <Switch
-            aria-label="Start the attack box with the lab"
+            aria-label={t("settings.attackBox.autoStart")}
             checked={autoStart}
             onCheckedChange={(on) => {
               setAutoAttackBox(on);
@@ -129,6 +150,7 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
 
 /** The attack VM beside VM labs: the learner's own Vagrant box, on the lab's hypervisor. */
 function AttackVmRow({ onSaved }: { onSaved: () => void }) {
+  const t = useT();
   const [box, setBox] = useState(() => getAttackBox());
   const isPreset = ATTACK_VM_PRESETS.some((p) => p.box === box);
   const [customOpen, setCustomOpen] = useState(!isPreset);
@@ -144,12 +166,8 @@ function AttackVmRow({ onSaved }: { onSaved: () => void }) {
   const customDirty = draft.trim() !== "" && draft.trim() !== box;
 
   return (
-    <Row
-      stacked
-      title="Attack VM for VM labs"
-      description="A VM lab’s networks live inside the hypervisor, so your attacker is a VM beside it: this Vagrant box, plugged into every lab network, with the internet to install tools. The first start downloads the box."
-    >
-      <RadioList label="Attack VM box" className="mt-3">
+    <Row stacked title={t("settings.attackVm.title")} description={t("settings.attackVm.description")}>
+      <RadioList label={t("settings.attackVm.label")} className="mt-3">
         {ATTACK_VM_PRESETS.map((p) => (
           <RadioRow
             key={p.box}
@@ -162,12 +180,12 @@ function AttackVmRow({ onSaved }: { onSaved: () => void }) {
             title={
               <>
                 {p.label}
-                {p.box === DEFAULT_ATTACK_BOX && <Badge>Default</Badge>}
+                {p.box === DEFAULT_ATTACK_BOX && <Badge>{t("settings.attackBox.default")}</Badge>}
               </>
             }
             subtitle={
               <>
-                <span className="font-mono">{p.box}</span> <span className="text-faint">·</span> {p.note}
+                <span className="font-mono">{p.box}</span> <span className="text-faint">·</span> {BOX_NOTES[p.box] ? t(BOX_NOTES[p.box]) : p.note}
               </>
             }
           />
@@ -176,8 +194,8 @@ function AttackVmRow({ onSaved }: { onSaved: () => void }) {
           compact
           selected={customOpen}
           onSelect={() => setCustomOpen(true)}
-          title="Custom box"
-          subtitle="Any Vagrant Cloud box (owner/name) built for your hypervisor."
+          title={t("settings.attackVm.customBox")}
+          subtitle={t("settings.attackVm.customBoxNote")}
         >
           {customOpen && (
             <form
@@ -199,7 +217,7 @@ function AttackVmRow({ onSaved }: { onSaved: () => void }) {
                 className="min-w-0 flex-1"
               />
               <Button type="submit" variant="outline" size="xs" disabled={!customDirty} onClick={(e) => e.stopPropagation()}>
-                Save
+                {t("settings.attackBox.save")}
               </Button>
             </form>
           )}

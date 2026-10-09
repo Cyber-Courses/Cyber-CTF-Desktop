@@ -29,6 +29,7 @@ import { FirstRun } from "@/features/cloud/first-run";
 import { ignore } from "@/lib/failure";
 import { useLabActions } from "@/features/labs/use-lab-actions";
 import { getDeploySnapshot } from "@/lib/deploy-store";
+import { useFormat, useT } from "@/lib/i18n";
 
 const MAIN_PROVIDERS: { id: CloudProvider; label: string }[] = [
   { id: "aws", label: "Amazon Web Services" },
@@ -37,6 +38,9 @@ const MAIN_PROVIDERS: { id: CloudProvider; label: string }[] = [
 ];
 
 export function CloudScreen() {
+  const t = useT();
+  const format = useFormat();
+  const usd = (n: number) => format.number(n, { style: "currency", currency: "USD" });
   const [allHosts, setHosts] = useState<ServerHost[] | null>(null);
   const hosts =
     allHosts?.filter(
@@ -124,17 +128,17 @@ export function CloudScreen() {
 
   // Budget guard: AWS accounts that set a monthly budget.
   const budgeted = (hosts ?? []).filter((h) => h.provider === "aws" && h.monthlyLimit != null);
-  const month = new Date().toLocaleString([], { month: "long" });
+  const month = format.date(new Date(), { month: "long" });
 
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Cloud"
-        lead="Throwaway instances in your own account, billed to you, stopped automatically."
+        title={t("cloud.screen.title")}
+        lead={t("cloud.screen.lead")}
         actions={
           hosts && hosts.length > 0 ? (
             <Button variant="outline" size="sm" onClick={() => openSetup()}>
-              <Plus className="size-3.5" /> Set up cloud provider
+              <Plus className="size-3.5" /> {t("cloud.screen.setUp")}
             </Button>
           ) : undefined
         }
@@ -144,14 +148,13 @@ export function CloudScreen() {
 
       {over.length > 0 && (
         <Callout tone="fail">
-          {over.length === 1 ? `${over[0].name} is over its monthly budget` : `${over.length} accounts are over their monthly budget`}. New labs there are
-          blocked until you raise the budget or next month.
+          {over.length === 1 ? t("cloud.screen.overOne", { name: over[0].name }) : t("cloud.screen.overMany", { count: over.length })}
         </Callout>
       )}
 
       {running.length > 0 && (
         <Panel>
-          <PanelHeader title="Running now" meta="billing while they run" />
+          <PanelHeader title={t("cloud.screen.runningNow")} meta={t("cloud.screen.billingWhileRunning")} />
           {running.map((l) => {
             const s = statuses[l.id];
             return (
@@ -164,11 +167,11 @@ export function CloudScreen() {
                   <p className="truncate text-[0.8125rem] font-medium">{l.title}</p>
                   <p className="truncate font-mono text-[0.6875rem] text-faint">
                     {s?.host}
-                    {s?.expiresAt ? ` · auto-stops ${new Date(s.expiresAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+                    {s?.expiresAt ? ` · ${t("cloud.screen.autoStops", { time: format.date(s.expiresAt * 1000, { hour: "2-digit", minute: "2-digit" }) })}` : ""}
                   </p>
                 </div>
                 <Button variant="destructive" size="xs" onClick={() => void stopLab(l)} disabled={!!runs[l.id]?.busy}>
-                  {runs[l.id]?.busy ? <Spinner className="size-3" /> : <Square className="size-3" />} Stop
+                  {runs[l.id]?.busy ? <Spinner className="size-3" /> : <Square className="size-3" />} {t("cloud.screen.stop")}
                 </Button>
               </div>
             );
@@ -179,14 +182,14 @@ export function CloudScreen() {
       {hosts === null ? (
         <Panel>
           <div className="flex items-center gap-2 px-4 py-4 text-[0.8125rem] text-muted-foreground">
-            <Spinner className="size-4" /> Loading…
+            <Spinner className="size-4" /> {t("cloud.screen.loading")}
           </div>
         </Panel>
       ) : hosts.length === 0 ? (
         <FirstRun onSetup={() => openSetup()} />
       ) : (
         <Panel>
-          <PanelHeader title="Accounts" meta="billed only while a lab runs" />
+          <PanelHeader title={t("cloud.screen.accounts")} meta={t("cloud.screen.billedOnly")} />
           {hosts.map((h) => (
             <AccountRow
               key={h.id}
@@ -207,10 +210,10 @@ export function CloudScreen() {
               <LogoTile provider={p.id} />
               <div className="min-w-0">
                 <p className="truncate text-[0.8125rem] font-medium text-foreground">{p.label}</p>
-                <p className="truncate font-mono text-[0.6875rem] text-faint">not connected</p>
+                <p className="truncate font-mono text-[0.6875rem] text-faint">{t("cloud.screen.notConnected")}</p>
               </div>
               <Button variant="outline" size="xs" onClick={() => openSetup()}>
-                Connect
+                {t("cloud.screen.connect")}
               </Button>
             </div>
           ))}
@@ -223,16 +226,16 @@ export function CloudScreen() {
         const isOver = spent != null && spent >= limit;
         return (
           <Panel key={h.id}>
-            <PanelHeader title={`Budget guard · ${h.name}`} meta={month} />
+            <PanelHeader title={t("cloud.screen.budgetGuard", { name: h.name })} meta={month} />
             <div className="grid gap-3 px-4 pt-4 pb-5">
               <div className="flex flex-wrap items-baseline justify-between gap-3">
                 <span className="serif-title text-[1.75rem] leading-none text-foreground">
-                  {spent != null ? `$${spent.toFixed(2)}` : "$…"}{" "}
-                  <small className="font-sans text-[0.8125rem] tracking-normal text-faint">of ${limit.toFixed(2)}</small>
+                  {spent != null ? usd(spent) : "$…"}{" "}
+                  <small className="font-sans text-[0.8125rem] tracking-normal text-faint">{t("cloud.screen.ofLimit", { limit: usd(limit) })}</small>
                 </span>
                 <span className="flex items-center gap-2 font-mono text-[0.6875rem] text-faint">
-                  {isOver && <StatusPill tone="fail">Over budget</StatusPill>}
-                  {h.autoStopHours ? `auto-stop after ${h.autoStopHours} h` : "no auto-stop"}
+                  {isOver && <StatusPill tone="fail">{t("cloud.screen.overBudget")}</StatusPill>}
+                  {h.autoStopHours ? t("cloud.screen.autoStopAfter", { hours: h.autoStopHours }) : t("cloud.screen.noAutoStop")}
                 </span>
               </div>
               <Meter value={spent != null && limit > 0 ? (spent / limit) * 100 : 0} />

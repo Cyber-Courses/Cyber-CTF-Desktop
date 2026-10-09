@@ -10,8 +10,10 @@ import { CLOUD_META, KIND } from "@/features/servers/host-setup/constants";
 import { Nav, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
 import { openExternal } from "@/lib/failure";
+import { useT } from "@/lib/i18n";
 
 export function ToolsStep({ s }: { s: HostSetup }) {
+  const t = useT();
   const {
     report,
     onRefresh,
@@ -38,27 +40,31 @@ export function ToolsStep({ s }: { s: HostSetup }) {
   return (
     <Step
       icon={HardDrive}
-      title={cloud ? "Command-line tools" : "Tools on this machine"}
+      title={cloud ? t("servers.setup.tools.titleCloud") : t("servers.setup.tools.titleServer")}
       description={
         cloud
           ? cloudHasCli
-            ? `The ${CLOUD_META[cloudProvider].label} CLI and Terraform, used to connect and provision.`
-            : `Terraform connects to ${CLOUD_META[cloudProvider].label} with your API token and provisions the lab. No CLI needed.`
-          : `What the launcher needs here to run labs on ${KIND[v.provider].label}.`
+            ? t("servers.setup.tools.descriptionCli", { cloud: CLOUD_META[cloudProvider].label })
+            : t("servers.setup.tools.descriptionToken", { cloud: CLOUD_META[cloudProvider].label })
+          : t("servers.setup.tools.descriptionServer", { kind: KIND[v.provider].label })
       }
     >
       <div className="surface-panel overflow-hidden rounded-control">
         {!report ? (
           <div className="flex items-center gap-2 px-4 py-3 text-[0.8125rem] text-muted-foreground">
-            <Spinner className="size-4" /> Checking this machine…
+            <Spinner className="size-4" /> {t("servers.setup.tools.checking")}
           </div>
         ) : cloud ? (
           <>
             {cloudHasCli && (
               <Requirement
                 ok={cloudCliOk}
-                title={`${CLOUD_META[cloudProvider].label} CLI`}
-                detail={cloudCliOk ? (cloudCliTool?.version ?? "Installed") : `The ${CLOUD_META[cloudProvider].cli} CLI, needed to connect and provision.`}
+                title={t("servers.setup.tools.cliTitle", { cloud: CLOUD_META[cloudProvider].label })}
+                detail={
+                  cloudCliOk
+                    ? (cloudCliTool?.version ?? t("servers.setup.tools.installed"))
+                    : t("servers.setup.tools.cliDetail", { cli: CLOUD_META[cloudProvider].cli })
+                }
                 action={
                   <Button
                     variant="outline"
@@ -66,7 +72,7 @@ export function ToolsStep({ s }: { s: HostSetup }) {
                     disabled={toolBusy}
                     onClick={() => installTool(`${CLOUD_META[cloudProvider].cli} CLI`, (log) => installDependency(cloudDep, log))}
                   >
-                    Install {CLOUD_META[cloudProvider].cli}
+                    {t("servers.setup.tools.install", { name: CLOUD_META[cloudProvider].cli })}
                   </Button>
                 }
               />
@@ -74,14 +80,10 @@ export function ToolsStep({ s }: { s: HostSetup }) {
             <Requirement
               ok={terraformOk}
               title="Terraform"
-              detail={
-                terraformOk
-                  ? (report?.terraform.version ?? "Installed")
-                  : "Creates and destroys the cloud lab. Its provider plugins are fetched automatically on first run."
-              }
+              detail={terraformOk ? (report?.terraform.version ?? t("servers.setup.tools.installed")) : t("servers.setup.tools.terraformCloud")}
               action={
                 <Button variant="outline" size="xs" disabled={toolBusy} onClick={() => installTool("Terraform", (log) => installDependency("terraform", log))}>
-                  Install Terraform
+                  {t("servers.setup.tools.install", { name: "Terraform" })}
                 </Button>
               }
             />
@@ -91,17 +93,17 @@ export function ToolsStep({ s }: { s: HostSetup }) {
             <Requirement
               ok={vagrantOk}
               title="Vagrant"
-              detail={vagrantOk ? (report?.vagrant.version ?? "Installed") : "Builds and runs the lab VMs on the host."}
+              detail={vagrantOk ? (report?.vagrant.version ?? t("servers.setup.tools.installed")) : t("servers.setup.tools.vagrant")}
               action={
                 <Button variant="outline" size="xs" disabled={toolBusy} onClick={() => installTool("Vagrant", (log) => installDependency("vagrant", log))}>
-                  Install Vagrant
+                  {t("servers.setup.tools.install", { name: "Vagrant" })}
                 </Button>
               }
             />
             <Requirement
               ok={esxiPluginOk}
-              title="Vagrant plugin for ESXi"
-              detail={vagrantOk || esxiPluginOk ? kind.plugin : `${kind.plugin}, once Vagrant is installed.`}
+              title={t("servers.setup.tools.esxiPlugin")}
+              detail={vagrantOk || esxiPluginOk ? kind.plugin : t("servers.setup.tools.esxiPluginPending", { plugin: kind.plugin })}
               action={
                 <Button
                   variant="outline"
@@ -109,25 +111,21 @@ export function ToolsStep({ s }: { s: HostSetup }) {
                   disabled={toolBusy || !vagrantOk}
                   onClick={() => installTool(kind.plugin, (log) => installVagrantPlugin(kind.plugin, log))}
                 >
-                  Install plugin
+                  {t("servers.setup.tools.installPlugin")}
                 </Button>
               }
             />
             <Requirement
               ok={ovftoolOk}
               title="VMware OVF Tool"
-              detail={
-                ovftoolOk
-                  ? (report?.ovftool.version ?? "Installed")
-                  : "Uploads the lab VMs to ESXi. Comes with VMware Fusion / Workstation, or standalone from Broadcom (free account)."
-              }
+              detail={ovftoolOk ? (report?.ovftool.version ?? t("servers.setup.tools.installed")) : t("servers.setup.tools.ovftool")}
               action={
                 <Button
                   variant="outline"
                   size="xs"
                   onClick={() => openExternal("https://developer.broadcom.com/tools/open-virtualization-format-ovf-tool/latest")}
                 >
-                  <ExternalLink className="size-3" /> Get
+                  <ExternalLink className="size-3" /> {t("servers.setup.tools.get")}
                 </Button>
               }
             />
@@ -136,10 +134,10 @@ export function ToolsStep({ s }: { s: HostSetup }) {
           <Requirement
             ok={terraformOk}
             title="Terraform"
-            detail={report?.terraform.installed ? (report.terraform.version ?? "Installed") : "Drives the Proxmox API. Install it to run Proxmox labs."}
+            detail={report?.terraform.installed ? (report.terraform.version ?? t("servers.setup.tools.installed")) : t("servers.setup.tools.terraformProxmox")}
             action={
               <Button variant="outline" size="xs" disabled={toolBusy} onClick={() => installTool("Terraform", (log) => installDependency("terraform", log))}>
-                Install Terraform
+                {t("servers.setup.tools.install", { name: "Terraform" })}
               </Button>
             }
           />
@@ -147,24 +145,24 @@ export function ToolsStep({ s }: { s: HostSetup }) {
       </div>
       {pluginLog && (
         <div className="mt-3">
-          <LogConsole lines={pluginLog} running={toolBusy} title={`Install ${toolLabel}`} />
+          <LogConsole lines={pluginLog} running={toolBusy} title={t("servers.setup.tools.install", { name: toolLabel })} />
         </div>
       )}
       <Nav
         left={
           <Button variant="ghost" onClick={back}>
-            <ArrowLeft className="size-4" /> Back
+            <ArrowLeft className="size-4" /> {t("servers.setup.nav.back")}
           </Button>
         }
         right={
           <span className="flex gap-2">
             {!toolsOk && (
               <Button variant="outline" onClick={() => onRefresh()}>
-                Re-check
+                {t("servers.setup.nav.recheck")}
               </Button>
             )}
             <Button onClick={next} disabled={!toolsOk}>
-              Continue
+              {t("servers.setup.nav.continue")}
             </Button>
           </span>
         }

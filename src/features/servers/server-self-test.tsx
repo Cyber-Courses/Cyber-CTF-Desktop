@@ -6,29 +6,31 @@ import { StatusDot } from "@/components/ui/status-pill";
 import { serverSelftest, type SelfTestEvent, type ServerHost } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { formatElapsed } from "@/lib/format";
+import { useT, type MessageKey } from "@/lib/i18n";
 
 /** The step plan each provider reports, shown up front so the list doesn't grow as it runs. */
-const SELFTEST_PLAN: Record<"proxmox" | "esxi", { step: string; label: string }[]> = {
+const SELFTEST_PLAN: Record<"proxmox" | "esxi", { step: string; label: MessageKey }[]> = {
   proxmox: [
-    { step: "connect", label: "Reach the host" },
-    { step: "prepare", label: "Prepare a test VM definition" },
-    { step: "apply", label: "Create and boot the VM on the host" },
-    { step: "boot", label: "VM reports a network address" },
-    { step: "ssh", label: "SSH answers on the VM" },
-    { step: "cleanup", label: "Destroy the test VM" },
+    { step: "connect", label: "servers.selfTest.steps.connect" },
+    { step: "prepare", label: "servers.selfTest.steps.prepare" },
+    { step: "apply", label: "servers.selfTest.steps.create" },
+    { step: "boot", label: "servers.selfTest.steps.boot" },
+    { step: "ssh", label: "servers.selfTest.steps.ssh" },
+    { step: "cleanup", label: "servers.selfTest.steps.cleanup" },
   ],
   esxi: [
-    { step: "connect", label: "Reach the host" },
-    { step: "prepare", label: "Prepare a test VM definition" },
-    { step: "up", label: "Create and boot the VM on the host" },
-    { step: "ssh", label: "Run a command in the VM" },
-    { step: "cleanup", label: "Destroy the test VM" },
+    { step: "connect", label: "servers.selfTest.steps.connect" },
+    { step: "prepare", label: "servers.selfTest.steps.prepare" },
+    { step: "up", label: "servers.selfTest.steps.create" },
+    { step: "ssh", label: "servers.selfTest.steps.command" },
+    { step: "cleanup", label: "servers.selfTest.steps.cleanup" },
   ],
 };
 
 /** Runs a real-VM self-test on a host and renders each step, like the machine VM test. It
  *  really provisions a throwaway VM on the server and destroys it, so it takes a few minutes. */
 export function ServerSelfTest({ id, provider, onDone }: { id: string; provider: ServerHost["provider"]; onDone: (result: "ok" | "fail") => void }) {
+  const t = useT();
   const plan = SELFTEST_PLAN[provider === "proxmox" ? "proxmox" : "esxi"];
   const [states, setStates] = useState<Record<string, { state: string; detail?: string }>>({});
   const [running, setRunning] = useState(true);
@@ -75,7 +77,9 @@ export function ServerSelfTest({ id, provider, onDone }: { id: string; provider:
     <div className="overflow-hidden rounded-control bg-glass shadow-[inset_0_0_0_1px_var(--border)]">
       <div className="flex items-center gap-2.5 border-b border-border px-4 py-2">
         <StatusDot tone={running ? "warn" : failed ? "fail" : "ok"} pulse={running} />
-        <span className="text-[0.8125rem] font-medium">{running ? "Running a real VM on the host…" : failed ? "VM test failed" : "VM test passed"}</span>
+        <span className="text-[0.8125rem] font-medium">
+          {running ? t("servers.selfTest.running") : failed ? t("servers.selfTest.failed") : t("servers.selfTest.passed")}
+        </span>
         <span className="ml-auto font-mono text-[0.6875rem] tabular-nums text-faint">{fmt}</span>
       </div>
       <div className="grid py-1">
@@ -86,7 +90,7 @@ export function ServerSelfTest({ id, provider, onDone }: { id: string; provider:
             <div key={p.step} className="grid grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-3 px-4 py-1.5 text-[0.8125rem]">
               <StepMark state={st} />
               <div className="min-w-0">
-                <p className={cn(st === "idle" || st === "skip" ? "text-faint" : "text-foreground")}>{p.label}</p>
+                <p className={cn(st === "idle" || st === "skip" ? "text-faint" : "text-foreground")}>{t(p.label)}</p>
                 {detail && <p className="mt-0.5 break-words font-mono text-[0.6875rem] text-faint">{detail}</p>}
               </div>
             </div>

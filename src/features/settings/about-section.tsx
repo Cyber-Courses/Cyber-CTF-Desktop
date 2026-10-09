@@ -14,12 +14,15 @@ import { ONBOARDED_KEY } from "@/features/settings/settings-screen";
 import { tell } from "@/lib/failure";
 import { emit } from "@tauri-apps/api/event";
 import { closeIfSettings, REPLAY_ONBOARDING_EVENT } from "@/lib/app-events";
+import { useFormat, useT } from "@/lib/i18n";
 
 /* ------------------------------------------------------------------ about */
 
 type UpdateState = { phase: "idle" | "checking" | "none" | "error" } | { phase: "available" | "installing" | "installed"; update: Update };
 
 export function AboutSection({ version, report, agent }: { version: string | null; report: SystemReport | null; agent: AgentInfo | null }) {
+  const t = useT();
+  const format = useFormat();
   const [upd, setUpd] = useState<UpdateState>({ phase: "idle" });
   const [checkedAt, setCheckedAt] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
@@ -47,9 +50,10 @@ export function AboutSection({ version, report, agent }: { version: string | nul
       return;
     }
     // Reopen on the new version straight away; Restart now stays as the fallback.
-    await restartApp().catch(tell("Couldn't restart Cyber CTF"));
+    await restartApp().catch(tell(t("settings.about.restartFailed")));
   }
 
+  // Diagnostics stay in English: they go to support with a bug report.
   async function copyDiagnostics() {
     const lines = [
       `Cyber CTF ${version ? `v${version}` : "(unknown version)"}`,
@@ -90,43 +94,45 @@ export function AboutSection({ version, report, agent }: { version: string | nul
     } catch {
       /* ignore */
     }
-    emit(REPLAY_ONBOARDING_EVENT).catch(tell("Couldn't replay the setup"));
+    emit(REPLAY_ONBOARDING_EVENT).catch(tell(t("settings.about.replayFailed")));
     closeIfSettings();
   }
 
   const updateText = (() => {
     switch (upd.phase) {
       case "checking":
-        return "Checking for updates…";
+        return t("settings.about.status.checking");
       case "none":
-        return `You’re on the latest version${checkedAt ? `, checked at ${new Date(checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}.`;
+        return checkedAt
+          ? t("settings.about.status.latestAt", { time: format.date(checkedAt, { hour: "2-digit", minute: "2-digit" }) })
+          : t("settings.about.status.latest");
       case "error":
-        return "Couldn’t reach the update server. Check your connection and try again.";
+        return t("settings.about.status.error");
       case "available":
-        return `Version ${upd.update.version} is available.`;
+        return t("settings.about.status.available", { version: upd.update.version });
       case "installing":
-        return `Downloading and installing ${upd.update.version}…`;
+        return t("settings.about.status.installing", { version: upd.update.version });
       case "installed":
-        return `Version ${upd.update.version} is installed. Restarting Cyber CTF…`;
+        return t("settings.about.status.installed", { version: upd.update.version });
       default:
-        return "Updates install automatically when you accept them from the banner.";
+        return t("settings.about.status.idle");
     }
   })();
 
   return (
-    <Section title="About" description="Version, updates and what to send us when something breaks.">
-      <KeyValue k="Version">{version ? `v${version}` : "…"}</KeyValue>
+    <Section title={t("settings.about.title")} description={t("settings.about.description")}>
+      <KeyValue k={t("settings.about.version")}>{version ? `v${version}` : "…"}</KeyValue>
       {report && (
-        <KeyValue k="System">
+        <KeyValue k={t("settings.about.system")}>
           {report.os} {report.arch}
         </KeyValue>
       )}
-      {agent && <KeyValue k="Install ID">{agent.installId}</KeyValue>}
+      {agent && <KeyValue k={t("settings.about.installId")}>{agent.installId}</KeyValue>}
       <Row
         title={
           <span className="flex items-center gap-2">
-            Updates
-            {upd.phase === "available" && <Badge variant="accent">Update available</Badge>}
+            {t("settings.about.updates")}
+            {upd.phase === "available" && <Badge variant="accent">{t("settings.about.updateAvailable")}</Badge>}
           </span>
         }
         description={updateText}
@@ -135,52 +141,52 @@ export function AboutSection({ version, report, agent }: { version: string | nul
             <Button size="xs" onClick={install} disabled={upd.phase === "installing"}>
               {upd.phase === "installing" ? (
                 <>
-                  <Spinner className="size-3.5" /> Installing…
+                  <Spinner className="size-3.5" /> {t("settings.about.installing")}
                 </>
               ) : (
-                "Install update"
+                t("settings.about.installUpdate")
               )}
             </Button>
           ) : upd.phase === "installed" ? (
-            <Button size="xs" onClick={() => restartApp().catch(tell("Couldn't restart Cyber CTF"))}>
-              Restart now
+            <Button size="xs" onClick={() => restartApp().catch(tell(t("settings.about.restartFailed")))}>
+              {t("settings.about.restartNow")}
             </Button>
           ) : (
             <Button variant="outline" size="xs" onClick={checkUpdates} disabled={upd.phase === "checking"}>
               {upd.phase === "checking" ? (
                 <>
-                  <Spinner className="size-3.5" /> Checking…
+                  <Spinner className="size-3.5" /> {t("settings.about.checking")}
                 </>
               ) : (
-                "Check for updates"
+                t("settings.about.checkUpdates")
               )}
             </Button>
           )
         }
       />
       <Row
-        title="Diagnostics"
-        description="Copies your version, OS and setup status, for a bug report or a support request."
+        title={t("settings.about.diagnostics")}
+        description={t("settings.about.diagnosticsDescription")}
         control={
           <Button variant="outline" size="xs" onClick={copyDiagnostics}>
             {copied ? (
               <>
-                <Check className="size-3.5 text-success" /> Copied
+                <Check className="size-3.5 text-success" /> {t("settings.about.copied")}
               </>
             ) : (
               <>
-                <Copy className="size-3.5" /> Copy
+                <Copy className="size-3.5" /> {t("settings.about.copy")}
               </>
             )}
           </Button>
         }
       />
       <Row
-        title="First-run setup"
-        description="Walk through the onboarding again. Your settings and labs are kept."
+        title={t("settings.about.firstRun")}
+        description={t("settings.about.firstRunDescription")}
         control={
           <Button variant="ghost" size="xs" onClick={replayOnboarding}>
-            <RotateCcw className="size-3.5" /> Replay
+            <RotateCcw className="size-3.5" /> {t("settings.about.replay")}
           </Button>
         }
       />

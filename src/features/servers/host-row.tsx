@@ -13,6 +13,7 @@ import { ProviderGlyph } from "@/features/servers/provider-glyph";
 import { formatAgo, formatBytes } from "@/lib/format";
 import { VmTest } from "@/features/servers/vm-tests";
 import { openExternal } from "@/lib/failure";
+import { useT } from "@/lib/i18n";
 
 /** A host on a private LAN address: what macOS's Local Network permission governs. */
 const isPrivateHost = (h: string) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h) || h.endsWith(".local");
@@ -50,20 +51,31 @@ export function HostRow({
   onDefault: () => void;
   onRemove: () => void;
 }) {
+  const t = useT();
   const result = test && test !== "testing" ? test : null;
   // A missing password is a credential to enter, not a host that is down.
   const needsPassword = !!result && !result.ok && /no password stored/i.test(result.message);
   const tone: Tone = test === "testing" || !test ? "muted" : result!.ok ? "ok" : needsPassword ? "warn" : "fail";
-  const status = test === "testing" ? "Testing…" : !test ? "Not tested" : result!.ok ? "Online" : needsPassword ? "Needs password" : "Unreachable";
+  const status = t(
+    test === "testing"
+      ? "servers.host.status.testing"
+      : !test
+        ? "servers.host.status.notTested"
+        : result!.ok
+          ? "servers.host.status.online"
+          : needsPassword
+            ? "servers.host.status.needsPassword"
+            : "servers.host.status.unreachable",
+  );
   // The running-labs count is filesystem-only and can go stale when a host drops. Only trust it
   // once the host answers as Online; an unreachable host must not report a phantom count.
   const online = !!result && result.ok;
   const facts = [
     KIND[host.provider].label,
     `${host.username}@${host.host}:${host.port}`,
-    host.node ? `node ${host.node}` : null,
-    capacity ? `${capacity.cores} vCPU` : null,
-    capacity ? `${formatBytes(capacity.memFree)} free of ${formatBytes(capacity.memTotal)}` : null,
+    host.node ? t("servers.host.node", { node: host.node }) : null,
+    capacity ? t("servers.screen.vcpu", { count: capacity.cores }) : null,
+    capacity ? t("servers.host.memFree", { free: formatBytes(capacity.memFree), total: formatBytes(capacity.memTotal) }) : null,
   ].filter(Boolean);
   const showExtras = (online && running > 0) || !!lastVm || (!!result && !result.ok);
   return (
@@ -76,7 +88,7 @@ export function HostRow({
             <button
               type="button"
               onClick={onDefault}
-              title={isDefault ? "The default host for website launches. Click to unset." : "Make this the default host for website launches."}
+              title={isDefault ? t("servers.host.isDefaultTitle") : t("servers.host.makeDefaultTitle")}
               className={cn(
                 "inline-flex items-center gap-1 rounded-full px-2 py-px font-mono text-[0.625rem] font-medium transition-colors",
                 isDefault
@@ -84,7 +96,7 @@ export function HostRow({
                   : "text-faint shadow-[inset_0_0_0_1px_var(--border)] hover:text-foreground hover:shadow-[inset_0_0_0_1px_var(--input)]",
               )}
             >
-              <Star className={cn("size-2.5", isDefault && "fill-current")} /> default
+              <Star className={cn("size-2.5", isDefault && "fill-current")} /> {t("servers.host.default")}
             </button>
           </p>
           <p className="mt-0.5 truncate font-mono text-[0.6875rem] text-faint">{facts.join(" · ")}</p>
@@ -93,13 +105,14 @@ export function HostRow({
             <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[0.75rem] text-muted-foreground">
               {online && running > 0 && (
                 <span className="inline-flex items-center gap-1.5">
-                  <StatusDot tone="ok" /> {running} lab{running > 1 ? "s" : ""} running
+                  <StatusDot tone="ok" /> {t("servers.host.labsRunning", { count: running })}
                 </span>
               )}
               {lastVm && (
                 <span className="inline-flex items-center gap-1">
-                  {lastVm.result === "ok" ? <Check className="size-3 text-success" /> : <X className="size-3 text-destructive" />} VM test{" "}
-                  {lastVm.result === "ok" ? "passed" : "failed"} <span className="font-mono text-[0.6875rem] text-faint">{formatAgo(lastVm.at, now)}</span>
+                  {lastVm.result === "ok" ? <Check className="size-3 text-success" /> : <X className="size-3 text-destructive" />}{" "}
+                  {lastVm.result === "ok" ? t("servers.host.vmTestPassed") : t("servers.host.vmTestFailed")}{" "}
+                  <span className="font-mono text-[0.6875rem] text-faint">{formatAgo(lastVm.at, now)}</span>
                 </span>
               )}
               {result && !result.ok && (
@@ -113,9 +126,9 @@ export function HostRow({
           {/* A denied Local Network permission looks exactly like a host that is down. */}
           {result && !result.ok && !needsPassword && onMac() && isPrivateHost(host.host) && (
             <p className="mt-1 text-[0.75rem] text-muted-foreground">
-              If the host is up, macOS may be blocking Cyber CTF from your local network: turn Cyber CTF on under Privacy &amp; Security &gt; Local Network.{" "}
+              {t("servers.host.localNetwork")}{" "}
               <button type="button" className="text-link underline underline-offset-2" onClick={() => openExternal(LOCAL_NETWORK_SETTINGS)}>
-                Open Privacy &amp; Security
+                {t("servers.host.openPrivacy")}
               </button>
             </p>
           )}
@@ -126,13 +139,13 @@ export function HostRow({
             {result?.latencyMs != null && <span className="font-mono text-[0.6875rem] font-normal tabular-nums text-faint">{result.latencyMs} ms</span>}
           </StatusPill>
           <Button variant="outline" size="xs" onClick={onTest} disabled={test === "testing"}>
-            {test === "testing" ? <Spinner className="size-3" /> : <Zap className="size-3" />} Test
+            {test === "testing" ? <Spinner className="size-3" /> : <Zap className="size-3" />} {t("servers.host.test")}
           </Button>
           <Menu
             items={[
-              { label: vmTesting ? "Hide VM test" : "VM test", icon: FlaskConical, onClick: onVmTest },
-              { label: "Edit", icon: Pencil, onClick: onEdit },
-              { label: "Remove", icon: Trash2, danger: true, onClick: onRemove },
+              { label: vmTesting ? t("servers.host.hideVmTest") : t("servers.host.vmTest"), icon: FlaskConical, onClick: onVmTest },
+              { label: t("servers.host.edit"), icon: Pencil, onClick: onEdit },
+              { label: t("servers.host.remove"), icon: Trash2, danger: true, onClick: onRemove },
             ]}
           />
         </div>
@@ -151,6 +164,7 @@ type MenuItem = { label: string; icon: typeof Pencil; onClick: () => void; dange
  *  the Panel's `overflow-hidden` (an `absolute` child would be clipped). It closes on scroll
  *  or resize, since a fixed position would otherwise drift from the button. */
 function Menu({ items }: { items: MenuItem[] }) {
+  const t = useT();
   const btnRef = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
 
@@ -175,7 +189,7 @@ function Menu({ items }: { items: MenuItem[] }) {
       <button
         ref={btnRef}
         type="button"
-        aria-label="More actions"
+        aria-label={t("servers.host.moreActions")}
         onClick={() => (pos ? setPos(null) : open())}
         className="grid size-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-glass-2 hover:text-foreground"
       >

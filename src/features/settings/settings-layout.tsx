@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 /* ------------------------------------------------------------------ layout */
 
@@ -18,6 +19,7 @@ export function Section({ title, description, saved, children }: { title: string
 
 /** A section's serif title and muted description, with the "Saved" mark on the right. */
 export function SectionTitle({ title, description, saved }: { title: string; description?: ReactNode; saved?: boolean }) {
+  const t = useT();
   return (
     <div className="flex items-end justify-between gap-4 px-0.5">
       <div className="min-w-0">
@@ -31,7 +33,7 @@ export function SectionTitle({ title, description, saved }: { title: string; des
           saved ? "opacity-100" : "opacity-0",
         )}
       >
-        <Check className="size-3.5" /> Saved
+        <Check className="size-3.5" /> {t("settings.saved")}
       </span>
     </div>
   );

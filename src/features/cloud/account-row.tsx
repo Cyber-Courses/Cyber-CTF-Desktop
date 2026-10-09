@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { type ServerCheck, type ServerHost, type ServerTest, type Tool } from "@/lib/tauri";
 import { StatusDot, StatusPill, type Tone } from "@/components/ui/status-pill";
+import { useFormat, useT } from "@/lib/i18n";
 
 export function AccountRow({
   host,
@@ -22,6 +23,8 @@ export function AccountRow({
   onEdit: () => void;
   onRemove: () => void;
 }) {
+  const t = useT();
+  const format = useFormat();
   const result = test && test !== "testing" ? test : null;
   const ok = result ? result.ok : null;
   // Status dot: red on any failure, amber when something only warrants a warning, else green.
@@ -30,20 +33,30 @@ export function AccountRow({
   const facts = [
     host.host,
     host.provider === "digitalocean" || host.provider === "linode"
-      ? "API token"
+      ? t("cloud.account.apiToken")
       : host.provider === "oci"
-        ? "API key"
+        ? t("cloud.account.apiKey")
         : host.provider !== "aws"
-          ? "CLI sign-in"
+          ? t("cloud.account.cliSignIn")
           : host.useCliCreds
             ? host.awsProfile
-              ? `CLI · ${host.awsProfile}`
-              : "CLI credentials"
-            : "access keys",
-    host.autoStopHours ? `auto-stop ${host.autoStopHours}h` : "no auto-stop",
+              ? t("cloud.account.cliProfile", { profile: host.awsProfile })
+              : t("cloud.account.cliCredentials")
+            : t("cloud.account.accessKeys"),
+    host.autoStopHours ? t("cloud.account.autoStop", { hours: host.autoStopHours }) : t("cloud.account.noAutoStop"),
   ];
   const tone: Tone = test === "testing" ? "muted" : dot === null ? "muted" : dot;
-  const label = test === "testing" ? "Testing…" : dot === null ? "Not tested" : dot === "ok" ? "Connected" : dot === "warn" ? "Needs attention" : "Failed";
+  const label = t(
+    test === "testing"
+      ? "cloud.account.status.testing"
+      : dot === null
+        ? "cloud.account.status.notTested"
+        : dot === "ok"
+          ? "cloud.account.status.connected"
+          : dot === "warn"
+            ? "cloud.account.status.needsAttention"
+            : "cloud.account.status.failed",
+  );
   const isOver = host.monthlyLimit != null && spent != null && spent >= host.monthlyLimit;
   return (
     <div className="border-t border-border first:border-t-0">
@@ -54,33 +67,37 @@ export function AccountRow({
           <p className="truncate font-mono text-[0.6875rem] text-faint">
             {facts.join(" · ")}
             {result?.latencyMs != null ? ` · ${result.latencyMs} ms` : ""}
-            {host.monthlyLimit != null ? ` · budget $${host.monthlyLimit.toFixed(0)}/mo` : ""}
-            {host.monthlyLimit != null && spent != null ? `, $${spent.toFixed(2)} this month` : ""}
+            {host.monthlyLimit != null
+              ? ` · ${t("cloud.account.budget", { amount: format.number(host.monthlyLimit, { style: "currency", currency: "USD", maximumFractionDigits: 0 }) })}`
+              : ""}
+            {host.monthlyLimit != null && spent != null
+              ? `, ${t("cloud.account.spentThisMonth", { amount: format.number(spent, { style: "currency", currency: "USD" }) })}`
+              : ""}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {confirming ? (
             <>
-              <span className="text-[0.75rem] text-muted-foreground">Remove?</span>
+              <span className="text-[0.75rem] text-muted-foreground">{t("cloud.account.removeConfirm")}</span>
               <Button variant="destructive" size="xs" onClick={onRemove}>
-                Remove
+                {t("cloud.account.remove")}
               </Button>
-              <IconButton label="Cancel" onClick={() => setConfirming(false)}>
+              <IconButton label={t("cloud.account.cancel")} onClick={() => setConfirming(false)}>
                 <X className="size-3.5" />
               </IconButton>
             </>
           ) : (
             <>
               <StatusPill tone={isOver ? "fail" : tone} pulse={test === "testing"}>
-                {isOver ? "Over budget" : label}
+                {isOver ? t("cloud.account.status.overBudget") : label}
               </StatusPill>
               <Button variant="outline" size="xs" onClick={onTest} disabled={test === "testing"}>
-                {test === "testing" ? <Spinner className="size-3" /> : <Zap className="size-3" />} Test
+                {test === "testing" ? <Spinner className="size-3" /> : <Zap className="size-3" />} {t("cloud.account.test")}
               </Button>
-              <IconButton label="Edit" onClick={onEdit}>
+              <IconButton label={t("cloud.account.edit")} onClick={onEdit}>
                 <Pencil className="size-3.5" />
               </IconButton>
-              <IconButton label="Remove" onClick={() => setConfirming(true)}>
+              <IconButton label={t("cloud.account.remove")} onClick={() => setConfirming(true)}>
                 <Trash2 className="size-3.5" />
               </IconButton>
             </>
@@ -140,11 +157,12 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
 }
 
 export function Status({ tool }: { tool?: Tool }) {
+  const t = useT();
   const installed = !!tool?.installed;
   return (
     <span className="flex items-center gap-2 font-mono text-[0.6875rem] text-faint">
       <StatusDot tone={installed ? "ok" : "muted"} />
-      {tool ? (installed ? (tool.version ?? "installed") : "not installed") : "…"}
+      {tool ? (installed ? (tool.version ?? t("cloud.account.installed")) : t("cloud.account.notInstalled")) : "…"}
     </span>
   );
 }

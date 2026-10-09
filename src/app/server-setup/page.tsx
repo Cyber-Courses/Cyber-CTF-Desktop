@@ -9,9 +9,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { Toaster } from "@/components/ui/toaster";
 import { SERVER_CHANGED, serverList, systemCheck, type ServerHostInput, type SystemReport } from "@/lib/tauri";
 import { warn } from "@/lib/failure";
+import { useT } from "@/lib/i18n";
 
 /** The server setup window (opened by `server_open_setup`), closed when setup ends. */
 function Setup() {
+  const t = useT();
   const params = useSearchParams();
   const id = params.get("id");
   const empty = params.get("kind") === "cloud" ? EMPTY_CLOUD : EMPTY_HOST;
@@ -43,7 +45,7 @@ function Setup() {
 
       {!initial ? (
         <div className="flex flex-1 items-center justify-center gap-2 pb-11 text-[0.8125rem] text-muted-foreground">
-          <Spinner className="size-4" /> Loading…
+          <Spinner className="size-4" /> {t("servers.setup.loading")}
         </div>
       ) : (
         /* The wizard centers in the window; the trademark is pinned at the bottom so it

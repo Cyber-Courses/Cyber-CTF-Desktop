@@ -5,14 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Nav, Note, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
+import { useT } from "@/lib/i18n";
 
 export function TestStep({ s }: { s: HostSetup }) {
+  const t = useT();
   const { onDone, saved, test, runTest } = s;
   return (
-    <Step icon={CheckCircle2} title="Connection test" description="Saved. Here's what the launcher could check from this machine.">
+    <Step icon={CheckCircle2} title={t("servers.setup.test.title")} description={t("servers.setup.test.description")}>
       {test === null || test === "testing" ? (
         <p className="flex items-center gap-2 text-[0.8125rem] text-muted-foreground">
-          <Spinner className="size-4" /> Testing the connection…
+          <Spinner className="size-4" /> {t("servers.setup.test.testing")}
         </p>
       ) : (
         <Note className="flex items-start gap-3 p-3.5">
@@ -26,12 +28,12 @@ export function TestStep({ s }: { s: HostSetup }) {
       <Nav
         left={
           <Button variant="outline" onClick={() => saved && runTest(saved.id)} disabled={test === "testing"}>
-            Test again
+            {t("servers.setup.nav.testAgain")}
           </Button>
         }
         right={
           <Button onClick={onDone}>
-            <Play className="size-4" /> Done
+            <Play className="size-4" /> {t("servers.setup.nav.done")}
           </Button>
         }
       />

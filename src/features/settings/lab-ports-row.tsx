@@ -4,23 +4,19 @@ import { useState } from "react";
 import { Segmented } from "@/components/ui/segmented";
 import { getPortMode, setPortMode, type PortMode } from "@/lib/settings";
 import { Row } from "@/features/settings/settings-layout";
+import { useT } from "@/lib/i18n";
 
 /** Host ports for container labs on this machine: asked at each start, or a remembered choice. */
 export function LabPortsRow({ onSaved }: { onSaved: () => void }) {
+  const t = useT();
   const [mode, setMode] = useState<PortMode | null>(() => getPortMode());
   return (
     <Row
-      title="Lab ports"
-      description={
-        mode === "default"
-          ? "Each service on its own port, like CTFd on 8000. A start stops when another lab or app already holds one."
-          : mode === "random"
-            ? "Each service on a free random port. Never collides with another lab or app."
-            : "Asks before each container lab starts on this machine: random free ports, or the lab's own."
-      }
+      title={t("settings.labPorts.title")}
+      description={mode === "default" ? t("settings.labPorts.default") : mode === "random" ? t("settings.labPorts.random") : t("settings.labPorts.ask")}
       control={
         <Segmented
-          label="Lab ports"
+          label={t("settings.labPorts.title")}
           value={mode}
           onChange={(v) => {
             setPortMode(v);
@@ -28,9 +24,9 @@ export function LabPortsRow({ onSaved }: { onSaved: () => void }) {
             onSaved();
           }}
           options={[
-            { value: null, label: "Ask" },
-            { value: "random", label: "Random" },
-            { value: "default", label: "Default" },
+            { value: null, label: t("settings.labPorts.options.ask") },
+            { value: "random", label: t("settings.labPorts.options.random") },
+            { value: "default", label: t("settings.labPorts.options.default") },
           ]}
         />
       }
