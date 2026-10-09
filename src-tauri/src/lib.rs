@@ -222,6 +222,7 @@ fn intercept_quit(app: &tauri::AppHandle) -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    runtime::server::mark_started();
     // Before anything else: GUI launches don't get the shell PATH (docker, vagrant, ovftool).
     platform::env_path::augment();
     // One context (the embedded config and assets) for whichever role this process plays.
