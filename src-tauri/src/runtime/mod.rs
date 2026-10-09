@@ -805,10 +805,14 @@ async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Resu
     };
     // Its VMs can be up after a setup step failed (Vagrant on ESXi): not running, left behind.
     let status = LabStatus { running: status.running && !crate::deploy_worker::last_deploy_failed(app, id), ..status };
-    // A Docker lab on a Terraform lab host: show its containers and the attack box, not just
-    // the VM they run in.
+    // A Docker lab on a Terraform lab host: its containers and the attack box, read from the
+    // host. Never the bare VM in their place: until the host answers, no machines (the page
+    // says it's reading them).
     let status = match server::terraform_target(c.provider) {
-        Some(tf) if status.running && runtime == Runtime::Docker => remote_containers(app, id, dir, &state_dir(app, id, tf)?).await.unwrap_or(status),
+        Some(tf) if status.running && runtime == Runtime::Docker => match remote_containers(app, id, dir, &state_dir(app, id, tf)?).await {
+            Some(found) => found,
+            None => LabStatus { machines: Vec::new(), networks: Vec::new(), ..status },
+        },
         _ => status,
     };
     let place = if c.provider.is_cloud() { Place::Cloud } else { Place::Server };

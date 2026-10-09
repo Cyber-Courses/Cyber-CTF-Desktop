@@ -641,7 +641,9 @@ export function LabDetail({
                     ? parked === "pause"
                       ? "The lab is paused with its state saved. Resume it to pick up where you left off."
                       : "The lab is shut down; its machines keep their state. Resume it to boot them again."
-                    : "Start the lab to see its machines and network."}
+                    : running && remote
+                      ? "Reading the lab's machines from its host…"
+                      : "Start the lab to see its machines and network."}
               </p>
             </Panel>
           )}
