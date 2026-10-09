@@ -19,6 +19,18 @@ struct Session {
     writer: Box<dyn Write + Send>,
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn Child + Send + Sync>,
+    /// The window showing it: closing that window ends it (the page's own cleanup never runs
+    /// when its webview is destroyed).
+    window: String,
+}
+
+/// Kills a session's shell and reaps it, off the calling thread (sync commands run on the main
+/// thread): a killed child that is never waited on stays a zombie while the app runs.
+fn end(mut sess: Session) {
+    let _ = sess.child.kill();
+    std::thread::spawn(move || {
+        let _ = sess.child.wait();
+    });
 }
 
 static SESSIONS: Mutex<Option<HashMap<u32, Session>>> = Mutex::new(None);
@@ -67,8 +79,17 @@ fn pty_size(cols: u16, rows: u16) -> PtySize {
 
 /// Starts the shell for a lab in a pseudo-terminal; output goes to `events`. Returns the session.
 #[tauri::command]
-pub async fn terminal_open(app: AppHandle, id: String, kind: ShellKind, runtime: Runtime, cols: u16, rows: u16, events: Channel<TermEvent>) -> Result<u32> {
-    let line = shell_command_for(&app, &id, kind, runtime).await?;
+pub async fn terminal_open(
+    window: tauri::WebviewWindow,
+    id: String,
+    kind: ShellKind,
+    runtime: Runtime,
+    cols: u16,
+    rows: u16,
+    events: Channel<TermEvent>,
+) -> Result<u32> {
+    use tauri::Manager;
+    let line = shell_command_for(window.app_handle(), &id, kind, runtime).await?;
     let pair = native_pty_system().openpty(pty_size(cols, rows)).map_err(|e| Error::Invalid(format!("couldn't open a terminal: {e}")))?;
     #[cfg(unix)]
     let mut cmd = {
@@ -90,7 +111,8 @@ pub async fn terminal_open(app: AppHandle, id: String, kind: ShellKind, runtime:
     let mut reader = pair.master.try_clone_reader().map_err(|e| Error::Invalid(e.to_string()))?;
     let writer = pair.master.take_writer().map_err(|e| Error::Invalid(e.to_string()))?;
     let session = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    with_sessions(|s| s.insert(session, Session { writer, master: pair.master, child }));
+    let window = window.label().to_string();
+    with_sessions(|s| s.insert(session, Session { writer, master: pair.master, child, window }));
 
     std::thread::spawn(move || {
         let mut chunk = [0u8; 8192];
@@ -134,10 +156,20 @@ pub fn terminal_resize(session: u32, cols: u16, rows: u16) -> Result<()> {
 /// Ends the shell (the view was closed).
 #[tauri::command]
 pub fn terminal_close(session: u32) -> Result<()> {
-    if let Some(mut sess) = with_sessions(|s| s.remove(&session)) {
-        let _ = sess.child.kill();
+    if let Some(sess) = with_sessions(|s| s.remove(&session)) {
+        end(sess);
     }
     Ok(())
+}
+
+/// Ends the shells a window was showing, when it is closed.
+fn close_window(label: &str) {
+    let ids: Vec<u32> = with_sessions(|s| s.iter().filter(|(_, v)| v.window == label).map(|(k, _)| *k).collect());
+    for id in ids {
+        if let Some(sess) = with_sessions(|s| s.remove(&id)) {
+            end(sess);
+        }
+    }
 }
 
 /// Ends every shell, when the app exits.
@@ -175,7 +207,12 @@ pub fn terminal_window(app: AppHandle, id: String, kind: ShellKind, runtime: Run
         .resizable(true);
     #[cfg(target_os = "macos")]
     let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
-    builder.build().map_err(|e| Error::Invalid(format!("could not open the shell window: {e}")))?;
+    let window = builder.build().map_err(|e| Error::Invalid(format!("could not open the shell window: {e}")))?;
+    window.on_window_event(move |e| {
+        if matches!(e, tauri::WindowEvent::Destroyed) {
+            close_window(&label);
+        }
+    });
     Ok(())
 }
 
