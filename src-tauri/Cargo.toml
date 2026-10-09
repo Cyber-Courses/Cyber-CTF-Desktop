@@ -38,7 +38,7 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 reqwest = { version = "0.13", features = ["json", "form"] }
 serde_yaml_ng = "0.10.0"
 # Labs describe themselves with an isoloom.yml; the launcher generates and runs their files.
-isoloom-core = { git = "https://github.com/isoloom/isoloom", rev = "a0fa12f" }
+isoloom-core = { git = "https://github.com/isoloom/isoloom", rev = "5e48607" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
