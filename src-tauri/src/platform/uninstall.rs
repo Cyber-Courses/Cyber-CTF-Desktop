@@ -28,24 +28,41 @@ fn load(app: &AppHandle) -> Vec<InstalledTool> {
     records_file(app).and_then(|f| std::fs::read(f).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }
 
+/// Written whole through a temporary file and a rename, so a crash mid-write can't leave a
+/// half file that reads as "nothing installed".
 fn save(app: &AppHandle, tools: &[InstalledTool]) {
     if let Some(f) = records_file(app) {
         if let Some(dir) = f.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
         if let Ok(json) = serde_json::to_vec_pretty(tools) {
-            let _ = std::fs::write(f, json);
+            let tmp = f.with_extension("json.tmp");
+            if std::fs::write(&tmp, json).is_ok() {
+                let _ = std::fs::rename(&tmp, &f);
+            }
         }
     }
 }
 
+/// Serialises the read-modify-writes of the records: installs and removals in different windows
+/// (machine setup, server setup, Settings) can end at the same moment, and each must keep the
+/// other's change.
+static RECORDS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn update(app: &AppHandle, f: impl FnOnce(&mut Vec<InstalledTool>)) {
+    let _guard = RECORDS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut tools = load(app);
+    f(&mut tools);
+    save(app, &tools);
+}
+
 /// Remembers that Cyber CTF installed `dependency` (called after a successful install).
 pub fn record(app: &AppHandle, dependency: Dependency) {
-    let mut tools = load(app);
-    tools.retain(|t| t.dependency != dependency);
     let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    tools.push(InstalledTool { dependency, at });
-    save(app, &tools);
+    update(app, |tools| {
+        tools.retain(|t| t.dependency != dependency);
+        tools.push(InstalledTool { dependency, at });
+    });
 }
 
 /// The tools Cyber CTF installed on this machine (and hasn't removed since).
@@ -120,8 +137,11 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Vagrant => vec![root("apt-get remove -y vagrant")],
             Dependency::Terraform => vec![root("apt-get remove -y terraform")],
             Dependency::Virtualbox => vec![root("apt-get remove -y 'virtualbox*'")],
-            Dependency::Qemu => vec![root("apt-get remove -y qemu-system qemu-utils")],
-            Dependency::Libvirt => vec![root("apt-get remove -y libvirt-daemon-system virt-manager")],
+            // The install's metapackages (qemu-system, libvirt-daemon-system) leave the packages
+            // they pulled in behind, with the binaries the Machine page looks for
+            // (qemu-system-x86_64, virsh): those go too, or the tool still reads as installed.
+            Dependency::Qemu => vec![root("apt-get remove -y 'qemu-system*' qemu-utils")],
+            Dependency::Libvirt => vec![root("apt-get remove -y 'libvirt-daemon*' libvirt-clients virt-manager")],
             Dependency::Awscli => vec![root("rm -rf /usr/local/aws-cli /usr/local/bin/aws /usr/local/bin/aws_completer")],
             Dependency::Azurecli => vec![root("apt-get remove -y azure-cli")],
             Dependency::Gcloud => vec![step("sh", &["-c", "rm -rf \"$HOME/google-cloud-sdk\""])],
@@ -145,9 +165,7 @@ pub async fn uninstall_dependency(app: AppHandle, dependency: Dependency, logs: 
         }
         run_step(s, &mut on_line).await?;
     }
-    let mut tools = load(&app);
-    tools.retain(|t| t.dependency != dependency);
-    save(&app, &tools);
+    update(&app, |tools| tools.retain(|t| t.dependency != dependency));
     on_line("Removed.".into());
     Ok(())
 }
@@ -176,5 +194,29 @@ mod tests {
             assert!(!plan(dep).unwrap().is_empty(), "{dep:?}");
         }
         assert!(plan(Dependency::Wsl).is_err() && plan(Dependency::Libvirt).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn every_linux_tool_has_a_way_out() {
+        for dep in [
+            Dependency::Docker,
+            Dependency::Vagrant,
+            Dependency::Terraform,
+            Dependency::Virtualbox,
+            Dependency::Qemu,
+            Dependency::Libvirt,
+            Dependency::Awscli,
+            Dependency::Azurecli,
+            Dependency::Gcloud,
+        ] {
+            assert!(!plan(dep).unwrap().is_empty(), "{dep:?}");
+        }
+        assert!(plan(Dependency::Wsl).is_err() && plan(Dependency::Utm).is_err());
+        // The packages holding the binaries the Machine page looks for go too, not only the
+        // metapackages the install named.
+        let script = |dep| plan(dep).unwrap()[0].args.join(" ");
+        assert!(script(Dependency::Qemu).contains("'qemu-system*'"));
+        assert!(script(Dependency::Libvirt).contains("libvirt-clients"));
     }
 }

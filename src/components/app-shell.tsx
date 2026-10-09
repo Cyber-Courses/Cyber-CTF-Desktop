@@ -313,7 +313,14 @@ export function AppShell() {
   if (!ready) return <div className="h-dvh bg-background" />;
   // Settings runs standalone in its own window: no sidebar, no onboarding, just the screen.
   if (settingsWindow) return <SettingsWindowView auth={auth} onAuthChange={authChanged} />;
-  if (!onboarded) return <Onboarding onComplete={completeOnboarding} />;
+  // With its own Toaster: `tell()` shows errors as toasts while the window has focus.
+  if (!onboarded)
+    return (
+      <>
+        <Onboarding onComplete={completeOnboarding} />
+        <Toaster />
+      </>
+    );
 
   // Breadcrumb: where you are. A lab page shows "Labs / <lab>".
   const crumbs = tab === "labs" && labTitle ? ["Labs", labTitle] : [tab === "settings" ? "Settings" : "This machine", TITLES[tab]];

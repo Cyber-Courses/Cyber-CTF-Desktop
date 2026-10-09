@@ -81,7 +81,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
           {installing ? "Turning on WSL 2…" : "Turn on WSL 2"}
         </Button>
         <div className="mt-3">
-          <Log setup={setup} />
+          <Log setup={setup} of={["wsl"]} />
         </div>
         {tried && (
           <div

@@ -239,6 +239,22 @@ fn valid_user(u: &str) -> bool {
 pub const NO_PKEXEC: &str =
     "pkexec isn't installed, so Cyber CTF can't ask for your password. Install it once in a terminal (sudo apt install pkexec), then try again.";
 
+/// A line pkexec prints when it, not the command, failed: refused ("Error executing command as
+/// another user: Not authorized"), or no agent to ask ("…: No authentication agent found.", or,
+/// with no terminal either, "Error creating textual authentication agent: …").
+fn is_pkexec_error(line: &str) -> bool {
+    line.starts_with("Error executing command as another user") || line.starts_with("Error creating textual authentication agent")
+}
+
+/// What to tell the player when pkexec itself refused to run the command.
+fn pkexec_refusal(stderr: &str) -> &'static str {
+    if stderr.contains("No authentication agent") || stderr.contains("textual authentication agent") {
+        "No password prompt could be shown (no polkit agent is running). Run the command above in a terminal instead."
+    } else {
+        "The password prompt was cancelled or the password was refused, so nothing was changed. Try again and enter your password."
+    }
+}
+
 pub(crate) async fn run_step(step: &Step, on_line: &mut impl FnMut(String)) -> Result<()> {
     if let Some(note) = &step.note {
         on_line(note.clone());
@@ -256,21 +272,28 @@ pub(crate) async fn run_step(step: &Step, on_line: &mut impl FnMut(String)) -> R
     let mut out = BufReader::new(child.stdout.take().expect("piped stdout")).lines();
     let mut err = BufReader::new(child.stderr.take().expect("piped stderr")).lines();
     let (mut out_done, mut err_done) = (false, false);
+    // pkexec's own failure (refused, or no agent to ask), told apart from the script's exit code.
+    let mut pkexec_error: Option<String> = None;
     while !(out_done && err_done) {
         tokio::select! {
             l = out.next_line(), if !out_done => match l? { Some(x) => on_line(x), None => out_done = true },
-            l = err.next_line(), if !err_done => match l? { Some(x) => on_line(x), None => err_done = true },
+            l = err.next_line(), if !err_done => match l? {
+                Some(x) => {
+                    if step.program == "pkexec" && is_pkexec_error(&x) {
+                        pkexec_error = Some(x.clone());
+                    }
+                    on_line(x)
+                }
+                None => err_done = true,
+            },
         }
     }
     let status = child.wait().await?;
-    // pkexec's own codes: 126 when the password prompt was dismissed or refused, 127 when no
-    // polkit agent could show one.
-    if step.program == "pkexec" && matches!(status.code(), Some(126 | 127)) {
-        return Err(Error::Invalid(if status.code() == Some(126) {
-            "The password prompt was cancelled, so nothing was installed. Try again and enter your password.".into()
-        } else {
-            "No password prompt could be shown (no polkit agent is running). Install it in a terminal instead.".into()
-        }));
+    // pkexec exits 126 when the password prompt was dismissed or refused and 127 when no polkit
+    // agent could show one, but the script's own 126/127 (a command missing or not executable)
+    // come through as is: only pkexec's own message says which it was.
+    if let Some(why) = pkexec_error.filter(|_| matches!(status.code(), Some(126 | 127))) {
+        return Err(Error::Invalid(pkexec_refusal(&why).into()));
     }
     if !status.success() {
         return Err(Error::Invalid(format!("`{}` exited with {status}", step.program)));
@@ -319,7 +342,20 @@ pub async fn install_vagrant_plugin(plugin: String, logs: Channel<String>) -> Re
 
 #[cfg(test)]
 mod tests {
-    use super::{TERRAFORM_SCRIPT, VIRTUALBOX_SCRIPT, docker_script, valid_user};
+    use super::{TERRAFORM_SCRIPT, VIRTUALBOX_SCRIPT, docker_script, is_pkexec_error, pkexec_refusal, valid_user};
+
+    #[test]
+    fn pkexec_refusals_name_their_cause() {
+        // pkexec's own lines (polkit 126), as it prints them.
+        let refused = "Error executing command as another user: Not authorized";
+        let no_agent = "Error executing command as another user: No authentication agent found.";
+        let no_tty = "Error creating textual authentication agent: Error opening current controlling terminal for the process (`/dev/tty'): No such device or address";
+        assert!(is_pkexec_error(refused) && is_pkexec_error(no_agent) && is_pkexec_error(no_tty));
+        assert!(pkexec_refusal(refused).contains("cancelled"));
+        assert!(pkexec_refusal(no_agent).contains("polkit agent") && pkexec_refusal(no_tty).contains("polkit agent"));
+        // The script's own output never passes for pkexec's.
+        assert!(!is_pkexec_error("sh: 1: gpg: not found"));
+    }
 
     #[test]
     fn docker_install_adds_the_player_to_the_docker_group() {

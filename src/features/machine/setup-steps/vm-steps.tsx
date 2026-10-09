@@ -4,7 +4,7 @@ import { ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { type SystemReport } from "@/lib/tauri";
-import { DOWNLOAD, INSTALLABLE, providerLabel, usableHypervisors } from "@/features/machine/hypervisors";
+import { cantRun, DOWNLOAD, INSTALLABLE, providerLabel, usableHypervisors } from "@/features/machine/hypervisors";
 import { Log, Requirement } from "@/features/machine/setup-steps/parts";
 import { Choice, ChoiceAction, ChoiceGrid } from "@/components/ui/choice-card";
 import { chosenHypervisor } from "@/features/machine/setup-steps/steps";
@@ -36,11 +36,28 @@ export function VmStep({ report, setup }: { report: SystemReport; setup: Machine
             onSelect={() => setup.setHypervisor(p.provider)}
             mark={<HypervisorLogo provider={p.provider} />}
             title={providerLabel(p, report.os)}
-            note={INSTALLABLE[p.provider] ? "Cyber CTF can install it for you." : "Install it from the vendor's site."}
+            note={
+              p.hypervisor === true
+                ? cantRun(p, report)
+                  ? "Installed, but it can't run here."
+                  : "Installed on this machine."
+                : INSTALLABLE[p.provider]
+                  ? "Cyber CTF can install it for you."
+                  : "Install it from the vendor's site."
+            }
             badge={p.hypervisor === true ? "installed" : undefined}
           />
         ))}
       </ChoiceGrid>
+      {/* Installed but unable to run (no /dev/kvm, not in the kvm group): why, as the Machine page says. */}
+      {cantRun(choice, report) && choice.reason && (
+        <ChoiceAction>
+          <span className="text-[0.8125rem] text-muted-foreground">
+            {choice.reason.charAt(0).toUpperCase()}
+            {choice.reason.slice(1)}.
+          </span>
+        </ChoiceAction>
+      )}
       {/* Only when there is something to do: an installed hypervisor says so on its card. */}
       {choice.hypervisor !== true && (
         <ChoiceAction>
@@ -79,7 +96,7 @@ export function VmStep({ report, setup }: { report: SystemReport; setup: Machine
           )}
         </ChoiceAction>
       )}
-      <Log setup={setup} />
+      <Log setup={setup} of={[choice.provider]} />
       <p className="pt-1 text-left text-[0.6875rem] leading-relaxed text-faint">
         VirtualBox is a trademark of Oracle. QEMU and other hypervisor names belong to their respective owners. Cyber CTF isn&apos;t affiliated with any of
         them.
@@ -156,7 +173,7 @@ export function VagrantStep({ report, setup }: { report: SystemReport; setup: Ma
           />
         )}
       </div>
-      <Log setup={setup} />
+      <Log setup={setup} of={["vagrant", choice.plugin]} />
     </div>
   );
 }

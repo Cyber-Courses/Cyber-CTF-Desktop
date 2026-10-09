@@ -251,7 +251,10 @@ pub fn node_login(h: &HostProfile) -> String {
 /// it, see `ssh_key_problem`), so labs on an internal bridge can be reached through the node.
 /// Uses the stored password once, through SSH's own askpass hook; idempotent.
 pub async fn authorize_launcher_key(h: &HostProfile, password: &str, identity: &std::path::Path, public: &str) -> crate::error::Result<()> {
-    let askpass = std::env::temp_dir().join("cyberctf-askpass.sh");
+    // Next to the launcher's key (the player's own app data), not the shared system temp dir:
+    // on Linux /tmp is common to every account, and a file another user left there under this
+    // name can't be rewritten (or could be swapped for something else).
+    let askpass = identity.with_file_name("askpass.sh");
     std::fs::write(&askpass, "#!/bin/sh\nprintf '%s\\n' \"$CYBERCTF_SSH_PASSWORD\"\n")?;
     #[cfg(unix)]
     {

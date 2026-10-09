@@ -7,7 +7,7 @@ import { StepRow } from "@/features/machine/step-row";
 import { machineSteps, stepMeta, type MachineStep } from "@/features/machine/setup-steps";
 import { hasHypervisor, isDockerReady } from "@/features/machine/setup-steps/steps";
 import { engineName } from "@/features/machine/setup-steps/engines";
-import { usableHypervisors, providerLabel } from "@/features/machine/hypervisors";
+import { cantRun, usableHypervisors, providerLabel } from "@/features/machine/hypervisors";
 import { ATTACK_PRESETS, getAttackImage, type LastTest } from "@/lib/settings";
 import { machineOpenSetup, type SystemReport } from "@/lib/tauri";
 import { tell } from "@/lib/failure";
@@ -17,7 +17,11 @@ type Line = { done: boolean; optional?: boolean; meta: string };
 /** Where this machine stands on each guided-setup step, read from the system report and the
  *  last self-tests. The steps themselves run in the setup window. */
 function stepLine(step: MachineStep, report: SystemReport, last: Record<"docker" | "vm", LastTest | null>): Line {
-  const hv = usableHypervisors(report).find((p) => p.hypervisor === true);
+  const installed = usableHypervisors(report).filter((p) => p.hypervisor === true);
+  // One that can run labs first (QEMU without KVM can, when libvirt can't).
+  const hv = installed.find((p) => !cantRun(p, report)) ?? installed[0];
+  // Installed yet unable to run here: not done, as the Health tab says.
+  const blocked = !!hv && cantRun(hv, report);
   switch (step) {
     case "pkgmgr":
       return { done: report.pkgManager.installed, meta: report.pkgManager.installed ? report.pkgManager.name : "not installed" };
@@ -41,7 +45,11 @@ function stepLine(step: MachineStep, report: SystemReport, last: Record<"docker"
       return { done: true, meta: ATTACK_PRESETS.find((p) => p.image === image)?.label ?? image };
     }
     case "vm":
-      return { done: hasHypervisor(report), optional: true, meta: hv ? providerLabel(hv, report.os) : "optional" };
+      return {
+        done: hasHypervisor(report) && !blocked,
+        optional: true,
+        meta: hv ? `${providerLabel(hv, report.os)}${blocked ? " · can't run here" : ""}` : "optional",
+      };
     case "vagrant": {
       const ok = report.vagrant.installed && (!hv?.plugin || hv.pluginInstalled);
       return {

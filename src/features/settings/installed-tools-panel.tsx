@@ -11,7 +11,7 @@ import { formatAgo } from "@/lib/format";
 import { warn } from "@/lib/failure";
 
 const NAMES: Record<Dependency, string> = {
-  docker: "Docker Desktop",
+  docker: "Docker",
   vagrant: "Vagrant",
   terraform: "Terraform",
   virtualbox: "VirtualBox",
@@ -23,6 +23,12 @@ const NAMES: Record<Dependency, string> = {
   gcloud: "Google Cloud CLI",
   wsl: "WSL",
 };
+
+/** What setup installed under that name: Docker Engine on Linux (get.docker.com), Docker Desktop elsewhere. */
+function toolName(dep: Dependency): string {
+  if (dep !== "docker") return NAMES[dep];
+  return typeof navigator !== "undefined" && navigator.userAgent.includes("Linux") ? "Docker Engine" : "Docker Desktop";
+}
 
 /** The tools Cyber CTF installed during setup, each removable. Hidden when there are none; a tool
  *  the player had before is never listed, so nothing of theirs can be removed from here. */
@@ -40,7 +46,7 @@ export function InstalledToolsPanel() {
   const remove = async (dep: Dependency) => {
     setAsking(null);
     setRemoving(dep);
-    setLog([`Removing ${NAMES[dep]}…`]);
+    setLog([`Removing ${toolName(dep)}…`]);
     try {
       await uninstallDependency(dep, (line) => setLog((l) => [...l, line]));
     } catch (e) {
@@ -66,7 +72,7 @@ export function InstalledToolsPanel() {
             className="flex min-h-[3.25rem] items-center gap-3 border-t border-border px-4 py-2 transition-colors first:border-t-0 hover:bg-glass"
           >
             <div className="min-w-0 flex-1">
-              <p className="text-[0.8125rem] font-medium text-foreground">{NAMES[t.dependency]}</p>
+              <p className="text-[0.8125rem] font-medium text-foreground">{toolName(t.dependency)}</p>
               <p className="font-mono text-[0.6875rem] text-faint">installed {formatAgo(t.at * 1000, now)}</p>
             </div>
             <Button variant="outline" size="xs" disabled={removing !== null} onClick={() => setAsking(t.dependency)}>
@@ -81,8 +87,8 @@ export function InstalledToolsPanel() {
         </div>
       )}
       {asking && (
-        <ConfirmDialog title={`Remove ${NAMES[asking]}?`} confirmLabel="Remove" onConfirm={() => remove(asking)} onCancel={() => setAsking(null)}>
-          Labs that need {NAMES[asking]} won&apos;t start until it&apos;s installed again (setup can reinstall it). Your labs and settings are kept.
+        <ConfirmDialog title={`Remove ${toolName(asking)}?`} confirmLabel="Remove" onConfirm={() => remove(asking)} onCancel={() => setAsking(null)}>
+          Labs that need {toolName(asking)} won&apos;t start until it&apos;s installed again (setup can reinstall it). Your labs and settings are kept.
         </ConfirmDialog>
       )}
     </Panel>
