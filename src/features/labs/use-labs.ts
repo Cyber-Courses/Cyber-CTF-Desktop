@@ -119,7 +119,7 @@ export function useLabs(reloadKey: unknown = 0) {
       const cur = next[id];
       next[id] = cur
         ? { ...cur, running: true }
-        : { running: true, parked: null, machines: [], networks: [], url: null, host: null, expiresAt: null, place: null, provider: null };
+        : { running: true, parked: null, machines: [], networks: [], url: null, host: null, expiresAt: null, place: null, provider: null, attacker: null };
     }
     return next;
   }, [statuses, scanRunning]);

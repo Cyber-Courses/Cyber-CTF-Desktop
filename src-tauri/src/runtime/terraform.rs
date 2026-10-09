@@ -373,6 +373,7 @@ pub fn status(state: &Path) -> LabStatus {
         expires_at: expires_at.filter(|_| created),
         place: None,
         provider: None,
+        attacker: None,
     }
 }
 
