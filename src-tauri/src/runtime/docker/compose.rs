@@ -50,6 +50,17 @@ pub(super) async fn output_env(dir: &Path, project: &str, rest: &[&str], env: &[
     run_env("docker", &a, Some(dir), env).await
 }
 
+/// Like [`stream`], with `stdin` (a file) as the command's standard input: Isoloom's `exec`
+/// check runners are piped into the machine (`exec -T <machine> sh -s`). A tiny `sh` does the
+/// redirection, the argv passed through untouched (no quoting).
+pub(super) async fn stream_with_stdin(dir: &Path, project: &str, rest: &[&str], stdin: &Path, log: impl FnMut(String)) -> Result<()> {
+    let a = args(dir, project, rest);
+    let stdin = stdin.display().to_string();
+    let mut argv: Vec<&str> = vec!["-c", "f=$1; shift; exec docker \"$@\" < \"$f\"", "sh", stdin.as_str()];
+    argv.extend(a.iter().map(String::as_str));
+    exec_stream("sh", &argv, Some(dir), &[], log).await
+}
+
 /// Runs a compose subcommand, streaming its output line by line.
 pub(super) async fn stream(dir: &Path, project: &str, rest: &[&str], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
     let a = args(dir, project, rest);

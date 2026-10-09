@@ -74,7 +74,7 @@ pub async fn published(dir: &Path, id: &str, env: &[(String, String)]) -> Vec<(S
     compose::output_env(dir, &compose::project(id), &["config", "--format", "json"], env).await.map(|c| compose::published_from_config(&c)).unwrap_or_default()
 }
 
-pub async fn start(dir: &Path, id: &str, env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
+pub async fn start(dir: &Path, id: &str, env: &[(String, String)], mut log: impl FnMut(String)) -> Result<()> {
     // A stopped engine otherwise surfaces as a raw daemon-connection error much later.
     ensure_docker_up().await?;
     let project = compose::project(id);
@@ -97,7 +97,22 @@ pub async fn start(dir: &Path, id: &str, env: &[(String, String)], log: impl FnM
     remove_stale_networks(dir, &project, env).await;
     // --wait blocks until containers are healthy; bound it so a container stuck in a failing
     // healthcheck surfaces as a timeout instead of hanging the start indefinitely.
-    compose::stream(dir, &project, &["up", "-d", "--pull", "missing", "--wait", "--wait-timeout", "600"], env, log).await
+    let up = ["up", "-d", "--pull", "missing", "--wait", "--wait-timeout", "600"];
+    // Compose's --wait fails when a one-shot job exits (even with 0) unless a running service
+    // depends on it: an `init:` on a machine nothing depends on. Isoloom's start plan names
+    // those jobs: wait for everything else, then run each attached, failing on its exit code.
+    let plan =
+        std::fs::read_to_string(crate::runtime::lab::compose_file(dir)).ok().and_then(|c| isoloom_core::generate::start_plan(&c).ok()).unwrap_or_default();
+    if plan.jobs.is_empty() {
+        return compose::stream(dir, &project, &up, env, log).await;
+    }
+    let mut args: Vec<&str> = up.to_vec();
+    args.extend(plan.wait.iter().map(String::as_str));
+    compose::stream(dir, &project, &args, env, &mut log).await?;
+    for job in &plan.jobs {
+        compose::stream(dir, &project, &["up", "--no-deps", "--exit-code-from", job, job], env, &mut log).await?;
+    }
+    Ok(())
 }
 
 /// Stops the lab's containers, keeping them, their networks and volumes: the lab resumes as it

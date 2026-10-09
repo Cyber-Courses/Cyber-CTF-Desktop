@@ -54,6 +54,9 @@ pub async fn check(dir: &Path, id: &str) -> Result<Check> {
         let service =
             if pos == default { crate::runtime::lab::CHECK_SERVICE.to_string() } else { format!("{}-{}", crate::runtime::lab::CHECK_SERVICE, pos.id()) };
         let from = pos.label();
+        // `exec` checks run inside the machine, from their own runner (Isoloom's exec-<machine>.sh,
+        // piped in); the runner beside the machine reports the others.
+        let (execs, group): (Vec<&checks::Resolved>, Vec<&checks::Resolved>) = group.into_iter().partition(|c| matches!(c.probe, checks::Probe::Exec { .. }));
         let before = results.len();
         let res = compose::stream(dir, &project, &["--profile", "check", "run", "--rm", "--no-deps", &service], &[], |l| {
             match checks::parse_line(&l) {
@@ -71,6 +74,27 @@ pub async fn check(dir: &Path, id: &str) -> Result<Check> {
         }
         if res.is_err() {
             ran = false;
+        }
+        if let (false, checks::Position::Machine(m)) = (execs.is_empty(), &pos) {
+            let file = crate::runtime::lab::compose_file(dir).with_file_name("checks").join(isoloom_core::generate::exec_runner(m));
+            let from = format!("inside {m}");
+            let before = results.len();
+            let res = compose::stream_with_stdin(dir, &project, &["exec", "-T", m, "sh", "-s"], &file, |l| {
+                match checks::parse_line(&l) {
+                    Some(Line::Pass(name)) => results.push(CheckResult { name, from: from.clone(), ok: true, reason: String::new() }),
+                    Some(Line::Fail(name, why)) => results.push(CheckResult { name, from: from.clone(), ok: false, reason: why }),
+                    Some(Line::End(..)) | None => {}
+                }
+                lines.push(l);
+            })
+            .await;
+            let reported = results.len() - before;
+            for c in execs.iter().skip(reported) {
+                results.push(CheckResult { name: c.name.clone(), from: from.clone(), ok: false, reason: "the runner stopped before this check".into() });
+            }
+            if res.is_err() {
+                ran = false;
+            }
         }
     }
     let ok = ran && results.iter().all(|r| r.ok);
