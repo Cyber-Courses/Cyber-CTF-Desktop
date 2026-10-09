@@ -3,7 +3,7 @@
 import { ChevronRight, Cloud, Container, ExternalLink, Globe, LogIn, Monitor, Server, Wrench, type LucideIcon } from "lucide-react";
 import { DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import { CLOUDS } from "@/features/labs/run-on";
-import { machineOpenSetup, type LabStatus, type Provider, type SystemReport } from "@/lib/tauri";
+import { machineOpenSetup, serverOpenSetup, type LabStatus, type Provider, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { useState, type ButtonHTMLAttributes } from "react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,8 @@ export const emulatorReady = (report: SystemReport | null | undefined) =>
  *  a VM lab built for another CPU, which only an emulator can run (whatever the lab lists: its
  *  list names the hypervisors of its own CPU). */
 export function localProviders(rt: NonNullable<Lab["runtime"]>, hostArch?: string): Provider[] {
+  // Cloud services run in the player's cloud account only.
+  if (rt.runtime === "CLOUD") return [];
   if (rt.runtime === "VM" && hostArch && !runsNatively(rt, hostArch)) return [...EMULATORS];
   return rt.providers.filter((p: string) => !SERVERS.has(p) && !CLOUDS.has(p) && p !== "hosted") as Provider[];
 }
@@ -48,6 +50,15 @@ export function runPlaces(
   // providers also carries "hosted" (not a launcher Provider), so compare as strings.
   const local = rt.providers.some((p: string) => !SERVERS.has(p) && !CLOUDS.has(p) && p !== "hosted");
   const vm = rt.runtime === "VM";
+  // Cloud services: the player's cloud account, nowhere else.
+  if (rt.runtime === "CLOUD")
+    return [
+      { key: "container", icon: Container, label: "Container on this machine", available: false },
+      { key: "local_vm", icon: Monitor, label: "VM on this machine", available: false },
+      { key: "server", icon: Server, label: "Your server", available: false },
+      { key: "cloud", icon: Cloud, label: `Your ${cloudNames(rt.providers)} account`, available: true },
+      { key: "hosted", icon: Globe, label: "Hosted by Cyber CTF", available: false },
+    ];
   return [
     { key: "container", icon: Container, label: "Container on this machine", available: !vm },
     { key: "local_vm", icon: Monitor, label: "VM on this machine", available: (vm || local) && (!(vm && hostArch && !runsNatively(rt, hostArch)) || emulates) },
@@ -56,6 +67,21 @@ export function runPlaces(
     { key: "hosted", icon: Globe, label: "Hosted by Cyber CTF", available: rt.hosted ?? false },
   ];
 }
+
+/** The runtime column's word: what the lab is made of. */
+export const runtimeLabel = (rt: NonNullable<Lab["runtime"]>) => (rt.runtime === "VM" ? "vm" : rt.runtime === "CLOUD" ? "cloud" : "docker");
+
+const CLOUD_NAMES: Record<string, string> = { aws: "AWS", azure: "Azure", gcp: "Google Cloud" };
+
+/** "AWS", "AWS or Azure": the clouds a cloud lab runs on. */
+export function cloudNames(providers: readonly string[]): string {
+  const names = providers.filter((p) => CLOUD_NAMES[p]).map((p) => CLOUD_NAMES[p]);
+  if (names.length === 0) return "cloud";
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
+
+/** "an AWS", "a Google Cloud". */
+export const withArticle = (name: string) => `${/^[aeiou]/i.test(name) ? "an" : "a"} ${name}`;
 
 /** A row action: compact, and it doesn't open the row when clicked. */
 function RowButton({
@@ -207,7 +233,7 @@ export function LabRow({
           {rt && (
             <>
               {/* Fixed to the longest label ("docker") so the place icons line up from row to row. */}
-              <span className="w-[6ch] shrink-0">{rt.runtime === "VM" ? "vm" : "docker"}</span>
+              <span className="w-[6ch] shrink-0">{runtimeLabel(rt)}</span>
               <span className="inline-flex items-center gap-1">
                 {/* Every place is shown: where it runs (green), where it can (jewel), and where
                     it can't (greyed), so the row reads as the full set of options at a glance. */}
@@ -246,6 +272,10 @@ export function LabRow({
                 </RowButton>
               )}
             </>
+          ) : setup && rt?.runtime === "CLOUD" && setup.startsWith("Needs a") && setup.endsWith("account") ? (
+            <RowButton onClick={() => serverOpenSetup(null, "cloud").catch(tell("Couldn't open the cloud account setup"))} title={`${setup}: connect one`}>
+              <Wrench className="size-3" /> Connect
+            </RowButton>
           ) : setup ? (
             <RowButton onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))} title={`${setup}: open machine setup`}>
               <Wrench className="size-3" /> Set up
@@ -273,7 +303,9 @@ export function LabRow({
               onStop();
             }}
           >
-            Its machines and your attack box are deleted, with everything changed or saved on them. The next start rebuilds the lab from scratch.
+            {rt?.runtime === "CLOUD"
+              ? "Its cloud services are destroyed in your account, which ends what they cost. The next start creates them again from scratch."
+              : "Its machines and your attack box are deleted, with everything changed or saved on them. The next start rebuilds the lab from scratch."}
             {!status?.host && status?.place !== "local_vm" && " To keep them, open the lab and shut it down instead."}
           </ConfirmDialog>
         </div>

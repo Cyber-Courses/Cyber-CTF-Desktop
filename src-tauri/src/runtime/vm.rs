@@ -408,7 +408,19 @@ pub async fn status(dir: &Path, env: &[(String, String)]) -> Result<LabStatus> {
         let (_ts, _target, kind, data) = (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
         (kind == "provider-name" && !data.is_empty()).then(|| data.to_string())
     });
-    Ok(LabStatus { running, parked: None, machines, networks, url: None, host: None, expires_at: None, place: None, provider })
+    Ok(LabStatus {
+        running,
+        parked: None,
+        machines,
+        networks,
+        url: None,
+        host: None,
+        expires_at: None,
+        place: None,
+        provider,
+        outputs: Vec::new(),
+        message: None,
+    })
 }
 
 /// Each machine's lab interfaces and the lab's network segments, read from the generated

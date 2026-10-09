@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { setupNeeded } from "@/features/labs/lab-readiness";
 import type { Lab } from "@/features/labs/use-labs";
-import type { ProviderStatus, SystemReport } from "@/lib/tauri";
+import type { ProviderStatus, ServerHost, SystemReport } from "@/lib/tauri";
 
 const provider = (p: string, remote = false, available = false): ProviderStatus => ({
   provider: p as ProviderStatus["provider"],
@@ -47,5 +47,22 @@ describe("setupNeeded", () => {
     it("runs emulated once QEMU is ready", () => {
       expect(setupNeeded(x86Lab, arm([provider("qemu", false, true)]), [])).toBeNull();
     });
+  });
+
+  it("asks a cloud lab for an account of its cloud, then Terraform", () => {
+    const cloudLab = { runtime: { runtime: "CLOUD", providers: ["aws"] } } as unknown as Lab;
+    const r = { ...report([]), terraform: { installed: true } } as unknown as SystemReport;
+    const aws = { id: "a", provider: "aws" } as unknown as ServerHost;
+    const azure = { id: "z", provider: "azure" } as unknown as ServerHost;
+    const esxi = { id: "e", provider: "vmware_esxi" } as unknown as ServerHost;
+    expect(setupNeeded(cloudLab, r, [])).toBe("Needs an AWS account");
+    // Another cloud, or a server, doesn't run it.
+    expect(setupNeeded(cloudLab, r, [azure, esxi])).toBe("Needs an AWS account");
+    expect(setupNeeded(cloudLab, r, [aws])).toBeNull();
+    const noTf = { ...r, terraform: { installed: false } } as unknown as SystemReport;
+    expect(setupNeeded(cloudLab, noTf, [aws])).toBe("Needs Terraform");
+    // A cloud lab never needs Docker or a hypervisor.
+    const noDocker = { ...r, docker: { installed: false }, dockerRunning: false } as unknown as SystemReport;
+    expect(setupNeeded(cloudLab, noDocker, [aws])).toBeNull();
   });
 });

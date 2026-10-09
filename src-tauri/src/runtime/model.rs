@@ -137,4 +137,39 @@ pub struct LabStatus {
     /// "vmware_desktop", "parallels", ...), or a server/cloud provider. "On this machine" alone
     /// is misleading for a VM lab: this says which hypervisor to look in.
     pub provider: Option<String>,
+    /// What a cloud-services lab exposes (its module's outputs, by the spec's names): its
+    /// entry points and credentials. Empty for the other labs.
+    pub outputs: Vec<Output>,
+    /// The lab's own words once it is up, placeholders filled in (cloud-services labs, whose
+    /// message names their outputs); None for the others, whose message is in the deploy log.
+    pub message: Option<String>,
+}
+
+/// One thing a cloud-services lab exposes: a module output, under the spec's name for it.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Output {
+    pub name: String,
+    pub value: String,
+    /// Terraform marks it sensitive (a secret key): the UI masks it until asked.
+    pub sensitive: bool,
+}
+
+impl LabStatus {
+    /// A lab with nothing of it up anywhere.
+    pub fn idle() -> Self {
+        LabStatus {
+            running: false,
+            parked: None,
+            machines: Vec::new(),
+            networks: Vec::new(),
+            url: None,
+            host: None,
+            expires_at: None,
+            place: None,
+            provider: None,
+            outputs: Vec::new(),
+            message: None,
+        }
+    }
 }

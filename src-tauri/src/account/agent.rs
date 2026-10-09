@@ -174,6 +174,8 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
         Some(target) => Some(
             server::host_name(app, target).map(|_| target.to_string()).ok_or_else(|| Error::Invalid("that host is no longer set up in the launcher".into()))?,
         ),
+        // A cloud lab never runs on an account it wasn't sent to (it costs money): no target, no
+        // launch (runtime::start says so).
         None => (data["claimLaunch"]["runtime"] == "VM").then(|| server::default_host(app)).flatten(),
     };
     // Running on a cloud account costs money, so a website launch onto one isn't auto-run: ask
@@ -188,8 +190,13 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
             return Err(Error::Invalid(format!("Launch on {target} was not confirmed on this machine.")));
         }
     }
-    let image = host.as_ref().map(|_| DEFAULT_ATTACK_IMAGE);
-    let runtime = if data["claimLaunch"]["runtime"] == "VM" { crate::runtime::Runtime::Vm } else { crate::runtime::Runtime::Docker };
+    let runtime = match data["claimLaunch"]["runtime"].as_str() {
+        Some("VM") => crate::runtime::Runtime::Vm,
+        Some("CLOUD") => crate::runtime::Runtime::Cloud,
+        _ => crate::runtime::Runtime::Docker,
+    };
+    // Cloud services have no attack box: the player works from their own machine.
+    let image = host.as_ref().filter(|_| runtime != crate::runtime::Runtime::Cloud).map(|_| DEFAULT_ATTACK_IMAGE);
     let lab_id = data["claimLaunch"]["labId"].as_str().map(str::to_string);
     // A lab already up here is refused below, and must be left alone; anything else this start
     // brought up before failing (one unhealthy service, say) is torn down, or it would keep

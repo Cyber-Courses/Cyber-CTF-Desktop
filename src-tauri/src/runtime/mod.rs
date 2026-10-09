@@ -3,6 +3,7 @@
 //! `lab`). The UI only ever passes a lab id and a runtime; paths and commands are built here.
 
 mod attack_vm;
+mod cloud_services;
 mod discover;
 mod docker;
 pub use docker::subnets_in_use;
@@ -106,7 +107,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::{Error, Result};
 
-pub use model::{Interface, LabStatus, Machine, Network, Park, Place, Port, Service};
+pub use model::{Interface, LabStatus, Machine, Network, Output, Park, Place, Port, Service};
 
 /// Mirrors `LabRuntime` in CyberBackend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -114,6 +115,9 @@ pub use model::{Interface, LabStatus, Machine, Network, Park, Place, Port, Servi
 pub enum Runtime {
     Docker,
     Vm,
+    /// Cloud services (Isoloom's `cloud-services`): a Terraform module of the lab's own,
+    /// applied into the player's cloud account. See `cloud_services`.
+    Cloud,
 }
 
 pub fn validate_id(id: &str) -> Result<()> {
@@ -146,6 +150,7 @@ fn lab_lock(id: &str) -> Arc<tokio::sync::Mutex<()>> {
 ///   local `provider` (Isoloom's docker-vm); VM labs run one VM per machine (Isoloom's vagrant).
 /// - With a server `host`: the lab runs there. ESXi runs the same Vagrantfiles; Proxmox and
 ///   the clouds run Isoloom's Terraform (Docker on one VM, or one VM per machine on Proxmox).
+/// - Cloud-services labs (`Runtime::Cloud`) run only on a cloud account `host`.
 #[allow(clippy::too_many_arguments)]
 pub async fn start(
     app: &AppHandle,
@@ -160,6 +165,9 @@ pub async fn start(
     let lock = lab_lock(id);
     let _guard = lock.lock().await;
     let _deploy = DeployGuard::new(id, Action::Start);
+    if runtime == Runtime::Cloud {
+        return cloud_services::start(app, dir, id, host, env, &mut log).await;
+    }
     let Some(host) = host else {
         server::mark_lab(dir, None)?;
         // A parked lab (paused or shut down) is one the player wants back as it was, not rebuilt:
@@ -234,6 +242,7 @@ pub async fn start(
                 }
                 Ok(())
             }
+            Runtime::Cloud => unreachable!("cloud-services labs start above"),
         };
     };
 
@@ -273,23 +282,7 @@ pub async fn start(
                 vars.push(("allowed_cidr".into(), format!("{}/32", public_ip().await?)));
             }
             if provider == providers::Provider::Aws {
-                // Stop before spending if this account is over its monthly budget, or if a budget
-                // is set and the spend is over it (AWS only); if the spend can't be read, warn
-                // and launch anyway (below).
-                match server::check_budget(app, host).await {
-                    server::BudgetCheck::Over(spent, limit) => {
-                        return Err(Error::Invalid(format!(
-                            "Monthly budget reached for this account: ${spent:.2} of ${limit:.2} spent this month. Raise the budget in the account settings, or wait until next month."
-                        )));
-                    }
-                    // Best effort: if the spend can't be read (Cost Explorer off, expired session,
-                    // Docker/CLI missing), note it and launch anyway. The lab still auto-stops, so
-                    // cost is bounded; blocking every launch over this would be too aggressive.
-                    server::BudgetCheck::Unverifiable(why) => {
-                        log(format!("Monthly budget not checked: {why} Launching anyway; the lab still auto-stops."));
-                    }
-                    server::BudgetCheck::Ok => {}
-                }
+                budget_guard(app, host, &mut log).await?;
             }
             if provider.is_cloud() {
                 log(format!("This lab runs in your {} account and is billed there until you stop it.", conn.provider.id().to_uppercase()));
@@ -330,6 +323,24 @@ pub async fn start(
             welcome(dir, &spec, lab::vagrant_target(runtime), &mut log);
             Ok(())
         }
+    }
+}
+
+/// Stops before spending if this AWS account is over its monthly budget, or if a budget is set
+/// and the spend is over it; if the spend can't be read, warns and lets the launch go on.
+async fn budget_guard(app: &AppHandle, host: &str, log: &mut impl FnMut(String)) -> Result<()> {
+    match server::check_budget(app, host).await {
+        server::BudgetCheck::Over(spent, limit) => Err(Error::Invalid(format!(
+            "Monthly budget reached for this account: ${spent:.2} of ${limit:.2} spent this month. Raise the budget in the account settings, or wait until next month."
+        ))),
+        // Best effort: if the spend can't be read (Cost Explorer off, expired session,
+        // Docker/CLI missing), note it and launch anyway. The lab still auto-stops, so
+        // cost is bounded; blocking every launch over this would be too aggressive.
+        server::BudgetCheck::Unverifiable(why) => {
+            log(format!("Monthly budget not checked: {why} Launching anyway; the lab still auto-stops."));
+            Ok(())
+        }
+        server::BudgetCheck::Ok => Ok(()),
     }
 }
 
@@ -526,6 +537,9 @@ async fn park(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mode: Par
     let lock = lab_lock(id);
     let _guard = lock.lock().await;
     let _deploy = DeployGuard::new(id, Action::Park);
+    if runtime == Runtime::Cloud {
+        return Err(Error::Invalid(CLOUD_NOT_PARKED.into()));
+    }
     if server::lab_connection(app, dir)?.is_some() {
         return Err(Error::Invalid("Pausing a lab on a server host isn't available yet. Stop it instead.".into()));
     }
@@ -545,6 +559,7 @@ async fn park(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mode: Par
             }
             vm::park(&lab::vagrant_dir(dir, runtime), mode, &[], &mut log).await?;
         }
+        Runtime::Cloud => unreachable!("refused above"),
     }
     mark_parked(dir, Some(mode))?;
     log(match mode {
@@ -553,6 +568,9 @@ async fn park(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mode: Par
     });
     Ok(())
 }
+
+/// Cloud services are created or destroyed, never kept switched off.
+const CLOUD_NOT_PARKED: &str = "A cloud lab can't be paused: stop it to end what it costs, and start it again later.";
 
 /// Brings a parked lab back, as it was.
 async fn resume(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mut log: impl FnMut(String)) -> Result<()> {
@@ -566,6 +584,9 @@ async fn resume(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mut log
 /// Also the repair for a lab some machines of which went down (powered off by hand, or a cut
 /// resume): the machines already up are left alone, the others come back.
 async fn resume_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: &mut impl FnMut(String)) -> Result<()> {
+    if runtime == Runtime::Cloud {
+        return Err(Error::Invalid(CLOUD_NOT_PARKED.into()));
+    }
     if server::lab_connection(app, dir)?.is_some() {
         return Err(Error::Invalid("This lab was parked on a server host; resuming there isn't available yet.".into()));
     }
@@ -592,6 +613,7 @@ async fn resume_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, 
                 log(format!("The lab is back, but its attack VM didn't resume: {e}. Start it from the lab page."));
             }
         }
+        Runtime::Cloud => unreachable!("refused above"),
     }
     mark_parked(dir, None)?;
     log("Lab resumed.".into());
@@ -737,7 +759,7 @@ async fn public_ip() -> Result<String> {
     )))
 }
 
-/// Next to a lab's Terraform state: which runtime started it (`DOCKER` or `VM`).
+/// Next to a lab's Terraform state: which runtime started it (`DOCKER`, `VM` or `CLOUD`).
 const RUNTIME_FILE: &str = "runtime";
 
 /// Terraform state for a lab's target, outside the lab folder.
@@ -760,6 +782,9 @@ async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mu
     let _deploy = DeployGuard::new(id, Action::Stop);
     let conn = server::lab_connection(app, dir)?;
     let result = match (runtime, conn) {
+        // Cloud services: destroyed on the account they run on; nothing to do when none.
+        (Runtime::Cloud, Some(c)) => cloud_services::destroy(app, dir, id, &c, log).await,
+        (Runtime::Cloud, None) => Ok(()),
         (Runtime::Docker, None) if local_vm(dir).is_some() => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,
         (Runtime::Docker, None) => docker::stop(dir, id, log).await,
         (Runtime::Vm, None) => {
@@ -784,6 +809,10 @@ async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mu
 }
 
 async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Result<LabStatus> {
+    if runtime == Runtime::Cloud {
+        let s = cloud_services::lab_status(app, dir, id, server::lab_connection(app, dir)?)?;
+        return Ok(LabStatus { running: s.running && !crate::deploy_worker::last_deploy_failed(app, id), ..s });
+    }
     let Some(c) = server::lab_connection(app, dir)? else {
         let s: Result<LabStatus> = match runtime {
             // Shown like a remote lab (the attack box lives in the VM, reached over SSH).
@@ -793,6 +822,7 @@ async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Resu
             }
             Runtime::Docker => Ok(LabStatus { place: Some(Place::Container), ..docker::status(dir, id).await? }),
             Runtime::Vm => Ok(LabStatus { place: Some(Place::LocalVm), ..vm::status(&lab::vagrant_dir(dir, runtime), &[]).await? }),
+            Runtime::Cloud => unreachable!("read above"),
         };
         let s = s?;
         // Parked = the launcher parked it and it is still down; a lab someone started again by
@@ -835,9 +865,10 @@ pub async fn reap_expired_labs(app: &AppHandle) {
         }
         // Best effort: tear it down to end billing. No UI context here, so logs are dropped;
         // if the destroy fails, the next sweep retries.
-        // Recorded at start: containers on one VM, or one VM per machine.
+        // Recorded at start: containers on one VM, one VM per machine, or cloud services.
         let runtime = match std::fs::read_to_string(state.join(RUNTIME_FILE)).as_deref().map(str::trim) {
             Ok("VM") => Runtime::Vm,
+            Ok("CLOUD") => Runtime::Cloud,
             _ => Runtime::Docker,
         };
         let _ = stop_locked(app, &dir, &id, runtime, |_line: String| {}).await;
@@ -955,11 +986,33 @@ pub async fn lab_status(app: AppHandle, id: String, runtime: Runtime) -> Result<
     status(&app, &dir, &id, runtime).await
 }
 
+/// Before a cloud-services lab starts: its cloud, its cost estimate, what it asks for at launch
+/// and what it exposes, from its spec at the catalogue's pinned commit. None for other labs.
+#[tauri::command]
+pub async fn lab_cloud_preview(app: AppHandle, id: String, repository: String, commit: String) -> Result<Option<cloud_services::Preview>> {
+    cloud_services::preview_at(&app, &id, &repository, &commit).await
+}
+
+/// Whether a cloud-services lab has resources in a cloud account right now (its state holds
+/// some): its folder must not be swapped for a newer version, whose module would destroy it.
+pub fn cloud_deployed(app: &AppHandle, id: &str) -> bool {
+    let Ok(base) = app.path().app_data_dir() else { return false };
+    let Ok(entries) = std::fs::read_dir(base.join("deployments").join(id)) else { return false };
+    entries.flatten().any(|e| {
+        let state = e.path();
+        std::fs::read_to_string(state.join(RUNTIME_FILE)).is_ok_and(|r| r.trim() == "CLOUD")
+            && terraform::state_json(&state).is_some_and(|s| terraform::has_resources(&s))
+    })
+}
+
 /// The observers a lab puts beside itself (`tools:` in its spec), at their addresses where it
 /// runs (container addresses for a container lab, wherever its Compose file runs).
 #[tauri::command]
 pub async fn lab_tools(app: AppHandle, id: String, runtime: Runtime) -> Result<Vec<lab::Observer>> {
     let dir = lab_dir(&app, &id)?;
+    if runtime == Runtime::Cloud {
+        return Ok(Vec::new());
+    }
     let spec = lab::instanced(&dir)?;
     Ok(lab::tools(&spec, runtime == Runtime::Docker))
 }
@@ -989,6 +1042,9 @@ pub async fn lab_check(app: AppHandle, id: String, runtime: Runtime) -> Result<d
 #[tauri::command]
 pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> Result<()> {
     let dir = lab_dir(&app, &id)?;
+    if runtime == Runtime::Cloud {
+        return Err(Error::Invalid("A cloud lab has no attack box: work from your own terminal, with what the lab gives you.".into()));
+    }
     let Some(conn) = server::lab_connection(&app, &dir)? else {
         if local_vm(&dir).is_some() && matches!(runtime, Runtime::Docker) {
             let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&lab::vagrant_dir(&dir, runtime)), &[]).await?;
@@ -1155,6 +1211,16 @@ mod tests {
         assert_eq!(parked(&dir), None);
         assert!(!dir.join(PARKED_MARKER).exists());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_catalogues_runtimes_read_as_launcher_runtimes() {
+        use super::Runtime;
+        for (json, rt) in [("\"DOCKER\"", Runtime::Docker), ("\"VM\"", Runtime::Vm), ("\"CLOUD\"", Runtime::Cloud)] {
+            assert_eq!(serde_json::from_str::<Runtime>(json).unwrap(), rt);
+            assert_eq!(serde_json::to_string(&rt).unwrap(), json);
+        }
+        assert!(serde_json::from_str::<Runtime>("\"HOSTED\"").is_err());
     }
 
     #[test]

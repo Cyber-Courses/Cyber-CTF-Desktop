@@ -11,6 +11,9 @@ export interface LabRuntimeInfo {
   providers: Provider[];
   /** Cyber CTF can run it for the player (hosted provider + a prepared snapshot). */
   hosted?: boolean;
+  /** Its source at the pinned commit, for a cloud lab's cost estimate before it starts. */
+  repository?: string;
+  commit?: string;
 }
 
 export interface Lab {
@@ -28,7 +31,7 @@ export interface Lab {
 
 const LABS_QUERY = `{ labs(sort: [{ title: ASC }]) {
   id slug title description question difficulty category
-  runtime { runtime architectures providers hosted }
+  runtime { runtime architectures providers hosted repository commit }
   skills { id name }
 } }`;
 
@@ -119,7 +122,19 @@ export function useLabs(reloadKey: unknown = 0) {
       const cur = next[id];
       next[id] = cur
         ? { ...cur, running: true }
-        : { running: true, parked: null, machines: [], networks: [], url: null, host: null, expiresAt: null, place: null, provider: null };
+        : {
+            running: true,
+            parked: null,
+            machines: [],
+            networks: [],
+            url: null,
+            host: null,
+            expiresAt: null,
+            place: null,
+            provider: null,
+            outputs: [],
+            message: null,
+          };
     }
     return next;
   }, [statuses, scanRunning]);
