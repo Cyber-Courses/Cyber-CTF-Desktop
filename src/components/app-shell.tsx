@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { CalendarDays, Cloud, Cog, FlaskConical, LayoutDashboard, type LucideIcon, MonitorCog, Search, Server } from "lucide-react";
 import { Account } from "@/features/account/account";
 import { Labs } from "@/features/labs/labs-screen";
@@ -338,9 +338,10 @@ export function AppShell() {
       <Toaster />
       {/* ---- Sidebar ---- */}
       <aside className="flex w-[14.5rem] shrink-0 flex-col border-r border-border bg-card">
-        {/* macOS titlebar band (traffic lights) inside the column, so the divider runs to the top */}
-        <div data-tauri-drag-region className="h-10 shrink-0" />
-        <div data-tauri-drag-region className="flex items-center gap-2.5 px-3.5 pb-3">
+        {/* macOS titlebar band (traffic lights) inside the column, so the divider runs to the top.
+            Linux and Windows keep their own title bar, so there it would only be a blank strip. */}
+        {isMac && <div data-tauri-drag-region className="h-10 shrink-0" />}
+        <div data-tauri-drag-region className={`flex items-center gap-2.5 px-3.5 pb-3 ${isMac ? "" : "pt-4"}`}>
           <CtfMark className="pointer-events-none size-[1.35rem]" />
           <span className="pointer-events-none text-[0.875rem] font-semibold tracking-tight">Cyber CTF</span>
           {version && <span className="pointer-events-none ml-auto font-mono text-[0.625rem] text-faint">v{version}</span>}
@@ -497,12 +498,21 @@ function ComingSoon({ icon, title, description }: { icon: "server" | "cloud" | "
 // Settings rendered on its own in the dedicated `settings` window: just the titlebar band and
 // the screen. The "set up a hypervisor" link shows the Machine screen in the main window.
 function SettingsWindowView({ auth, onAuthChange }: { auth: AuthStatus | null; onAuthChange: (status: AuthStatus) => void }) {
+  // The titlebar band stands in for macOS's hidden title; elsewhere the window's own title bar
+  // already says "Settings".
+  const isMac = useSyncExternalStore(
+    () => () => {},
+    () => navigator.userAgent.includes("Mac"),
+    () => false,
+  );
   return (
     <main className="flex h-dvh flex-col overflow-clip bg-background text-foreground">
       <Toaster />
-      <div data-tauri-drag-region className="flex h-12 shrink-0 items-center justify-center border-b border-border text-[0.8125rem] font-medium">
-        <span className="pointer-events-none">Settings</span>
-      </div>
+      {isMac && (
+        <div data-tauri-drag-region className="flex h-12 shrink-0 items-center justify-center border-b border-border text-[0.8125rem] font-medium">
+          <span className="pointer-events-none">Settings</span>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[52rem] px-7 pt-7 pb-10">
           <SettingsScreen auth={auth} onAuthChange={onAuthChange} onNavigate={showInMainWindow} />
