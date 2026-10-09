@@ -35,6 +35,7 @@ import { AUTH_CHANGED_EVENT, NAVIGATE_EVENT, REPLAY_ONBOARDING_EVENT, showInMain
 import { Button } from "@/components/ui/button";
 import { installDevMock } from "@/lib/dev-mock";
 import { useAppearanceSync } from "@/lib/appearance";
+import { translate, useT } from "@/lib/i18n";
 
 // Development only: ?mock in a plain browser answers the Tauri commands with sample data.
 installDevMock();
@@ -46,29 +47,21 @@ type Tab = "home" | "labs" | "machine" | "setup" | "server" | "cloud" | "events"
 const ONBOARDED_KEY = "cyberctf.onboarded";
 
 // Grouped: the lab area (what you run), then the setup area (the compute it runs on), then
-// Settings. `sep` draws a divider before the item, at each group boundary.
-const NAV: { id: Tab; label: string; icon: LucideIcon; soon?: boolean; sep?: boolean }[] = [
-  { id: "home", label: "Overview", icon: LayoutDashboard },
-  { id: "labs", label: "Labs", icon: FlaskConical },
-  { id: "events", label: "Events", icon: CalendarDays, soon: true },
-  { id: "machine", label: "Machine", icon: MonitorCog, sep: true },
-  { id: "server", label: "Servers", icon: Server },
-  { id: "cloud", label: "Cloud", icon: Cloud },
+// Settings. `sep` draws a divider before the item, at each group boundary. Labels are the
+// screens' titles (shell.tabs).
+const NAV: { id: Tab; icon: LucideIcon; soon?: boolean; sep?: boolean }[] = [
+  { id: "home", icon: LayoutDashboard },
+  { id: "labs", icon: FlaskConical },
+  { id: "events", icon: CalendarDays, soon: true },
+  { id: "machine", icon: MonitorCog, sep: true },
+  { id: "server", icon: Server },
+  { id: "cloud", icon: Cloud },
 ];
-
-const TITLES: Record<Tab, string> = {
-  home: "Overview",
-  labs: "Labs",
-  machine: "Machine",
-  setup: "Setup",
-  server: "Servers",
-  cloud: "Cloud",
-  events: "Events",
-  settings: "Settings",
-};
 
 export function AppShell() {
   useAppearanceSync();
+  const t = useT();
+  const title = (tab: Tab) => t(`shell.tabs.${tab}`);
   const [tab, setTab] = useState<Tab>("home");
   const [openLab, setOpenLab] = useState<{ slug: string | null; tick: number }>({ slug: null, tick: 0 });
   const [report, setReport] = useState<SystemReport | null>(null);
@@ -227,7 +220,7 @@ export function AppShell() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "," && !navigator.userAgent.includes("Mac")) {
         e.preventDefault();
-        openSettings().catch(tell("Couldn't open Settings"));
+        openSettings().catch(tell(translate("shell.failures.openSettings")));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -262,21 +255,29 @@ export function AppShell() {
     .map((l) => ({ ...l, op: ops.get(l.id) ?? (deploying.has(l.id) ? { labId: l.id, op: "launch" as const, machine: null, step: null } : null) }));
 
   const paletteCommands: Command[] = [
-    { id: "find-lab", label: "Find a lab", hint: "/", icon: Search, keywords: "labs search ctf", group: "Actions", run: findALab },
+    {
+      id: "find-lab",
+      label: t("shell.palette.findLab"),
+      hint: "/",
+      icon: Search,
+      keywords: t("shell.palette.findLabKeywords"),
+      group: t("shell.palette.groups.actions"),
+      run: findALab,
+    },
     {
       id: "settings",
-      label: "Open Settings",
+      label: t("shell.palette.openSettings"),
       icon: Cog,
-      keywords: "settings preferences appearance theme",
-      group: "Actions",
-      run: () => void openSettings().catch(tell("Couldn't open Settings")),
+      keywords: t("shell.palette.openSettingsKeywords"),
+      group: t("shell.palette.groups.actions"),
+      run: () => void openSettings().catch(tell(t("shell.failures.openSettings"))),
     },
     ...NAV.filter((n) => !n.soon).map((n) => ({
       id: `go-${n.id}`,
-      label: `Go to ${n.label}`,
+      label: t("shell.palette.goTo", { screen: title(n.id) }),
       icon: n.icon,
-      keywords: n.label,
-      group: "Screens",
+      keywords: title(n.id),
+      group: t("shell.palette.groups.screens"),
       run: () => navigate(n.id),
     })),
     ...palLabs.map((l) => ({
@@ -284,8 +285,8 @@ export function AppShell() {
       label: l.title,
       hint: l.category,
       icon: FlaskConical,
-      keywords: `lab ${l.category}`,
-      group: "Labs",
+      keywords: t("shell.palette.labKeywords", { category: l.category }),
+      group: t("shell.palette.groups.labs"),
       run: () => navigate("labs", l.slug),
     })),
   ];
@@ -324,11 +325,10 @@ export function AppShell() {
     );
 
   // Breadcrumb: where you are. A lab page shows "Labs / <lab>".
-  const crumbs = tab === "labs" && labTitle ? ["Labs", labTitle] : [tab === "settings" ? "Settings" : "This machine", TITLES[tab]];
+  const crumbs = tab === "labs" && labTitle ? [title("labs"), labTitle] : [tab === "settings" ? title("settings") : t("shell.header.thisMachine"), title(tab)];
   // `docker --version` reads "Docker version 29.5.3, build d1c06ef": the number is enough next to the engine's name.
   const dockerVersion = report?.docker.version?.match(/\d+\.\d+(\.\d+)?/)?.[0] ?? null;
-  const engine =
-    report?.dockerRunning && report.dockerEngine ? `${engineName(report.dockerEngine)}${dockerVersion ? ` ${dockerVersion}` : ""}` : null;
+  const engine = report?.dockerRunning && report.dockerEngine ? `${engineName(report.dockerEngine)}${dockerVersion ? ` ${dockerVersion}` : ""}` : null;
   const hypervisor = report?.vmProviders.find((p) => !p.remote && p.available && p.hypervisor !== false);
 
   return (
@@ -357,7 +357,7 @@ export function AppShell() {
           className="mx-2.5 mb-2.5 flex h-8 items-center justify-between rounded-sm bg-glass px-2.5 text-[0.75rem] text-faint shadow-[inset_0_0_0_1px_var(--border)] transition-colors hover:text-muted-foreground"
         >
           <span className="flex items-center gap-2">
-            <Search className="size-3.5" /> Find…
+            <Search className="size-3.5" /> {t("shell.sidebar.find")}
           </span>
           <kbd className="kbd">{isMac ? "⌘K" : "Ctrl K"}</kbd>
         </button>
@@ -367,9 +367,9 @@ export function AppShell() {
             <div key={n.id}>
               {n.sep && <div className="mx-1.5 my-2 h-px bg-border" />}
               <NavItem icon={n.icon} active={tab === n.id} dim={n.soon && tab !== n.id} onClick={() => navigate(n.id)}>
-                {n.label}
+                {title(n.id)}
                 {n.soon ? (
-                  <span className="ml-auto font-mono text-[0.625rem] text-faint">Soon</span>
+                  <span className="ml-auto font-mono text-[0.625rem] text-faint">{t("shell.sidebar.soon")}</span>
                 ) : n.id === "labs" && palLabs.length > 0 ? (
                   <span className="ml-auto font-mono text-[0.6875rem] text-faint">{palLabs.length}</span>
                 ) : null}
@@ -379,7 +379,7 @@ export function AppShell() {
 
           {activeLabs.length > 0 && (
             <>
-              <div className="section-label px-2 pt-4 pb-1.5">Running</div>
+              <div className="section-label px-2 pt-4 pb-1.5">{t("shell.sidebar.running")}</div>
               {activeLabs.map((l) => (
                 <button
                   key={l.id}
@@ -401,7 +401,7 @@ export function AppShell() {
                         )}
                       </>
                     ) : (
-                      <span className="block truncate font-mono text-[0.625rem] text-faint">running</span>
+                      <span className="block truncate font-mono text-[0.625rem] text-faint">{t("shell.sidebar.labRunning")}</span>
                     )}
                   </span>
                 </button>
@@ -410,8 +410,8 @@ export function AppShell() {
           )}
 
           <div className="flex-1" />
-          <NavItem icon={Cog} active={false} onClick={() => openSettings().catch(tell("Couldn't open Settings"))}>
-            Settings
+          <NavItem icon={Cog} active={false} onClick={() => openSettings().catch(tell(t("shell.failures.openSettings")))}>
+            {title("settings")}
             <span className="ml-auto font-mono text-[0.625rem] text-faint">{isMac ? "⌘," : "Ctrl ,"}</span>
           </NavItem>
         </nav>
@@ -440,16 +440,16 @@ export function AppShell() {
             {report ? (
               <>
                 <StatusDot tone={report.dockerRunning ? "ok" : "warn"} />
-                {engine ?? "Docker not running"}
+                {engine ?? t("shell.header.dockerNotRunning")}
                 {hypervisor && <span> · {PROVIDER_LABELS[hypervisor.provider] ?? hypervisor.provider}</span>}
               </>
             ) : checkError ? (
               <>
-                <StatusDot tone="fail" /> machine check failed
+                <StatusDot tone="fail" /> {t("shell.header.checkFailed")}
               </>
             ) : (
               <>
-                <StatusDot tone="muted" /> checking…
+                <StatusDot tone="muted" /> {t("shell.header.checking")}
               </>
             )}
           </span>
@@ -496,7 +496,8 @@ function NavItem({ icon: I, active, dim, onClick, children }: { icon: LucideIcon
 }
 
 function ComingSoon({ icon, title, description }: { icon: "server" | "cloud" | "sparkles"; title: string; description: string }) {
-  return <EmptyState icon={icon} title={`${title} is on the way`} description={description} />;
+  const t = useT();
+  return <EmptyState icon={icon} title={t("shell.screen.comingSoon", { title })} description={description} />;
 }
 
 // Settings rendered on its own in the dedicated `settings` window: just the titlebar band and
@@ -504,6 +505,7 @@ function ComingSoon({ icon, title, description }: { icon: "server" | "cloud" | "
 function SettingsWindowView({ auth, onAuthChange }: { auth: AuthStatus | null; onAuthChange: (status: AuthStatus) => void }) {
   // The titlebar band stands in for macOS's hidden title; elsewhere the window's own title bar
   // already says "Settings".
+  const t = useT();
   const isMac = useSyncExternalStore(
     () => () => {},
     () => navigator.userAgent.includes("Mac"),
@@ -514,7 +516,7 @@ function SettingsWindowView({ auth, onAuthChange }: { auth: AuthStatus | null; o
       <Toaster />
       {isMac && (
         <div data-tauri-drag-region className="flex h-12 shrink-0 items-center justify-center border-b border-border text-[0.8125rem] font-medium">
-          <span className="pointer-events-none">Settings</span>
+          <span className="pointer-events-none">{t("shell.tabs.settings")}</span>
         </div>
       )}
       <div className="flex-1 overflow-y-auto">
@@ -547,16 +549,17 @@ function Screen({
   onAuthChange: (status: AuthStatus) => void;
   onLabChange: (title: string | null) => void;
 }): ReactNode {
+  const t = useT();
   // Shown where the machine check is needed and hasn't answered: a retry when it failed.
   const waiting = (what: string) =>
     checkError ? (
       <EmptyState
         icon="alert"
-        title="Couldn’t check this machine"
+        title={t("shell.screen.checkFailed")}
         description={checkError}
         action={
           <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
-            Try again
+            {t("shell.screen.tryAgain")}
           </Button>
         }
       />
@@ -567,17 +570,10 @@ function Screen({
     );
   if (tab === "home") return <HomeScreen report={report} auth={auth} onNavigate={onNavigate} />;
   if (tab === "settings") return <SettingsScreen auth={auth} onAuthChange={onAuthChange} onNavigate={onNavigate} />;
-  if (tab === "machine") return report ? <MachineScreen report={report} onRefresh={onRefresh} onNavigate={onNavigate} /> : waiting("Checking this machine…");
+  if (tab === "machine") return report ? <MachineScreen report={report} onRefresh={onRefresh} onNavigate={onNavigate} /> : waiting(t("shell.screen.checking"));
   if (tab === "server") return <ServerScreen onNavigate={onNavigate} />;
   if (tab === "cloud") return <CloudScreen />;
-  if (tab === "events")
-    return (
-      <ComingSoon
-        icon="sparkles"
-        title="Events"
-        description="Join live CTF events where labs are hosted by Cyber CTF: nothing to run on your machine, each participant gets their own lab for the event's duration."
-      />
-    );
+  if (tab === "events") return <ComingSoon icon="sparkles" title={t("shell.tabs.events")} description={t("shell.screen.eventsDescription")} />;
   return report ? (
     <Labs
       loggedIn={auth?.loggedIn ?? false}
@@ -589,6 +585,6 @@ function Screen({
       onDetailChange={onLabChange}
     />
   ) : (
-    waiting("Loading…")
+    waiting(t("shell.screen.loading"))
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatElapsed } from "@/lib/format";
+import { useT } from "@/lib/i18n";
 
 /**
  * Auto-scrolling terminal for streamed command output: black body, and a header with a
@@ -15,7 +16,7 @@ import { formatElapsed } from "@/lib/format";
 export function LogConsole({
   lines,
   running = false,
-  title = "Output",
+  title: titleProp,
   collapseOnDone = false,
   className,
 }: {
@@ -26,6 +27,8 @@ export function LogConsole({
   collapseOnDone?: boolean;
   className?: string;
 }) {
+  const t = useT();
+  const title = titleProp ?? t("ui.log.output");
   const pre = useRef<HTMLPreElement>(null);
   const [open, setOpen] = useState(true);
   const [now, setNow] = useState<number>(() => Date.now());
@@ -86,7 +89,9 @@ export function LogConsole({
         ) : (
           <Check className="size-3.5 text-success" />
         )}
-        <span className="text-[0.75rem] font-medium text-foreground">{running ? `${title}…` : failed ? `${title} failed` : `${title} · done`}</span>
+        <span className="text-[0.75rem] font-medium text-foreground">
+          {running ? t("ui.log.running", { title }) : failed ? t("ui.log.failed", { title }) : t("ui.log.done", { title })}
+        </span>
         <span className="ml-auto font-mono text-[0.6875rem] tabular-nums text-faint">{formatElapsed(elapsed)}</span>
         {open ? <ChevronDown className="size-3.5 text-muted-foreground" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
       </button>

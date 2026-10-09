@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useFocusTrap } from "@/lib/use-focus-trap";
+import { useT } from "@/lib/i18n";
 
 /**
  * Asks before a destructive action. Cancel comes first and takes the focus, so Enter or Escape
@@ -22,6 +23,7 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref);
   useEffect(() => {
@@ -65,7 +67,7 @@ export function ConfirmDialog({
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={onCancel}>
-            Cancel
+            {t("ui.confirm.cancel")}
           </Button>
           <Button variant="destructive" size="sm" onClick={onConfirm}>
             {confirmLabel}

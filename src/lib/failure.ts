@@ -1,6 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { notify } from "@/lib/notify";
 import { toast } from "@/components/ui/toaster";
+import { translate } from "@/lib/i18n";
 
 /**
  * `.catch` handlers that say what a failure means, instead of an anonymous `() => {}`:
@@ -22,5 +23,5 @@ export const tell = (title: string) => (e: unknown) => {
 
 /** Opens a link in the player's browser; when that fails, says so with the link to open by hand. */
 export function openExternal(url: string) {
-  openUrl(url).catch((e) => tell("Couldn't open your browser")(`${url} (${String(e)})`));
+  openUrl(url).catch((e) => tell(translate("errors.browser"))(`${url} (${String(e)})`));
 }
