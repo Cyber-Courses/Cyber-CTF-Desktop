@@ -206,4 +206,6 @@ jobs:
     uses: ./.github/workflows/msix.yml
     with:
       tag: ${{ github.ref_name }}
+      # Repo variable STORE_AUTO_SUBMIT=false: leave the Store submission as a draft to review.
+      commit: ${{ vars.STORE_AUTO_SUBMIT != 'false' }}
     secrets: inherit
