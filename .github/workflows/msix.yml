@@ -25,6 +25,14 @@ on:
         description: "Also submit to the Microsoft Store"
         type: boolean
         default: false
+  # Every published release (release.yml): app version X.Y.Z ships as MSIX (X+1).Y.Z.0, which
+  # stays above the 1.1.0.0 the Store got by hand and keeps rising with each release.
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v0.3.11"
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -38,6 +46,22 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: MSIX version
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.tag }}" ]; then
+            IFS=. read -r major minor patch <<< "${TAG#v}"
+            echo "version=$((major + 1)).${minor}.${patch}.0" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          TAG: ${{ inputs.tag }}
 
       - uses: pnpm/action-setup@v4
 
@@ -78,7 +102,7 @@ jobs:
 
           # Manifest with the build version substituted in.
           $manifest = Get-Content "src-tauri\msix\AppxManifest.xml" -Raw
-          $manifest = $manifest.Replace("__VERSION__", "${{ inputs.version }}")
+          $manifest = $manifest.Replace("__VERSION__", "${{ steps.ver.outputs.version }}")
           Set-Content -Path "$layout\AppxManifest.xml" -Value $manifest -Encoding utf8
 
           Write-Host "Layout contents:"
@@ -111,7 +135,7 @@ jobs:
 
   submit:
     needs: msix
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.submit }}
+    if: ${{ inputs.tag != '' || (github.event_name == 'workflow_dispatch' && inputs.submit) }}
     runs-on: windows-latest
     steps:
       - uses: actions/download-artifact@v4
