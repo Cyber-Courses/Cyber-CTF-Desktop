@@ -413,5 +413,8 @@ pub fn run() {
             {
                 api.prevent_exit();
             }
+            if let tauri::RunEvent::Exit = event {
+                exec::kill_live_tools();
+            }
         });
 }
