@@ -349,7 +349,8 @@ mod tests {
         // pkexec's own lines (polkit 126), as it prints them.
         let refused = "Error executing command as another user: Not authorized";
         let no_agent = "Error executing command as another user: No authentication agent found.";
-        let no_tty = "Error creating textual authentication agent: Error opening current controlling terminal for the process (`/dev/tty'): No such device or address";
+        let no_tty =
+            "Error creating textual authentication agent: Error opening current controlling terminal for the process (`/dev/tty'): No such device or address";
         assert!(is_pkexec_error(refused) && is_pkexec_error(no_agent) && is_pkexec_error(no_tty));
         assert!(pkexec_refusal(refused).contains("cancelled"));
         assert!(pkexec_refusal(no_agent).contains("polkit agent") && pkexec_refusal(no_tty).contains("polkit agent"));

@@ -340,6 +340,18 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn streams_take_stdin_from_a_file() {
+        // Isoloom's exec check runners are piped into `docker compose exec -T … sh -s` this way.
+        let f = std::env::temp_dir().join(format!("cyberctf-stdin-{}.sh", std::process::id()));
+        std::fs::write(&f, "echo one\necho two\n").unwrap();
+        let mut lines = Vec::new();
+        super::stream_stdin("sh", &["-s"], None, &f, |l| lines.push(l)).await.unwrap();
+        let _ = std::fs::remove_file(&f);
+        assert_eq!(lines, ["one", "two"]);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn timed_reads_capture_the_tools_output() {
         // Regression: the timed path spawned without piping stdout, so `wait_with_output`
         // returned "" for every status probe (docker ps, compose ps, vagrant status). Labs read
