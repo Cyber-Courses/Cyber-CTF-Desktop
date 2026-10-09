@@ -29,6 +29,10 @@ on:
         description: "Only ask the Store whether a submission is in progress (no build, no submit)"
         type: boolean
         default: false
+      commit:
+        description: "With submit: send it for certification (otherwise it stays a draft to review)"
+        type: boolean
+        default: false
   # Every published release (release.yml): app version X.Y.Z ships as MSIX (X+1).Y.Z.0, which
   # stays above the 1.1.0.0 the Store got by hand and keeps rising with each release.
   workflow_call:
@@ -37,6 +41,10 @@ on:
         description: "Release tag, e.g. v0.3.11"
         type: string
         required: true
+      commit:
+        description: "Submit for certification (false: leave a draft to review in Partner Center)"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -46,9 +54,18 @@ env:
   STORE_PRODUCT_ID: "9P9L4WZ0N8ZJ"
 
 jobs:
+  # One MSIX per architecture, each built natively; the bundle job below joins them so the Store
+  # gives every PC its own (Windows on Arm gets the Arm64 build, not x64 under emulation).
   msix:
     if: ${{ !inputs.check_only }}
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - runner: windows-latest
+            arch: x64
+          - runner: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -105,9 +122,13 @@ jobs:
             Copy-Item "$icons\$a" "$layout\Assets\$a"
           }
 
+          # Per-language strings (the app description in English and French).
+          Copy-Item -Recurse "src-tauri\msix\Strings" "$layout\Strings"
+
           # Manifest with the build version substituted in.
           $manifest = Get-Content "src-tauri\msix\AppxManifest.xml" -Raw
           $manifest = $manifest.Replace("__VERSION__", "${{ steps.ver.outputs.version }}")
+          $manifest = $manifest.Replace('ProcessorArchitecture="x64"', 'ProcessorArchitecture="${{ matrix.arch }}"')
           Set-Content -Path "$layout\AppxManifest.xml" -Value $manifest -Encoding utf8
 
           Write-Host "Layout contents:"
@@ -115,32 +136,75 @@ jobs:
 
       - name: Pack MSIX
         shell: pwsh
+        env:
+          # The SDK's own tools for this runner (Arm64 runners have arm64 builds of them).
+          SDK_ARCH: ${{ matrix.arch }}
         run: |
           $ErrorActionPreference = "Stop"
           $sdk = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Directory |
-                 Where-Object { Test-Path "$($_.FullName)\x64\makeappx.exe" } |
+                 Where-Object { Test-Path "$($_.FullName)\$env:SDK_ARCH\makeappx.exe" } |
                  Sort-Object Name -Descending | Select-Object -First 1
-          $bin = "$($sdk.FullName)\x64"
+          $bin = "$($sdk.FullName)\$env:SDK_ARCH"
           $layout = "$env:RUNNER_TEMP\msix"
           Write-Host "Using SDK bin $bin"
           # Generate resources.pri: without it the Store reads no languages/resources from
           # the package and the submission commit fails validation.
           Push-Location $layout
-          & "$bin\makepri.exe" createconfig /cf priconfig.xml /dq en-US /o
+          & "$bin\makepri.exe" createconfig /cf priconfig.xml /dq en-US_fr-FR /o
           & "$bin\makepri.exe" new /pr $layout /cf priconfig.xml /mn "$layout\AppxManifest.xml" /of "$layout\resources.pri" /o
           Remove-Item priconfig.xml -Force
           Pop-Location
-          & "$bin\makeappx.exe" pack /o /d $layout /p "$env:RUNNER_TEMP\CyberCTF.msix"
+          & "$bin\makeappx.exe" pack /o /d $layout /p "$env:RUNNER_TEMP\CyberCTF_${{ matrix.arch }}.msix"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CyberCTF-msix
-          path: ${{ runner.temp }}/CyberCTF.msix
+          name: CyberCTF-msix-${{ matrix.arch }}
+          path: ${{ runner.temp }}/CyberCTF_${{ matrix.arch }}.msix
+          if-no-files-found: error
+
+  bundle:
+    needs: msix
+    runs-on: windows-latest
+    steps:
+      - name: MSIX version
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.tag }}" ]; then
+            IFS=. read -r major minor patch <<< "${TAG#v}"
+            echo "version=$((major + 1)).${minor}.${patch}.0" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          TAG: ${{ inputs.tag }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: CyberCTF-msix-*
+          merge-multiple: true
+          path: packages
+
+      - name: Bundle x64 + Arm64
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $sdk = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Directory |
+                 Where-Object { Test-Path "$($_.FullName)\x64\makeappx.exe" } |
+                 Sort-Object Name -Descending | Select-Object -First 1
+          Get-ChildItem packages
+          & "$($sdk.FullName)\x64\makeappx.exe" bundle /o /bv ${{ steps.ver.outputs.version }} /d packages /p "$env:RUNNER_TEMP\CyberCTF.msixbundle"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CyberCTF-msixbundle
+          path: ${{ runner.temp }}/CyberCTF.msixbundle
           if-no-files-found: error
 
   submit:
-    needs: msix
-    if: ${{ !cancelled() && (inputs.check_only || ((inputs.tag != '' || inputs.submit) && needs.msix.result == 'success')) }}
+    needs: bundle
+    if: ${{ !cancelled() && (inputs.check_only || ((inputs.tag != '' || inputs.submit) && needs.bundle.result == 'success')) }}
     runs-on: windows-latest
     # One submission at a time; a newer release waits its turn (only the latest waiting one is
     # kept), it isn't cancelled mid-submit.
@@ -191,46 +255,26 @@ jobs:
           }
 
       - if: ${{ !inputs.check_only }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          sparse-checkout: |
+            store
+            .github/scripts
+
+      - if: ${{ !inputs.check_only }}
         uses: actions/download-artifact@v4
         with:
-          name: CyberCTF-msix
+          name: CyberCTF-msixbundle
           path: pkg
 
-      # The Store Developer CLI is a self-contained binary from GitHub releases
-      # (not a NuGet/dotnet tool), so download + unzip it and put it on PATH.
-      - name: Install Microsoft Store Developer CLI
-        if: ${{ !inputs.check_only }}
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $zip = "$env:RUNNER_TEMP\msstore.zip"
-          Invoke-WebRequest -Uri "https://github.com/microsoft/msstore-cli/releases/latest/download/MSStoreCLI-win-x64.zip" -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath "$env:RUNNER_TEMP\msstore" -Force
-          $exe = Get-ChildItem -Recurse "$env:RUNNER_TEMP\msstore" -Filter "msstore.exe" | Select-Object -First 1
-          if (-not $exe) { $exe = Get-ChildItem -Recurse "$env:RUNNER_TEMP\msstore" -Filter "*.exe" | Select-Object -First 1 }
-          Write-Host "msstore at $($exe.FullName)"
-          Add-Content -Path $env:GITHUB_PATH -Value $exe.Directory.FullName
-
-      - name: Configure + submit to the Store
+      # Package and listing together (texts, screenshots, logos, trailers from store/), through the
+      # Partner Center submission API.
+      - name: Submit package and listing
         if: ${{ !inputs.check_only }}
         shell: pwsh
         env:
           STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
-          STORE_SELLER_ID: ${{ secrets.STORE_SELLER_ID }}
           STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
           STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
-        run: |
-          $ErrorActionPreference = "Stop"
-          msstore reconfigure `
-            --tenantId $env:STORE_TENANT_ID `
-            --sellerId $env:STORE_SELLER_ID `
-            --clientId $env:STORE_CLIENT_ID `
-            --clientSecret $env:STORE_CLIENT_SECRET
-
-          # Two steps on purpose. `publish --noCommit` uploads the package as a draft and
-          # exits cleanly; a committing `publish` instead crashes inside msstore's own
-          # post-commit status poll (MSStoreHttpException -> exit 1) even though the
-          # submission is fine. `submission publish` then starts certification without that
-          # long poll. (--appId names the app; the positional is the package path, not an id.)
-          msstore publish "pkg\CyberCTF.msix" --appId $env:STORE_PRODUCT_ID --noCommit
-          msstore submission publish $env:STORE_PRODUCT_ID
+        run: ./.github/scripts/store-submit.ps1 -Package pkg/CyberCTF.msixbundle -StoreDir store -Commit $${{ inputs.commit && 'true' || 'false' }}

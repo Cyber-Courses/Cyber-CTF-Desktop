@@ -134,6 +134,9 @@ fn plan(dep: Dependency) -> Result<Vec<Step>> {
             Dependency::Docker => "Docker.DockerDesktop",
             Dependency::Vagrant => "Hashicorp.Vagrant",
             Dependency::Terraform => "Hashicorp.Terraform",
+            Dependency::Virtualbox if std::env::consts::ARCH == "aarch64" => {
+                return Err(Error::Invalid("VirtualBox doesn't run on Windows on Arm. Run VM labs with Hyper-V, on a server or in the cloud.".into()));
+            }
             Dependency::Virtualbox => "Oracle.VirtualBox",
             Dependency::Qemu => "SoftwareFreedomConservancy.QEMU",
             Dependency::Utm => return Err(Error::Invalid("UTM is only available on macOS.".into())),
