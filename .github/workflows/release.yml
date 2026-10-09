@@ -14,7 +14,43 @@ permissions:
   contents: write
 
 jobs:
+  # The draft release, made once before the builds: each platform job only uploads to it.
+  # Created with the org's cyber-ctf-creator app: on v0.3.8 GITHUB_TOKEN was refused creating it
+  # ("Resource not accessible by integration") on every attempt, while uploading to an existing
+  # draft and publishing it still worked.
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/create-github-app-token@v1
+        id: app
+        with:
+          app-id: ${{ secrets.APP_ID_GENERATOR }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY_GENERATOR }}
+          owner: Cyber-Courses
+          repositories: Cyber-CTF-Desktop
+      - env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          version=$(node -p 'require("./src-tauri/tauri.conf.json").version')
+          tag="${{ github.ref_type == 'tag' && github.ref_name || '' }}"
+          tag="${tag:-v$version}"
+          for attempt in 1 2 3 4 5; do
+            if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+              echo "Release $tag exists."; exit 0
+            fi
+            if gh release create "$tag" --repo "${{ github.repository }}" --draft --target "${{ github.sha }}" \
+                --title "Cyber CTF v$version" --notes "Download the installer for your platform below."; then
+              exit 0
+            fi
+            echo "Creating $tag failed (attempt $attempt); retrying."
+            sleep $((attempt * 15))
+          done
+          exit 1
+
   release:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
