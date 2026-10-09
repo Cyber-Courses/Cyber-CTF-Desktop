@@ -193,3 +193,13 @@ jobs:
     with:
       tag: ${{ github.ref_name }}
     secrets: inherit
+
+  # Windows: the same release to the Microsoft Store (MSIX, signed by the Store). Its own job, so
+  # a Store hiccup (a submission still in certification blocks a new one) never holds back
+  # GitHub, Homebrew or apt.
+  store:
+    needs: publish
+    uses: ./.github/workflows/msix.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
