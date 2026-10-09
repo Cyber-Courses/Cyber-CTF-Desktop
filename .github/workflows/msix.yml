@@ -25,6 +25,10 @@ on:
         description: "Also submit to the Microsoft Store"
         type: boolean
         default: false
+      check_only:
+        description: "Only ask the Store whether a submission is in progress (no build, no submit)"
+        type: boolean
+        default: false
   # Every published release (release.yml): app version X.Y.Z ships as MSIX (X+1).Y.Z.0, which
   # stays above the 1.1.0.0 the Store got by hand and keeps rising with each release.
   workflow_call:
@@ -43,6 +47,7 @@ env:
 
 jobs:
   msix:
+    if: ${{ !inputs.check_only }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -135,10 +140,58 @@ jobs:
 
   submit:
     needs: msix
-    if: ${{ inputs.tag != '' || (github.event_name == 'workflow_dispatch' && inputs.submit) }}
+    if: ${{ !cancelled() && (inputs.check_only || ((inputs.tag != '' || inputs.submit) && needs.msix.result == 'success')) }}
     runs-on: windows-latest
+    # One submission at a time; a newer release waits its turn (only the latest waiting one is
+    # kept), it isn't cancelled mid-submit.
+    concurrency:
+      group: microsoft-store
+      cancel-in-progress: false
+    timeout-minutes: 350
     steps:
-      - uses: actions/download-artifact@v4
+      # The Store takes one submission at a time: a new one is refused while the last is still in
+      # certification. Ask Partner Center first, and wait (up to ~5.5 h) while one is going
+      # through; a submission stuck in a state only a person can resolve (an uncommitted draft,
+      # failed certification) stops the job with what to do in Partner Center.
+      - name: Wait for the Store to be free
+        shell: pwsh
+        env:
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $api = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$env:STORE_PRODUCT_ID"
+          $inProgress = @("CommitStarted", "PreProcessing", "Certification", "Release", "PendingPublication", "Publishing")
+          $deadline = (Get-Date).AddMinutes(330)
+          while ($true) {
+            # A fresh token each round: they last an hour and certification can take longer.
+            $token = (Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$env:STORE_TENANT_ID/oauth2/token" -Body @{
+              grant_type = "client_credentials"; client_id = $env:STORE_CLIENT_ID; client_secret = $env:STORE_CLIENT_SECRET
+              resource = "https://manage.devcenter.microsoft.com"
+            }).access_token
+            $headers = @{ Authorization = "Bearer $token" }
+            $pending = (Invoke-RestMethod -Uri $api -Headers $headers).pendingApplicationSubmission
+            if (-not $pending) { Write-Host "No submission in progress."; break }
+            if ("${{ inputs.check_only }}" -eq "true") {
+              $status = (Invoke-RestMethod -Uri "$api/submissions/$($pending.id)/status" -Headers $headers).status
+              Write-Host "Submission $($pending.id) is '$status'."; break
+            }
+            $status = (Invoke-RestMethod -Uri "$api/submissions/$($pending.id)/status" -Headers $headers).status
+            if ($status -notin $inProgress) {
+              Write-Host "::error::Submission $($pending.id) is '$status' in Partner Center. Finish or delete it there (Cyber CTF > the pending submission), then re-run this job."
+              exit 1
+            }
+            if ((Get-Date) -gt $deadline) {
+              Write-Host "::error::Submission $($pending.id) is still '$status' after ~5.5 h. Re-run this job once it's published."
+              exit 1
+            }
+            Write-Host "Submission $($pending.id) is '$status'; checking again in 10 minutes."
+            Start-Sleep -Seconds 600
+          }
+
+      - if: ${{ !inputs.check_only }}
+        uses: actions/download-artifact@v4
         with:
           name: CyberCTF-msix
           path: pkg
@@ -146,6 +199,7 @@ jobs:
       # The Store Developer CLI is a self-contained binary from GitHub releases
       # (not a NuGet/dotnet tool), so download + unzip it and put it on PATH.
       - name: Install Microsoft Store Developer CLI
+        if: ${{ !inputs.check_only }}
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -158,6 +212,7 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $exe.Directory.FullName
 
       - name: Configure + submit to the Store
+        if: ${{ !inputs.check_only }}
         shell: pwsh
         env:
           STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
