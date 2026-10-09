@@ -19,7 +19,7 @@ import type { LabNetwork } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { edgeTypes } from "@/features/labs/network-diagram/edges";
 import { layout } from "@/features/labs/network-diagram/layout";
-import { ANCHOR, Attacker, Bounds, Machine } from "@/features/labs/network-diagram/model";
+import { ANCHOR, Attacker, Bounds, MIN_ZOOM, Machine } from "@/features/labs/network-diagram/model";
 import { CopyText, nodeTypes } from "@/features/labs/network-diagram/nodes";
 import { Topology, topology } from "@/features/labs/network-diagram/topology";
 
@@ -31,7 +31,6 @@ import { Topology, topology } from "@/features/labs/network-diagram/topology";
 // the network it joined. Published ports are tabs on the card's bottom edge (the host's wall).
 
 /** Below this the cards can't be read: a wider lab scrolls sideways instead of shrinking. */
-const MIN_ZOOM = 0.6;
 
 type Tab = { id: string; port: number; left: number };
 
@@ -53,7 +52,7 @@ function Flow({
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(topo.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const measured = useNodesInitialized();
-  const { getNode, setViewport } = useReactFlow();
+  const { getNode, getInternalNode, setViewport } = useReactFlow();
   const [ready, setReady] = useState(false);
   const [bounds, setBounds] = useState<Bounds | null>(null);
 
@@ -64,7 +63,13 @@ function Flow({
       const n = getNode(id);
       return { w: n?.measured?.width ?? 200, h: n?.measured?.height ?? 120 };
     };
-    layout(topo, size)
+    // Where a link leaves a node from a named handle (a published port's, on its service's
+    // box): the handle's outer middle, relative to the node, as React Flow measured it.
+    const handleAt = (id: string, handle: string) => {
+      const b = getInternalNode(id)?.internals.handleBounds?.source?.find((h) => h.id === handle);
+      return b ? { x: b.x + b.width, y: b.y + b.height / 2 } : undefined;
+    };
+    layout(topo, size, handleAt)
       .then(({ boxes, routes, bounds: laid }) => {
         if (!live) return;
         const zones: Node[] = topo.zones.map((z) => {
@@ -144,7 +149,7 @@ function Flow({
     return () => {
       live = false;
     };
-  }, [measured, ready, topo, getNode, setNodes, setEdges, onSize]);
+  }, [measured, ready, topo, getNode, getInternalNode, setNodes, setEdges, onSize]);
 
   // Fit once laid out, and again whenever the shell changes size. With published ports, their
   // anchors sit exactly on the bottom edge of the card (your machine): ports in its wall.

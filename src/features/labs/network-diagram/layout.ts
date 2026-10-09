@@ -1,22 +1,32 @@
 import { type Edge } from "@xyflow/react";
 import ELK, { type ElkExtendedEdge, type ElkNode } from "elkjs/lib/elk.bundled.js";
-import { LinkData, Pt } from "@/features/labs/network-diagram/model";
+import { LinkData, MIN_ZOOM, Pt } from "@/features/labs/network-diagram/model";
 import { Topology } from "@/features/labs/network-diagram/topology";
 
 // ELK layout of the topology; published ports are placed after it, along the card's bottom edge.
 
 const elk = new ELK();
 
-/** The room one published-port tab takes along the bottom row, in layout units: the tab is
- *  ~72px wide and the diagram can be drawn a little below 1:1. */
-const PORT_TAB_SLOT = 96;
+/** The room one published-port tab takes along the bottom row, in layout units. The tab is
+ *  drawn at its own size (~80px with a gap) whatever the zoom, so the slot is sized for the
+ *  smallest zoom the diagram is drawn at. */
+export const PORT_TAB_SLOT = Math.ceil(88 / MIN_ZOOM);
+/** A published-port lane beside its card: the first one this far out, the next ones a step further. */
+const LANE_GAP = 14;
+const LANE_STEP = 10;
 
 /** Lays the measured nodes out with ELK. Zones run left to right in attack order (attack →
  *  entry network → pivot → deeper network); inside a zone the bridge sits above its machines.
  *  Localhost bindings are left out of ELK and set in a band along the bottom (the host edge).
  *  Returns absolute positions, zone frames and routes. */
-export async function layout(topo: Topology, size: (id: string) => { w: number; h: number }) {
+export async function layout(topo: Topology, size: (id: string) => { w: number; h: number }, handleAt?: (node: string, handle: string) => Pt | undefined) {
   const inZone = new Set(topo.zones.flatMap((z) => z.members));
+  // Published ports leave from their service's box (its right edge), each down its own lane
+  // beside the card: room for those lanes is kept on the card's right, so they never run
+  // into a neighbour.
+  const lanes = new Map<string, number>();
+  topo.edges.filter((e) => e.sourceHandle?.startsWith("pub-")).forEach((e) => lanes.set(e.source, (lanes.get(e.source) ?? 0) + 1));
+  const laneRoom = (id: string) => (lanes.has(id) ? LANE_GAP + lanes.get(id)! * LANE_STEP : 0);
   // Published ports and uplinks are placed after ELK, around the laid-out lab.
   const isHostPort = (id: string) => id.startsWith("hp-") || id.startsWith("up-");
   // Every node gets two fixed ports, top-centre in and bottom-centre out, matching the
@@ -26,7 +36,7 @@ export async function layout(topo: Topology, size: (id: string) => { w: number; 
     const { w, h } = size(id);
     return {
       id,
-      width: w,
+      width: w + laneRoom(id),
       height: h,
       layoutOptions: { "elk.portConstraints": "FIXED_POS" },
       ports: [
@@ -93,7 +103,7 @@ export async function layout(topo: Topology, size: (id: string) => { w: number; 
 
   const boxes = new Map<string, { x: number; y: number; w: number; h: number }>();
   const walk = (n: ElkNode) => {
-    if (n.id !== "root") boxes.set(n.id, { x: n.x ?? 0, y: n.y ?? 0, w: n.width ?? 0, h: n.height ?? 0 });
+    if (n.id !== "root") boxes.set(n.id, { x: n.x ?? 0, y: n.y ?? 0, w: (n.width ?? 0) - laneRoom(n.id), h: n.height ?? 0 });
     n.children?.forEach(walk);
   };
   walk(out);
@@ -112,9 +122,10 @@ export async function layout(topo: Topology, size: (id: string) => { w: number; 
   const laid = [...boxes.values()];
   let minX = Math.min(...laid.map((b) => b.x));
   const minY = Math.min(...laid.map((b) => b.y));
-  let maxX = Math.max(...laid.map((b) => b.x + b.w));
+  let maxX = Math.max(...[...boxes.entries()].map(([id, b]) => b.x + b.w + laneRoom(id)));
   let maxY = Math.max(...laid.map((b) => b.y + b.h));
-  const rowY = maxY + 54;
+  // Below the lowest lane turn (one per published port of the busiest card).
+  const rowY = maxY + 54 + Math.max(0, ...[...lanes.values()].map((n) => n * LANE_STEP));
   let docked = false;
   const byMachine = new Map<string, Edge<LinkData>[]>();
   topo.edges.filter((e) => isHostPort(e.target)).forEach((e) => byMachine.set(e.source, [...(byMachine.get(e.source) ?? []), e]));
@@ -122,30 +133,55 @@ export async function layout(topo: Topology, size: (id: string) => { w: number; 
   // its anchor, so anchors need a tab's width between them, under one machine and across
   // neighbouring machines alike: centred under its machine, then pushed right along the row
   // wherever it would overlap the previous one.
-  const placed: { e: Edge<LinkData>; m: { x: number; y: number; w: number; h: number }; x: number; w: number; h: number }[] = [];
+  type Placed = { e: Edge<LinkData>; m: { x: number; y: number; w: number; h: number }; x: number; w: number; h: number; start?: Pt; lane: number };
+  const placed: Placed[] = [];
   byMachine.forEach((list, machine) => {
     const m = boxes.get(machine);
     if (!m) return;
-    list.forEach((e, k) => {
-      const { w, h } = size(e.target);
-      placed.push({ e, m, w, h, x: m.x + m.w / 2 - w / 2 + (k - (list.length - 1) / 2) * PORT_TAB_SLOT });
+    const items = list.map((e) => {
+      const h = e.sourceHandle ? handleAt?.(machine, e.sourceHandle) : undefined;
+      return { e, start: h ? { x: m.x + h.x, y: m.y + h.y } : undefined };
+    });
+    // Untangled: the lowest service takes the innermost lane, turns first and gets the leftmost
+    // tab; higher ones go further out and lower, so no two links cross. Links from the card's
+    // bottom (a port no service shows) come first, straight down on the left.
+    const fromBottom = items.filter((i) => !i.start);
+    const fromServices = items.filter((i) => i.start).sort((a, b) => b.start!.y - a.start!.y);
+    [...fromBottom, ...fromServices].forEach((it, k, all) => {
+      const { w, h } = size(it.e.target);
+      placed.push({
+        e: it.e,
+        m,
+        w,
+        h,
+        start: it.start,
+        lane: it.start ? fromServices.indexOf(it) : -1,
+        x: m.x + m.w / 2 - w / 2 + (k - (all.length - 1) / 2) * PORT_TAB_SLOT,
+      });
     });
   });
   placed.sort((a, b) => a.x - b.x);
   placed.forEach((p, i) => {
     if (i > 0) p.x = Math.max(p.x, placed[i - 1].x + PORT_TAB_SLOT);
   });
-  placed.forEach(({ e, m, x, w, h }) => {
+  placed.forEach(({ e, m, x, w, h, start, lane }) => {
     boxes.set(e.target, { x, y: rowY, w, h });
-    routes.set(e.id, [
-      { x: m.x + m.w / 2, y: m.y + m.h },
-      { x: m.x + m.w / 2, y: rowY - 24 },
-      { x: x + w / 2, y: rowY - 24 },
-      { x: x + w / 2, y: rowY },
-    ]);
+    const tab = x + w / 2;
+    if (start) {
+      const laneX = m.x + m.w + LANE_GAP + lane * LANE_STEP;
+      const turnY = m.y + m.h + LANE_GAP + lane * LANE_STEP;
+      routes.set(e.id, [start, { x: laneX, y: start.y }, { x: laneX, y: turnY }, { x: tab, y: turnY }, { x: tab, y: rowY }]);
+    } else {
+      routes.set(e.id, [
+        { x: m.x + m.w / 2, y: m.y + m.h },
+        { x: m.x + m.w / 2, y: rowY - 24 },
+        { x: tab, y: rowY - 24 },
+        { x: tab, y: rowY },
+      ]);
+    }
     // Half a tab beyond the last anchor, so the tab isn't cut at the drawing's edge.
-    minX = Math.min(minX, x + w / 2 - PORT_TAB_SLOT / 2);
-    maxX = Math.max(maxX, x + w / 2 + PORT_TAB_SLOT / 2);
+    minX = Math.min(minX, tab - PORT_TAB_SLOT / 2);
+    maxX = Math.max(maxX, tab + PORT_TAB_SLOT / 2);
     maxY = Math.max(maxY, rowY + h);
     docked = true;
   });

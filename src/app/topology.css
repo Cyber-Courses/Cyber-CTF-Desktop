@@ -421,6 +421,7 @@
   margin-top: 0.8125rem;
 }
 .service-chip {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.5625rem;

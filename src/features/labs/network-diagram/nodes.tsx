@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Check, Copy, DoorOpen, Lock, Monitor, Network, ShieldCheck, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ComputerData, ServiceRow, ZoneData, attack, isIp, netLabel, serviceMeta } from "@/features/labs/network-diagram/model";
+import { ComputerData, ServiceRow, ZoneData, attack, isIp, netLabel, publishHandle, serviceMeta } from "@/features/labs/network-diagram/model";
 import { tell } from "@/lib/failure";
 
 // React Flow node cards for the lab network diagram.
@@ -136,8 +136,21 @@ function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string
 function ServiceChip({ row, ip }: { row: ServiceRow; ip: string }) {
   const meta = serviceMeta[row.type];
   const ServiceIcon = meta.icon;
+  // Where this service's published ports leave the card: the right edge of its box, spread
+  // down it when it publishes more than one.
+  const published = row.ports.filter((p) => p.published > 0);
   return (
     <div className="service-chip" style={{ "--service-color": meta.color } as React.CSSProperties}>
+      {published.map((p, i) => (
+        <Handle
+          key={p.published}
+          id={publishHandle(p.published)}
+          type="source"
+          position={Position.Right}
+          className="topology-handle publish-handle"
+          style={{ top: `${((i + 1) * 100) / (published.length + 1)}%` }}
+        />
+      ))}
       <div className="service-icon">
         <ServiceIcon size={15} />
       </div>

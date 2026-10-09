@@ -84,9 +84,15 @@ const invoiceStatus = {
       state: "running",
       image: "node:20",
       ip: "10.42.0.3",
-      ports: [{ published: 8080, target: 8080 }],
+      ports: [
+        { published: 8080, target: 8080 },
+        { published: 9090, target: 9090 },
+      ],
       interfaces: [{ network: "default", ip: "10.42.0.3" }],
-      services: [{ name: "invoice-api", kind: "web", ports: [8080] }],
+      services: [
+        { name: "invoice-api", kind: "web", ports: [8080] },
+        { name: "admin", kind: "web", ports: [9090] },
+      ],
       infra: false,
     },
     {
@@ -94,7 +100,7 @@ const invoiceStatus = {
       state: "running",
       image: "postgres:16",
       ip: "10.42.0.4",
-      ports: [],
+      ports: [{ published: 5432, target: 5432 }],
       interfaces: [{ network: "default", ip: "10.42.0.4" }],
       services: [{ name: "postgres", kind: "database", ports: [5432] }],
       infra: false,
