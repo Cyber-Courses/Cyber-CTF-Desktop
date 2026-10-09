@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/ui/status-pill";
 import { type CloudProvider, type ProvisioningImage, type Tool } from "@/lib/tauri";
 import { LogoTile, Status } from "@/features/cloud/account-row";
+import { useT } from "@/lib/i18n";
 
 /** A dense tool row: optional logo, name over a note, then the mono status and an xs action. */
 function Row({ lead, name, note, status, action }: { lead?: ReactNode; name: string; note?: string; status: ReactNode; action?: ReactNode }) {
@@ -38,6 +39,7 @@ export function CliRow({
   locked: boolean;
   onInstall: () => void;
 }) {
+  const t = useT();
   const installed = !!tool?.installed;
   return (
     <Row
@@ -48,7 +50,7 @@ export function CliRow({
         !installed &&
         tool && (
           <Button variant="outline" size="xs" onClick={onInstall} disabled={busy || locked}>
-            {busy ? "Installing…" : "Install"}
+            {busy ? t("cloud.tools.installing") : t("cloud.tools.install")}
           </Button>
         )
       }
@@ -71,6 +73,7 @@ export function ToolRow({
   locked: boolean;
   onInstall: () => void;
 }) {
+  const t = useT();
   const installed = !!tool?.installed;
   return (
     <Row
@@ -81,7 +84,7 @@ export function ToolRow({
         !installed &&
         tool && (
           <Button variant="outline" size="xs" onClick={onInstall} disabled={busy || locked}>
-            {busy ? "Installing…" : "Install"}
+            {busy ? t("cloud.tools.installing") : t("cloud.tools.install")}
           </Button>
         )
       }
@@ -102,6 +105,7 @@ export function ImageRow({
   locked: boolean;
   onPull: () => void;
 }) {
+  const t = useT();
   return (
     <Row
       name={image.name}
@@ -109,13 +113,13 @@ export function ImageRow({
       status={
         <span className="flex items-center gap-2 font-mono text-[0.6875rem] text-faint">
           <StatusDot tone={image.present ? "ok" : "muted"} />
-          {image.present ? "pulled" : "not pulled"}
+          {image.present ? t("cloud.tools.pulled") : t("cloud.tools.notPulled")}
         </span>
       }
       action={
         !image.present && (
           <Button variant="outline" size="xs" onClick={onPull} disabled={busy || locked}>
-            {busy ? "Pulling…" : "Pull"}
+            {busy ? t("cloud.tools.pulling") : t("cloud.tools.pull")}
           </Button>
         )
       }

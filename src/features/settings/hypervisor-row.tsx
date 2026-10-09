@@ -11,6 +11,7 @@ import { providerLabel } from "@/features/machine/hypervisors";
 import { Row } from "@/features/settings/settings-layout";
 import { getVmProvider, setVmProvider } from "@/lib/settings";
 import { installVagrantPlugin, type Provider, type ProviderStatus, type SystemReport } from "@/lib/tauri";
+import { translate, useT } from "@/lib/i18n";
 
 /**
  * Which local hypervisor VM labs run on. Every installed one is listed: the ready ones can be
@@ -28,6 +29,7 @@ export function HypervisorRow({
   onNavigate: (tab: "machine") => void;
   onRefresh: () => void;
 }) {
+  const t = useT();
   const [provider, setProvider] = useState<Provider | null>(() => getVmProvider());
   const [installing, setInstalling] = useState<string | null>(null);
   const [log, setLog] = useState<string[] | null>(null);
@@ -47,10 +49,10 @@ export function HypervisorRow({
 
   async function installAddon(plugin: string) {
     setInstalling(plugin);
-    setLog([`Installing the Vagrant add-on ${plugin}…`]);
+    setLog([translate("settings.hypervisor.logInstalling", { plugin })]);
     try {
       await installVagrantPlugin(plugin, (l) => setLog((x) => [...(x ?? []), l]));
-      setLog((x) => [...(x ?? []), "✓ Installed"]);
+      setLog((x) => [...(x ?? []), translate("settings.hypervisor.logInstalled")]);
     } catch (e) {
       setLog((x) => [...(x ?? []), `✗ ${String(e)}`]);
     } finally {
@@ -61,48 +63,51 @@ export function HypervisorRow({
 
   const setupLink = (
     <button onClick={() => onNavigate("machine")} className="inline-flex items-center gap-1 text-link underline-offset-4 hover:underline">
-      Set one up on the Machine page <ArrowRight className="size-3" />
+      {t("settings.hypervisor.setupLink")} <ArrowRight className="size-3" />
     </button>
   );
 
   if (local === null) {
     return (
       <Row
-        title="Hypervisor for VM labs"
+        title={t("settings.hypervisor.title")}
         description={
           <span className="flex items-center gap-2">
-            <Spinner className="size-3" /> Checking hypervisors…
+            <Spinner className="size-3" /> {t("settings.hypervisor.checking")}
           </span>
         }
       />
     );
   }
   if (local.length === 0) {
-    return <Row title="Hypervisor for VM labs" description={<>No hypervisor is installed on this machine yet. {setupLink}</>} />;
+    return (
+      <Row
+        title={t("settings.hypervisor.title")}
+        description={
+          <>
+            {t("settings.hypervisor.noneInstalled")} {setupLink}
+          </>
+        }
+      />
+    );
   }
 
   const current = ready.find((h) => h.provider === (effective ?? ready[0]?.provider));
   return (
     <Row
       stacked
-      title="Hypervisor for VM labs"
-      description={
-        current ? (
-          <>VM labs and the VM test run on {providerLabel(current, report?.os)}.</>
-        ) : (
-          <>None of the installed hypervisors can run VM labs yet. Install its Vagrant add-on below.</>
-        )
-      }
+      title={t("settings.hypervisor.title")}
+      description={current ? t("settings.hypervisor.current", { name: providerLabel(current, report?.os) }) : t("settings.hypervisor.noneReady")}
     >
       {ready.length > 0 && (
-        <RadioList label="Hypervisor for VM labs" className="mt-3">
+        <RadioList label={t("settings.hypervisor.title")} className="mt-3">
           {ready.length > 1 && (
             <RadioRow
               compact
               selected={effective === null}
               onSelect={() => choose(null)}
-              title="Automatic"
-              subtitle={`Uses ${providerLabel(ready[0], report?.os)}, the first ready hypervisor.`}
+              title={t("settings.hypervisor.automatic")}
+              subtitle={t("settings.hypervisor.automaticNote", { name: providerLabel(ready[0], report?.os) })}
             />
           )}
           {ready.map((h) => (
@@ -117,7 +122,7 @@ export function HypervisorRow({
                   {providerLabel(h, report?.os)}
                 </span>
               }
-              subtitle={h.plugin ? `Ready · Vagrant add-on ${h.plugin}` : "Ready · built into Vagrant"}
+              subtitle={h.plugin ? t("settings.hypervisor.readyPlugin", { plugin: h.plugin }) : t("settings.hypervisor.readyBuiltIn")}
             />
           ))}
         </RadioList>
@@ -130,17 +135,19 @@ export function HypervisorRow({
               <div className="min-w-0 flex-1">
                 <p className="text-[0.8125rem] font-medium text-foreground">{providerLabel(h, report?.os)}</p>
                 <p className="truncate text-[0.75rem] text-muted-foreground">
-                  {h.plugin && !h.pluginInstalled ? `Installed · needs the Vagrant add-on ${h.plugin}` : (h.reason ?? "Installed · not ready for VM labs")}
+                  {h.plugin && !h.pluginInstalled
+                    ? t("settings.hypervisor.needsPlugin", { plugin: h.plugin })
+                    : (h.reason ?? t("settings.hypervisor.notReady"))}
                 </p>
               </div>
               {h.plugin && !h.pluginInstalled && (
                 <Button variant="outline" size="xs" disabled={installing !== null || !report?.vagrant.installed} onClick={() => installAddon(h.plugin!)}>
                   {installing === h.plugin ? (
                     <>
-                      <Spinner className="size-3.5" /> Installing…
+                      <Spinner className="size-3.5" /> {t("settings.hypervisor.installing")}
                     </>
                   ) : (
-                    "Install add-on"
+                    t("settings.hypervisor.installAddon")
                   )}
                 </Button>
               )}
@@ -148,7 +155,7 @@ export function HypervisorRow({
           ))}
         </div>
       )}
-      {log && <LogConsole className="mt-3" lines={log} running={installing !== null} title="Vagrant add-on" />}
+      {log && <LogConsole className="mt-3" lines={log} running={installing !== null} title={t("settings.hypervisor.logTitle")} />}
     </Row>
   );
 }

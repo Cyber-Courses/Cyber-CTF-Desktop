@@ -14,6 +14,7 @@ import { CleanupSection } from "@/features/settings/cleanup-section";
 import { HypervisorRow } from "@/features/settings/hypervisor-row";
 import { Section, useSavedFlash } from "@/features/settings/settings-layout";
 import { warn } from "@/lib/failure";
+import { useT } from "@/lib/i18n";
 
 export const ONBOARDED_KEY = "cyberctf.onboarded";
 
@@ -28,6 +29,7 @@ export function SettingsScreen({
   onAuthChange: (status: AuthStatus) => void;
   onNavigate: (tab: "machine") => void;
 }) {
+  const t = useT();
   const [agent, setAgent] = useState<AgentInfo | null>(null);
   const [report, setReport] = useState<SystemReport | null>(null);
   const [version, setVersion] = useState<string | null>(null);
@@ -54,30 +56,32 @@ export function SettingsScreen({
   // One section at a time, picked from a rail: a setting is one click away instead of somewhere
   // down a long scroll, and the window fits its content.
   const tabs = [
-    { id: "account", label: "Account", icon: UserRound },
-    { id: "appearance", label: "Appearance", icon: Palette },
-    { id: "labs", label: "Labs", icon: FlaskConical },
-    { id: "maintenance", label: "Maintenance", icon: Eraser },
-    { id: "about", label: "About", icon: Info },
+    { id: "account", label: t("settings.tabs.account"), icon: UserRound },
+    { id: "appearance", label: t("settings.tabs.appearance"), icon: Palette },
+    { id: "labs", label: t("settings.tabs.labs"), icon: FlaskConical },
+    { id: "maintenance", label: t("settings.tabs.maintenance"), icon: Eraser },
+    { id: "about", label: t("settings.tabs.about"), icon: Info },
   ] as const;
   type Tab = (typeof tabs)[number]["id"];
   const [tab, setTab] = useState<Tab>("account");
 
   return (
     <div className="mx-auto flex max-w-[47.5rem] gap-8 pb-10">
-      <nav aria-label="Settings sections" className="w-44 shrink-0 space-y-0.5 pt-1">
-        {tabs.map((t) => (
+      <nav aria-label={t("settings.tabs.label")} className="w-44 shrink-0 space-y-0.5 pt-1">
+        {tabs.map((tb) => (
           <button
-            key={t.id}
+            key={tb.id}
             type="button"
-            onClick={() => setTab(t.id)}
-            aria-current={tab === t.id ? "page" : undefined}
+            onClick={() => setTab(tb.id)}
+            aria-current={tab === tb.id ? "page" : undefined}
             className={cn(
               "flex h-8 w-full items-center gap-2.5 rounded-sm px-2.5 text-left text-[0.8125rem] transition-colors",
-              tab === t.id ? "bg-glass-2 text-foreground shadow-[inset_0_0_0_1px_var(--border)]" : "text-muted-foreground hover:bg-glass hover:text-foreground",
+              tab === tb.id
+                ? "bg-glass-2 text-foreground shadow-[inset_0_0_0_1px_var(--border)]"
+                : "text-muted-foreground hover:bg-glass hover:text-foreground",
             )}
           >
-            <t.icon className="size-4 shrink-0 opacity-85" /> {t.label}
+            <tb.icon className="size-4 shrink-0 opacity-85" /> {tb.label}
           </button>
         ))}
       </nav>
@@ -88,7 +92,7 @@ export function SettingsScreen({
         {tab === "appearance" && <AppearanceSection />}
 
         {tab === "labs" && (
-          <Section title="Labs" description="How labs start on this machine. Saved on this computer only." saved={labsSaved}>
+          <Section title={t("settings.labs.title")} description={t("settings.labs.description")} saved={labsSaved}>
             <LabPortsRow onSaved={flashLabs} />
             <AttackBoxRows onSaved={flashLabs} />
             <HypervisorRow report={report} onSaved={flashLabs} onNavigate={onNavigate} onRefresh={recheck} />

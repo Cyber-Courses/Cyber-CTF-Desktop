@@ -12,6 +12,7 @@ import { ProviderStep } from "@/features/servers/host-setup/provider-step";
 import { TestStep } from "@/features/servers/host-setup/test-step";
 import { useHostSetup } from "@/features/servers/host-setup/use-host-setup";
 import type { ServerHost, ServerHostInput, SystemReport } from "@/lib/tauri";
+import { useT } from "@/lib/i18n";
 
 export function HostSetupPage({
   initial,
@@ -28,20 +29,15 @@ export function HostSetupPage({
   /** Setup finished or cancelled: the window closes. */
   onDone: () => void;
 }) {
+  const t = useT();
   const s = useHostSetup({ initial, report, onRefresh, onSaved, onDone });
   const { i, cloud, steps, key, title } = s;
   return (
     <>
       <div>
-        <p className="font-mono text-[0.6875rem] tabular-nums text-faint">
-          Step {i + 1} of {steps.length}
-        </p>
+        <p className="font-mono text-[0.6875rem] tabular-nums text-faint">{t("servers.setup.stepOf", { n: i + 1, total: steps.length })}</p>
         <h1 className="serif-title mt-1.5 text-[1.75rem] text-foreground">{title}</h1>
-        <p className="mt-1.5 text-[0.8125rem] text-muted-foreground">
-          {cloud
-            ? "Run labs as throwaway instances in your own cloud account. Credentials stay on this machine, never with Cyber CTF."
-            : "Point the launcher at your server. The password goes to your OS keychain, never to Cyber CTF."}
-        </p>
+        <p className="mt-1.5 text-[0.8125rem] text-muted-foreground">{cloud ? t("servers.setup.leadCloud") : t("servers.setup.leadServer")}</p>
       </div>
 
       {/* Thin step indicator, one segment per step. */}

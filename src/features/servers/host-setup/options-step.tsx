@@ -7,35 +7,40 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { Field, Input, Nav, Note, Select, Step } from "@/features/servers/host-setup/form";
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
+import { useFormat, useT } from "@/lib/i18n";
 
 export function OptionsStep({ s }: { s: HostSetup }) {
+  const t = useT();
+  const format = useFormat();
+  const usd = (n: number) => format.number(n, { style: "currency", currency: "USD" });
   const { v, saving, error, mtdCost, set, text, connectionOk, back, saveAndTest } = s;
   return (
-    <Step icon={Cloud} title="Lab settings" description="Name this account and choose when idle labs stop.">
+    <Step icon={Cloud} title={t("servers.setup.options.title")} description={t("servers.setup.options.description")}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Name">
-          <Input mono={false} {...text("name")} placeholder={v.provider === "azure" ? "My Azure" : v.provider === "gcp" ? "My Google Cloud" : "My AWS"} />
+        <Field label={t("servers.setup.options.name")}>
+          <Input
+            mono={false}
+            {...text("name")}
+            placeholder={t(`servers.setup.options.namePlaceholders.${v.provider === "azure" ? "azure" : v.provider === "gcp" ? "gcp" : "aws"}`)}
+          />
         </Field>
-        <Field label="Auto-stop">
+        <Field label={t("servers.setup.options.autoStop")}>
           <Select value={String(v.autoStopHours ?? 4)} onChange={(e) => set("autoStopHours", Number(e.target.value))}>
             {[1, 2, 4, 8, 12, 24].map((h) => (
               <option key={h} value={h}>
-                {h} hour{h > 1 ? "s" : ""}
+                {t("servers.setup.options.hours", { count: h })}
               </option>
             ))}
-            <option value={0}>Never</option>
+            <option value={0}>{t("servers.setup.options.never")}</option>
           </Select>
         </Field>
       </div>
       <p className="mt-2 text-[0.75rem] text-muted-foreground">
-        {v.provider === "aws"
-          ? "An auto-stopped lab terminates itself when the time is up, even if this machine is off."
-          : "At the auto-stop time the launcher tears the lab down to end billing, so keep it open (or stop the lab yourself) before then."}{" "}
-        Each lab picks its own instance size, so the cost depends on the lab.
+        {v.provider === "aws" ? t("servers.setup.options.awsAutoStop") : t("servers.setup.options.otherAutoStop")} {t("servers.setup.options.costNote")}
       </p>
       {v.provider === "aws" && (
         <div className="mt-3">
-          <Field label="Monthly budget (USD)" hint="optional">
+          <Field label={t("servers.setup.options.budget")} hint={t("servers.setup.options.optional")}>
             <Input
               mono
               type="number"
@@ -43,13 +48,14 @@ export function OptionsStep({ s }: { s: HostSetup }) {
               step={5}
               value={v.monthlyLimit ?? ""}
               onChange={(e) => set("monthlyLimit", e.target.value === "" ? null : Number(e.target.value))}
-              placeholder="no limit"
+              placeholder={t("servers.setup.options.noLimit")}
             />
           </Field>
           {mtdCost != null && (
             <p className={cn("mt-1.5 text-[0.75rem]", v.monthlyLimit && mtdCost >= v.monthlyLimit ? "text-destructive" : "text-muted-foreground")}>
-              Spent this month: ${mtdCost.toFixed(2)}
-              {v.monthlyLimit ? ` of $${v.monthlyLimit.toFixed(2)}` : ""}.
+              {v.monthlyLimit
+                ? t("servers.setup.options.spentOf", { spent: usd(mtdCost), limit: usd(v.monthlyLimit) })
+                : t("servers.setup.options.spent", { spent: usd(mtdCost) })}
             </p>
           )}
         </div>
@@ -63,12 +69,12 @@ export function OptionsStep({ s }: { s: HostSetup }) {
       <Nav
         left={
           <Button variant="ghost" onClick={back}>
-            <ArrowLeft className="size-4" /> Back
+            <ArrowLeft className="size-4" /> {t("servers.setup.nav.back")}
           </Button>
         }
         right={
           <Button onClick={saveAndTest} disabled={saving || !connectionOk}>
-            {saving && <Spinner className="size-4" />} Save and test
+            {saving && <Spinner className="size-4" />} {t("servers.setup.nav.saveAndTest")}
           </Button>
         }
       />

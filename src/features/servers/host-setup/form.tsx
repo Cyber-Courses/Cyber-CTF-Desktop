@@ -6,6 +6,7 @@ import { type RemoteProvider } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { openExternal } from "@/lib/failure";
 import { fieldClass } from "@/components/ui/input";
+import { useT } from "@/lib/i18n";
 
 /** Proxmox's own icon mark (official media kit, unaltered), or a neutral mark for ESXi / AWS. */
 export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
@@ -19,24 +20,20 @@ export function HypervisorMark({ provider }: { provider: RemoteProvider }) {
 
 /** Trademark line, shown pinned at the bottom of the setup window. */
 export function SetupTrademarks({ cloud = false }: { cloud?: boolean }) {
+  const t = useT();
   if (cloud) {
-    return (
-      <p className="text-[0.6875rem] leading-relaxed text-faint">
-        Amazon Web Services and AWS are trademarks of Amazon.com, Inc. Microsoft Azure and Google Cloud are trademarks of their respective owners. Cyber CTF
-        isn&apos;t affiliated with any of them.
-      </p>
-    );
+    return <p className="text-[0.6875rem] leading-relaxed text-faint">{t("servers.setup.trademarks.cloud")}</p>;
   }
   return (
     <p className="text-[0.6875rem] leading-relaxed text-faint">
-      Proxmox® is a registered trademark of Proxmox Server Solutions GmbH.{" "}
+      {t("servers.setup.trademarks.proxmox")}{" "}
       <button
         onClick={() => openExternal("https://www.proxmox.com")}
         className="inline-flex items-center gap-0.5 underline-offset-2 hover:text-muted-foreground hover:underline"
       >
         proxmox.com <ExternalLink className="size-3" />
       </button>{" "}
-      VMware and ESXi are trademarks of Broadcom. Cyber CTF isn&apos;t affiliated with any of them.
+      {t("servers.setup.trademarks.vmware")}
     </p>
   );
 }

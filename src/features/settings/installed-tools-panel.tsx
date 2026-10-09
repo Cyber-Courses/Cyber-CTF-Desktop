@@ -9,6 +9,7 @@ import { Panel, PanelHeader } from "@/components/ui/panel";
 import { installedTools, uninstallDependency, type Dependency, type InstalledTool } from "@/lib/tauri";
 import { formatAgo } from "@/lib/format";
 import { warn } from "@/lib/failure";
+import { translate, useT } from "@/lib/i18n";
 
 const NAMES: Record<Dependency, string> = {
   docker: "Docker",
@@ -33,6 +34,7 @@ function toolName(dep: Dependency): string {
 /** The tools Cyber CTF installed during setup, each removable. Hidden when there are none; a tool
  *  the player had before is never listed, so nothing of theirs can be removed from here. */
 export function InstalledToolsPanel() {
+  const t = useT();
   const [tools, setTools] = useState<InstalledTool[]>([]);
   const [asking, setAsking] = useState<Dependency | null>(null);
   const [removing, setRemoving] = useState<Dependency | null>(null);
@@ -46,7 +48,7 @@ export function InstalledToolsPanel() {
   const remove = async (dep: Dependency) => {
     setAsking(null);
     setRemoving(dep);
-    setLog([`Removing ${toolName(dep)}…`]);
+    setLog([translate("settings.installedTools.logRemoving", { name: toolName(dep) })]);
     try {
       await uninstallDependency(dep, (line) => setLog((l) => [...l, line]));
     } catch (e) {
@@ -61,34 +63,37 @@ export function InstalledToolsPanel() {
   const now = Date.now();
   return (
     <Panel>
-      <PanelHeader title="Tools Cyber CTF installed" meta={tools.length ? `${tools.length} installed` : undefined} />
-      <p className="border-b border-border px-4 py-2.5 text-[0.75rem] text-muted-foreground">
-        Installed during setup. Remove the ones you no longer need; tools you had before aren&apos;t listed.
-      </p>
+      <PanelHeader title={t("settings.installedTools.title")} meta={tools.length ? t("settings.installedTools.count", { count: tools.length }) : undefined} />
+      <p className="border-b border-border px-4 py-2.5 text-[0.75rem] text-muted-foreground">{t("settings.installedTools.intro")}</p>
       <ul>
-        {tools.map((t) => (
+        {tools.map((tool) => (
           <li
-            key={t.dependency}
+            key={tool.dependency}
             className="flex min-h-[3.25rem] items-center gap-3 border-t border-border px-4 py-2 transition-colors first:border-t-0 hover:bg-glass"
           >
             <div className="min-w-0 flex-1">
-              <p className="text-[0.8125rem] font-medium text-foreground">{toolName(t.dependency)}</p>
-              <p className="font-mono text-[0.6875rem] text-faint">installed {formatAgo(t.at * 1000, now)}</p>
+              <p className="text-[0.8125rem] font-medium text-foreground">{toolName(tool.dependency)}</p>
+              <p className="font-mono text-[0.6875rem] text-faint">{t("settings.installedTools.installedAgo", { ago: formatAgo(tool.at * 1000, now) })}</p>
             </div>
-            <Button variant="outline" size="xs" disabled={removing !== null} onClick={() => setAsking(t.dependency)}>
-              <Trash2 className="size-3" /> {removing === t.dependency ? "Removing…" : "Remove"}
+            <Button variant="outline" size="xs" disabled={removing !== null} onClick={() => setAsking(tool.dependency)}>
+              <Trash2 className="size-3" /> {removing === tool.dependency ? t("settings.installedTools.removing") : t("settings.installedTools.remove")}
             </Button>
           </li>
         ))}
       </ul>
       {log.length > 0 && (
         <div className="border-t border-border p-4">
-          <LogConsole lines={log} running={removing !== null} title="Remove" />
+          <LogConsole lines={log} running={removing !== null} title={t("settings.installedTools.remove")} />
         </div>
       )}
       {asking && (
-        <ConfirmDialog title={`Remove ${toolName(asking)}?`} confirmLabel="Remove" onConfirm={() => remove(asking)} onCancel={() => setAsking(null)}>
-          Labs that need {toolName(asking)} won&apos;t start until it&apos;s installed again (setup can reinstall it). Your labs and settings are kept.
+        <ConfirmDialog
+          title={t("settings.installedTools.confirmTitle", { name: toolName(asking) })}
+          confirmLabel={t("settings.installedTools.remove")}
+          onConfirm={() => remove(asking)}
+          onCancel={() => setAsking(null)}
+        >
+          {t("settings.installedTools.confirmBody", { name: toolName(asking) })}
         </ConfirmDialog>
       )}
     </Panel>

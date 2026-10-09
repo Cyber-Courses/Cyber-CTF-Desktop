@@ -28,6 +28,7 @@ import { CLOUD_DEFAULT_NAME, CLOUD_META, KIND, StepKey } from "@/features/server
 const DEFAULT_NAMES = Object.values(CLOUD_DEFAULT_NAME);
 import type { Dependency } from "@/lib/tauri";
 import { ignore } from "@/lib/failure";
+import { translate, useT } from "@/lib/i18n";
 
 /** All the server / cloud setup state and actions, shared by the setup steps. */
 export function useHostSetup({
@@ -45,6 +46,7 @@ export function useHostSetup({
   /** Setup finished or cancelled: the window closes. */
   onDone: () => void;
 }) {
+  const t = useT();
   const [v, setV] = useState<ServerHostInput>(initial);
   const [i, setI] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -162,12 +164,15 @@ export function useHostSetup({
 
   async function awsSignIn() {
     setSigningIn(true);
-    setSignInLog(["Signing in to AWS…"]);
+    setSignInLog([translate("servers.setup.credentials.logSigningIn", { cloud: "AWS" })]);
     try {
       await awsLogin(v.awsProfile ?? null, (l) => setSignInLog((x) => [...(x ?? []), l]));
       const id = await awsCliIdentity(v.awsProfile ?? undefined);
       setAwsIdentity(id);
-      setSignInLog((x) => [...(x ?? []), id ? `✓ Signed in as ${id}` : "✗ Not signed in"]);
+      setSignInLog((x) => [
+        ...(x ?? []),
+        id ? translate("servers.setup.credentials.logSignedInAs", { id }) : translate("servers.setup.credentials.logNotSignedIn"),
+      ]);
     } catch (e) {
       setSignInLog((x) => [...(x ?? []), `✗ ${String(e)}`]);
     } finally {
@@ -240,10 +245,10 @@ export function useHostSetup({
   const toolBusy = pluginLog !== null && !pluginLog.at(-1)?.match(/^[✓✗]/);
   async function installTool(label: string, run: (onLog: (l: string) => void) => Promise<void>) {
     setToolLabel(label);
-    setPluginLog([`Installing ${label}…`]);
+    setPluginLog([translate("servers.setup.tools.installing", { name: label })]);
     try {
       await run((l) => setPluginLog((x) => [...(x ?? []), l]));
-      setPluginLog((x) => [...(x ?? []), "✓ Installed"]);
+      setPluginLog((x) => [...(x ?? []), translate("servers.setup.tools.installDone")]);
     } catch (e) {
       setPluginLog((x) => [...(x ?? []), `✗ ${String(e)}`]);
     } finally {
@@ -298,10 +303,10 @@ export function useHostSetup({
 
   async function signIn() {
     setSigningIn(true);
-    setSignInLog([`Signing in to ${CLOUD_META[cloudProvider].label}…`]);
+    setSignInLog([translate("servers.setup.credentials.logSigningIn", { cloud: CLOUD_META[cloudProvider].label })]);
     try {
       await cloudLogin(cloudProvider, (l) => setSignInLog((x) => [...(x ?? []), l]));
-      setSignInLog((x) => [...(x ?? []), "✓ Signed in"]);
+      setSignInLog((x) => [...(x ?? []), translate("servers.setup.credentials.logSignedIn")]);
       // Pull the now-available subscriptions / projects so the user can pick one.
       if (cloudProvider === "azure") loadAzureSubs();
       if (cloudProvider === "gcp") loadGcpProjects();
@@ -316,13 +321,13 @@ export function useHostSetup({
   const failed = !!test && test !== "testing" && !test.ok;
   const title = saved
     ? failed
-      ? `${saved.name} saved, not connected yet`
-      : `${saved.name} connected`
+      ? t("servers.setup.titles.savedNotConnected", { name: saved.name })
+      : t("servers.setup.titles.connected", { name: saved.name })
     : editing
-      ? `Edit ${initial.name}`
+      ? t("servers.setup.titles.edit", { name: initial.name })
       : cloud
-        ? "Set up cloud provider"
-        : "Connect a host";
+        ? t("servers.setup.titles.cloud")
+        : t("servers.setup.titles.host");
 
   return {
     initial,

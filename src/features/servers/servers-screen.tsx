@@ -30,12 +30,14 @@ import { ServersEmptyState } from "@/features/servers/servers-empty-state";
 import { StatusDot, type Tone } from "@/components/ui/status-pill";
 import { VmTest, loadVmTests, saveVmTest } from "@/features/servers/vm-tests";
 import { ignore, warn } from "@/lib/failure";
+import { useT } from "@/lib/i18n";
 
 type Tab = "setup";
 
 // ---------- screen ----------
 
 export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
+  const t = useT();
   const [allHosts, setHosts] = useState<ServerHost[] | null>(null);
   // Cloud accounts (AWS/Azure/GCP) live on the Cloud page; the Servers page is on-prem hosts only.
   const hosts = allHosts?.filter((h) => h.provider !== "aws" && h.provider !== "azure" && h.provider !== "gcp") ?? null;
@@ -134,7 +136,11 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
   const anyTesting = !!hosts?.some((h) => tests[h.id] === "testing");
   const hasHosts = !!hosts && hosts.length > 0;
   const summaryTone: Tone = !hasHosts ? "warn" : anyTesting ? "muted" : online === hosts!.length ? "ok" : online > 0 ? "warn" : "fail";
-  const summaryText = !hasHosts ? "No server connected" : anyTesting ? "Checking…" : `${online} of ${hosts!.length} online`;
+  const summaryText = !hasHosts
+    ? t("servers.screen.noServer")
+    : anyTesting
+      ? t("servers.screen.checking")
+      : t("servers.screen.onlineCount", { online, total: hosts!.length });
   const canRunVmHere = !!report && report.vmProviders.some((p) => !p.remote && p.available && p.hypervisor !== false);
 
   // Capacity panel: the default host when it answered, else the first host that did.
@@ -144,17 +150,17 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Servers"
-        lead="Run bigger, multi-machine labs on hardware you own. Proxmox or ESXi, over your network."
+        title={t("servers.screen.title")}
+        lead={t("servers.screen.lead")}
         actions={
           <>
             {hasHosts && (
               <Button variant="outline" size="sm" onClick={testAll} disabled={anyTesting}>
-                {anyTesting ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} Test all
+                {anyTesting ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} {t("servers.screen.testAll")}
               </Button>
             )}
             <Button variant="outline" size="sm" onClick={() => open(null)}>
-              <Plus className="size-3.5" /> Add server
+              <Plus className="size-3.5" /> {t("servers.screen.addServer")}
             </Button>
           </>
         }
@@ -184,10 +190,10 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
             title={
               <>
                 <StatusDot tone={summaryTone} pulse={anyTesting} />
-                Hosts
+                {t("servers.screen.hosts")}
               </>
             }
-            meta={`${summaryText} · ${hosts.length} host${hosts.length > 1 ? "s" : ""}`}
+            meta={`${summaryText} · ${t("servers.screen.hostCount", { count: hosts.length })}`}
           />
           {hosts.map((h) => (
             <HostRow
@@ -210,7 +216,7 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
               onEdit={() => open(h.id)}
               onDefault={() => act(() => serverSetDefault(h.id === defaultId ? null : h.id))}
               onRemove={() => {
-                if (confirm(`Remove ${h.name}? Its password is deleted from the keychain.`)) act(() => serverRemove(h.id));
+                if (confirm(t("servers.screen.removeConfirm", { name: h.name }))) act(() => serverRemove(h.id));
               }}
             />
           ))}
@@ -219,13 +225,13 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
 
       {capHost && cap && (
         <Panel>
-          <PanelHeader title={`Capacity on ${capHost.name}`} meta={`${cap.cores} vCPU`} />
+          <PanelHeader title={t("servers.screen.capacityTitle", { name: capHost.name })} meta={t("servers.screen.vcpu", { count: cap.cores })} />
           <div className="grid gap-3 p-4">
             <div className="grid grid-cols-[6rem_minmax(0,1fr)_auto] items-center gap-4 text-[0.8125rem]">
-              <span className="text-muted-foreground">Memory</span>
+              <span className="text-muted-foreground">{t("servers.screen.memory")}</span>
               <Meter value={cap.memTotal > 0 ? ((cap.memTotal - cap.memFree) / cap.memTotal) * 100 : 0} />
               <span className="text-right font-mono text-[0.6875rem] text-faint">
-                {formatBytes(cap.memTotal - cap.memFree)} of {formatBytes(cap.memTotal)} used
+                {t("servers.screen.memoryUsed", { used: formatBytes(cap.memTotal - cap.memFree), total: formatBytes(cap.memTotal) })}
               </span>
             </div>
           </div>
@@ -237,11 +243,9 @@ export function ServerScreen({ onNavigate }: { onNavigate: (tab: Tab) => void })
         <Panel>
           <div className="flex flex-wrap items-center gap-3 px-4 py-3">
             <StatusDot tone="muted" />
-            <p className="min-w-0 flex-1 text-[0.8125rem] text-muted-foreground">
-              No server? If this machine can handle it, install a local hypervisor and run VM labs here.
-            </p>
+            <p className="min-w-0 flex-1 text-[0.8125rem] text-muted-foreground">{t("servers.screen.noServerHint")}</p>
             <Button variant="ghost" size="xs" onClick={() => onNavigate("setup")}>
-              Set up this machine
+              {t("servers.screen.setUpMachine")}
             </Button>
           </div>
         </Panel>

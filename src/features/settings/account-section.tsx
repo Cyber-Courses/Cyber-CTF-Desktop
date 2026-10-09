@@ -7,19 +7,21 @@ import { Spinner } from "@/components/ui/spinner";
 import { StatusPill } from "@/components/ui/status-pill";
 import { type AgentInfo, type AuthStatus } from "@/lib/tauri";
 import { Row, Section } from "@/features/settings/settings-layout";
+import { useT } from "@/lib/i18n";
 
 /* ------------------------------------------------------------------ account */
 
 export function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus | null; agent: AgentInfo | null; onAuthChange: (s: AuthStatus) => void }) {
+  const t = useT();
   const { login, logout, busy, error } = useAuthActions(onAuthChange);
 
   return (
-    <Section title="Account" description="Signing in registers this machine, so labs you launch from the website run here.">
+    <Section title={t("settings.account.title")} description={t("settings.account.description")}>
       {auth === null ? (
         <Row
           title={
             <span className="flex items-center gap-2 text-muted-foreground">
-              <Spinner className="size-3.5" /> Checking…
+              <Spinner className="size-3.5" /> {t("settings.account.checking")}
             </span>
           }
         />
@@ -30,18 +32,18 @@ export function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus
               {initials(auth.name, auth.email)}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[0.8125rem] font-medium text-foreground">{auth.name ?? "Signed in"}</p>
+              <p className="truncate text-[0.8125rem] font-medium text-foreground">{auth.name ?? t("settings.account.signedIn")}</p>
               {auth.email && <p className="truncate font-mono text-[0.6875rem] text-faint">{auth.email}</p>}
             </div>
             <Button variant="outline" size="xs" onClick={logout}>
-              <LogOut className="size-3.5" /> Sign out
+              <LogOut className="size-3.5" /> {t("settings.account.signOut")}
             </Button>
           </div>
           <Row
             title={
               <span className="flex items-center gap-2">
-                This machine
-                <StatusPill tone="ok">Online</StatusPill>
+                {t("settings.account.thisMachine")}
+                <StatusPill tone="ok">{t("settings.account.online")}</StatusPill>
               </span>
             }
             description={
@@ -51,12 +53,12 @@ export function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus
                   {agent.capabilities.length > 0 && (
                     <>
                       {" "}
-                      <span className="text-faint">·</span> runs {agent.capabilities.join(", ")}
+                      <span className="text-faint">·</span> {t("settings.account.runs", { list: agent.capabilities.join(", ") })}
                     </>
                   )}
                 </>
               ) : (
-                "Registering…"
+                t("settings.account.registering")
               )
             }
           />
@@ -65,25 +67,21 @@ export function AccountSection({ auth, agent, onAuthChange }: { auth: AuthStatus
         <Row
           title={
             <span className="flex items-center gap-2">
-              Not signed in
-              <StatusPill tone="muted">Offline</StatusPill>
+              {t("settings.account.notSignedIn")}
+              <StatusPill tone="muted">{t("settings.account.offline")}</StatusPill>
             </span>
           }
           description={
-            (error ?? auth.keychainError) ? (
-              <span className="text-destructive">{error ?? auth.keychainError}</span>
-            ) : (
-              "Sign in with your Cyber account to sync labs and run them from any device."
-            )
+            (error ?? auth.keychainError) ? <span className="text-destructive">{error ?? auth.keychainError}</span> : t("settings.account.signInHint")
           }
           control={
             <Button size="sm" onClick={login} disabled={busy}>
               {busy ? (
                 <>
-                  <Spinner className="size-3.5" /> Waiting for the browser…
+                  <Spinner className="size-3.5" /> {t("settings.account.waitingBrowser")}
                 </>
               ) : (
-                "Sign in"
+                t("settings.account.signIn")
               )}
             </Button>
           }

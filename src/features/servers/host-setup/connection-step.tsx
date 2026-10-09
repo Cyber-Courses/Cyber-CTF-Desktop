@@ -8,8 +8,10 @@ import { Field, Input, Nav, Note, Step } from "@/features/servers/host-setup/for
 import type { HostSetup } from "@/features/servers/host-setup/use-host-setup";
 import { serverPublicKey } from "@/lib/tauri/servers";
 import { warn } from "@/lib/failure";
+import { useT } from "@/lib/i18n";
 
 export function ConnectionStep({ s }: { s: HostSetup }) {
+  const t = useT();
   const { v, editing, kind, set, text, connectionOk, next, back } = s;
   // Proxmox accepts an API token id (user@realm!name) in the username field; in that mode the
   // "password" is the token secret and SSH uses the launcher's key, which must be authorized
@@ -33,17 +35,21 @@ export function ConnectionStep({ s }: { s: HostSetup }) {
   return (
     <Step
       icon={Network}
-      title={`Connect to ${KIND[v.provider].label}`}
-      description={v.provider === "proxmox" ? "The launcher signs in to the Proxmox API." : "The launcher drives the host over SSH."}
+      title={t("servers.setup.connection.title", { kind: KIND[v.provider].label })}
+      description={v.provider === "proxmox" ? t("servers.setup.connection.descriptionProxmox") : t("servers.setup.connection.descriptionSsh")}
     >
       <div className="grid gap-3 sm:grid-cols-[1fr_1fr_6.875rem]">
-        <Field label="Name">
-          <Input mono={false} {...text("name")} placeholder={v.provider === "proxmox" ? "Garage Proxmox" : "ESXi box"} />
+        <Field label={t("servers.setup.connection.name")}>
+          <Input
+            mono={false}
+            {...text("name")}
+            placeholder={v.provider === "proxmox" ? t("servers.setup.connection.namePlaceholderProxmox") : t("servers.setup.connection.namePlaceholderEsxi")}
+          />
         </Field>
-        <Field label="Host">
-          <Input {...text("host")} placeholder="192.168.1.20 or pve.lan" />
+        <Field label={t("servers.setup.connection.host")}>
+          <Input {...text("host")} placeholder={t("servers.setup.connection.hostPlaceholder")} />
         </Field>
-        <Field label={v.provider === "proxmox" ? "API port" : "SSH port"}>
+        <Field label={v.provider === "proxmox" ? t("servers.setup.connection.apiPort") : t("servers.setup.connection.sshPort")}>
           <Input
             type="number"
             min={1}
@@ -55,15 +61,18 @@ export function ConnectionStep({ s }: { s: HostSetup }) {
         </Field>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <Field label="Username" hint={v.provider === "proxmox" ? "root@pam, or an API token id like root@pam!name" : undefined}>
+        <Field label={t("servers.setup.connection.username")} hint={v.provider === "proxmox" ? t("servers.setup.connection.usernameHint") : undefined}>
           <Input {...text("username")} placeholder={kind.user} />
         </Field>
-        <Field label={isToken ? "Token secret" : "Password"} hint="Stored in your OS keychain">
+        <Field
+          label={isToken ? t("servers.setup.connection.tokenSecret") : t("servers.setup.connection.password")}
+          hint={t("servers.setup.connection.keychainHint")}
+        >
           <Input
             type="password"
             value={v.password ?? ""}
             onChange={(e) => set("password", e.target.value || null)}
-            placeholder={editing ? "Leave empty to keep" : ""}
+            placeholder={editing ? t("servers.setup.connection.keepPlaceholder") : ""}
             autoComplete="off"
           />
         </Field>
@@ -71,18 +80,20 @@ export function ConnectionStep({ s }: { s: HostSetup }) {
       {isToken && (
         <Note className="mt-3">
           <div className="flex items-center gap-1.5 text-[0.8125rem] font-medium">
-            <KeyRound className="size-3.5 text-muted-foreground" /> Authorize the launcher&apos;s SSH key
+            <KeyRound className="size-3.5 text-muted-foreground" /> {t("servers.setup.connection.authorizeKey")}
           </div>
           <p className="mt-1 text-[0.75rem] text-muted-foreground">
-            Token hosts use this key over SSH to upload the cloud-init snippet. Add it to the token user&apos;s
-            <code className="mx-1 rounded-xs bg-glass-2 px-1 py-0.5 font-mono">~/.ssh/authorized_keys</code> on the Proxmox node.
+            {t.rich("servers.setup.connection.authorizeKeyBody", {
+              code: (c) => <code className="mx-1 rounded-xs bg-glass-2 px-1 py-0.5 font-mono">{c}</code>,
+            })}
           </p>
           <div className="mt-2 flex items-start gap-2">
             <code className="surface-log min-w-0 flex-1 break-all rounded-sm px-2 py-1.5 font-mono text-[0.6875rem] text-muted-foreground">
-              {pubkey ?? "Loading the launcher's public key…"}
+              {pubkey ?? t("servers.setup.connection.loadingKey")}
             </code>
             <Button variant="outline" size="xs" onClick={copyKey} disabled={!pubkey}>
-              {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />} {copied ? "Copied" : "Copy"}
+              {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}{" "}
+              {copied ? t("servers.setup.connection.copied") : t("servers.setup.connection.copy")}
             </Button>
           </div>
         </Note>
@@ -90,12 +101,12 @@ export function ConnectionStep({ s }: { s: HostSetup }) {
       <Nav
         left={
           <Button variant="ghost" onClick={back}>
-            <ArrowLeft className="size-4" /> Back
+            <ArrowLeft className="size-4" /> {t("servers.setup.nav.back")}
           </Button>
         }
         right={
           <Button onClick={next} disabled={!connectionOk}>
-            Continue
+            {t("servers.setup.nav.continue")}
           </Button>
         }
       />
