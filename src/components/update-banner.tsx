@@ -9,7 +9,7 @@ import { tell } from "@/lib/failure";
 
 /**
  * Checks for an update on launch (via plugins.updater) and offers a one-click install.
- * Silent when up to date or when the check fails (offline, dev). After install the app relaunches
+ * Silent when up to date, when the check fails (offline), and in dev builds. After install the app relaunches
  * itself through a tiny command (no process plugin needed); Restart now is the fallback.
  */
 export function UpdateBanner() {
@@ -17,6 +17,8 @@ export function UpdateBanner() {
   const [phase, setPhase] = useState<"idle" | "downloading" | "ready" | "error">("idle");
 
   useEffect(() => {
+    // A dev build carries its branch's version, so it would always "find" the latest release.
+    if (process.env.NODE_ENV === "development") return;
     check()
       .then((u) => {
         if (u) setUpdate(u);
