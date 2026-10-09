@@ -14,16 +14,18 @@ import { PageHeader, StatusStrip } from "@/components/ui/page-header";
 import { Segmented } from "@/components/ui/segmented";
 import { StatusDot } from "@/components/ui/status-pill";
 import { TypeIcon } from "@/components/ui/type-icon";
-import { formatAgo, formatBytes, formatUptime } from "@/lib/format";
 import { DownloadsPanel } from "@/features/machine/downloads-panel";
 import { RunningNowPanel } from "@/features/machine/running-now-panel";
 import { HypervisorLogo } from "@/features/machine/hypervisor-logo";
+import { useMachineFormat } from "@/features/machine/use-machine-format";
 import { ignore, tell } from "@/lib/failure";
+import { useT, type T } from "@/lib/i18n";
 
 // ---------- formatting ----------
 
 /** Strip the tool name from `docker --version`-style output, keep the version number. */
-const ver = (t: Tool) => (t.installed ? (t.version?.match(/\d+\.\d+(\.\d+)?/)?.[0] ?? "installed") : "not installed");
+const ver = (tool: Tool, t: T) =>
+  tool.installed ? (tool.version?.match(/\d+\.\d+(\.\d+)?/)?.[0] ?? t("machine.screen.detail.installed")) : t("machine.screen.detail.notInstalled");
 const OS_NAME: Record<string, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
 
 /** Free memory each lab type wants to start comfortably. */
@@ -43,6 +45,8 @@ export function MachineScreen({
   onRefresh: () => void | Promise<void>;
   onNavigate: (tab: "cloud" | "server") => void;
 }) {
+  const t = useT();
+  const fmt = useMachineFormat();
   // Re-read the machine when the window regains focus: the user may have just installed Docker or
   // a hypervisor in the setup window (or externally), and the setup status would otherwise stay
   // stale until a restart. A ref keeps the handler current without re-subscribing each render.
@@ -105,15 +109,18 @@ export function MachineScreen({
   const lowFor = (kind: LabKind) => memFree !== null && memFree < WANT_FREE[kind];
   const freeHint = (kind: LabKind) =>
     lowFor(kind)
-      ? `${kind === "vm" ? "VM" : "Container"} labs want about ${formatBytes(WANT_FREE[kind])} of free memory; ${formatBytes(Math.max(0, memFree!))} free now.`
+      ? t(kind === "vm" ? "machine.screen.freeHintVm" : "machine.screen.freeHintDocker", {
+          want: fmt.bytes(WANT_FREE[kind]),
+          free: fmt.bytes(Math.max(0, memFree!)),
+        })
       : undefined;
-  const testLine = (t: LastTest | null) =>
-    !t ? (
-      <span>not tested yet</span>
-    ) : t.result === "ok" ? (
-      <span>tested {formatAgo(t.at, now)}</span>
+  const testLine = (test: LastTest | null) =>
+    !test ? (
+      <span>{t("machine.screen.notTestedYet")}</span>
+    ) : test.result === "ok" ? (
+      <span>{t("machine.screen.tested", { ago: fmt.ago(test.at, now) })}</span>
     ) : (
-      <span className="text-destructive">last test failed {formatAgo(t.at, now)}</span>
+      <span className="text-destructive">{t("machine.screen.lastTestFailed", { ago: fmt.ago(test.at, now) })}</span>
     );
 
   const dockerReady = report.docker.installed && report.dockerRunning;
@@ -130,10 +137,10 @@ export function MachineScreen({
     : undefined;
   const blockedReason = blocked?.reason ? `${blocked.reason.charAt(0).toUpperCase()}${blocked.reason.slice(1)}.` : null;
 
-  const fix = (step: string) => machineOpenSetup(step).catch(tell("Couldn't open machine setup"));
+  const fix = (step: string) => machineOpenSetup(step).catch(tell(t("machine.errors.openSetup")));
   const testBtn = (kind: LabKind) => (
     <Button variant="outline" size="xs" onClick={() => setTesting(testing === kind ? null : kind)}>
-      {testing === kind ? "Hide test" : "Test"}
+      {testing === kind ? t("machine.screen.hideTest") : t("machine.screen.test")}
     </Button>
   );
 
@@ -144,13 +151,13 @@ export function MachineScreen({
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Machine"
+        title={t("machine.screen.title")}
         lead={
           <>
-            What this computer can run, and what it is running now.
+            {t("machine.screen.lead")}
             <StatusStrip className="mt-2.5">
               <StatusDot tone={needsSetup ? "warn" : "ok"} />
-              <b>{needsSetup ? `${needsSetup} lab ${needsSetup === 1 ? "type needs" : "types need"} setup` : "Ready for labs"}</b>
+              <b>{needsSetup ? t("machine.screen.needsSetup", { count: needsSetup }) : t("machine.screen.readyForLabs")}</b>
               <span>·</span>
               <span>
                 {OS_NAME[report.os] ?? report.os} {report.arch}
@@ -158,7 +165,7 @@ export function MachineScreen({
               {m && (
                 <>
                   <span>·</span>
-                  <span>up {formatUptime(m.uptimeSecs)}</span>
+                  <span>{t("machine.screen.uptime", { uptime: fmt.uptime(m.uptimeSecs) })}</span>
                 </>
               )}
             </StatusStrip>
@@ -167,17 +174,17 @@ export function MachineScreen({
         actions={
           <>
             {needsSetup > 0 && (
-              <Button size="sm" onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))}>
-                <Wrench className="size-3.5" /> Set up this machine
+              <Button size="sm" onClick={() => machineOpenSetup().catch(tell(t("machine.errors.openSetup")))}>
+                <Wrench className="size-3.5" /> {t("machine.screen.setUp")}
               </Button>
             )}
             <Segmented
-              label="Machine view"
+              label={t("machine.screen.viewLabel")}
               value={view}
               onChange={setView}
               options={[
-                { value: "health", label: "Health" },
-                { value: "setup", label: "Setup" },
+                { value: "health", label: t("machine.screen.viewHealth") },
+                { value: "setup", label: t("machine.screen.viewSetup") },
               ]}
             />
           </>
@@ -190,22 +197,36 @@ export function MachineScreen({
         <>
           {/* Live usage */}
           <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard label="CPU" detail={m ? `${m.cores} cores` : ""} value={m ? m.cpu : null} meter />
-            <StatCard label="Memory" detail={m ? `${formatBytes(m.memUsed)} of ${formatBytes(m.memTotal)}` : ""} value={m ? memPct : null} meter />
-            <StatCard label="Disk" detail={m ? `${formatBytes(m.diskUsed)} of ${formatBytes(m.diskTotal)}` : ""} value={m ? diskPct : null} meter />
+            <StatCard label={t("machine.screen.cpu")} detail={m ? t("machine.screen.cores", { count: m.cores }) : ""} value={m ? m.cpu : null} meter />
+            <StatCard
+              label={t("machine.screen.memory")}
+              detail={m ? t("machine.screen.usedOf", { used: fmt.bytes(m.memUsed), total: fmt.bytes(m.memTotal) }) : ""}
+              value={m ? memPct : null}
+              meter
+            />
+            <StatCard
+              label={t("machine.screen.disk")}
+              detail={m ? t("machine.screen.usedOf", { used: fmt.bytes(m.diskUsed), total: fmt.bytes(m.diskTotal) }) : ""}
+              value={m ? diskPct : null}
+              meter
+            />
           </div>
 
           {/* Low disk: labs and the attack box are several GB each, so say so before a download fails. */}
           {m && m.diskTotal > 0 && (diskPct >= 90 || m.diskTotal - m.diskUsed < LOW_DISK_BYTES) && (
-            <CalloutRow tone="warn" icon={<TriangleAlert className="size-4" />} title="Low disk space" meta={`${formatBytes(m.diskTotal - m.diskUsed)} free`}>
-              Only {formatBytes(m.diskTotal - m.diskUsed)} free. The attack box alone is about 3.4 GB, and each lab image adds more. Free up space before you
-              start a lab.
+            <CalloutRow
+              tone="warn"
+              icon={<TriangleAlert className="size-4" />}
+              title={t("machine.screen.lowDisk.title")}
+              meta={t("machine.screen.lowDisk.meta", { free: fmt.bytes(m.diskTotal - m.diskUsed) })}
+            >
+              {t("machine.screen.lowDisk.body", { free: fmt.bytes(m.diskTotal - m.diskUsed) })}
             </CalloutRow>
           )}
 
           {/* What can run */}
           <Panel>
-            <PanelHeader title="Engines" meta="used by your labs" />
+            <PanelHeader title={t("machine.screen.engines")} meta={t("machine.screen.enginesMeta")} />
             <LabTypeRow
               kind="docker"
               icon={
@@ -217,18 +238,18 @@ export function MachineScreen({
                   </TypeIcon>
                 )
               }
-              title="Container labs"
+              title={t("machine.screen.containerLabs")}
               tone={dockerReady ? (last.docker?.result === "fail" ? "fail" : "ok") : "warn"}
               status={
                 dockerReady
                   ? last.docker?.result === "fail"
-                    ? "Test failed"
-                    : "Ready"
+                    ? t("machine.screen.status.testFailed")
+                    : t("machine.screen.status.ready")
                   : report.dockerDenied
-                    ? "No permission"
+                    ? t("machine.screen.status.noPermission")
                     : report.docker.installed
-                      ? "Engine stopped"
-                      : "Needs setup"
+                      ? t("machine.screen.status.engineStopped")
+                      : t("machine.screen.status.needsSetup")
               }
               detail={
                 dockerReady ? (
@@ -236,12 +257,16 @@ export function MachineScreen({
                     {report.dockerEngine ? engineName(report.dockerEngine) : "Docker"} · {testLine(last.docker)}
                   </>
                 ) : report.dockerDenied ? (
-                  (report.dockerDeniedHint ?? "Docker is running, but this user may not use it: add yourself to the docker group, then log out and back in.")
+                  (report.dockerDeniedHint ?? t("machine.screen.docker.denied"))
                 ) : report.docker.installed ? (
-                  "A container engine is installed but not running. Start it to run labs."
+                  t("machine.screen.docker.stopped")
+                ) : // The engines this OS has (OrbStack is macOS-only; Docker Engine is Linux's own).
+                report.os === "linux" ? (
+                  t("machine.screen.docker.noEngineLinux")
+                ) : report.os === "macos" ? (
+                  t("machine.screen.docker.noEngineMacos")
                 ) : (
-                  // The engines this OS has (OrbStack is macOS-only; Docker Engine is Linux's own).
-                  `No container engine yet. ${report.os === "linux" ? "Docker Engine, Docker Desktop or Colima" : report.os === "macos" ? "Docker Desktop, OrbStack or Colima" : "Docker Desktop"} all work.`
+                  t("machine.screen.docker.noEngineWindows")
                 )
               }
               hint={dockerReady ? freeHint("docker") : undefined}
@@ -250,7 +275,7 @@ export function MachineScreen({
                   testBtn("docker")
                 ) : report.dockerDenied ? null : (
                   <Button variant="outline" size="xs" onClick={() => fix("docker")}>
-                    Fix
+                    {t("machine.screen.fix")}
                   </Button>
                 )
               }
@@ -260,47 +285,55 @@ export function MachineScreen({
             <LabTypeRow
               kind="vm"
               icon={<HypervisorLogo provider={vmProvider?.provider} />}
-              title="VM labs"
+              title={t("machine.screen.vmLabs")}
               tone={!vmApplicable ? "muted" : vmProvider ? (last.vm?.result === "fail" ? "fail" : "ok") : "warn"}
-              status={!vmApplicable ? "Not on this machine" : vmProvider ? (last.vm?.result === "fail" ? "Test failed" : "Ready") : "Needs setup"}
+              status={
+                !vmApplicable
+                  ? t("machine.screen.status.notOnThisMachine")
+                  : vmProvider
+                    ? last.vm?.result === "fail"
+                      ? t("machine.screen.status.testFailed")
+                      : t("machine.screen.status.ready")
+                    : t("machine.screen.status.needsSetup")
+              }
               detail={
                 !vmApplicable ? (
-                  "No local hypervisor runs on this machine. VM labs can run on a server instead."
+                  t("machine.screen.vm.notApplicable")
                 ) : vmProvider ? (
                   <>
                     {providerLabel(vmProvider, report.os)}
-                    {vmReadyList.length > 1 && !preferred ? " (automatic, change in Settings)" : ""} · {testLine(last.vm)}
+                    {vmReadyList.length > 1 && !preferred ? t("machine.screen.vm.automatic") : ""} · {testLine(last.vm)}
                   </>
                 ) : blockedReason ? (
                   blockedReason
                 ) : hasHypervisor ? (
-                  "Vagrant or the hypervisor's Vagrant plugin is missing."
+                  t("machine.screen.vm.vagrantMissing")
                 ) : (
-                  "Needed for Active Directory, Windows and multi-host labs. Install a hypervisor."
+                  t("machine.screen.vm.needHypervisor")
                 )
               }
               hint={vmProvider ? freeHint("vm") : undefined}
               actions={
                 !vmApplicable ? (
                   <Button variant="outline" size="xs" onClick={() => onNavigate("server")}>
-                    Use a server
+                    {t("machine.screen.useServer")}
                   </Button>
                 ) : vmProvider ? (
                   <>
                     {lowFor("vm") && (
                       <Button variant="ghost" size="xs" onClick={() => onNavigate("server")}>
-                        Use a server
+                        {t("machine.screen.useServer")}
                       </Button>
                     )}
                     {testBtn("vm")}
                   </>
                 ) : blockedReason ? (
                   <Button variant="outline" size="xs" onClick={() => onNavigate("server")}>
-                    Use a server
+                    {t("machine.screen.useServer")}
                   </Button>
                 ) : (
                   <Button variant="outline" size="xs" onClick={() => fix(hasHypervisor ? "vagrant" : "vm")}>
-                    Fix
+                    {t("machine.screen.fix")}
                   </Button>
                 )
               }
@@ -317,17 +350,23 @@ export function MachineScreen({
           {/* Tool versions, for people who want them */}
           <details className="group">
             <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-[0.8125rem] text-muted-foreground transition-colors hover:text-foreground">
-              <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" /> Details
+              <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" /> {t("machine.screen.details")}
             </summary>
             <Panel className="mt-2.5">
               <DetailRow
-                name="Container engine"
-                value={report.dockerEngine ? engineName(report.dockerEngine) : report.dockerRunning ? "running" : "not running"}
+                name={t("machine.screen.detail.containerEngine")}
+                value={
+                  report.dockerEngine
+                    ? engineName(report.dockerEngine)
+                    : report.dockerRunning
+                      ? t("machine.screen.detail.running")
+                      : t("machine.screen.detail.notRunning")
+                }
                 bad={!report.dockerRunning}
               />
-              <DetailRow name="Docker CLI" value={ver(report.docker)} bad={!report.docker.installed} />
-              <DetailRow name="Docker Compose" value={ver(report.dockerCompose)} bad={!report.dockerCompose.installed} />
-              <DetailRow name="Vagrant" value={ver(report.vagrant)} bad={hasHypervisor && !report.vagrant.installed} />
+              <DetailRow name="Docker CLI" value={ver(report.docker, t)} bad={!report.docker.installed} />
+              <DetailRow name="Docker Compose" value={ver(report.dockerCompose, t)} bad={!report.dockerCompose.installed} />
+              <DetailRow name="Vagrant" value={ver(report.vagrant, t)} bad={hasHypervisor && !report.vagrant.installed} />
               {hypervisors.map((p) => (
                 <DetailRow
                   key={p.provider}
@@ -336,23 +375,32 @@ export function MachineScreen({
                     p.hypervisor === true
                       ? p.plugin
                         ? p.pluginInstalled
-                          ? `installed · ${p.plugin}`
-                          : `plugin ${p.plugin} missing`
-                        : "installed"
+                          ? t("machine.screen.detail.installedWithPlugin", { plugin: p.plugin })
+                          : t("machine.screen.detail.pluginMissing", { plugin: p.plugin })
+                        : t("machine.screen.detail.installed")
                       : p.hypervisor === false
-                        ? "not installed"
-                        : "built in"
+                        ? t("machine.screen.detail.notInstalled")
+                        : t("machine.screen.detail.builtIn")
                   }
                   bad={p.hypervisor === true && !p.pluginInstalled}
                 />
               ))}
-              <DetailRow name={report.pkgManager.name} value={report.pkgManager.installed ? "installed" : "not installed"} bad={!report.pkgManager.installed} />
+              <DetailRow
+                name={report.pkgManager.name}
+                value={report.pkgManager.installed ? t("machine.screen.detail.installed") : t("machine.screen.detail.notInstalled")}
+                bad={!report.pkgManager.installed}
+              />
             </Panel>
             {report.targets.length > 0 && (
               <Panel className="mt-2.5">
-                <PanelHeader title="Where labs can run (Isoloom)" />
-                {report.targets.map((t) => (
-                  <DetailRow key={`${t.target}/${t.cloud ?? ""}`} name={t.cloud ? `${t.target} · ${t.cloud}` : t.target} value={t.summary} bad={!t.ready} />
+                <PanelHeader title={t("machine.screen.targets")} />
+                {report.targets.map((target) => (
+                  <DetailRow
+                    key={`${target.target}/${target.cloud ?? ""}`}
+                    name={target.cloud ? `${target.target} · ${target.cloud}` : target.target}
+                    value={target.summary}
+                    bad={!target.ready}
+                  />
                 ))}
               </Panel>
             )}

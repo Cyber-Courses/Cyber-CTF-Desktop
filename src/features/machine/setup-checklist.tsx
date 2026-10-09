@@ -11,35 +11,38 @@ import { cantRun, usableHypervisors, providerLabel } from "@/features/machine/hy
 import { ATTACK_PRESETS, getAttackImage, type LastTest } from "@/lib/settings";
 import { machineOpenSetup, type SystemReport } from "@/lib/tauri";
 import { tell } from "@/lib/failure";
+import { useT, type T } from "@/lib/i18n";
 
 type Line = { done: boolean; optional?: boolean; meta: string };
 
 /** Where this machine stands on each guided-setup step, read from the system report and the
  *  last self-tests. The steps themselves run in the setup window. */
-function stepLine(step: MachineStep, report: SystemReport, last: Record<"docker" | "vm", LastTest | null>): Line {
+function stepLine(step: MachineStep, report: SystemReport, last: Record<"docker" | "vm", LastTest | null>, t: T): Line {
   const installed = usableHypervisors(report).filter((p) => p.hypervisor === true);
   // One that can run labs first (QEMU without KVM can, when libvirt can't).
   const hv = installed.find((p) => !cantRun(p, report)) ?? installed[0];
   // Installed yet unable to run here: not done, as the Health tab says.
   const blocked = !!hv && cantRun(hv, report);
+  const tested = (r: LastTest | null) =>
+    r ? (r.result === "ok" ? t("machine.checklist.passed") : t("machine.checklist.failed")) : t("machine.checklist.notTested");
   switch (step) {
     case "pkgmgr":
-      return { done: report.pkgManager.installed, meta: report.pkgManager.installed ? report.pkgManager.name : "not installed" };
+      return { done: report.pkgManager.installed, meta: report.pkgManager.installed ? report.pkgManager.name : t("machine.checklist.notInstalled") };
     case "virtualization":
-      return { done: isDockerReady(report), meta: isDockerReady(report) ? "WSL 2" : "not checked" };
+      return { done: isDockerReady(report), meta: isDockerReady(report) ? "WSL 2" : t("machine.checklist.notChecked") };
     case "docker":
       return {
         done: isDockerReady(report),
         meta: isDockerReady(report)
           ? report.dockerEngine
             ? engineName(report.dockerEngine)
-            : "running"
+            : t("machine.checklist.running")
           : report.docker.installed
-            ? "stopped"
-            : "not installed",
+            ? t("machine.checklist.stopped")
+            : t("machine.checklist.notInstalled"),
       };
     case "docker-test":
-      return { done: last.docker?.result === "ok", meta: last.docker ? (last.docker.result === "ok" ? "passed" : "failed") : "not tested" };
+      return { done: last.docker?.result === "ok", meta: tested(last.docker) };
     case "attack": {
       const image = getAttackImage();
       return { done: true, meta: ATTACK_PRESETS.find((p) => p.image === image)?.label ?? image };
@@ -48,21 +51,25 @@ function stepLine(step: MachineStep, report: SystemReport, last: Record<"docker"
       return {
         done: hasHypervisor(report) && !blocked,
         optional: true,
-        meta: hv ? `${providerLabel(hv, report.os)}${blocked ? " · can't run here" : ""}` : "optional",
+        meta: hv ? `${providerLabel(hv, report.os)}${blocked ? t("machine.checklist.cantRunHere") : ""}` : t("machine.checklist.optional"),
       };
     case "vagrant": {
       const ok = report.vagrant.installed && (!hv?.plugin || hv.pluginInstalled);
       return {
         done: ok,
         optional: !hasHypervisor(report),
-        meta: report.vagrant.installed ? (ok ? "installed" : `plugin ${hv?.plugin} missing`) : "not installed",
+        meta: report.vagrant.installed
+          ? ok
+            ? t("machine.checklist.installed")
+            : t("machine.checklist.pluginMissing", { plugin: String(hv?.plugin) })
+          : t("machine.checklist.notInstalled"),
       };
     }
     case "vm-test":
       return {
         done: last.vm?.result === "ok",
         optional: !hasHypervisor(report),
-        meta: last.vm ? (last.vm.result === "ok" ? "passed" : "failed") : "not tested",
+        meta: tested(last.vm),
       };
   }
 }
@@ -78,21 +85,18 @@ export function SetupChecklist({
   last: Record<"docker" | "vm", LastTest | null>;
   onFix: (step: string) => void;
 }) {
-  const steps = machineSteps(report).map((step) => ({ step, title: stepMeta(step, report).title, ...stepLine(step, report, last) }));
+  const t = useT();
+  const steps = machineSteps(report).map((step) => ({ step, title: stepMeta(step, report, t).title, ...stepLine(step, report, last, t) }));
   const done = steps.filter((s) => s.done).length;
   return (
     <Panel>
       <PanelHeader
-        title="Guided setup"
-        meta={
-          <span className="tabular-nums">
-            {done} of {steps.length} done
-          </span>
-        }
+        title={t("machine.checklist.title")}
+        meta={<span className="tabular-nums">{t("machine.checklist.done", { done, total: steps.length })}</span>}
         action={
           // The page header carries the primary "Set up this machine" when something is missing.
-          <Button variant="outline" size="xs" onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))}>
-            <Wrench /> Open guided setup
+          <Button variant="outline" size="xs" onClick={() => machineOpenSetup().catch(tell(t("machine.errors.openSetup")))}>
+            <Wrench /> {t("machine.checklist.open")}
           </Button>
         }
       />
@@ -106,7 +110,7 @@ export function SetupChecklist({
             action={
               !s.done && (
                 <Button variant={s.optional ? "ghost" : "outline"} size="xs" onClick={() => onFix(s.step)}>
-                  {s.step.endsWith("-test") ? "Test" : s.optional ? "Add" : "Set up"}
+                  {s.step.endsWith("-test") ? t("machine.checklist.test") : s.optional ? t("machine.checklist.add") : t("machine.checklist.setUp")}
                 </Button>
               )
             }

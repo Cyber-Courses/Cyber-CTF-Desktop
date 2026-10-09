@@ -8,13 +8,16 @@ import { Spinner } from "@/components/ui/spinner";
 import { TypeIcon } from "@/components/ui/type-icon";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { ListSkeleton } from "@/features/machine/machine-parts";
-import { formatBytes } from "@/lib/format";
+import { useMachineFormat } from "@/features/machine/use-machine-format";
+import { useT } from "@/lib/i18n";
 import { apiQuery, machineWorkloadStop, machineWorkloads, type Workload } from "@/lib/tauri";
 import { ignore } from "@/lib/failure";
 
 /** What's running on this machine (Docker and Vagrant), with a Stop per lab. Polled every 8s,
  *  and again whenever `refreshKey` changes (e.g. after a setup test). */
 export function RunningNowPanel({ refreshKey }: { refreshKey: unknown }) {
+  const t = useT();
+  const fmt = useMachineFormat();
   const [workloads, setWorkloads] = useState<Workload[] | null>(null);
   const [stopping, setStopping] = useState<string | null>(null);
   // One workloads read at a time: the read shells out to docker/vagrant and can be slow, so the
@@ -61,19 +64,22 @@ export function RunningNowPanel({ refreshKey }: { refreshKey: unknown }) {
   const labMem = (workloads ?? []).reduce((a, w) => a + w.memBytes, 0);
   return (
     <Panel>
-      <PanelHeader title="Running now" meta={labMem > 0 ? <span className="tabular-nums">{formatBytes(labMem)} in use</span> : undefined} />
+      <PanelHeader
+        title={t("machine.running.title")}
+        meta={labMem > 0 ? <span className="tabular-nums">{t("machine.running.inUse", { size: fmt.bytes(labMem) })}</span> : undefined}
+      />
       {workloads === null ? (
         <ListSkeleton />
       ) : workloads.length === 0 ? (
-        <p className="px-4 py-3.5 text-[0.8125rem] text-muted-foreground">Nothing running.</p>
+        <p className="px-4 py-3.5 text-[0.8125rem] text-muted-foreground">{t("machine.running.empty")}</p>
       ) : (
         workloads.map((w) => {
           const key = `${w.kind}:${w.id}`;
-          const name = w.id === "selftest" ? "Setup test" : (titles[w.id] ?? w.id);
+          const name = w.id === "selftest" ? t("machine.running.setupTest") : (titles[w.id] ?? w.id);
           const meta =
             w.kind === "docker"
-              ? `${w.count} container${w.count === 1 ? "" : "s"}${w.memBytes ? ` · ${formatBytes(w.memBytes)}` : ""}`
-              : `${w.count} VM${w.count === 1 ? "" : "s"}${w.provider ? ` · ${PROVIDER_LABELS[w.provider] ?? w.provider}` : ""}`;
+              ? `${t("machine.running.containers", { count: w.count })}${w.memBytes ? ` · ${fmt.bytes(w.memBytes)}` : ""}`
+              : `${t("machine.running.vms", { count: w.count })}${w.provider ? ` · ${PROVIDER_LABELS[w.provider] ?? w.provider}` : ""}`;
           return (
             <div
               key={key}
@@ -87,11 +93,11 @@ export function RunningNowPanel({ refreshKey }: { refreshKey: unknown }) {
               <Button variant="outline" size="xs" onClick={() => stop(w)} disabled={stopping !== null}>
                 {stopping === key ? (
                   <>
-                    <Spinner className="size-3" /> Stopping…
+                    <Spinner className="size-3" /> {t("machine.running.stopping")}
                   </>
                 ) : (
                   <>
-                    <Square className="size-3" /> Stop
+                    <Square className="size-3" /> {t("machine.running.stop")}
                   </>
                 )}
               </Button>

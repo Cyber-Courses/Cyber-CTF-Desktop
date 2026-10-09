@@ -1,14 +1,15 @@
 import { type DockerEngine } from "@/lib/tauri";
+import { type MessageKey } from "@/lib/i18n";
 
 // ---------- Container engine ----------
 
-export type Engine = { id: DockerEngine; name: string; note: string; url: string; os: string[]; logo: string; tile?: boolean };
+export type Engine = { id: DockerEngine; name: string; /** Translated at render. */ note: MessageKey; url: string; os: string[]; logo: string; tile?: boolean };
 /** Docker-compatible engines, per OS. The recommended one gets the one-click install; others link out. */
 export const ENGINES: Engine[] = [
   {
     id: "docker-desktop",
     name: "Docker Desktop",
-    note: "The official app. Easiest to set up.",
+    note: "machine.engine.notes.dockerDesktop",
     url: "https://www.docker.com/products/docker-desktop/",
     os: ["macos", "windows", "linux"],
     logo: "/brands/docker.svg",
@@ -16,7 +17,7 @@ export const ENGINES: Engine[] = [
   {
     id: "docker-engine",
     name: "Docker Engine",
-    note: "The native daemon, no desktop app.",
+    note: "machine.engine.notes.dockerEngine",
     url: "https://docs.docker.com/engine/install/",
     os: ["linux"],
     logo: "/brands/docker.svg",
@@ -24,7 +25,7 @@ export const ENGINES: Engine[] = [
   {
     id: "orbstack",
     name: "OrbStack",
-    note: "Fast and light on memory. Free for personal use.",
+    note: "machine.engine.notes.orbstack",
     url: "https://orbstack.dev/",
     os: ["macos"],
     logo: "/brands/orbstack.png",
@@ -33,7 +34,7 @@ export const ENGINES: Engine[] = [
   {
     id: "colima",
     name: "Colima",
-    note: "Open source, command line only.",
+    note: "machine.engine.notes.colima",
     url: "https://github.com/abiosoft/colima",
     os: ["macos", "linux"],
     logo: "/brands/colima.png",

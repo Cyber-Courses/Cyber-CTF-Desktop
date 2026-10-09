@@ -8,7 +8,8 @@ import { Choice, ChoiceGrid } from "@/components/ui/choice-card";
 import { Switch } from "@/components/ui/switch";
 import { TypeIcon } from "@/components/ui/type-icon";
 import { isDockerReady } from "@/features/machine/setup-steps/steps";
-import { formatBytes } from "@/lib/format";
+import { useMachineFormat } from "@/features/machine/use-machine-format";
+import { useT } from "@/lib/i18n";
 import { useImageSizes } from "@/lib/use-image-sizes";
 
 // ---------- Virtual machines ----------
@@ -17,6 +18,8 @@ import { useImageSizes } from "@/lib/use-image-sizes";
 
 /** Pick the attack box image (same setting as Settings > Attack box) and whether it starts with each lab. */
 export function AttackStep({ report }: { report: SystemReport }) {
+  const t = useT();
+  const fmt = useMachineFormat();
   const [image, setImage] = useState(() => getAttackImage());
   const [auto, setAuto] = useState(() => getAutoAttackBox());
   const presets = ATTACK_PRESETS;
@@ -40,7 +43,15 @@ export function AttackStep({ report }: { report: SystemReport }) {
               </TypeIcon>
             }
             title={p.label}
-            note={[p.note, sizes[p.image] ? `${formatBytes(sizes[p.image]!)} download` : sizes[p.image] === null && p.large ? "large download" : null, p.terms]
+            note={[
+              p.note,
+              sizes[p.image]
+                ? t("machine.attack.download", { size: fmt.bytes(sizes[p.image]!) })
+                : sizes[p.image] === null && p.large
+                  ? t("machine.attack.largeDownload")
+                  : null,
+              p.terms,
+            ]
               .filter(Boolean)
               .join(" · ")}
             badge={p.image === DEFAULT_ATTACK_IMAGE ? "recommended" : undefined}
@@ -49,13 +60,13 @@ export function AttackStep({ report }: { report: SystemReport }) {
       </ChoiceGrid>
       {custom && (
         <p className="text-left text-[0.75rem] text-muted-foreground">
-          Using a custom image from Settings: <span className="font-mono text-[0.6875rem] text-foreground">{image}</span>
+          {t.rich("machine.attack.custom", { mono: (s) => <span className="font-mono text-[0.6875rem] text-foreground">{s}</span> }, { image })}
         </p>
       )}
       <div className="flex items-center justify-between gap-3 rounded-control bg-glass px-4 py-3 text-left shadow-[inset_0_0_0_1px_var(--border)]">
         <label htmlFor="attack-auto-start" className="min-w-0 cursor-pointer">
-          <span className="block text-[0.8125rem] font-medium text-foreground">Start it with each lab</span>
-          <span className="block text-[0.75rem] text-muted-foreground">Otherwise launch it from the lab’s page when you need it.</span>
+          <span className="block text-[0.8125rem] font-medium text-foreground">{t("machine.attack.autoStart")}</span>
+          <span className="block text-[0.75rem] text-muted-foreground">{t("machine.attack.autoStartHint")}</span>
         </label>
         <Switch
           id="attack-auto-start"
@@ -66,10 +77,8 @@ export function AttackStep({ report }: { report: SystemReport }) {
           }}
         />
       </div>
-      {!isDockerReady(report) && (
-        <p className="text-left text-[0.75rem] text-muted-foreground">It runs on your container engine, so it works once one is set up.</p>
-      )}
-      <p className="text-left text-[0.75rem] text-muted-foreground">The image downloads the first time a lab starts it.</p>
+      {!isDockerReady(report) && <p className="text-left text-[0.75rem] text-muted-foreground">{t("machine.attack.needsEngine")}</p>}
+      <p className="text-left text-[0.75rem] text-muted-foreground">{t("machine.attack.firstStart")}</p>
     </div>
   );
 }

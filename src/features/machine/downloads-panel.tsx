@@ -7,7 +7,8 @@ import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusDot } from "@/components/ui/status-pill";
 import { ListSkeleton } from "@/features/machine/machine-parts";
-import { formatBytes } from "@/lib/format";
+import { useMachineFormat } from "@/features/machine/use-machine-format";
+import { useT } from "@/lib/i18n";
 import { getAttackImage } from "@/lib/settings";
 import { machineStorage, machineStorageClean, type Storage } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,8 @@ import { cn } from "@/lib/utils";
 /** Downloaded container images and VM boxes, with a confirmed clean-up (the attack box image
  *  and anything in use are kept). */
 export function DownloadsPanel() {
+  const t = useT();
+  const fmt = useMachineFormat();
   const [storage, setStorage] = useState<Storage | null>(null);
   const [showStorage, setShowStorage] = useState(false);
   const [confirmClean, setConfirmClean] = useState(false);
@@ -49,12 +52,12 @@ export function DownloadsPanel() {
   return (
     <Panel>
       <PanelHeader
-        title="Downloads"
-        meta={storage && storeItems.length > 0 ? <span className="tabular-nums">{formatBytes(storeTotal)}</span> : undefined}
+        title={t("machine.downloads.title")}
+        meta={storage && storeItems.length > 0 ? <span className="tabular-nums">{fmt.bytes(storeTotal)}</span> : undefined}
         action={
           storage && storeItems.length > 0 && !confirmClean ? (
             <Button variant="outline" size="xs" onClick={() => setConfirmClean(true)} disabled={cleaning}>
-              <Trash2 /> Clean up
+              <Trash2 /> {t("machine.downloads.cleanUp")}
             </Button>
           ) : undefined
         }
@@ -74,11 +77,10 @@ export function DownloadsPanel() {
             />
             <div className="min-w-0 flex-1">
               <p className="text-[0.8125rem] font-medium text-foreground">
-                {storeItems.length ? `${formatBytes(storeTotal)} of lab downloads` : "No lab downloads yet"}
+                {storeItems.length ? t("machine.downloads.total", { size: fmt.bytes(storeTotal) }) : t("machine.downloads.empty")}
               </p>
               <p className="font-mono text-[0.6875rem] text-faint">
-                {storage.images.length} container image{storage.images.length === 1 ? "" : "s"} · {storage.boxes.length} VM image
-                {storage.boxes.length === 1 ? "" : "s"}
+                {t("machine.downloads.containerImages", { count: storage.images.length })} · {t("machine.downloads.vmImages", { count: storage.boxes.length })}
               </p>
             </div>
           </button>
@@ -86,26 +88,24 @@ export function DownloadsPanel() {
             storeItems.map((it) => (
               <div key={it.name} className="flex items-center gap-3 border-t border-border py-2 pr-4 pl-10 transition-colors hover:bg-glass">
                 <span className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-muted-foreground">{it.name}</span>
-                <span className="shrink-0 font-mono text-[0.6875rem] tabular-nums text-faint">{formatBytes(it.bytes)}</span>
+                <span className="shrink-0 font-mono text-[0.6875rem] tabular-nums text-faint">{fmt.bytes(it.bytes)}</span>
               </div>
             ))}
           {confirmClean && (
             <div role="alert" className="flex flex-wrap items-center gap-3 border-t border-border bg-glass px-4 py-3">
               <StatusDot tone="warn" />
-              <p className="min-w-0 flex-1 text-[0.75rem] text-foreground">
-                Remove {formatBytes(storeTotal)}? Labs download what they need again on their next start. Anything in use stays.
-              </p>
+              <p className="min-w-0 flex-1 text-[0.75rem] text-foreground">{t("machine.downloads.confirm", { size: fmt.bytes(storeTotal) })}</p>
               <div className="flex gap-2">
                 <Button variant="ghost" size="xs" onClick={() => setConfirmClean(false)} disabled={cleaning}>
-                  Cancel
+                  {t("machine.downloads.cancel")}
                 </Button>
                 <Button variant="destructive" size="xs" onClick={clean} disabled={cleaning}>
                   {cleaning ? (
                     <>
-                      <Spinner className="size-3" /> Removing…
+                      <Spinner className="size-3" /> {t("machine.downloads.removing")}
                     </>
                   ) : (
-                    "Remove"
+                    t("machine.downloads.remove")
                   )}
                 </Button>
               </div>
@@ -113,7 +113,7 @@ export function DownloadsPanel() {
           )}
           {freed !== null && !confirmClean && (
             <p className="border-t border-border px-4 py-2.5 text-[0.75rem] text-muted-foreground">
-              {freed > 0 ? `Freed ${formatBytes(freed)}.` : "Nothing could be removed (all in use)."}
+              {freed > 0 ? t("machine.downloads.freed", { size: fmt.bytes(freed) }) : t("machine.downloads.nothingFreed")}
             </p>
           )}
         </>

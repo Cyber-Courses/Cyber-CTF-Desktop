@@ -8,28 +8,29 @@ import { StepRow } from "@/features/machine/step-row";
 import { machineSelftest, type SelfTestEvent } from "@/lib/tauri";
 import { getVmProvider, setLastTest } from "@/lib/settings";
 import { formatElapsed } from "@/lib/format";
+import { useT, type MessageKey } from "@/lib/i18n";
 
 export type SelfTestResult = "idle" | "running" | "ok" | "fail";
 
 /** The steps each test reports, so the list shows up front instead of growing as it runs. */
-const PLAN: Record<"docker" | "vm", { step: string; label: string }[]> = {
+const PLAN: Record<"docker" | "vm", { step: string; label: MessageKey }[]> = {
   docker: [
-    { step: "engine", label: "Container engine answers" },
-    { step: "pull", label: "Download a test image" },
-    { step: "start", label: "Start a two-container test lab" },
-    { step: "network", label: "Containers reach each other" },
-    { step: "port", label: "Lab port reachable from this machine" },
-    { step: "cleanup", label: "Clean up" },
+    { step: "engine", label: "machine.selfTest.docker.engine" },
+    { step: "pull", label: "machine.selfTest.docker.pull" },
+    { step: "start", label: "machine.selfTest.docker.start" },
+    { step: "network", label: "machine.selfTest.docker.network" },
+    { step: "port", label: "machine.selfTest.docker.port" },
+    { step: "cleanup", label: "machine.selfTest.docker.cleanup" },
   ],
   vm: [
-    { step: "vagrant", label: "Vagrant is installed" },
-    { step: "provider", label: "A hypervisor is ready" },
-    { step: "hypervisor", label: "Hypervisor responds" },
-    { step: "box", label: "Get a small test VM image" },
-    { step: "boot", label: "Boot the test VM" },
-    { step: "exec", label: "Run a command inside the VM" },
-    { step: "network", label: "VM reachable on a lab network" },
-    { step: "cleanup", label: "Delete the test VM" },
+    { step: "vagrant", label: "machine.selfTest.vm.vagrant" },
+    { step: "provider", label: "machine.selfTest.vm.provider" },
+    { step: "hypervisor", label: "machine.selfTest.vm.hypervisor" },
+    { step: "box", label: "machine.selfTest.vm.box" },
+    { step: "boot", label: "machine.selfTest.vm.boot" },
+    { step: "exec", label: "machine.selfTest.vm.exec" },
+    { step: "network", label: "machine.selfTest.vm.network" },
+    { step: "cleanup", label: "machine.selfTest.vm.cleanup" },
   ],
 };
 
@@ -47,6 +48,7 @@ export function SelfTest({
   auto?: boolean;
   onResult?: (r: SelfTestResult) => void;
 }) {
+  const t = useT();
   const [events, setEvents] = useState<Record<string, SelfTestEvent>>({});
   const [result, setResult] = useState<SelfTestResult>("idle");
   const started = useRef(false);
@@ -113,7 +115,7 @@ export function SelfTest({
         <span className="ml-auto shrink-0">
           {result === "running" ? (
             <span className="flex items-center gap-2 text-[0.75rem] text-muted-foreground">
-              <StatusDot tone="warn" pulse /> Testing
+              <StatusDot tone="warn" pulse /> {t("machine.selfTest.testing")}
               <span className="font-mono text-[0.6875rem] tabular-nums text-faint">
                 {passed}/{PLAN[kind].length} · {run ? formatElapsed(now - run.start) : ""}
               </span>
@@ -121,10 +123,10 @@ export function SelfTest({
           ) : result === "ok" ? (
             <span className="flex items-center gap-2">
               <span className="flex items-center gap-2 text-[0.75rem] text-foreground">
-                <StatusDot tone="ok" /> Passed
+                <StatusDot tone="ok" /> {t("machine.selfTest.passed")}
                 {run?.end ? <span className="font-mono text-[0.6875rem] tabular-nums text-faint">{formatElapsed(run.end - run.start)}</span> : null}
               </span>
-              <Button variant="ghost" size="icon-sm" onClick={runTest} aria-label="Run again">
+              <Button variant="ghost" size="icon-sm" onClick={runTest} aria-label={t("machine.selfTest.runAgain")}>
                 <RefreshCw />
               </Button>
             </span>
@@ -132,17 +134,17 @@ export function SelfTest({
             <span className="flex items-center gap-2">
               {result === "fail" && (
                 <span className="flex items-center gap-2 text-[0.75rem] text-destructive">
-                  <StatusDot tone="fail" /> Failed
+                  <StatusDot tone="fail" /> {t("machine.selfTest.failed")}
                   {run?.end && <span className="font-mono text-[0.6875rem] tabular-nums text-faint">{formatElapsed(run.end - run.start)}</span>}
                 </span>
               )}
               <Button variant={result === "fail" ? "outline" : "primary"} size="xs" onClick={runTest}>
                 {result === "fail" ? (
                   <>
-                    <RefreshCw /> Retry
+                    <RefreshCw /> {t("machine.selfTest.retry")}
                   </>
                 ) : (
-                  "Run test"
+                  t("machine.selfTest.run")
                 )}
               </Button>
             </span>
@@ -154,19 +156,19 @@ export function SelfTest({
           {PLAN[kind].map(({ step, label }) => {
             const e: SelfTestEvent | undefined = events[step];
             const state: SelfTestEvent["state"] | "pending" = e ? e.state : "pending";
-            const t = times[step];
+            const time = times[step];
             return (
               <li key={step}>
                 <StepRow
                   state={state === "ok" ? "done" : state === "running" ? "run" : state}
-                  label={label}
+                  label={t(label)}
                   detail={e?.detail}
                   detailTone={state === "fail" ? "fail" : undefined}
                   meta={
-                    t && state !== "skip"
-                      ? formatElapsed((t.end ?? (result === "running" ? now : (run?.end ?? now))) - t.start)
+                    time && state !== "skip"
+                      ? formatElapsed((time.end ?? (result === "running" ? now : (run?.end ?? now))) - time.start)
                       : state === "skip"
-                        ? "skipped"
+                        ? t("machine.selfTest.skipped")
                         : undefined
                   }
                 />

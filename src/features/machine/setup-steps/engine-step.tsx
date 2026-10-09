@@ -11,8 +11,10 @@ import { Choice, ChoiceAction, ChoiceGrid } from "@/components/ui/choice-card";
 import { chosenEngine, isDockerReady } from "@/features/machine/setup-steps/steps";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
 import { openExternal, tell } from "@/lib/failure";
+import { useT } from "@/lib/i18n";
 
 export function EngineStep({ report, setup }: { report: SystemReport; setup: MachineSetupState }) {
+  const t = useT();
   const isWin = report.os === "windows";
   const isMac = report.os === "macos";
   const ready = isDockerReady(report);
@@ -26,7 +28,7 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
   const switchTo = (engine: DockerEngine) => {
     setSwitching(true);
     dockerUseEngine(engine)
-      .catch(tell("Couldn't switch the Docker engine"))
+      .catch(tell(t("machine.errors.switchEngine")))
       .finally(() => {
         setSwitching(false);
         onRefresh();
@@ -56,7 +58,7 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
             onSelect={() => setup.setEngine(e.id)}
             mark={<EngineLogo engine={e} />}
             title={e.name}
-            note={e.note}
+            note={t(e.note)}
             badge={
               report.dockerEngine === e.id
                 ? "in use"
@@ -75,73 +77,71 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
           {report.dockerEnginesRunning?.includes(choice.id) ? (
             <>
               <span className="text-[0.8125rem] text-muted-foreground">
-                {choice.name} is running, but Docker uses {engines.find((e) => e.id === report.dockerEngine)?.name ?? "another engine"} right now.
+                {t("machine.engine.otherRunning", {
+                  engine: choice.name,
+                  current: engines.find((e) => e.id === report.dockerEngine)?.name ?? t("machine.engine.anotherEngine"),
+                })}
               </span>
               <Button variant="primary" size="sm" disabled={switching} onClick={() => switchTo(choice.id)}>
                 {switching ? (
                   <>
-                    <Spinner className="size-3.5" /> Switching…
+                    <Spinner className="size-3.5" /> {t("machine.engine.switching")}
                   </>
                 ) : (
-                  `Use ${choice.name}`
+                  t("machine.engine.use", { engine: choice.name })
                 )}
               </Button>
             </>
           ) : report.docker.installed && !ready ? (
             <>
               <span className="text-[0.8125rem] text-muted-foreground">
-                {startError ?? (starting ? `Starting ${choice.name}… the first start can take a minute.` : `${choice.name} is installed but not running.`)}
+                {startError ?? (starting ? t("machine.engine.starting", { engine: choice.name }) : t("machine.engine.notRunning", { engine: choice.name }))}
               </span>
               <span className="flex shrink-0 gap-2">
                 {startError && (
                   <Button variant="outline" size="sm" onClick={() => openExternal(choice.url)}>
-                    <ExternalLink className="size-3.5" /> Get {choice.name}
+                    <ExternalLink className="size-3.5" /> {t("machine.engine.get", { name: choice.name })}
                   </Button>
                 )}
                 <Button variant="primary" size="sm" disabled={starting} onClick={start}>
                   {starting ? (
                     <>
-                      <Spinner className="size-3.5" /> Starting…
+                      <Spinner className="size-3.5" /> {t("machine.engine.startingButton")}
                     </>
                   ) : (
-                    `Start ${choice.name}`
+                    t("machine.engine.start", { engine: choice.name })
                   )}
                 </Button>
               </span>
             </>
           ) : choice.id === recommended && !report.docker.installed ? (
             <>
-              <span className="text-[0.8125rem] text-muted-foreground">Cyber CTF can install {choice.name} for you.</span>
+              <span className="text-[0.8125rem] text-muted-foreground">{t("machine.engine.canInstall", { name: choice.name })}</span>
               {!installerOpened ? (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => install("docker", "docker", "Installing the container engine…")}
-                  disabled={installing !== null}
-                >
+                <Button variant="primary" size="sm" onClick={() => install("docker", "docker", t("machine.engine.installLog"))} disabled={installing !== null}>
                   {installing === "docker" ? (
                     <>
-                      <Spinner className="size-3.5" /> Installing…
+                      <Spinner className="size-3.5" /> {t("machine.engine.installing")}
                     </>
                   ) : (
-                    `Install ${choice.name}`
+                    t("machine.engine.install", { name: choice.name })
                   )}
                 </Button>
               ) : (
                 <Button variant="outline" size="sm" onClick={() => onRefresh()}>
-                  <RefreshCw className="size-3.5" /> Re-check
+                  <RefreshCw className="size-3.5" /> {t("machine.engine.recheck")}
                 </Button>
               )}
             </>
           ) : (
             <>
-              <span className="text-[0.8125rem] text-muted-foreground">Install {choice.name}, start it, then re-check.</span>
+              <span className="text-[0.8125rem] text-muted-foreground">{t("machine.engine.installThenRecheck", { engine: choice.name })}</span>
               <span className="flex shrink-0 gap-2">
                 <Button variant="outline" size="sm" onClick={() => openExternal(choice.url)}>
-                  <ExternalLink className="size-3.5" /> Get {choice.name}
+                  <ExternalLink className="size-3.5" /> {t("machine.engine.get", { name: choice.name })}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => onRefresh()}>
-                  <RefreshCw className="size-3.5" /> Re-check
+                  <RefreshCw className="size-3.5" /> {t("machine.engine.recheck")}
                 </Button>
               </span>
             </>
@@ -150,20 +150,16 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
       )}
       {!ready && installerOpened && (
         <p className="text-[0.75rem] text-muted-foreground">
-          {choice.id === "docker-desktop"
-            ? "Finish in Docker’s installer, launch Docker Desktop, then press Re-check."
-            : `Finish installing ${choice.name}, start it, then press Re-check.`}
+          {choice.id === "docker-desktop" ? t("machine.engine.finishDockerDesktop") : t("machine.engine.finishOther", { engine: choice.name })}
         </p>
       )}
-      {!ready && isWin && (
-        <p className="text-[0.75rem] text-muted-foreground">A reboot may be needed after enabling WSL. If Docker says virtualization is off, go back a step.</p>
-      )}
+      {!ready && isWin && <p className="text-[0.75rem] text-muted-foreground">{t("machine.engine.windowsReboot")}</p>}
       {!ready && !isMac && !isWin && choice.id === "docker-engine" && (
         <div className="space-y-2 rounded-control bg-glass shadow-[inset_0_0_0_1px_var(--border)] p-3 text-left text-[0.75rem] text-muted-foreground">
-          <p>After Docker Engine installs, let your user run it and start the service:</p>
+          <p>{t("machine.engine.linuxPostInstall")}</p>
           <CmdRow cmd="sudo usermod -aG docker $USER" />
           <CmdRow cmd="sudo systemctl enable --now docker" />
-          <p>Then log out and back in.</p>
+          <p>{t("machine.engine.linuxRelog")}</p>
         </div>
       )}
       <Log setup={setup} of={["docker"]} />
@@ -193,10 +189,6 @@ function EngineLogo({ engine }: { engine: Engine }) {
 }
 
 function EngineTrademarks() {
-  return (
-    <p className="pt-1 text-left text-[0.6875rem] leading-relaxed text-faint">
-      Docker and the Docker logo are trademarks of Docker, Inc. Other engine names belong to their respective owners. Cyber CTF isn&apos;t affiliated
-      with any of them.
-    </p>
-  );
+  const t = useT();
+  return <p className="pt-1 text-left text-[0.6875rem] leading-relaxed text-faint">{t("machine.engine.trademarks")}</p>;
 }

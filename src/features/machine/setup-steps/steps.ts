@@ -1,10 +1,15 @@
 import { Container, Cpu, Crosshair, FlaskConical, Package, Server, type LucideIcon } from "lucide-react";
 import { type SystemReport } from "@/lib/tauri";
+import { translate, type MessageKey, type Vars } from "@/lib/i18n";
 import { cantRun, INSTALLABLE, usableHypervisors } from "@/features/machine/hypervisors";
 import { ENGINES, Engine } from "@/features/machine/setup-steps/engines";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
 
 export type MachineStep = "pkgmgr" | "virtualization" | "docker" | "docker-test" | "attack" | "vm" | "vagrant" | "vm-test";
+
+/** Translates a message: `useT()`'s `t` in a component (re-renders on a language change),
+ *  `translate` (the current language) elsewhere. */
+type Tr = (key: MessageKey, vars?: Vars) => string;
 
 /** The steps this machine needs, in order. OS-aware: Windows gets the WSL step. */
 export function machineSteps(report: SystemReport | null): MachineStep[] {
@@ -14,74 +19,59 @@ export function machineSteps(report: SystemReport | null): MachineStep[] {
 export const isDockerReady = (r: SystemReport | null) => !!r && r.docker.installed && r.dockerRunning;
 export const hasHypervisor = (r: SystemReport | null) => !!r && usableHypervisors(r).some((p) => p.hypervisor === true);
 
-export function stepMeta(step: MachineStep, report: SystemReport | null): { icon: LucideIcon; title: string; description: string } {
-  const pm = report?.pkgManager.name ?? "a package manager";
+export function stepMeta(step: MachineStep, report: SystemReport | null, t: Tr = translate): { icon: LucideIcon; title: string; description: string } {
+  const pm = report?.pkgManager.name ?? t("machine.steps.aPackageManager");
   // macOS asks for a few things along the way; say so before the step that triggers each prompt.
   const mac = report?.os === "macos";
-  const localNetwork = mac
-    ? " macOS may ask to let Cyber CTF find devices on your local network, and to show notifications (lab ready, failures): choose Allow, labs need the first."
-    : "";
+  const withMac = (text: string, headsUp: MessageKey) => (mac ? `${text} ${t(headsUp)}` : text);
   switch (step) {
     case "pkgmgr":
       return {
         icon: Package,
-        title: "Setup tools",
-        description: `Cyber CTF installs everything else for you through ${pm}, your system's package manager. It only has to be set up once.`,
+        title: t("machine.steps.pkgmgr.title"),
+        description: t("machine.steps.pkgmgr.description", { pm }),
       };
     case "virtualization":
       return {
         icon: Cpu,
-        title: "Enable virtualization (WSL 2)",
-        description: "Docker Desktop runs Linux containers through WSL 2. Turn it on once, this is the step most people miss on Windows.",
+        title: t("machine.steps.virtualization.title"),
+        description: t("machine.steps.virtualization.description"),
       };
     case "docker":
       return {
         icon: Container,
-        title: "Container engine",
-        description:
-          report?.os === "windows"
-            ? "Container labs need one Docker-compatible engine (it uses the WSL 2 you enabled). Pick the one you prefer."
-            : "Container labs need one Docker-compatible engine. Pick the one you prefer, they all work.",
+        title: t("machine.steps.docker.title"),
+        description: report?.os === "windows" ? t("machine.steps.docker.descriptionWindows") : t("machine.steps.docker.description"),
       };
     case "attack":
       return {
         icon: Crosshair,
-        title: "Attack machine",
-        description:
-          "The machine you attack labs from: a container that starts next to each lab, on its network. Pick a toolset; you can change it later in Settings." +
-          (mac ? " Its shell opens in Terminal: the first time, macOS asks to let Cyber CTF control Terminal; choose OK." : ""),
+        title: t("machine.steps.attack.title"),
+        description: withMac(t("machine.steps.attack.description"), "machine.steps.macTerminal"),
       };
     case "vm":
       return {
         icon: Server,
-        title: "Virtual machines",
-        description:
-          "Labs built from full VMs (Active Directory domains, Windows hosts, routers, multi-host networks) need one hypervisor, whichever you prefer. You can also add one later from the Machine page." +
-          (mac
-            ? " Its installer opens in its own window and asks for your password; VirtualBox may also need approval in System Settings > Privacy & Security."
-            : ""),
+        title: t("machine.steps.vm.title"),
+        description: withMac(t("machine.steps.vm.description"), "machine.steps.macInstallerVm"),
       };
     case "vagrant":
       return {
         icon: Package,
-        title: "Provisioning",
-        description:
-          "Cyber CTF creates and starts each lab's virtual machines with Vagrant, a free tool, on your hypervisor. Most hypervisors also need a small add-on (plugin) for it." +
-          (mac ? " Its installer opens in its own window and asks for your password." : ""),
+        title: t("machine.steps.vagrant.title"),
+        description: withMac(t("machine.steps.vagrant.description"), "machine.steps.macInstaller"),
       };
     case "docker-test":
       return {
         icon: FlaskConical,
-        title: "Test container labs",
-        description: "Starts a tiny two-container lab, checks it works, then deletes it. About 2 MB to download." + localNetwork,
+        title: t("machine.steps.dockerTest.title"),
+        description: withMac(t("machine.steps.dockerTest.description"), "machine.steps.macLocalNetwork"),
       };
     case "vm-test":
       return {
         icon: FlaskConical,
-        title: "Test VM labs",
-        description:
-          "Boots a real test VM, checks it works, then deletes it. Takes a few minutes; the first run downloads a small VM image (cached after)." +
-          localNetwork,
+        title: t("machine.steps.vmTest.title"),
+        description: withMac(t("machine.steps.vmTest.description"), "machine.steps.macLocalNetwork"),
       };
   }
 }
@@ -90,13 +80,13 @@ export function stepMeta(step: MachineStep, report: SystemReport | null): { icon
  *  Starts each test's download in the background as soon as the machine can run it. */
 
 /** Label for the flow's forward button on this step. */
-export function nextLabel(step: MachineStep, report: SystemReport | null): string {
-  if (step === "virtualization") return "I’ve done this";
-  if (step === "vm-test" && !hasHypervisor(report)) return "Skip for now";
+export function nextLabel(step: MachineStep, report: SystemReport | null, t: Tr = translate): string {
+  if (step === "virtualization") return t("machine.steps.next.done");
+  if (step === "vm-test" && !hasHypervisor(report)) return t("machine.steps.next.skip");
   // A hypervisor is optional (VM labs can run on a server): with none set up, the VM steps
   // can be passed by.
-  if ((step === "vm" || step === "vagrant") && !hasHypervisor(report)) return "Skip for now";
-  return "Continue";
+  if ((step === "vm" || step === "vagrant") && !hasHypervisor(report)) return t("machine.steps.next.skip");
+  return t("machine.steps.next.continue");
 }
 
 /** The engine the player picked, else the one in use (it can be reported after the step

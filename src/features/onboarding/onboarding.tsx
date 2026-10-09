@@ -23,23 +23,26 @@ import {
 } from "@/features/machine/setup-steps";
 import { authLogin, authStatus, systemCheck, type AuthStatus, type SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+import { useT, type MessageKey } from "@/lib/i18n";
 
 type OnboardingStep = "welcome" | "signin" | MachineStep | "done";
 
 /** Names for the progress line. VM steps are optional: Docker labs run without them. */
-const STEP_NAMES: Record<OnboardingStep, string> = {
-  welcome: "Welcome",
-  signin: "Sign in",
-  pkgmgr: "Package manager",
-  virtualization: "Virtualization",
-  docker: "Container engine",
-  "docker-test": "Container test",
-  attack: "Attack box",
-  vm: "Virtual machines (optional)",
-  vagrant: "Vagrant (optional)",
-  "vm-test": "VM test (optional)",
-  done: "Done",
+const STEP_NAMES: Record<OnboardingStep, MessageKey> = {
+  welcome: "onboarding.stepNames.welcome",
+  signin: "onboarding.stepNames.signin",
+  pkgmgr: "onboarding.stepNames.pkgmgr",
+  virtualization: "onboarding.stepNames.virtualization",
+  docker: "onboarding.stepNames.docker",
+  "docker-test": "onboarding.stepNames.dockerTest",
+  attack: "onboarding.stepNames.attack",
+  vm: "onboarding.stepNames.vm",
+  vagrant: "onboarding.stepNames.vagrant",
+  "vm-test": "onboarding.stepNames.vmTest",
+  done: "onboarding.stepNames.done",
 };
+
+const em = (s: string) => <em>{s}</em>;
 
 function StepHeader({ title, description }: { title: ReactNode; description: string }) {
   return (
@@ -90,10 +93,11 @@ function StepActions({
   disabled?: boolean;
   backDisabled?: boolean;
 }) {
+  const t = useT();
   return (
     <div className="mt-8 flex items-center justify-between gap-2">
       <Button variant="ghost" onClick={onBack} disabled={backDisabled}>
-        <ArrowLeft className="size-4" /> Back
+        <ArrowLeft className="size-4" /> {t("onboarding.back")}
       </Button>
       <Button onClick={onNext} disabled={disabled}>
         {nextLabel}
@@ -103,6 +107,7 @@ function StepActions({
 }
 
 export function Onboarding({ onComplete }: { onComplete: () => void }) {
+  const t = useT();
   const [i, setI] = useState(0);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [report, setReport] = useState<SystemReport | null>(null);
@@ -145,7 +150,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
   }
 
   const pos = Math.min(i, steps.length - 1);
-  const meta = step !== "welcome" && step !== "signin" && step !== "done" && report !== null ? stepMeta(step, report) : null;
+  const meta = step !== "welcome" && step !== "signin" && step !== "done" && report !== null ? stepMeta(step, report, t) : null;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
@@ -153,7 +158,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
       <div data-tauri-drag-region className="flex h-11 shrink-0 items-center justify-end pr-4 pl-20">
         {step !== "done" && (
           <Button variant="ghost" size="xs" onClick={onComplete}>
-            Skip setup
+            {t("onboarding.skip")}
           </Button>
         )}
       </div>
@@ -176,46 +181,23 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
             </div>
             <p className="mt-2.5 flex items-center gap-1.5 font-mono text-[0.6875rem] text-faint">
               {meta && <meta.icon className="size-3" />}
-              {pos + 1} / {steps.length} · {STEP_NAMES[step]}
+              {pos + 1} / {steps.length} · {t(STEP_NAMES[step])}
             </p>
           </div>
 
           <div key={step} className="mt-8 animate-rise-in">
             {step === "welcome" && (
               <div>
-                <StepHeader
-                  title={
-                    <>
-                      Welcome to Cyber <em>CTF</em>
-                    </>
-                  }
-                  description="Run realistic, isolated security labs on your machine, your own server or the cloud, launched from the app or straight from the website."
-                />
+                <StepHeader title={<>{t.rich("onboarding.welcome.title", { em })}</>} description={t("onboarding.welcome.description")} />
                 <Panel className="mt-8">
-                  <Feature
-                    icon="container"
-                    title="Container & VM labs"
-                    description="Docker containers and full virtual machines, each lab on its own isolated network."
-                  />
-                  <Feature
-                    icon="cloud"
-                    title="Run it where you want"
-                    description="On this machine, your own server (Proxmox, ESXi) or your cloud account (AWS, Azure, Google Cloud and more), which stops itself when you're done."
-                  />
-                  <Feature
-                    icon="shield"
-                    title="Real targets"
-                    description="Exploit genuinely vulnerable systems from an attack box plugged into the lab network."
-                  />
-                  <Feature
-                    icon="plug"
-                    title="Launch from anywhere"
-                    description="Start a lab from the website, even on your phone; it runs on the machine you pick."
-                  />
+                  <Feature icon="container" title={t("onboarding.welcome.labsTitle")} description={t("onboarding.welcome.labsDescription")} />
+                  <Feature icon="cloud" title={t("onboarding.welcome.whereTitle")} description={t("onboarding.welcome.whereDescription")} />
+                  <Feature icon="shield" title={t("onboarding.welcome.targetsTitle")} description={t("onboarding.welcome.targetsDescription")} />
+                  <Feature icon="plug" title={t("onboarding.welcome.launchTitle")} description={t("onboarding.welcome.launchDescription")} />
                 </Panel>
                 <div className="mt-8 flex justify-center">
                   <Button size="lg" className="min-w-48" onClick={next}>
-                    Get started <ArrowRight className="size-4" />
+                    {t("onboarding.welcome.start")} <ArrowRight className="size-4" />
                   </Button>
                 </div>
               </div>
@@ -223,13 +205,15 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
 
             {step === "signin" && (
               <div>
-                <StepHeader title="Sign in" description="Connect your Cyber CTF account to register this machine and launch labs from any device." />
+                <StepHeader title={t("onboarding.signin.title")} description={t("onboarding.signin.description")} />
                 <div className="mt-8">
                   {auth?.loggedIn ? (
                     <Panel className="flex items-center gap-3 px-4 py-3.5">
                       <StatusDot tone="ok" />
                       <div className="min-w-0">
-                        <p className="text-[0.8125rem] font-medium text-foreground">Signed in{auth.name ? ` as ${auth.name}` : ""}</p>
+                        <p className="text-[0.8125rem] font-medium text-foreground">
+                          {auth.name ? t("onboarding.signin.signedInAs", { name: auth.name }) : t("onboarding.signin.signedIn")}
+                        </p>
                         {auth.email && <p className="truncate font-mono text-[0.6875rem] text-faint">{auth.email}</p>}
                       </div>
                     </Panel>
@@ -238,16 +222,16 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                       <Button variant="outline" size="lg" className="w-full" onClick={login} disabled={loggingIn}>
                         {loggingIn ? (
                           <>
-                            <Spinner className="size-4" /> Waiting for the browser… (up to 5 minutes)
+                            <Spinner className="size-4" /> {t("onboarding.signin.waiting")}
                           </>
                         ) : (
                           <>
-                            <Icon name="user" className="size-4" /> Sign in with your browser
+                            <Icon name="user" className="size-4" /> {t("onboarding.signin.button")}
                           </>
                         )}
                       </Button>
                       <p className="mt-2.5 text-[0.75rem] text-muted-foreground">
-                        Opens <span className="font-mono text-[0.6875rem]">cyberauth.co</span> in your browser. You can also do this later.
+                        {t.rich("onboarding.signin.hint", { mono: (s) => <span className="font-mono text-[0.6875rem]">{s}</span> })}
                       </p>
                       {loginError && (
                         <p role="alert" className="surface-log mt-4 flex items-start gap-2 rounded-control p-3 text-left text-[0.75rem] text-foreground">
@@ -258,14 +242,14 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                     </Panel>
                   )}
                 </div>
-                <StepActions onBack={back} onNext={next} nextLabel="Continue" />
+                <StepActions onBack={back} onNext={next} nextLabel={t("onboarding.continue")} />
               </div>
             )}
 
             {/* A machine step before the machine check answers: just the loader, no step header. */}
             {step !== "welcome" && step !== "signin" && step !== "done" && report === null && (
               <div className="flex items-center justify-center gap-2 text-[0.8125rem] text-muted-foreground">
-                <Spinner className="size-4" /> Checking this machine…
+                <Spinner className="size-4" /> {t("onboarding.checking")}
               </div>
             )}
 
@@ -273,7 +257,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
               <div>
                 <StepHeader title={meta.title} description={meta.description} />
                 <div className="mt-8">
-                  <ErrorBoundary resetKey={step} title="This step couldn’t load">
+                  <ErrorBoundary resetKey={step} title={t("onboarding.stepFailed")}>
                     <MachineStepBody step={step} report={report} setup={setup} />
                   </ErrorBoundary>
                 </div>
@@ -282,32 +266,31 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                   backDisabled={setup.busy}
                   onNext={next}
                   disabled={setup.busy || !canContinue(step, report, setup)}
-                  nextLabel={nextLabel(step, report)}
+                  nextLabel={nextLabel(step, report, t)}
                 />
               </div>
             )}
 
             {step === "done" && (
               <div>
-                <StepHeader
-                  title={
-                    <>
-                      You’re all <em>set</em>
-                    </>
-                  }
-                  description="You can change any of this later in Settings or This machine."
-                />
+                <StepHeader title={<>{t.rich("onboarding.done.title", { em })}</>} description={t("onboarding.done.description")} />
                 <div className="mt-8 space-y-2.5">
                   <SummaryRow
                     ok={!!auth?.loggedIn}
-                    label="Account"
-                    value={auth?.loggedIn ? `Signed in${auth.name ? ` as ${auth.name}` : ""}` : "Not signed in"}
+                    label={t("onboarding.done.account")}
+                    value={
+                      auth?.loggedIn
+                        ? auth.name
+                          ? t("onboarding.signin.signedInAs", { name: auth.name })
+                          : t("onboarding.signin.signedIn")
+                        : t("onboarding.done.notSignedIn")
+                    }
                   />
                   <SetupOutcome report={report} setup={setup} />
                 </div>
                 <div className="mt-8 flex justify-center">
                   <Button size="lg" className="min-w-48" onClick={onComplete}>
-                    Browse labs <ArrowRight className="size-4" />
+                    {t("onboarding.done.browse")} <ArrowRight className="size-4" />
                   </Button>
                 </div>
               </div>
