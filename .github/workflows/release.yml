@@ -58,6 +58,28 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # Windows Authenticode via Azure Artifact Signing (formerly Trusted Signing). Tauri runs
+      # signCommand on the app binary and the NSIS installer. Skipped (unsigned build) until the
+      # AZURE_* secrets exist; the Store MSIX is signed by Microsoft either way.
+      - name: Set up Authenticode signing (Windows)
+        if: matrix.platform == 'windows-latest' && env.AZURE_CLIENT_ID != ''
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
+        run: |
+          set -euo pipefail
+          cargo install trusted-signing-cli --locked
+          node -e '
+            const fs = require("fs"), p = "src-tauri/tauri.conf.json", c = JSON.parse(fs.readFileSync(p, "utf8"));
+            const e = process.env;
+            c.bundle.windows = { ...c.bundle.windows, signCommand:
+              `trusted-signing-cli -e ${e.AZURE_SIGNING_ENDPOINT} -a ${e.AZURE_SIGNING_ACCOUNT} -c ${e.AZURE_SIGNING_PROFILE} -d CyberCTF %1` };
+            fs.writeFileSync(p, JSON.stringify(c, null, 2));
+          '
+
       # Notarization uses an App Store Connect API key. GitHub secrets can only hold
       # text, so the .p8 is stored base64-encoded and written to a file here; the path
       # and key id are exported for the tauri-action step below. macOS only.
@@ -84,6 +106,10 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # Read by trusted-signing-cli (Windows signCommand); unused elsewhere.
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: "Cyber CTF v__VERSION__"
