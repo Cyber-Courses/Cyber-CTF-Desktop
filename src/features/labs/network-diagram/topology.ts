@@ -16,6 +16,7 @@ import {
   attack,
   isIp,
   netLabel,
+  publishHandle,
   serviceMeta,
   serviceRows,
   serviceType,
@@ -164,7 +165,11 @@ export function topology(machines: Machine[], networks: LabNetwork[], attacker: 
             draggable: false,
             selectable: false,
           });
-          edges.push(link(`e-${hp}`, id, hp, GREEN, { dashed: true, label: "published" }));
+          // From the service that publishes it (its box's right edge); a port no service row
+          // shows keeps the card's own bottom handle.
+          const shown = serviceRows(m, uniquePorts(m.ports), type).some((r) => r.ports.some((q) => q.published === p.published));
+          const e = link(`e-${hp}`, id, hp, GREEN, { dashed: true, label: "published" });
+          edges.push(shown ? { ...e, sourceHandle: publishHandle(p.published) } : e);
         });
     });
 

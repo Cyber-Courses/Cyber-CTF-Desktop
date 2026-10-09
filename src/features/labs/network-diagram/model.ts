@@ -57,6 +57,9 @@ function declaredType(kind: string): ServiceType {
   return k === "database" || k === "web" || k === "cache" || k === "worker" || k === "ssh" ? k : "service";
 }
 
+/** The handle id of a published port, on the right edge of its service's box. */
+export const publishHandle = (published: number) => `pub-${published}`;
+
 /** The card's service rows. Declared services (compose labels) each get a row with their
  *  ports. Container ports none of them claims are left out: they are the image's own EXPOSE
  *  defaults (a MySQL image exposes 3306/33060 even when the lab's database listens on 3207),
@@ -91,6 +94,8 @@ export const PIVOT = "var(--jewel)"; // a pivot's link on into a deeper network
 export const IDLE = "var(--faint)"; // a link that is not live (attack box not attached)
 
 export const BRIDGE = { w: 136, h: 60 };
+/** The diagram is never drawn smaller than this (a wide lab scrolls instead). */
+export const MIN_ZOOM = 0.6;
 export const ANCHOR = 2; // a published port's anchor node, a point on the card's edge
 
 /** The lab as a graph: zones (networks) holding bridges and single-homed machines, pivots
