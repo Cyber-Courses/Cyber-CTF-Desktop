@@ -7,6 +7,10 @@ import { Topology } from "@/features/labs/network-diagram/topology";
 
 const elk = new ELK();
 
+/** The room one published-port tab takes along the bottom row, in layout units: the tab is
+ *  ~72px wide and the diagram can be drawn a little below 1:1. */
+const PORT_TAB_SLOT = 96;
+
 /** Lays the measured nodes out with ELK. Zones run left to right in attack order (attack →
  *  entry network → pivot → deeper network); inside a zone the bridge sits above its machines.
  *  Localhost bindings are left out of ELK and set in a band along the bottom (the host edge).
@@ -106,7 +110,7 @@ export async function layout(topo: Topology, size: (id: string) => { w: number; 
   // Published ports: a row below everything, each under its container (side by side when
   // it has several), linked up to it. The view docks this row on the card's bottom edge.
   const laid = [...boxes.values()];
-  const minX = Math.min(...laid.map((b) => b.x));
+  let minX = Math.min(...laid.map((b) => b.x));
   const minY = Math.min(...laid.map((b) => b.y));
   let maxX = Math.max(...laid.map((b) => b.x + b.w));
   let maxY = Math.max(...laid.map((b) => b.y + b.h));
@@ -114,23 +118,36 @@ export async function layout(topo: Topology, size: (id: string) => { w: number; 
   let docked = false;
   const byMachine = new Map<string, Edge<LinkData>[]>();
   topo.edges.filter((e) => isHostPort(e.target)).forEach((e) => byMachine.set(e.source, [...(byMachine.get(e.source) ?? []), e]));
+  // Each published port's tab is ~72px wide (":51198" plus its icon) and is drawn centred on
+  // its anchor, so anchors need a tab's width between them, under one machine and across
+  // neighbouring machines alike: centred under its machine, then pushed right along the row
+  // wherever it would overlap the previous one.
+  const placed: { e: Edge<LinkData>; m: { x: number; y: number; w: number; h: number }; x: number; w: number; h: number }[] = [];
   byMachine.forEach((list, machine) => {
     const m = boxes.get(machine);
     if (!m) return;
     list.forEach((e, k) => {
       const { w, h } = size(e.target);
-      const x = m.x + m.w / 2 - w / 2 + (k - (list.length - 1) / 2) * (w + 14);
-      boxes.set(e.target, { x, y: rowY, w, h });
-      routes.set(e.id, [
-        { x: m.x + m.w / 2, y: m.y + m.h },
-        { x: m.x + m.w / 2, y: rowY - 24 },
-        { x: x + w / 2, y: rowY - 24 },
-        { x: x + w / 2, y: rowY },
-      ]);
-      maxX = Math.max(maxX, x + w);
-      maxY = Math.max(maxY, rowY + h);
-      docked = true;
+      placed.push({ e, m, w, h, x: m.x + m.w / 2 - w / 2 + (k - (list.length - 1) / 2) * PORT_TAB_SLOT });
     });
+  });
+  placed.sort((a, b) => a.x - b.x);
+  placed.forEach((p, i) => {
+    if (i > 0) p.x = Math.max(p.x, placed[i - 1].x + PORT_TAB_SLOT);
+  });
+  placed.forEach(({ e, m, x, w, h }) => {
+    boxes.set(e.target, { x, y: rowY, w, h });
+    routes.set(e.id, [
+      { x: m.x + m.w / 2, y: m.y + m.h },
+      { x: m.x + m.w / 2, y: rowY - 24 },
+      { x: x + w / 2, y: rowY - 24 },
+      { x: x + w / 2, y: rowY },
+    ]);
+    // Half a tab beyond the last anchor, so the tab isn't cut at the drawing's edge.
+    minX = Math.min(minX, x + w / 2 - PORT_TAB_SLOT / 2);
+    maxX = Math.max(maxX, x + w / 2 + PORT_TAB_SLOT / 2);
+    maxY = Math.max(maxY, rowY + h);
+    docked = true;
   });
   const bounds = { x: minX, y: minY, w: maxX - minX, h: maxY - minY, docked };
   const width = bounds.w + 48;
