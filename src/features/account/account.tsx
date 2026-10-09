@@ -6,6 +6,7 @@ import { authLogin, authLogout, type AuthStatus } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Spinner } from "@/components/ui/spinner";
+import { useT } from "@/lib/i18n";
 
 export function initials(name: string | null, email: string | null): string {
   const src = (name || email || "").trim();
@@ -58,6 +59,7 @@ export function Account({
   /** When set, a Settings gear sits next to Sign out, so the footer is one row. */
   onSettings?: () => void;
 }) {
+  const t = useT();
   const { login, logout, busy, error } = useAuthActions(onChange);
   const iconBtn = "grid size-7 shrink-0 place-items-center rounded-xs text-faint transition-colors hover:bg-glass hover:text-foreground";
 
@@ -70,10 +72,10 @@ export function Account({
         <Button size="sm" className="w-full" onClick={login} disabled={busy}>
           {busy ? (
             <>
-              <Spinner className="size-3.5" /> Waiting for the browser…
+              <Spinner className="size-3.5" /> {t("account.waitingForBrowser")}
             </>
           ) : (
-            "Sign in"
+            t("account.signIn")
           )}
         </Button>
         {onSettings && (
@@ -81,7 +83,7 @@ export function Account({
             onClick={onSettings}
             className="flex w-full items-center justify-center gap-1.5 text-[0.75rem] text-muted-foreground transition-colors hover:text-foreground"
           >
-            <Cog className="size-3.5" /> Settings
+            <Cog className="size-3.5" /> {t("account.settings")}
           </button>
         )}
       </div>
@@ -92,23 +94,18 @@ export function Account({
     <div className="flex items-center gap-2.5 px-1">
       <span className="avatar relative flex size-7 shrink-0 items-center justify-center rounded-full text-[0.6875rem] font-semibold">
         {initials(status.name, status.email)}
-        {online && (
-          <span
-            title="Online: labs you launch from the website run on this machine"
-            className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-card bg-success"
-          />
-        )}
+        {online && <span title={t("account.online")} className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-card bg-success" />}
       </span>
       <div className="min-w-0 flex-1 leading-tight">
-        <p className="truncate text-[0.8125rem] font-medium text-foreground">{status.name ?? "Signed in"}</p>
-        <p className="truncate font-mono text-[0.625rem] text-faint">{status.email ?? "signed in · keychain"}</p>
+        <p className="truncate text-[0.8125rem] font-medium text-foreground">{status.name ?? t("account.signedIn")}</p>
+        <p className="truncate font-mono text-[0.625rem] text-faint">{status.email ?? t("account.signedInKeychain")}</p>
       </div>
       {onSettings && (
-        <button onClick={onSettings} title="Settings" className={iconBtn}>
+        <button onClick={onSettings} title={t("account.settings")} className={iconBtn}>
           <Cog className="size-4" />
         </button>
       )}
-      <button onClick={logout} title="Sign out" className={iconBtn}>
+      <button onClick={logout} title={t("account.signOut")} className={iconBtn}>
         <Icon name="logout" className="size-4" />
       </button>
     </div>

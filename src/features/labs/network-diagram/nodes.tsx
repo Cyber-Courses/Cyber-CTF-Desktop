@@ -6,16 +6,18 @@ import { Check, Copy, DoorOpen, Lock, Monitor, Network, ShieldCheck, Terminal } 
 import { cn } from "@/lib/utils";
 import { ComputerData, ServiceRow, ZoneData, attack, isIp, netLabel, publishHandle, serviceMeta } from "@/features/labs/network-diagram/model";
 import { tell } from "@/lib/failure";
+import { useT, type T } from "@/lib/i18n";
 
 // React Flow node cards for the lab network diagram.
 
 /** Click-to-copy wrapper (addresses). Stops React Flow from dragging the node. */
 export function CopyText({ text, children }: { text: string; children: React.ReactNode }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <span
       className="copy-chip"
-      title={`Copy ${text}`}
+      title={t("diagram.copy.title", { text })}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
@@ -25,7 +27,7 @@ export function CopyText({ text, children }: { text: string; children: React.Rea
             setCopied(true);
             setTimeout(() => setCopied(false), 1000);
           })
-          .catch(tell("Couldn't copy to the clipboard"));
+          .catch(tell(t("diagram.copy.failed")));
       }}
     >
       {children}
@@ -67,6 +69,7 @@ function UplinkNode() {
 }
 
 function ZoneNode({ data }: NodeProps<Node<ZoneData>>) {
+  const t = useT();
   return (
     <div className={cn("zone", data.tone === "attack" && "zone-attack")}>
       {/* The segment's own ports: pivots plug into the network here. */}
@@ -89,7 +92,7 @@ function ZoneNode({ data }: NodeProps<Node<ZoneData>>) {
           {data.label}
           {data.isolated && (
             <span className="zone-isolated">
-              <Lock size={9} /> no internet
+              <Lock size={9} /> {t("diagram.zone.noInternet")}
             </span>
           )}
         </span>
@@ -113,6 +116,7 @@ function BridgeNode({ data }: NodeProps<Node<{ label: string; tone?: "attack" }>
 }
 
 function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string; running: boolean }>>) {
+  const t = useT();
   return (
     <div className="topology-node attacker-node">
       <PortHandles accent={attack} />
@@ -121,7 +125,7 @@ function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string
       </div>
       <div className="node-copy">
         <div className="attacker-kicker">
-          <span className="you-chip">YOU</span> ATTACKER
+          <span className="you-chip">{t("diagram.attacker.you")}</span> {t("diagram.attacker.kicker")}
         </div>
         <div className="node-title">{data.label}</div>
         <div className="node-subtitle" style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
@@ -134,6 +138,7 @@ function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string
   );
 }
 function ServiceChip({ row, ip }: { row: ServiceRow; ip: string }) {
+  const t = useT();
   const meta = serviceMeta[row.type];
   const ServiceIcon = meta.icon;
   // Where this service's published ports leave the card: the right edge of its box, spread
@@ -160,7 +165,7 @@ function ServiceChip({ row, ip }: { row: ServiceRow; ip: string }) {
       </div>
       <div className="service-ports">
         {row.ports.length === 0 ? (
-          <span className="door-none">no ports</span>
+          <span className="door-none">{t("diagram.computer.noPorts")}</span>
         ) : (
           row.ports.map((p, i) => {
             const bind = p.target || p.published;
@@ -180,6 +185,7 @@ function ServiceChip({ row, ip }: { row: ServiceRow; ip: string }) {
 }
 
 function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
+  const t = useT();
   const meta = serviceMeta[data.rows[0]?.type ?? data.type];
   const ip = data.ifaces[0]?.ip ?? "";
   const pivot = data.ifaces.length > 1;
@@ -192,7 +198,7 @@ function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
           <span className="mono">{data.hostname}</span>
         </div>
         <span className="running">
-          <i /> {stateLabel(data.state, data.running)}
+          <i /> {stateLabel(t, data.state, data.running)}
         </span>
       </div>
       {pivot ? (
@@ -206,7 +212,7 @@ function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
           ))}
         </div>
       ) : (
-        <div className="computer-ip mono">{isIp(ip) ? <CopyText text={ip}>{ip}</CopyText> : ip || "resolving…"}</div>
+        <div className="computer-ip mono">{isIp(ip) ? <CopyText text={ip}>{ip}</CopyText> : ip || t("diagram.computer.resolving")}</div>
       )}
       {/* With declared services, the image moves up here: the rows below name the services. */}
       {data.rows.length > 1 || data.rows[0]?.title !== data.image ? <div className="computer-image mono">{data.image}</div> : null}
@@ -222,9 +228,9 @@ function ComputerNode({ data }: NodeProps<Node<ComputerData>>) {
 export const nodeTypes = { zone: ZoneNode, bridge: BridgeNode, attacker: AttackerNode, computer: ComputerNode, hostport: HostPortNode, uplink: UplinkNode };
 
 /** A machine's state as a word: Vagrant's `saved`/`paused` and `poweroff`, Docker's `exited`. */
-function stateLabel(state: string, running: boolean): string {
-  if (running) return "running";
-  if (state === "saved" || state === "paused") return "paused";
-  if (state === "poweroff" || state === "exited" || state === "stopped") return "off";
-  return state || "stopped";
+function stateLabel(t: T, state: string, running: boolean): string {
+  if (running) return t("diagram.states.running");
+  if (state === "saved" || state === "paused") return t("diagram.states.paused");
+  if (state === "poweroff" || state === "exited" || state === "stopped") return t("diagram.states.off");
+  return state || t("diagram.states.stopped");
 }

@@ -19,22 +19,21 @@ import { operationLabel, useActiveOperations } from "@/lib/deploy-store";
 import { assessRam } from "@/features/home/capacity";
 import { machineMetrics, machineOpenSetup, type ActiveOperation, type AuthStatus, type MachineMetrics, type SystemReport } from "@/lib/tauri";
 import { ignore, tell } from "@/lib/failure";
+import { useFormat, useT, type T } from "@/lib/i18n";
 
 type Tab = "labs" | "machine" | "setup" | "server" | "cloud" | "settings";
-
-/** Gigabytes with one decimal, without a trailing ".0" (19.5, 32). */
-const gb = (bytes: number) => String(Number((bytes / 1e9).toFixed(1)));
 
 const HISTORY = 20;
 const push = (a: number[], v: number) => [...a, v].slice(-HISTORY);
 
 /** "Good morning / afternoon / evening" from the local hour. */
-function greeting(hour: number) {
-  return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+function greeting(t: T, hour: number) {
+  return t(hour < 12 ? "home.greeting.morning" : hour < 18 ? "home.greeting.afternoon" : "home.greeting.evening");
 }
 
 /** The second column of the Overview: what is being deployed right now, step by step. */
 function DeployPanel({ ops, labs, onOpen }: { ops: ActiveOperation[]; labs: Lab[]; onOpen: (slug: string) => void }) {
+  const t = useT();
   const one = ops.length === 1 ? ops[0] : null;
   const labOf = (id: string) => labs.find((l) => l.id === id);
   const oneLab = one ? labOf(one.labId) : undefined;
@@ -44,14 +43,14 @@ function DeployPanel({ ops, labs, onOpen }: { ops: ActiveOperation[]; labs: Lab[
         title={
           <>
             <StatusDot tone="warn" pulse />
-            <span className="truncate">{one ? (oneLab?.slug ?? one.labId) : "In progress"}</span>
+            <span className="truncate">{one ? (oneLab?.slug ?? one.labId) : t("home.deploy.inProgress")}</span>
           </>
         }
-        meta={one ? operationLabel(one).replace(/…$/, "").toLowerCase() : `${ops.length} labs`}
+        meta={one ? operationLabel(one).replace(/…$/, "").toLowerCase() : t("home.running.labs", { count: ops.length })}
         action={
           oneLab && (
             <Button variant="ghost" size="xs" onClick={() => onOpen(oneLab.slug)}>
-              View
+              {t("home.deploy.view")}
             </Button>
           )
         }
@@ -65,12 +64,12 @@ function DeployPanel({ ops, labs, onOpen }: { ops: ActiveOperation[]; labs: Lab[
               state="run"
               label={o.step ?? operationLabel(o)}
               detail={one ? undefined : (lab?.title ?? o.labId)}
-              meta={o.machine?.replace(/^isoloom-/, "") ?? "running"}
+              meta={o.machine?.replace(/^isoloom-/, "") ?? t("home.deploy.running")}
               action={
                 !one &&
                 lab && (
                   <Button variant="ghost" size="xs" onClick={() => onOpen(lab.slug)}>
-                    View
+                    {t("home.deploy.view")}
                   </Button>
                 )
               }
@@ -91,6 +90,10 @@ export function HomeScreen({
   auth: AuthStatus | null;
   onNavigate: (tab: Tab, slug?: string) => void;
 }) {
+  const t = useT();
+  const format = useFormat();
+  /** Gigabytes with one decimal, without a trailing ".0" (19.5, 32). */
+  const gb = (bytes: number) => format.number(bytes / 1e9, { maximumFractionDigits: 1, useGrouping: false });
   const { labs, statuses, refreshStatus } = useLabs(auth?.loggedIn ?? false);
   const { runs, launch, stop, resume } = useLabActions(refreshStatus);
   const ops = useActiveOperations();
@@ -144,16 +147,16 @@ export function HomeScreen({
   const memPct = metrics && metrics.memTotal ? (metrics.memUsed / metrics.memTotal) * 100 : null;
   const diskPct = metrics && metrics.diskTotal ? (metrics.diskUsed / metrics.diskTotal) * 100 : null;
   const capacity = metrics ? assessRam(metrics.memTotal) : null;
-  const hello = greeting(new Date(now).getHours());
+  const hello = greeting(t, new Date(now).getHours());
 
   const heroStatus =
     dockerReady === null
-      ? "Checking this machine…"
+      ? t("home.status.checking")
       : !dockerReady
-        ? "Set up Docker to start running labs."
+        ? t("home.status.setUpDocker")
         : running.length > 0
-          ? `${running.length} lab${running.length > 1 ? "s" : ""} running on this machine.`
-          : "This machine is ready. Pick a lab to attack.";
+          ? t("home.status.running", { count: running.length })
+          : t("home.status.ready");
 
   const labRow = (lab: Lab) => (
     <LabRow
@@ -177,27 +180,23 @@ export function HomeScreen({
         title={
           auth?.loggedIn ? (
             name ? (
-              <>
-                {hello}, <em>{name}.</em>
-              </>
+              <>{t.rich("home.title.named", { em: (s) => <em>{s}</em> }, { greeting: hello, name })}</>
             ) : (
-              `${hello}.`
+              t("home.title.plain", { greeting: hello })
             )
           ) : (
-            <>
-              Welcome to Cyber <em>CTF.</em>
-            </>
+            <>{t.rich("home.title.welcome", { em: (s) => <em>{s}</em> })}</>
           )
         }
         lead={heroStatus}
         actions={
           dockerReady === false ? (
-            <Button size="sm" onClick={() => machineOpenSetup().catch(tell("Couldn't open machine setup"))}>
-              <Play className="size-3.5" /> Set up this machine
+            <Button size="sm" onClick={() => machineOpenSetup().catch(tell(t("home.actions.setUpFailed")))}>
+              <Play className="size-3.5" /> {t("home.actions.setUp")}
             </Button>
           ) : (
             <Button size="sm" onClick={() => onNavigate("labs")}>
-              Browse labs <ArrowRight className="size-3.5" />
+              {t("home.actions.browse")} <ArrowRight className="size-3.5" />
             </Button>
           )
         }
@@ -205,9 +204,24 @@ export function HomeScreen({
 
       {/* Live usage */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="CPU" detail={metrics ? `${metrics.cores} cores` : ""} value={metrics ? metrics.cpu : null} history={hist.cpu} />
-        <StatCard label="Memory" detail={metrics ? `${gb(metrics.memUsed)} of ${gb(metrics.memTotal)} GB` : ""} value={memPct} history={hist.mem} />
-        <StatCard label="Disk" detail={metrics ? `${gb(metrics.diskUsed)} of ${gb(metrics.diskTotal)} GB` : ""} value={diskPct} history={hist.disk} />
+        <StatCard
+          label={t("home.stats.cpu")}
+          detail={metrics ? t("home.stats.cores", { cores: metrics.cores }) : ""}
+          value={metrics ? metrics.cpu : null}
+          history={hist.cpu}
+        />
+        <StatCard
+          label={t("home.stats.memory")}
+          detail={metrics ? t("home.stats.usage", { used: gb(metrics.memUsed), total: gb(metrics.memTotal) }) : ""}
+          value={memPct}
+          history={hist.mem}
+        />
+        <StatCard
+          label={t("home.stats.disk")}
+          detail={metrics ? t("home.stats.usage", { used: gb(metrics.diskUsed), total: gb(metrics.diskTotal) }) : ""}
+          value={diskPct}
+          history={hist.disk}
+        />
       </div>
 
       {capacity && capacity.level === "low" && (
@@ -215,14 +229,14 @@ export function HomeScreen({
           tone="warn"
           icon={<TriangleAlert className="size-4" />}
           title={capacity.title}
-          meta={`${capacity.totalGB.toFixed(1)} GB`}
+          meta={t("home.capacity.total", { total: format.number(capacity.totalGB, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
           actions={
             <>
               <Button variant="outline" size="xs" onClick={() => onNavigate("cloud")}>
-                <Cloud /> Cloud
+                <Cloud /> {t("home.capacity.cloud")}
               </Button>
               <Button variant="outline" size="xs" onClick={() => onNavigate("server")}>
-                <Server /> Server
+                <Server /> {t("home.capacity.server")}
               </Button>
             </>
           }
@@ -234,19 +248,15 @@ export function HomeScreen({
       <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <Panel>
           <PanelHeader
-            title="Running now"
+            title={t("home.running.title")}
             meta={
               <span className="tabular-nums">
-                {running.length} lab{running.length === 1 ? "" : "s"}
-                {labContainers > 0 ? ` · ${labContainers} container${labContainers === 1 ? "" : "s"}` : ""}
+                {t("home.running.labs", { count: running.length })}
+                {labContainers > 0 ? ` · ${t("home.running.containers", { count: labContainers })}` : ""}
               </span>
             }
           />
-          {running.length > 0 ? (
-            running.map(labRow)
-          ) : (
-            <p className="px-4 py-3.5 text-[0.8125rem] text-muted-foreground">Nothing running. Start a lab from its page.</p>
-          )}
+          {running.length > 0 ? running.map(labRow) : <p className="px-4 py-3.5 text-[0.8125rem] text-muted-foreground">{t("home.running.empty")}</p>}
         </Panel>
 
         {activeOps.length > 0 ? (
@@ -254,25 +264,31 @@ export function HomeScreen({
         ) : (
           <Panel>
             <PanelHeader
-              title="This machine"
+              title={t("home.machine.title")}
               action={
                 <Button variant="ghost" size="xs" onClick={() => onNavigate("machine")}>
-                  Open <ArrowRight />
+                  {t("home.machine.open")} <ArrowRight />
                 </Button>
               }
             />
-            <KeyValue k="Docker engine">
-              {report ? <StatusPill tone={report.dockerRunning ? "ok" : "warn"}>{report.dockerRunning ? "Running" : "Stopped"}</StatusPill> : "…"}
+            <KeyValue k={t("home.machine.dockerEngine")}>
+              {report ? (
+                <StatusPill tone={report.dockerRunning ? "ok" : "warn"}>
+                  {report.dockerRunning ? t("home.machine.running") : t("home.machine.stopped")}
+                </StatusPill>
+              ) : (
+                "…"
+              )}
             </KeyValue>
-            <KeyValue k="Containers">{metrics ? `${metrics.containers}` : dockerReady ? "0" : "none"}</KeyValue>
-            <KeyValue k="Cores">{metrics ? `${metrics.cores}` : "…"}</KeyValue>
+            <KeyValue k={t("home.machine.containers")}>{metrics ? `${metrics.containers}` : dockerReady ? "0" : t("home.machine.none")}</KeyValue>
+            <KeyValue k={t("home.machine.cores")}>{metrics ? `${metrics.cores}` : "…"}</KeyValue>
           </Panel>
         )}
       </div>
 
       {recent.length > 0 && (
         <Panel>
-          <PanelHeader title="Jump back in" meta="recently launched" />
+          <PanelHeader title={t("home.jumpBack.title")} meta={t("home.jumpBack.meta")} />
           {recent.map(({ lab, ts }) => (
             <div
               key={lab.id}
@@ -284,7 +300,7 @@ export function HomeScreen({
               <button onClick={() => onNavigate("labs", lab.slug)} className="min-w-0 flex-1 text-left">
                 <span className="block truncate font-medium text-foreground">{lab.title}</span>
                 <span className="block truncate font-mono text-[0.6875rem] text-faint">
-                  {lab.slug} · last run {formatAgo(ts, now)}
+                  {t("home.jumpBack.lastRun", { slug: lab.slug, ago: formatAgo(ts, now) })}
                 </span>
               </button>
               <Button
@@ -298,7 +314,7 @@ export function HomeScreen({
                   <Spinner className="size-3" />
                 ) : (
                   <>
-                    <Play /> Resume
+                    <Play /> {t("home.jumpBack.resume")}
                   </>
                 )}
               </Button>
@@ -309,17 +325,21 @@ export function HomeScreen({
 
       <Panel>
         <PanelHeader
-          title={<>Labs {labs && <span className="font-mono text-[0.6875rem] font-normal text-faint">{labs.length}</span>}</>}
+          title={
+            <>
+              {t("home.labs.title")} {labs && <span className="font-mono text-[0.6875rem] font-normal text-faint">{labs.length}</span>}
+            </>
+          }
           action={
             <Button variant="ghost" size="xs" onClick={() => onNavigate("labs")}>
-              All labs <ArrowRight />
+              {t("home.labs.all")} <ArrowRight />
             </Button>
           }
         />
         {!labs ? (
-          <p className="px-4 py-3.5 text-[0.8125rem] text-muted-foreground">Loading labs…</p>
+          <p className="px-4 py-3.5 text-[0.8125rem] text-muted-foreground">{t("home.labs.loading")}</p>
         ) : labs.length === 0 ? (
-          <p className="px-4 py-3.5 text-[0.8125rem] text-muted-foreground">No labs published yet.</p>
+          <p className="px-4 py-3.5 text-[0.8125rem] text-muted-foreground">{t("home.labs.empty")}</p>
         ) : (
           preview.map(labRow)
         )}
@@ -327,7 +347,7 @@ export function HomeScreen({
 
       {!auth?.loggedIn && (
         <p className="flex items-center gap-1.5 text-[0.75rem] text-muted-foreground">
-          <ExternalLink className="size-3.5" /> Sign in (bottom-left) so labs launched from the website run here.
+          <ExternalLink className="size-3.5" /> {t("home.signInHint")}
         </p>
       )}
     </div>

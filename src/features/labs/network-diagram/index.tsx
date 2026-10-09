@@ -17,6 +17,7 @@ import "@xyflow/react/dist/style.css";
 import { Laptop, Plug, Server } from "lucide-react";
 import type { LabNetwork } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+import { useLocale, useT } from "@/lib/i18n";
 import { edgeTypes } from "@/features/labs/network-diagram/edges";
 import { layout } from "@/features/labs/network-diagram/layout";
 import { ANCHOR, Attacker, Bounds, MIN_ZOOM, Machine } from "@/features/labs/network-diagram/model";
@@ -216,8 +217,12 @@ export function NetworkDiagram({
   attacker?: Attacker;
   host?: string | null;
 }) {
+  const t = useT();
+  // The labels are drawn in the current language: a language change re-lays them out too.
+  const locale = useLocale();
   // Re-layout only when the topology changes (not on every status poll).
   const sig =
+    `${locale}#` +
     machines
       .map(
         (m) =>
@@ -257,19 +262,19 @@ export function NetworkDiagram({
       <div className="hostcard-header">
         <span className="hostcard-icon">{host ? <Server size={16} /> : <Laptop size={16} />}</span>
         <div>
-          <div className="hostcard-title">{host ?? "Your machine"}</div>
+          <div className="hostcard-title">{host ?? t("diagram.host.yourMachine")}</div>
           <div className="hostcard-sub mono">
             {host ? (
-              "server · docker host"
+              t("diagram.host.serverSub")
             ) : (
               <>
-                <CopyText text="127.0.0.1">127.0.0.1</CopyText> · host
+                <CopyText text="127.0.0.1">127.0.0.1</CopyText> · {t("diagram.host.host")}
               </>
             )}
           </div>
         </div>
         <span className="hostcard-online">
-          <i /> online
+          <i /> {t("diagram.host.online")}
         </span>
       </div>
 
@@ -289,16 +294,16 @@ export function NetworkDiagram({
           </div>
         </div>
         <div className="port-tabs">
-          {tabs.map((t) => (
+          {tabs.map((tab) => (
             <span
-              key={t.id}
+              key={tab.id}
               className="port-tab"
-              style={{ left: t.left - scrollX }}
-              title={`Published on this machine. Click to copy http://127.0.0.1:${t.port}`}
+              style={{ left: tab.left - scrollX }}
+              title={t("diagram.host.portTab", { url: `http://127.0.0.1:${tab.port}` })}
             >
-              <CopyText text={`http://127.0.0.1:${t.port}`}>
+              <CopyText text={`http://127.0.0.1:${tab.port}`}>
                 <Plug size={11} />
-                <span className="mono">:{t.port}</span>
+                <span className="mono">:{tab.port}</span>
               </CopyText>
             </span>
           ))}

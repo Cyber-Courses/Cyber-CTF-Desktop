@@ -1,5 +1,6 @@
 import { Box, Database, Globe2, Terminal, Workflow, Zap, type LucideIcon } from "lucide-react";
 import type { LabInterface, LabMachine } from "@/lib/tauri";
+import { translate } from "@/lib/i18n";
 
 // Shared types, colours and helpers for the lab network diagram.
 
@@ -21,7 +22,7 @@ export function uniquePorts(ports: Port[]) {
 
 /** Compose's implicit network is "default"; to a player it's just the lab network. */
 export function netLabel(name: string) {
-  return name === "default" ? "lab" : name;
+  return name === "default" ? translate("diagram.lab") : name;
 }
 
 /** A dashed network segment (area) that frames the nodes inside it. */
@@ -42,14 +43,17 @@ export type ComputerData = {
   rows: ServiceRow[];
 };
 
-export const serviceMeta: Record<ServiceType, { icon: LucideIcon; label: string; color: string }> = {
-  database: { icon: Database, label: "database", color: "var(--hue-sky)" },
-  web: { icon: Globe2, label: "web / api", color: "var(--hue-violet)" },
-  cache: { icon: Zap, label: "cache", color: "var(--hue-amber)" },
-  worker: { icon: Workflow, label: "worker", color: "var(--hue-grey)" },
-  ssh: { icon: Terminal, label: "ssh", color: "var(--hue-mint)" },
-  service: { icon: Box, label: "service", color: "var(--hue-grey)" },
+export const serviceMeta: Record<ServiceType, { icon: LucideIcon; color: string }> = {
+  database: { icon: Database, color: "var(--hue-sky)" },
+  web: { icon: Globe2, color: "var(--hue-violet)" },
+  cache: { icon: Zap, color: "var(--hue-amber)" },
+  worker: { icon: Workflow, color: "var(--hue-grey)" },
+  ssh: { icon: Terminal, color: "var(--hue-mint)" },
+  service: { icon: Box, color: "var(--hue-grey)" },
 };
+
+/** A service type as a word, in the current language. */
+export const serviceLabel = (type: ServiceType) => translate(`diagram.services.${type}`);
 
 /** A declared kind, mapped onto the known looks; anything else is a plain service. */
 function declaredType(kind: string): ServiceType {
@@ -67,9 +71,9 @@ export const publishHandle = (published: number) => `pub-${published}`;
  *  aren't open. With nothing declared, one row: the image, its look, every port. */
 export function serviceRows(m: Machine, ports: Port[], fallback: ServiceType): ServiceRow[] {
   const declared = m.services ?? [];
-  if (declared.length === 0) return [{ title: m.image || serviceMeta[fallback].label, type: fallback, label: serviceMeta[fallback].label, ports }];
+  if (declared.length === 0) return [{ title: m.image || serviceLabel(fallback), type: fallback, label: serviceLabel(fallback), ports }];
   const byTarget = (n: number) => ports.find((p) => (p.target || p.published) === n) ?? { published: 0, target: n };
-  return declared.map((d) => ({ title: d.name, type: declaredType(d.kind), label: d.kind || "service", ports: d.ports.map(byTarget) }));
+  return declared.map((d) => ({ title: d.name, type: declaredType(d.kind), label: d.kind || serviceLabel("service"), ports: d.ports.map(byTarget) }));
 }
 
 export function serviceType(image: string, name: string): ServiceType {

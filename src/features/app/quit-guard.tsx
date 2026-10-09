@@ -6,6 +6,7 @@ import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { forceQuit, lingerQuit } from "@/lib/tauri";
 import { useFocusTrap } from "@/lib/use-focus-trap";
+import { useT } from "@/lib/i18n";
 
 /**
  * When the user tries to quit while a lab is still deploying, the Rust side holds the window
@@ -13,6 +14,7 @@ import { useFocusTrap } from "@/lib/use-focus-trap";
  * apply especially, which keeps billing if cut off) isn't interrupted by accident.
  */
 export function QuitGuard() {
+  const t = useT();
   const [count, setCount] = useState<number | null>(null);
   const [quitting, setQuitting] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -41,18 +43,14 @@ export function QuitGuard() {
           </span>
           <div className="min-w-0">
             <p id="quit-guard-title" className="text-[0.9375rem] font-medium text-foreground">
-              A lab is still deploying
+              {t("app.quitGuard.title")}
             </p>
-            <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">
-              {count > 1 ? `${count} labs are` : "A lab is"} being worked on inside the app. Quitting now can leave machines half-created, and a lab on a cloud
-              account keeps billing until it is torn down. Let it finish in the background (the app closes by itself when it is done), keep waiting, or quit
-              anyway. Quitting a second time also quits anyway.
-            </p>
+            <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted-foreground">{t("app.quitGuard.body", { count })}</p>
           </div>
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={() => setCount(null)}>
-            Keep waiting
+            {t("app.quitGuard.keepWaiting")}
           </Button>
           <Button
             variant="destructive"
@@ -63,7 +61,7 @@ export function QuitGuard() {
               void forceQuit().catch(() => setQuitting(false));
             }}
           >
-            Quit anyway
+            {t("app.quitGuard.quitAnyway")}
           </Button>
           <Button
             size="sm"
@@ -73,7 +71,7 @@ export function QuitGuard() {
               void lingerQuit().catch(() => setQuitting(false));
             }}
           >
-            Finish in background
+            {t("app.quitGuard.finishInBackground")}
           </Button>
         </div>
       </div>
