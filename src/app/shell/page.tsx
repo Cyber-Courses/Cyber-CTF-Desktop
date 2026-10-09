@@ -1,7 +1,7 @@
 "use client";
 
 import "@xterm/xterm/css/xterm.css";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Terminal } from "@xterm/xterm";
@@ -92,10 +92,20 @@ function Shell() {
   // The system terminal, for players who prefer theirs.
   const openOutside = () => void (kind === "attackVm" ? attackVmShell(id) : labAttackShell(id, runtime)).catch(() => {});
 
+  // macOS overlays the traffic lights on this bar; elsewhere the window has its own title bar.
+  const isMac = useSyncExternalStore(
+    () => () => {},
+    () => navigator.userAgent.includes("Mac"),
+    () => false,
+  );
+
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       {/* Overlay title bar: drags the window and clears the macOS traffic lights. */}
-      <div data-tauri-drag-region className="flex h-11 shrink-0 select-none items-center justify-end gap-1 border-b border-border pr-3 pl-20">
+      <div
+        data-tauri-drag-region
+        className={`flex h-11 shrink-0 select-none items-center justify-end gap-1 border-b border-border pr-3 ${isMac ? "pl-20" : "pl-4"}`}
+      >
         <span data-tauri-drag-region className="mr-auto truncate font-mono text-[0.75rem] text-muted-foreground">
           {state.kind === "connecting" ? "connecting…" : state.kind === "open" ? "attack box" : state.kind === "ended" ? "session ended" : "couldn't connect"}
         </span>

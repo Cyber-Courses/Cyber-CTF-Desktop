@@ -168,15 +168,13 @@ pub fn terminal_window(app: AppHandle, id: String, kind: ShellKind, runtime: Run
     };
     let path = format!("shell?id={id}&kind={k}&runtime={rt}");
     let title: String = title.chars().filter(|c| !c.is_control()).take(80).collect();
-    let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(path.into()))
+    let builder = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(path.into()))
         .title(format!("{title} · attack box"))
         .inner_size(900.0, 560.0)
         .min_inner_size(480.0, 280.0)
         .resizable(true);
     #[cfg(target_os = "macos")]
-    {
-        builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
-    }
+    let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
     builder.build().map_err(|e| Error::Invalid(format!("could not open the shell window: {e}")))?;
     Ok(())
 }
