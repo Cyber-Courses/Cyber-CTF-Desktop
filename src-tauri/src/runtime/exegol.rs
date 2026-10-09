@@ -150,10 +150,14 @@ pub async fn open_terminal_async(command: String) -> Result<()> {
     tokio::task::spawn_blocking(move || open_terminal(&command)).await.map_err(|e| Error::Invalid(format!("couldn't open a terminal: {e}")))?
 }
 
+/// The command line attached to the attack box. bash is present on Kali/Parrot/Exegol alike.
+pub fn shell_command(id: &str) -> String {
+    format!("docker exec -it {} bash", container(id))
+}
+
 /// Opens the player's own terminal attached to the attack box.
 pub fn shell(id: &str) -> Result<()> {
-    // bash is present on Kali/Parrot/Exegol alike (keeps native-terminal quoting simple).
-    open_terminal(&format!("docker exec -it {} bash", container(id)))
+    open_terminal(&shell_command(id))
 }
 
 /// Escapes text for an AppleScript double-quoted string.

@@ -28,11 +28,9 @@ import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
 import {
-  attackVmShell,
-  labAttackShell,
   labTools,
-  exegolShell,
   serverList,
+  terminalWindow,
   type LabTool,
   type Park,
   type Provider,
@@ -273,7 +271,8 @@ export function LabDetail({
   const attackReady = remote ? isDocker : !!exegol?.running;
   const openShell = () => {
     setShellError(null);
-    (remote ? labAttackShell(lab.id, "DOCKER") : isDocker ? exegolShell(lab.id) : attackVmShell(lab.id)).catch((e) => setShellError(String(e)));
+    // In the app's own shell window; it offers the system terminal too.
+    terminalWindow(lab.id, remote || isDocker ? "lab" : "attackVm", remote || isDocker ? "DOCKER" : "VM", lab.title).catch((e) => setShellError(String(e)));
   };
 
   // Where this deploy is headed, shown in the Deployment panel so it's clear during a build.

@@ -10,6 +10,7 @@ mod machine;
 mod platform;
 mod provisioning;
 mod runtime;
+mod terminal;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -382,6 +383,11 @@ pub fn run() {
             runtime::attack_vm_stop,
             runtime::attack_vm_shell,
             runtime::lab_attack_shell,
+            terminal::terminal_open,
+            terminal::terminal_write,
+            terminal::terminal_resize,
+            terminal::terminal_close,
+            terminal::terminal_window,
             runtime::server::server_list,
             runtime::server::server_save,
             runtime::server::server_remove,
@@ -416,6 +422,7 @@ pub fn run() {
             }
             if let tauri::RunEvent::Exit = event {
                 exec::kill_live_tools();
+                terminal::close_all();
             }
         });
 }

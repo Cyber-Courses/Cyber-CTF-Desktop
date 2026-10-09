@@ -984,30 +984,54 @@ pub async fn lab_check(app: AppHandle, id: String, runtime: Runtime) -> Result<d
     }
 }
 
-/// Opens the attack box shell of a running lab, wherever it runs: the local container,
-/// or over SSH on the lab host of a remote lab (server / cloud).
-#[tauri::command]
-pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> Result<()> {
-    let dir = lab_dir(&app, &id)?;
-    let Some(conn) = server::lab_connection(&app, &dir)? else {
+/// The command line for the attack box shell of a running lab, wherever it runs: the local
+/// container, or over SSH on the lab host of a remote lab (server / cloud) or the local lab VM.
+async fn lab_shell_command(app: &AppHandle, id: &str, runtime: Runtime) -> Result<String> {
+    let dir = lab_dir(app, id)?;
+    let Some(conn) = server::lab_connection(app, &dir)? else {
         if local_vm(&dir).is_some() && matches!(runtime, Runtime::Docker) {
             let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&lab::vagrant_dir(&dir, runtime)), &[]).await?;
             let target = ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab VM's SSH settings".into()))?;
-            return exegol::open_terminal_async(target.attack_shell_command(&ssh::known_hosts(&app)?)?).await;
+            return target.attack_shell_command(&ssh::known_hosts(app)?);
         }
-        return tokio::task::spawn_blocking(move || exegol::shell(&id)).await.map_err(|e| Error::Invalid(e.to_string()))?;
+        validate_id(id)?;
+        return Ok(exegol::shell_command(id));
     };
     if !matches!(runtime, Runtime::Docker) {
         return Err(Error::Invalid("this lab has no attack box".into()));
     }
     let target = if let Some(tf) = server::terraform_target(conn.provider) {
-        terraform::ssh_target(&state_dir(&app, &id, tf)?, ssh::ensure_key(&app).await?.0)
+        terraform::ssh_target(&state_dir(app, id, tf)?, ssh::ensure_key(app).await?.0)
             .ok_or_else(|| Error::Invalid("the lab host has no address yet; wait for it to finish starting".into()))?
     } else {
         let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&lab::vagrant_dir(&dir, runtime)), &conn.env).await?;
         ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab host's SSH settings".into()))?
     };
-    exegol::open_terminal_async(target.attack_shell_command(&ssh::known_hosts(&app)?)?).await
+    target.attack_shell_command(&ssh::known_hosts(app)?)
+}
+
+/// Opens the attack box shell of a running lab in the system terminal.
+#[tauri::command]
+pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> Result<()> {
+    exegol::open_terminal_async(lab_shell_command(&app, &id, runtime).await?).await
+}
+
+/// Which shell an embedded terminal attaches to.
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ShellKind {
+    /// The lab's attack box, wherever the lab runs.
+    Lab,
+    /// The attack VM beside a VM lab on this machine.
+    AttackVm,
+}
+
+/// The command line an embedded terminal runs for `kind`.
+pub async fn shell_command_for(app: &AppHandle, id: &str, kind: ShellKind, runtime: Runtime) -> Result<String> {
+    match kind {
+        ShellKind::Lab => lab_shell_command(app, id, runtime).await,
+        ShellKind::AttackVm => attack_vm::shell_command(&lab_dir(app, id)?),
+    }
 }
 
 /// An attack-box image reference the launcher accepts.

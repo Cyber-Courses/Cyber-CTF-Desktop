@@ -213,3 +213,21 @@ export const lingerQuit = () => invoke<void>("linger_quit");
 
 /** Quit the app even though a deploy is in progress (the user confirmed from the warning). */
 export const forceQuit = () => invoke<void>("force_quit");
+
+/** Which shell an embedded terminal attaches to: the lab's attack box, or a VM lab's attack VM. */
+export type ShellKind = "lab" | "attackVm";
+export type TermEvent = { kind: "data"; data: string } | { kind: "exit"; code: number | null };
+
+/** Opens (or focuses) the shell window for a lab. */
+export const terminalWindow = (id: string, kind: ShellKind, runtime: Runtime, title: string) =>
+  invoke<void>("terminal_window", { id, kind, runtime, title });
+
+/** Starts the shell in a pseudo-terminal; returns the session that write/resize/close take. */
+export function terminalOpen(id: string, kind: ShellKind, runtime: Runtime, cols: number, rows: number, onEvent: (e: TermEvent) => void) {
+  const events = new Channel<TermEvent>();
+  events.onmessage = onEvent;
+  return invoke<number>("terminal_open", { id, kind, runtime, cols, rows, events });
+}
+export const terminalWrite = (session: number, data: string) => invoke<void>("terminal_write", { session, data });
+export const terminalResize = (session: number, cols: number, rows: number) => invoke<void>("terminal_resize", { session, cols, rows });
+export const terminalClose = (session: number) => invoke<void>("terminal_close", { session });
