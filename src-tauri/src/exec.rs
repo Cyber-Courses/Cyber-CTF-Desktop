@@ -158,24 +158,56 @@ pub async fn run_env_timed(program: &'static str, args: &[&str], cwd: Option<&Pa
     run_inner(program, args, cwd, env, Some(timeout)).await
 }
 
+/// Process groups of timed tools still running, so they can be ended when the app exits: an
+/// exit doesn't drop their guards, and a leftover `vagrant status` keeps the machine's lock
+/// (every later status of that lab then fails as "locked").
+static LIVE_GROUPS: std::sync::Mutex<Vec<u32>> = std::sync::Mutex::new(Vec::new());
+
 /// Kills a spawned tool's whole process group when dropped, unless disarmed after it exited.
 struct GroupGuard(Option<u32>);
 
 impl GroupGuard {
+    fn new(pid: Option<u32>) -> Self {
+        if let (Some(p), Ok(mut live)) = (pid, LIVE_GROUPS.lock()) {
+            live.push(p);
+        }
+        GroupGuard(pid)
+    }
+
     fn disarm(mut self) {
-        self.0 = None;
+        forget_group(self.0.take());
+    }
+}
+
+fn forget_group(pid: Option<u32>) {
+    if let (Some(p), Ok(mut live)) = (pid, LIVE_GROUPS.lock()) {
+        live.retain(|g| *g != p);
+    }
+}
+
+fn kill_group(pid: u32) {
+    #[cfg(unix)]
+    // SAFETY: plain syscall; the group was created by `process_group(0)` at spawn.
+    unsafe {
+        libc::killpg(pid as libc::pid_t, libc::SIGKILL);
     }
 }
 
 impl Drop for GroupGuard {
     fn drop(&mut self) {
-        #[cfg(unix)]
         if let Some(pid) = self.0 {
-            // SAFETY: plain syscall; the group was created by `process_group(0)` at spawn.
-            unsafe {
-                libc::killpg(pid as libc::pid_t, libc::SIGKILL);
-            }
+            kill_group(pid);
+            forget_group(Some(pid));
         }
+    }
+}
+
+/// Ends every timed tool this process started that is still running. For the app's exit; the
+/// deploy worker is its own process, so a deploy in progress is not affected.
+pub fn kill_live_tools() {
+    let groups = LIVE_GROUPS.lock().map(|mut g| std::mem::take(&mut *g)).unwrap_or_default();
+    for pid in groups {
+        kill_group(pid);
     }
 }
 
@@ -209,7 +241,7 @@ async fn run_inner(program: &'static str, args: &[&str], cwd: Option<&Path>, env
             #[cfg(unix)]
             cmd.process_group(0);
             let child = cmd.spawn().map_err(to_err)?;
-            let group = GroupGuard(child.id());
+            let group = GroupGuard::new(child.id());
             let waited = tokio::time::timeout(dur, child.wait_with_output()).await;
             if waited.is_ok() {
                 group.disarm();

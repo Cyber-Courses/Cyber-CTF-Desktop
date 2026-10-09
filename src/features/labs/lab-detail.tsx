@@ -485,6 +485,11 @@ export function LabDetail({
                 </Button>
               </Tip>
             </>
+          ) : starting && operation === "stop" ? (
+            // Cleaning up an interrupted run: not running, but this is a stop, not a start.
+            <Button variant="destructive" disabled>
+              <Spinner className="size-3.5" /> Stopping…
+            </Button>
           ) : starting ? (
             <Button variant="primary" disabled>
               <Spinner className="size-3.5" /> Starting… <StartTimer />
