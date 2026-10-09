@@ -5,8 +5,10 @@ import { AlertTriangle, Copy, RefreshCw, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { tell } from "@/lib/failure";
+import { useT } from "@/lib/i18n";
 
-/** The error as text to paste into a bug report: message, window, agent and stack. */
+/** The error as text to paste into a bug report: message, window, agent and stack. Kept in
+ *  English whatever the language: it is read by us, not shown in the app. */
 function errorDetails(error: Error & { digest?: string }): string {
   return [
     `Error: ${error.message || String(error)}`,
@@ -26,8 +28,8 @@ function errorDetails(error: Error & { digest?: string }): string {
 export function ErrorPanel({
   error,
   retry,
-  title = "Something went wrong",
-  description = "Cyber CTF hit an unexpected error. Your labs keep running. Try again, and if it happens again, copy the details and send them to us.",
+  title: titleProp,
+  description: descriptionProp,
   className,
 }: {
   error: Error & { digest?: string };
@@ -36,6 +38,9 @@ export function ErrorPanel({
   description?: string;
   className?: string;
 }) {
+  const t = useT();
+  const title = titleProp ?? t("shell.error.title");
+  const description = descriptionProp ?? t("shell.error.description");
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     console.error(error);
@@ -44,7 +49,7 @@ export function ErrorPanel({
     navigator.clipboard
       .writeText(errorDetails(error))
       .then(() => setCopied(true))
-      .catch(tell("Couldn't copy to the clipboard"));
+      .catch(tell(t("errors.clipboard")));
 
   return (
     <div className={cn("surface-panel flex flex-col items-center rounded-panel px-6 py-9 text-center", className)}>
@@ -57,19 +62,19 @@ export function ErrorPanel({
         role="alert"
         className="surface-log mt-5 max-h-32 w-full max-w-md overflow-auto rounded-control p-3 text-left font-mono text-[0.71875rem] break-words whitespace-pre-wrap text-destructive"
       >
-        {error.message || String(error) || "Unknown error"}
+        {error.message || String(error) || t("shell.error.unknown")}
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         {retry && (
           <Button size="sm" onClick={retry}>
-            <RotateCcw className="size-3.5" /> Try again
+            <RotateCcw className="size-3.5" /> {t("shell.error.tryAgain")}
           </Button>
         )}
         <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-          <RefreshCw className="size-3.5" /> Reload
+          <RefreshCw className="size-3.5" /> {t("shell.error.reload")}
         </Button>
         <Button variant="outline" size="sm" onClick={copy}>
-          <Copy className="size-3.5" /> {copied ? "Copied" : "Copy details"}
+          <Copy className="size-3.5" /> {copied ? t("shell.error.copied") : t("shell.error.copyDetails")}
         </Button>
       </div>
     </div>
@@ -103,13 +108,12 @@ export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: u
   render() {
     const { error } = this.state;
     if (!error) return this.props.children;
-    return (
-      <ErrorPanel
-        error={error}
-        title={this.props.title}
-        description="This step hit an unexpected error. Try again, or go back a step. If it keeps happening, copy the details and send them to us."
-        retry={() => this.setState({ error: null })}
-      />
-    );
+    return <StepErrorPanel error={error} title={this.props.title} retry={() => this.setState({ error: null })} />;
   }
+}
+
+/** The boundary's panel: a function component, so it can read the current language. */
+function StepErrorPanel({ error, title, retry }: { error: Error; title?: string; retry: () => void }) {
+  const t = useT();
+  return <ErrorPanel error={error} title={title} description={t("shell.error.stepDescription")} retry={retry} />;
 }

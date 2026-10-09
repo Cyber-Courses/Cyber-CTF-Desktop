@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { activeOperations, deployingLabs, labDeployLog, parkingLabs, stoppingLabs, type ActiveOperation } from "@/lib/tauri";
 import { ignore } from "@/lib/failure";
+import { translate } from "@/lib/i18n";
 
 /**
  * The live state of lab start/stop, kept outside the React tree so it survives navigating
@@ -50,11 +51,22 @@ export function beginDeploy(labId: string, op?: string) {
 /** What a lab shows while an operation runs on it: the containers report "running" well before
  *  a launch or resume is done, and until the end of a shut down or stop. */
 export const OPERATION_STATUS: Partial<Record<string, string>> = {
-  launch: "Starting",
-  resume: "Resuming",
-  pause: "Pausing",
-  shutdown: "Shutting down",
-  stop: "Stopping",
+  // Getters: read in the current language each time.
+  get launch() {
+    return translate("common.operation.status.launch");
+  },
+  get resume() {
+    return translate("common.operation.status.resume");
+  },
+  get pause() {
+    return translate("common.operation.status.pause");
+  },
+  get shutdown() {
+    return translate("common.operation.status.shutdown");
+  },
+  get stop() {
+    return translate("common.operation.status.stop");
+  },
 };
 
 /** Append a log line to `labId`'s run, timestamped on arrival. */
@@ -146,19 +158,21 @@ export function useParkingLabs(pollMs = 4000): Set<string> {
 export function operationLabel(o: ActiveOperation): string {
   switch (o.op) {
     case "launch":
-      return "Deploying…";
+      return translate("common.operation.label.launch");
     case "resume":
-      return "Resuming…";
+      return translate("common.operation.label.resume");
     case "pause":
-      return "Pausing…";
+      return translate("common.operation.label.pause");
     case "shutdown":
-      return "Shutting down…";
+      return translate("common.operation.label.shutdown");
     case "provision":
-      return o.machine ? `Provisioning ${o.machine.replace(/^isoloom-/, "")}…` : "Provisioning…";
+      return o.machine
+        ? translate("common.operation.label.provisionMachine", { machine: o.machine.replace(/^isoloom-/, "") })
+        : translate("common.operation.label.provision");
     case "attack_vm":
-      return "Starting the attack VM…";
+      return translate("common.operation.label.attackVm");
     case "stop":
-      return "Stopping…";
+      return translate("common.operation.label.stop");
   }
 }
 

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CornerDownLeft, Search, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFocusTrap } from "@/lib/use-focus-trap";
+import { useT } from "@/lib/i18n";
 
 export type Command = {
   id: string;
@@ -22,6 +23,7 @@ export type Command = {
  * owns open/close; this component owns the query, selection and keyboard handling while open.
  */
 export function CommandPalette({ open, onClose, commands }: { open: boolean; onClose: () => void; commands: Command[] }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -83,7 +85,7 @@ export function CommandPalette({ open, onClose, commands }: { open: boolean; onC
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Command menu"
+        aria-label={t("shell.palette.label")}
         className="surface-glass w-full max-w-[36rem] overflow-hidden rounded-[1rem]"
         onKeyDown={onKey}
       >
@@ -93,14 +95,14 @@ export function CommandPalette({ open, onClose, commands }: { open: boolean; onC
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search labs, screens, actions…"
+            placeholder={t("shell.palette.placeholder")}
             className="h-13 w-full bg-transparent text-[0.9375rem] outline-none placeholder:text-faint"
           />
           <kbd className="kbd">esc</kbd>
         </div>
         <div ref={listRef} className="max-h-[24rem] overflow-y-auto pb-2">
           {results.length === 0 ? (
-            <p className="px-4 py-8 text-center text-[0.8125rem] text-muted-foreground">No results</p>
+            <p className="px-4 py-8 text-center text-[0.8125rem] text-muted-foreground">{t("shell.palette.noResults")}</p>
           ) : (
             results.map((c, i) => {
               const Icon = c.icon;

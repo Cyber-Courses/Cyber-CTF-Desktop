@@ -1,4 +1,5 @@
 import type { Provider } from "@/lib/tauri";
+import { translate } from "@/lib/i18n";
 
 /** Per-machine launcher preferences, kept locally. */
 
@@ -11,25 +12,53 @@ const ATTACK_IMAGE_KEY = "cyberctf.attackbox.image";
  */
 export const DEFAULT_ATTACK_IMAGE = "cyberctf/attack-box";
 
-/** Common attack-box images; the field is free text so any tag/registry still works. */
+/** Common attack-box images; the field is free text so any tag/registry still works. Notes and
+ *  terms are getters, read in the current language. */
 /** `terms`: a short usage condition shown as a badge (e.g. Exegol's plan requirements).
  *  `large`: shown as "Large download" only when Docker Hub gives no size for the image. */
 export const ATTACK_PRESETS: { image: string; label: string; note: string; large?: boolean; terms?: string }[] = [
-  { image: "cyberctf/attack-box", label: "Cyber CTF", note: "Kali with its standard toolset, ready to use", large: true },
-  { image: "kalilinux/kali-rolling", label: "Kali", note: "Official Kali base, add tools as needed" },
-  { image: "parrotsec/security", label: "Parrot", note: "Parrot Security toolset" },
+  {
+    image: "cyberctf/attack-box",
+    label: "Cyber CTF",
+    get note() {
+      return translate("common.attackPresets.cyberctf");
+    },
+    large: true,
+  },
+  {
+    image: "kalilinux/kali-rolling",
+    label: "Kali",
+    get note() {
+      return translate("common.attackPresets.kali");
+    },
+  },
+  {
+    image: "parrotsec/security",
+    label: "Parrot",
+    get note() {
+      return translate("common.attackPresets.parrot");
+    },
+  },
   {
     image: "nwodtuhs/exegol:free",
     label: "Exegol Free",
-    note: "Exegol Community: full toolkit, updated after Full; for learning and personal use",
-    terms: "Non-commercial use",
+    get note() {
+      return translate("common.attackPresets.exegolFree");
+    },
+    get terms() {
+      return translate("common.attackPresets.exegolFreeTerms");
+    },
   },
   {
     image: "nwodtuhs/exegol:full",
     label: "Exegol Full",
-    note: "The latest Exegol toolkit; needs an Exegol Pro, Team or Enterprise plan",
+    get note() {
+      return translate("common.attackPresets.exegolFull");
+    },
     large: true,
-    terms: "Paid plan",
+    get terms() {
+      return translate("common.attackPresets.exegolFullTerms");
+    },
   },
 ];
 
@@ -56,8 +85,20 @@ export const DEFAULT_ATTACK_BOX = "kalilinux/rolling";
 
 /** Vagrant boxes for the attack VM; the field is free text so any `owner/name` box works. */
 export const ATTACK_VM_PRESETS: { box: string; label: string; note: string }[] = [
-  { box: "kalilinux/rolling", label: "Kali", note: "Official Kali box; it has the internet, add tools as you go" },
-  { box: "generic/debian12", label: "Debian 12", note: "A plain base to build your own toolset on" },
+  {
+    box: "kalilinux/rolling",
+    label: "Kali",
+    get note() {
+      return translate("common.attackPresets.kaliVm");
+    },
+  },
+  {
+    box: "generic/debian12",
+    label: "Debian 12",
+    get note() {
+      return translate("common.attackPresets.debianVm");
+    },
+  },
 ];
 
 export function getAttackBox(): string {
