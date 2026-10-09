@@ -177,6 +177,7 @@ pub async fn stop(dir: &Path, id: &str, mut log: impl FnMut(String)) -> Result<(
     // removes it.
     let _ = crate::runtime::exegol::stop(id, &mut log).await;
     let down = compose::stream(dir, &project, &["down", "--volumes", "--remove-orphans"], &[], &mut log).await;
+    compose::remove_all_containers(&project).await;
     // Belt and braces: whatever network of this lab is still around (something else plugged into
     // it, or Compose gave up), unplug everything from it and remove it, so nothing holds the subnet.
     let filter = format!("label=com.docker.compose.project={project}");

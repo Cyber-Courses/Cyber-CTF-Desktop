@@ -81,6 +81,46 @@ pub(super) struct PsEntry {
     pub(super) name: String,
     #[serde(rename = "Publishers", default)]
     pub(super) publishers: Vec<Publisher>,
+    /// Compose's labels, comma-joined ("com.docker.compose.oneoff=True,...").
+    #[serde(rename = "Labels", default)]
+    pub(super) labels: String,
+}
+
+impl PsEntry {
+    /// A `docker compose run` container (a check runner, a one-off job): not one of the lab's
+    /// machines.
+    pub(super) fn one_off(&self) -> bool {
+        self.labels.split(',').any(|l| l.trim() == "com.docker.compose.oneoff=True")
+    }
+}
+
+/// Removes the one-off `run` containers of a project's `service` (a check runner that hung).
+pub(super) async fn remove_one_off(project: &str, service: &str) {
+    let p = format!("label=com.docker.compose.project={project}");
+    let s = format!("label=com.docker.compose.service={service}");
+    if let Ok(ids) = crate::exec::run("docker", &["ps", "-aq", "--filter", &p, "--filter", &s, "--filter", "label=com.docker.compose.oneoff=True"], None).await
+    {
+        let ids: Vec<&str> = ids.split_whitespace().collect();
+        if !ids.is_empty() {
+            let mut args = vec!["rm", "-f"];
+            args.extend(ids);
+            let _ = crate::exec::run("docker", &args, None).await;
+        }
+    }
+}
+
+/// Removes every container of a Compose project, one-off `run` containers included (`down`
+/// leaves those, so a check runner still going kept a removed lab "running").
+pub(super) async fn remove_all_containers(project: &str) {
+    let filter = format!("label=com.docker.compose.project={project}");
+    if let Ok(ids) = crate::exec::run("docker", &["ps", "-aq", "--filter", &filter], None).await {
+        let ids: Vec<&str> = ids.split_whitespace().collect();
+        if !ids.is_empty() {
+            let mut args = vec!["rm", "-f"];
+            args.extend(ids);
+            let _ = crate::exec::run("docker", &args, None).await;
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -179,8 +219,11 @@ pub(super) fn pinned_ports(json: &str, mut pick: impl FnMut(u16) -> Option<u16>)
         let mut lines = Vec::new();
         for p in ports {
             let target = p.get("target").and_then(|t| t.as_u64())?;
-            let published =
-                if ephemeral(p) { pick(u16::try_from(target).ok()?)?.to_string() } else { p["published"].as_str().map(str::to_string).unwrap_or_else(|| p["published"].to_string()) };
+            let published = if ephemeral(p) {
+                pick(u16::try_from(target).ok()?)?.to_string()
+            } else {
+                p["published"].as_str().map(str::to_string).unwrap_or_else(|| p["published"].to_string())
+            };
             let ip = p.get("host_ip").and_then(|i| i.as_str()).filter(|i| !i.is_empty()).map(|i| format!("{i}:")).unwrap_or_default();
             let proto = p.get("protocol").and_then(|i| i.as_str()).unwrap_or("tcp");
             lines.push(format!("      - \"{ip}{published}:{target}/{proto}\"\n"));
@@ -307,6 +350,13 @@ mod tests {
         assert_eq!(parse_ps(lines).len(), 2);
         assert_eq!(parse_ps(array)[0].service, "web");
         assert!(parse_ps("").is_empty());
+    }
+
+    #[test]
+    fn compose_run_containers_are_one_off() {
+        let out = "{\"Service\":\"isoloom-check\",\"State\":\"running\",\"Labels\":\"com.docker.compose.project=p,com.docker.compose.oneoff=True\"}\n{\"Service\":\"web\",\"State\":\"running\",\"Labels\":\"com.docker.compose.oneoff=False\"}\n{\"Service\":\"db\",\"State\":\"running\"}\n";
+        let flags: Vec<(String, bool)> = parse_ps(out).iter().map(|e| (e.service.clone(), e.one_off())).collect();
+        assert_eq!(flags, vec![("isoloom-check".into(), true), ("web".into(), false), ("db".into(), false)]);
     }
 
     #[test]
