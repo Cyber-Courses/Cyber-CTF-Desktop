@@ -62,9 +62,50 @@
   border-radius: 0 0 var(--radius-panel) var(--radius-panel);
   background-color: var(--surface);
 }
-.topology-shell > .react-flow {
+/* A lab wider than the card scrolls sideways; the canvas is its full drawn width. */
+.topology-scroll {
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
   border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+}
+.topology-canvas {
+  position: relative;
+  height: 100%;
+}
+.topology-canvas > .react-flow {
   overflow: hidden;
+}
+.topology-shell[data-more-left]::before,
+.topology-shell[data-more-right]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 3rem;
+  pointer-events: none;
+}
+.topology-shell[data-more-left]::before {
+  left: 0;
+  border-bottom-left-radius: var(--radius-panel);
+  background: linear-gradient(to left, transparent, var(--surface));
+}
+.topology-shell[data-more-right]::after {
+  right: 0;
+  border-bottom-right-radius: var(--radius-panel);
+  background: linear-gradient(to right, transparent, var(--surface));
+}
+/* Port tabs ride the scroll but hang over the card's bottom edge: clip only sideways. */
+.port-tabs {
+  position: absolute;
+  inset: 0;
+  overflow-x: clip;
+  overflow-y: visible;
+  pointer-events: none;
+}
+.port-tabs > .port-tab {
+  pointer-events: auto;
 }
 .react-flow {
   --xy-background-color: transparent;

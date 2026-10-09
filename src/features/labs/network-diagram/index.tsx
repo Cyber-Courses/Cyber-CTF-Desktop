@@ -30,7 +30,24 @@ import { Topology, topology } from "@/features/labs/network-diagram/topology";
 // machine on several (a pivot) sits between them in attack order. The attack box is a host on
 // the network it joined. Published ports are tabs on the card's bottom edge (the host's wall).
 
-function Flow({ topo, onSize, width: shellW, height: shellH }: { topo: Topology; onSize: (w: number, h: number) => void; width: number; height: number }) {
+/** Below this the cards can't be read: a wider lab scrolls sideways instead of shrinking. */
+const MIN_ZOOM = 0.6;
+
+type Tab = { id: string; port: number; left: number };
+
+function Flow({
+  topo,
+  onSize,
+  onTabs,
+  width: shellW,
+  height: shellH,
+}: {
+  topo: Topology;
+  onSize: (w: number, h: number) => void;
+  onTabs: (tabs: Tab[]) => void;
+  width: number;
+  height: number;
+}) {
   // First pass renders the nodes invisibly so React Flow measures them; then ELK lays them out
   // with their real sizes (a card grows with its interfaces and ports).
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(topo.nodes);
@@ -145,47 +162,41 @@ function Flow({ topo, onSize, width: shellW, height: shellH }: { topo: Topology;
     if (view) setViewport(view);
   }, [view, setViewport]);
 
-  // Published ports as tabs over the card's bottom edge, each under its link's anchor.
-  const tabs = view
-    ? nodes
-        .filter((n) => n.type === "hostport")
-        .map((n) => ({ id: n.id, port: Number((n.data as { port: number }).port), left: (n.position.x + ANCHOR / 2) * view.zoom + view.x }))
-    : [];
+  // Published ports as tabs over the card's bottom edge, each under its link's anchor. The card
+  // draws them, outside the scroller, so they can hang over its bottom edge.
+  useEffect(() => {
+    onTabs(
+      ready && view
+        ? nodes
+            .filter((n) => n.type === "hostport")
+            .map((n) => ({ id: n.id, port: Number((n.data as { port: number }).port), left: (n.position.x + ANCHOR / 2) * view.zoom + view.x }))
+        : [],
+    );
+  }, [ready, view, nodes, onTabs]);
 
   return (
-    <>
-      <ReactFlow
-        className={cn("transition-opacity duration-200", ready ? "opacity-100" : "opacity-0")}
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        minZoom={0.25}
-        maxZoom={1.5}
-        // A fitted picture, not a canvas: panning or zooming would slide the ports off the edge.
-        panOnDrag={false}
-        zoomOnScroll={false}
-        zoomOnPinch={false}
-        zoomOnDoubleClick={false}
-        panOnScroll={false}
-        preventScrolling={false}
-        nodesConnectable={false}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="var(--input)" />
-      </ReactFlow>
-      {ready &&
-        tabs.map((t) => (
-          <span key={t.id} className="port-tab" style={{ left: t.left }} title={`Published on this machine. Click to copy http://127.0.0.1:${t.port}`}>
-            <CopyText text={`http://127.0.0.1:${t.port}`}>
-              <Plug size={11} />
-              <span className="mono">:{t.port}</span>
-            </CopyText>
-          </span>
-        ))}
-    </>
+    <ReactFlow
+      className={cn("transition-opacity duration-200", ready ? "opacity-100" : "opacity-0")}
+      nodes={nodes}
+      edges={edges}
+      nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      minZoom={0.25}
+      maxZoom={1.5}
+      // A fitted picture, not a canvas: panning or zooming would slide the ports off the edge.
+      panOnDrag={false}
+      zoomOnScroll={false}
+      zoomOnPinch={false}
+      zoomOnDoubleClick={false}
+      panOnScroll={false}
+      preventScrolling={false}
+      nodesConnectable={false}
+      proOptions={{ hideAttribution: true }}
+    >
+      <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="var(--input)" />
+    </ReactFlow>
   );
 }
 
@@ -226,8 +237,14 @@ export function NetworkDiagram({
     return () => ro.disconnect();
   }, []);
   const onSize = useCallback((w: number, h: number) => setGraph({ w, h }), []);
+  const [tabs, setTabs] = useState<Tab[]>([]);
+  const [scrollX, setScrollX] = useState(0);
   // onSize gets the drawing's size plus its vertical margins; the side margins are 24px each.
-  const scale = graph && width ? Math.min(1.05, (width - 48) / Math.max(graph.w, 1)) : 1;
+  // A wide lab is never shrunk below a readable zoom: its canvas grows past the card instead,
+  // and the card scrolls sideways (trackpad, shift+wheel, scrollbar).
+  const fit = graph && width ? Math.min(1.05, (width - 48) / Math.max(graph.w, 1)) : 1;
+  const scale = Math.max(fit, MIN_ZOOM);
+  const canvas = graph && width ? Math.max(width, Math.ceil(graph.w * scale + 48)) : width;
   const height = graph ? Math.round(Math.min(720, Math.max(220, graph.h * scale))) : 430;
 
   return (
@@ -251,10 +268,31 @@ export function NetworkDiagram({
         </span>
       </div>
 
-      <div ref={shell} className="topology-shell" style={{ height }}>
-        <ReactFlowProvider key={sig}>
-          <Flow topo={topo} onSize={onSize} width={width} height={height} />
-        </ReactFlowProvider>
+      <div
+        ref={shell}
+        className="topology-shell"
+        style={{ height }}
+        // Fades on the sides that have more to scroll to, so a wide lab reads as scrollable.
+        data-more-left={scrollX > 1 || undefined}
+        data-more-right={canvas - width - scrollX > 1 || undefined}
+      >
+        <div className="topology-scroll" onScroll={(e) => setScrollX(e.currentTarget.scrollLeft)}>
+          <div className="topology-canvas" style={{ width: canvas || "100%" }}>
+            <ReactFlowProvider key={sig}>
+              <Flow topo={topo} onSize={onSize} onTabs={setTabs} width={canvas} height={height} />
+            </ReactFlowProvider>
+          </div>
+        </div>
+        <div className="port-tabs">
+          {tabs.map((t) => (
+            <span key={t.id} className="port-tab" style={{ left: t.left - scrollX }} title={`Published on this machine. Click to copy http://127.0.0.1:${t.port}`}>
+              <CopyText text={`http://127.0.0.1:${t.port}`}>
+                <Plug size={11} />
+                <span className="mono">:{t.port}</span>
+              </CopyText>
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
