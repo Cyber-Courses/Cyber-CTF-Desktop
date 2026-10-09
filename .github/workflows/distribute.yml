@@ -1,13 +1,20 @@
 name: Distribute
 
-# Pushes a published release to the package channels so nobody bumps them by hand:
+# Pushes a release to the package channels so nobody bumps them by hand:
 # the Homebrew cask (Cyber-Courses/homebrew-tap) and the apt repository (Cyber-Courses/apt,
 # which signs with its own key). The website's download links already follow the latest
 # release on their own. Cross-repo writes use the org's cyber-ctf-creator GitHub App.
+# Release calls this after publishing a tag build; a release published by hand also
+# triggers it, and workflow_dispatch re-runs it for any tag.
 
 on:
   release:
     types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       tag:

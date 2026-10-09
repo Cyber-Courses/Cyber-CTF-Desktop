@@ -2,8 +2,8 @@ name: Release
 
 # Builds the Cyber CTF desktop launcher for macOS (universal), Windows and Linux and
 # publishes the installers to a GitHub Release. Trigger by pushing a tag like `v0.1.0`
-# (or run manually). Builds are unsigned for now; code signing / notarization + the
-# updater signing key come later (add them as repo secrets and wire them here).
+# (or run manually). A tag build is published and sent to Homebrew + apt once every
+# platform is green; a manual run stays a draft.
 
 on:
   push:
@@ -109,3 +109,22 @@ jobs:
           xcrun stapler staple "$dmg"
           spctl -a -vvv -t open --context context:primary-signature "$dmg"
           gh release upload "${{ github.ref_name }}" "$dmg" --clobber --repo "${{ github.repository }}"
+
+  # Every platform built (and the DMG is notarized): take the draft live, then ship it to
+  # Homebrew and apt. Tag builds only; a manual run stays a draft to review.
+  publish:
+    needs: release
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false --latest --repo "${{ github.repository }}"
+
+  # Called directly: a release published with GITHUB_TOKEN fires no release event.
+  distribute:
+    needs: publish
+    uses: ./.github/workflows/distribute.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
