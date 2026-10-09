@@ -18,9 +18,13 @@ import { MachineStep, hasHypervisor, isDockerReady } from "@/features/machine/se
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
 import { VagrantStep, VmStep } from "@/features/machine/setup-steps/vm-steps";
 import { openExternal } from "@/lib/failure";
+import { useT } from "@/lib/i18n";
+
+const bold = (s: string) => <b>{s}</b>;
 
 /** The body of one setup step (no header, no nav: the flow draws those). */
 export function MachineStepBody({ step, report, setup }: { step: MachineStep; report: SystemReport; setup: MachineSetupState }) {
+  const t = useT();
   const isWin = report.os === "windows";
   const isMac = report.os === "macos";
 
@@ -28,7 +32,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
     if (report.pkgManager.installed) {
       return (
         <div className="overflow-hidden rounded-control bg-glass shadow-[inset_0_0_0_1px_var(--border)]">
-          <Requirement ok title={report.pkgManager.name} detail={report.pkgManager.version ?? "Installed"} action={null} />
+          <Requirement ok title={report.pkgManager.name} detail={report.pkgManager.version ?? t("machine.body.installed")} action={null} />
         </div>
       );
     }
@@ -36,7 +40,7 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
       <>
         {isMac && (
           <div className="space-y-2">
-            <p className="text-[0.8125rem] text-muted-foreground">Run this in Terminal, then come back, it’s detected automatically:</p>
+            <p className="text-[0.8125rem] text-muted-foreground">{t("machine.body.pkgmgr.macRun")}</p>
             <CmdRow cmd={'/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'} />
             <button onClick={() => openExternal("https://brew.sh")} className="inline-flex items-center gap-1.5 text-[0.75rem] text-jewel-text hover:underline">
               <ExternalLink className="size-3.5" /> brew.sh
@@ -46,17 +50,17 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
         {isWin && (
           <div className="flex items-center justify-between gap-3 rounded-control bg-glass shadow-[inset_0_0_0_1px_var(--border)] px-4 py-3">
             <div>
-              <p className="text-[0.8125rem] font-medium text-foreground">App Installer (winget)</p>
-              <p className="text-[0.75rem] text-muted-foreground">Install it from the Microsoft Store, then come back.</p>
+              <p className="text-[0.8125rem] font-medium text-foreground">{t("machine.body.pkgmgr.winget")}</p>
+              <p className="text-[0.75rem] text-muted-foreground">{t("machine.body.pkgmgr.wingetHint")}</p>
             </div>
             <Button variant="primary" size="sm" onClick={() => openExternal("https://apps.microsoft.com/detail/9nblggh4nns1")}>
-              <ExternalLink className="size-3.5" /> Get
+              <ExternalLink className="size-3.5" /> {t("machine.body.pkgmgr.get")}
             </Button>
           </div>
         )}
         {!isMac && !isWin && (
           <p className="text-[0.8125rem] text-muted-foreground">
-            Install your distribution’s package manager{report.pkgManager.name ? ` (${report.pkgManager.name})` : ""} to use the one-click installs.
+            {report.pkgManager.name ? t("machine.body.pkgmgr.linuxNamed", { name: report.pkgManager.name }) : t("machine.body.pkgmgr.linux")}
           </p>
         )}
       </>
@@ -65,20 +69,13 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
 
   if (step === "virtualization") {
     const installing = setup.installing === "wsl";
-    const tried = !installing && setup.logs.length > 0 && setup.logs[0].startsWith("Turning on WSL");
+    // The WSL install ran (its log is the WSL one) and finished.
+    const tried = !installing && setup.logs.length > 0 && setup.logsFor === "wsl";
     return (
       <>
-        <p className="text-[0.8125rem] text-muted-foreground">
-          Cyber CTF turns on WSL 2 for you. Windows asks for permission once (the usual admin prompt), then needs a restart.
-        </p>
-        <Button
-          variant="primary"
-          size="sm"
-          className="mt-4"
-          disabled={setup.busy}
-          onClick={() => setup.install("wsl", "wsl", "Turning on WSL 2. Accept the Windows prompt to continue…")}
-        >
-          {installing ? "Turning on WSL 2…" : "Turn on WSL 2"}
+        <p className="text-[0.8125rem] text-muted-foreground">{t("machine.body.wsl.intro")}</p>
+        <Button variant="primary" size="sm" className="mt-4" disabled={setup.busy} onClick={() => setup.install("wsl", "wsl", t("machine.body.wsl.log"))}>
+          {installing ? t("machine.body.wsl.turningOn") : t("machine.body.wsl.turnOn")}
         </Button>
         <div className="mt-3">
           <Log setup={setup} of={["wsl"]} />
@@ -89,31 +86,26 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
             className="mt-3 flex items-center gap-3 rounded-control bg-glass px-4 py-3 text-[0.8125rem] text-foreground shadow-[inset_0_0_0_1px_var(--border)]"
           >
             <StatusDot tone="warn" />
-            Restart Windows to finish, then open Cyber CTF again to continue setup.
+            {t("machine.body.wsl.restart")}
           </div>
         )}
         <details className="mt-4 text-[0.8125rem] text-muted-foreground">
-          <summary className="cursor-pointer hover:text-foreground">Do it by hand instead</summary>
+          <summary className="cursor-pointer hover:text-foreground">{t("machine.body.wsl.byHand")}</summary>
           <ol className="mt-3 space-y-3">
-            <Num n={1}>
-              Open <b>PowerShell</b> as Administrator (right-click, then “Run as administrator”).
-            </Num>
+            <Num n={1}>{t.rich("machine.body.wsl.step1", { b: bold })}</Num>
             <Num n={2}>
-              Run this, then reboot when it finishes:
+              {t("machine.body.wsl.step2")}
               <div className="mt-1.5">
                 <CmdRow cmd="wsl --install" />
               </div>
             </Num>
-            <Num n={3}>
-              If Docker later says virtualization is off: open “Turn Windows features on or off” and enable <b>Virtual Machine Platform</b> and{" "}
-              <b>Windows Subsystem for Linux</b>, and make sure virtualization is enabled in your BIOS/UEFI.
-            </Num>
+            <Num n={3}>{t.rich("machine.body.wsl.step3", { b: bold })}</Num>
           </ol>
           <button
             onClick={() => openExternal("https://learn.microsoft.com/windows/wsl/install")}
             className="mt-4 inline-flex items-center gap-1.5 text-[0.75rem] text-jewel-text hover:underline"
           >
-            <ExternalLink className="size-3.5" /> Microsoft’s WSL install guide
+            <ExternalLink className="size-3.5" /> {t("machine.body.wsl.guide")}
           </button>
         </details>
       </>
@@ -127,48 +119,55 @@ export function MachineStepBody({ step, report, setup }: { step: MachineStep; re
 
   if (step === "docker-test") {
     return isDockerReady(report) ? (
-      <SelfTest kind="docker" title="Container lab test" description="busybox, two containers on a lab network." auto onResult={setup.setDockerTest} />
+      <SelfTest
+        kind="docker"
+        title={t("machine.selfTest.containerTitle")}
+        description={t("machine.body.dockerTestDescription")}
+        auto
+        onResult={setup.setDockerTest}
+      />
     ) : (
-      <Skipped title="Nothing to test yet" reason="No container engine is running. Go back to set one up, or skip for now." />
+      <Skipped title={t("machine.body.nothingToTest")} reason={t("machine.body.noEngine")} />
     );
   }
 
   return hasHypervisor(report) ? (
-    <SelfTest kind="vm" title="VM lab test" description="Boots, runs a command, pings it on a lab network, deletes it." auto onResult={setup.setVmTest} />
+    <SelfTest kind="vm" title={t("machine.selfTest.vmTitle")} description={t("machine.body.vmTestDescription")} auto onResult={setup.setVmTest} />
   ) : (
-    <Skipped title="Nothing to test yet" reason="No hypervisor is installed. Go back to install one, or skip for now." />
+    <Skipped title={t("machine.body.nothingToTest")} reason={t("machine.body.noHypervisor")} />
   );
 }
 
 /** End-of-setup summary: what this machine can run, from the test results. */
 export function SetupOutcome({ report, setup }: { report: SystemReport | null; setup: MachineSetupState }) {
+  const t = useT();
   const { dockerTest, vmTest } = setup;
   return (
     <div className="overflow-hidden rounded-control bg-glass shadow-[inset_0_0_0_1px_var(--border)]">
       <Outcome
-        title="Container labs"
+        title={t("machine.body.outcome.containerLabs")}
         ok={dockerTest === "ok"}
         detail={
           dockerTest === "ok"
-            ? "Tested and ready to run."
+            ? t("machine.body.outcome.ready")
             : dockerTest === "fail"
-              ? "The test failed. Go back to run it again."
+              ? t("machine.body.outcome.failed")
               : isDockerReady(report)
-                ? "Engine running, not tested."
-                : "Set up a container engine to run them."
+                ? t("machine.body.outcome.engineRunning")
+                : t("machine.body.outcome.setUpEngine")
         }
       />
       <Outcome
-        title="VM labs"
+        title={t("machine.body.outcome.vmLabs")}
         ok={vmTest === "ok"}
         detail={
           vmTest === "ok"
-            ? "Tested and ready to run."
+            ? t("machine.body.outcome.ready")
             : vmTest === "fail"
-              ? "The test failed. Go back to run it again."
+              ? t("machine.body.outcome.failed")
               : hasHypervisor(report)
-                ? "Not tested."
-                : "Install a hypervisor to run them."
+                ? t("machine.body.outcome.notTested")
+                : t("machine.body.outcome.installHypervisor")
         }
       />
     </div>

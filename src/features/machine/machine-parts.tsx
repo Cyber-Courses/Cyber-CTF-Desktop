@@ -7,6 +7,7 @@ import { Sparkline } from "@/components/ui/sparkline";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SelfTest } from "@/features/machine/self-test";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 import { StatusDot, type Tone } from "@/components/ui/status-pill";
 
 // ---------- small parts ----------
@@ -148,6 +149,7 @@ export function LabTypeRow({
   testing: boolean;
   onTestDone: () => void;
 }) {
+  const t = useT();
   return (
     <div className="border-t border-border first:border-t-0">
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3">
@@ -167,8 +169,8 @@ export function LabTypeRow({
         <div className="px-4 pb-4">
           <SelfTest
             kind={kind}
-            title={kind === "docker" ? "Container lab test" : "VM lab test"}
-            description={kind === "docker" ? "Two containers on a lab network, then removed." : "Boots a real test VM, checks it, then deletes it."}
+            title={kind === "docker" ? t("machine.selfTest.containerTitle") : t("machine.selfTest.vmTitle")}
+            description={kind === "docker" ? t("machine.selfTest.machineDockerDescription") : t("machine.selfTest.machineVmDescription")}
             auto
             onResult={(r) => {
               if (r === "ok" || r === "fail") onTestDone();

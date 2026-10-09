@@ -7,6 +7,7 @@ import { StatusDot } from "@/components/ui/status-pill";
 import { StepCircle } from "@/features/machine/step-row";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
 import { tell } from "@/lib/failure";
+import { useT } from "@/lib/i18n";
 
 export function Requirement({
   ok,
@@ -45,11 +46,13 @@ export function Requirement({
 /** The install log, when it is about one of `of` (this step's installs): a failed VirtualBox
  *  install isn't shown under QEMU once the player picks that instead, or on the next step. */
 export function Log({ setup, of }: { setup: MachineSetupState; of: (string | null | undefined)[] }) {
+  const t = useT();
   if (!setup.logsFor || !of.includes(setup.logsFor)) return null;
-  return <LogConsole lines={setup.logs} running={setup.installing !== null} title="Install" />;
+  return <LogConsole lines={setup.logs} running={setup.installing !== null} title={t("machine.body.installLog")} />;
 }
 
 export function CmdRow({ cmd }: { cmd: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <div className="surface-log flex items-center gap-2 rounded-control px-3 py-2">
@@ -62,11 +65,11 @@ export function CmdRow({ cmd }: { cmd: string }) {
               setCopied(true);
               setTimeout(() => setCopied(false), 1200);
             })
-            .catch(tell("Couldn't copy to the clipboard"))
+            .catch(tell(t("machine.errors.copy")))
         }
         className="inline-flex shrink-0 items-center gap-1 text-[0.6875rem] text-muted-foreground transition-colors hover:text-foreground"
       >
-        {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />} {copied ? "Copied" : "Copy"}
+        {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />} {copied ? t("machine.body.copied") : t("machine.body.copy")}
       </button>
     </div>
   );

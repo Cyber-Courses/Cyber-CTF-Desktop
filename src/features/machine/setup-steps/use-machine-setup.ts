@@ -4,6 +4,7 @@ import { getVmProvider } from "@/lib/settings";
 import { installDependency, installVagrantPlugin, machineSelftestPrefetch, type Dependency, type DockerEngine, type SystemReport } from "@/lib/tauri";
 import { hasHypervisor, isDockerReady } from "@/features/machine/setup-steps/steps";
 import { ignore } from "@/lib/failure";
+import { translate } from "@/lib/i18n";
 
 export function useMachineSetup(report: SystemReport | null, onRefresh: () => void) {
   const prefetched = useRef({ docker: false, vm: false });
@@ -49,7 +50,7 @@ export function useMachineSetup(report: SystemReport | null, onRefresh: () => vo
   async function installPlugin(plugin: string) {
     setInstalling(plugin);
     setLogsFor(plugin);
-    setLogs([`Installing the Vagrant plugin ${plugin}…`]);
+    setLogs([translate("machine.vm.pluginLog", { plugin })]);
     try {
       await installVagrantPlugin(plugin, (line) => setLogs((l) => [...l, line]));
     } catch (e) {

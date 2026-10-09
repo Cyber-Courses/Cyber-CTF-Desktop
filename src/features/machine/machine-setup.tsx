@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { MachineStepBody, SetupOutcome, canContinue, machineSteps, nextLabel, stepMeta, useMachineSetup } from "@/features/machine/setup-steps";
 import type { SystemReport } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 /** The guided "set up this machine" window. The steps themselves are shared with the
  *  onboarding (`setup-steps`); this file is only the window's frame. */
@@ -26,6 +27,7 @@ export function MachineSetup({
   /** Open at this step (a "Fix" link from the Machine page); changes jump again. */
   startAt?: { step: string; nonce: number } | null;
 }) {
+  const t = useT();
   const steps = [...machineSteps(report), "ready" as const];
   const [i, setI] = useState(0);
   // Jump to the requested step once the report is in (the step list depends on it).
@@ -43,9 +45,7 @@ export function MachineSetup({
 
   const osName = report?.os === "windows" ? "Windows" : report?.os === "macos" ? "macOS" : "Linux";
   const meta =
-    key === "ready"
-      ? { icon: Sparkles, title: "You’re set up", description: "You can run this guide again anytime from the Machine page." }
-      : stepMeta(key, report);
+    key === "ready" ? { icon: Sparkles, title: t("machine.setup.readyTitle"), description: t("machine.setup.readyDescription") } : stepMeta(key, report, t);
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -56,20 +56,13 @@ export function MachineSetup({
           depend on what it finds. */}
       {!report ? (
         <div className="flex flex-1 items-center justify-center gap-2 pb-11 text-[0.8125rem] text-muted-foreground">
-          <Spinner className="size-4" /> Checking this machine…
+          <Spinner className="size-4" /> {t("machine.setup.checking")}
         </div>
       ) : (
         /* Scrolls when a step is long; centered in the window when it's short. */
         <div className="min-h-0 flex-1 overflow-y-auto">
           <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-6 pt-2 pb-10">
-            <PageHeader
-              title={
-                <>
-                  Set up this <em>machine</em>
-                </>
-              }
-              lead={`Get ${osName} ready to run labs, one step at a time.`}
-            />
+            <PageHeader title={<>{t.rich("machine.setup.title", { em: (s) => <em>{s}</em> })}</>} lead={t("machine.setup.lead", { os: osName })} />
 
             {/* Progress: one segment per step, the jewel up to the current one. */}
             <div className="mt-5 flex gap-1" aria-hidden>
@@ -86,16 +79,12 @@ export function MachineSetup({
                     {meta.title}
                   </>
                 }
-                meta={
-                  <span className="tabular-nums">
-                    Step {at + 1} of {steps.length}
-                  </span>
-                }
+                meta={<span className="tabular-nums">{t("machine.setup.stepOf", { current: at + 1, total: steps.length })}</span>}
               />
               <div className="px-4 pt-3.5 pb-4">
                 <p className="text-[0.8125rem] leading-relaxed text-muted-foreground">{meta.description}</p>
                 <div className="mt-4">
-                  <ErrorBoundary resetKey={key} title="This step couldn’t load">
+                  <ErrorBoundary resetKey={key} title={t("machine.setup.stepFailed")}>
                     {key === "ready" ? <SetupOutcome report={report} setup={setup} /> : <MachineStepBody step={key} report={report} setup={setup} />}
                   </ErrorBoundary>
                 </div>
@@ -104,17 +93,17 @@ export function MachineSetup({
                 <div>
                   {at > 0 && (
                     <Button variant="outline" size="sm" onClick={back} disabled={setup.busy}>
-                      <ArrowLeft className="size-3.5" /> Back
+                      <ArrowLeft className="size-3.5" /> {t("machine.setup.back")}
                     </Button>
                   )}
                 </div>
                 {key === "ready" ? (
                   <Button variant="primary" size="sm" onClick={onClose}>
-                    <Play className="size-3.5" /> Done
+                    <Play className="size-3.5" /> {t("machine.setup.done")}
                   </Button>
                 ) : (
                   <Button variant="primary" size="sm" onClick={next} disabled={setup.busy || !canContinue(key, report, setup)}>
-                    {nextLabel(key, report)}
+                    {nextLabel(key, report, t)}
                   </Button>
                 )}
               </div>
