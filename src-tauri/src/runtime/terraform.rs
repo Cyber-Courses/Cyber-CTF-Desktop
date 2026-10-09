@@ -206,11 +206,10 @@ fn parse_progress(first_line: &str) -> Progress {
 /// output (older labs) are not waited on.
 async fn wait_ready(state: &Path, log: &mut impl FnMut(String)) -> Result<()> {
     let Some(ready_file) = output(state, "ready_file") else { return Ok(()) };
-    let (Some(identity), Some((host, user))) = (ssh::launcher_key(), ssh_endpoint(state)) else {
+    let Some(target) = ssh::launcher_key().and_then(|identity| ssh_target(state, identity)) else {
         log("Can't reach the lab host over SSH to confirm it started; check it from the lab page.".into());
         return Ok(());
     };
-    let target = ssh::Target { host, port: 22, user, identity };
     let known_hosts = state.join("known_hosts");
     let command = format!("cat {} 2>/dev/null || true; echo; tail -n 25 /var/log/cyberctf-lab.log 2>/dev/null || true", ssh::sh_quote(&ready_file));
 
@@ -318,6 +317,17 @@ fn with_env(vars: &[(String, String)], env: &[(String, String)]) -> Vec<(String,
 }
 
 /// The lab host's address and SSH user, from the local state's outputs.
+/// Where the node login for a lab reached through its Proxmox node is kept (`user@host`).
+pub const JUMP_FILE: &str = "ssh-jump";
+
+/// The lab host as an SSH target with the launcher's key, through the node when the launch
+/// recorded one (see JUMP_FILE).
+pub fn ssh_target(state: &Path, identity: std::path::PathBuf) -> Option<ssh::Target> {
+    let (host, user) = ssh_endpoint(state)?;
+    let jump = std::fs::read_to_string(state.join(JUMP_FILE)).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    Some(ssh::Target { host, port: 22, user, identity, jump })
+}
+
 pub fn ssh_endpoint(state: &Path) -> Option<(String, String)> {
     let raw = std::fs::read_to_string(state.join("terraform.tfstate")).ok()?;
     let v: Value = serde_json::from_str(&raw).ok()?;

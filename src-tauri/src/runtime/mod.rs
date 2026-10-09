@@ -258,6 +258,13 @@ pub async fn start(
             // The launcher's key: Terraform copies the lab over SSH with it, and "Open shell"
             // reaches the attack box on the lab host.
             let (key, public) = ssh::ensure_key(app).await?;
+            // A Proxmox lab bridge this machine can't route to: Terraform and the launcher reach
+            // the VM through the node.
+            let jump = server::proxmox_jump(app, dir, &key, &public).await?;
+            if jump.is_some() {
+                log("The lab bridge is internal to the node: reaching the lab VM through the node.".into());
+                vars.push(("ssh_via_node".into(), "true".into()));
+            }
             vars.push(("ssh_public_key".into(), public));
             vars.push(("ssh_private_key_file".into(), key.to_string_lossy().to_string()));
             if provider.is_cloud() {
@@ -291,6 +298,12 @@ pub async fn start(
             // Which output ran (containers or one VM per machine), for the auto-stop reaper.
             std::fs::create_dir_all(&state)?;
             std::fs::write(state.join(RUNTIME_FILE), if runtime == Runtime::Vm { "VM" } else { "DOCKER" })?;
+            match &jump {
+                Some(login) => std::fs::write(state.join(terraform::JUMP_FILE), login)?,
+                None => {
+                    let _ = std::fs::remove_file(state.join(terraform::JUMP_FILE));
+                }
+            }
             terraform::apply(&module, &state, &vars, &conn.tf_env, &mut log).await?;
             if runtime == Runtime::Docker {
                 attack_box_remote(app, id, &spec, env, &mut log).await?;
@@ -683,8 +696,7 @@ async fn attack_box_remote(app: &AppHandle, id: &str, spec: &isoloom_core::Spec,
     let Some(conn) = server::lab_connection(app, &lab_dir(app, id)?)? else { return Ok(()) };
     let tf = server::terraform_target(conn.provider).unwrap_or_default();
     let state = state_dir(app, id, tf)?;
-    let (host, user) = terraform::ssh_endpoint(&state).ok_or_else(|| Error::Invalid("the lab host has no address".into()))?;
-    let target = ssh::Target { host, port: 22, user, identity: ssh::ensure_key(app).await?.0 };
+    let target = terraform::ssh_target(&state, ssh::ensure_key(app).await?.0).ok_or_else(|| Error::Invalid("the lab host has no address".into()))?;
     log("Starting the attack box next to the lab (this pulls its image the first time)…".into());
     let script = attack_box_script(&spec.name, image);
     target.exec(&state.join("known_hosts"), &format!("sudo bash -c {}", ssh::sh_quote(&script))).await?;
@@ -989,9 +1001,8 @@ pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> R
         return Err(Error::Invalid("this lab has no attack box".into()));
     }
     let target = if let Some(tf) = server::terraform_target(conn.provider) {
-        let (host, user) = terraform::ssh_endpoint(&state_dir(&app, &id, tf)?)
-            .ok_or_else(|| Error::Invalid("the lab host has no address yet; wait for it to finish starting".into()))?;
-        ssh::Target { host, port: 22, user, identity: ssh::ensure_key(&app).await?.0 }
+        terraform::ssh_target(&state_dir(&app, &id, tf)?, ssh::ensure_key(&app).await?.0)
+            .ok_or_else(|| Error::Invalid("the lab host has no address yet; wait for it to finish starting".into()))?
     } else {
         let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&lab::vagrant_dir(&dir, runtime)), &conn.env).await?;
         ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab host's SSH settings".into()))?
