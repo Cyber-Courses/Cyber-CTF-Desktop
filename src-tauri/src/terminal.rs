@@ -13,7 +13,7 @@ use tauri::AppHandle;
 use tauri::ipc::Channel;
 
 use crate::error::{Error, Result};
-use crate::runtime::{Runtime, ShellKind, shell_command_for};
+use crate::runtime::{Runtime, ShellKind, end_shell_session, end_shell_session_blocking, shell_command_for};
 
 struct Session {
     writer: Box<dyn Write + Send>,
@@ -22,12 +22,18 @@ struct Session {
     /// The window showing it: closing that window ends it (the page's own cleanup never runs
     /// when its webview is destroyed).
     window: String,
+    /// The attack box container and the mark on this shell's processes in it: killing
+    /// `docker exec` here leaves them running there.
+    remote: Option<(String, String)>,
 }
 
 /// Kills a session's shell and reaps it, off the calling thread (sync commands run on the main
 /// thread): a killed child that is never waited on stays a zombie while the app runs.
 fn end(mut sess: Session) {
     let _ = sess.child.kill();
+    if let Some((container, tag)) = sess.remote.take() {
+        tauri::async_runtime::spawn(async move { end_shell_session(&container, &tag).await });
+    }
     std::thread::spawn(move || {
         let _ = sess.child.wait();
     });
@@ -89,7 +95,11 @@ pub async fn terminal_open(
     events: Channel<TermEvent>,
 ) -> Result<u32> {
     use tauri::Manager;
-    let line = shell_command_for(window.app_handle(), &id, kind, runtime).await?;
+    let session = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    // Unique across app runs too, so a later run never ends an earlier run's shell.
+    let tag = format!("{}-{session}", std::process::id());
+    let (line, container) = shell_command_for(window.app_handle(), &id, kind, runtime, &tag).await?;
+    let remote = container.map(|c| (c, tag));
     let pair = native_pty_system().openpty(pty_size(cols, rows)).map_err(|e| Error::Invalid(format!("couldn't open a terminal: {e}")))?;
     #[cfg(unix)]
     let mut cmd = {
@@ -110,9 +120,8 @@ pub async fn terminal_open(
     drop(pair.slave);
     let mut reader = pair.master.try_clone_reader().map_err(|e| Error::Invalid(e.to_string()))?;
     let writer = pair.master.take_writer().map_err(|e| Error::Invalid(e.to_string()))?;
-    let session = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let window = window.label().to_string();
-    with_sessions(|s| s.insert(session, Session { writer, master: pair.master, child, window }));
+    with_sessions(|s| s.insert(session, Session { writer, master: pair.master, child, window, remote }));
 
     std::thread::spawn(move || {
         let mut chunk = [0u8; 8192];
@@ -177,6 +186,9 @@ pub fn close_all() {
     let all: Vec<Session> = with_sessions(|s| s.drain().map(|(_, v)| v).collect());
     for mut sess in all {
         let _ = sess.child.kill();
+        if let Some((container, tag)) = sess.remote.take() {
+            end_shell_session_blocking(&container, &tag);
+        }
     }
 }
 

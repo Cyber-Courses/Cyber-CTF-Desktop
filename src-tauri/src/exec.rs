@@ -102,8 +102,7 @@ pub fn headless(cmd: &mut Command) -> &mut Command {
     cmd
 }
 
-/// `headless` for a blocking `std::process::Command` (only Windows code calls it).
-#[cfg_attr(not(windows), allow(dead_code))]
+/// `headless` for a blocking `std::process::Command`.
 pub fn headless_std(cmd: &mut std::process::Command) -> &mut std::process::Command {
     #[cfg(windows)]
     {

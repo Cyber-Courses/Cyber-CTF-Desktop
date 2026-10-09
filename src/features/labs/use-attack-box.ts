@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { attackVmStart, attackVmStatus, attackVmStop, exegolStart, exegolStatus, exegolStop, type ExegolStatus } from "@/lib/tauri";
+import { attackVmStart, attackVmStatus, attackVmStop, exegolStatus, exegolStop, type ExegolStatus } from "@/lib/tauri";
+import { startContainerAttackBox } from "@/features/labs/attack-box-auto";
 import { getAttackBox, getAttackImage, getAutoAttackBox } from "@/lib/settings";
 import { translate } from "@/lib/i18n";
 
@@ -85,7 +86,7 @@ export function useAttackBox(
   const start = useCallback(
     () =>
       run(
-        (l) => (kind === "vm" ? attackVmStart(labId, getAttackBox(), l) : exegolStart(labId, getAttackImage(), l)),
+        (l) => (kind === "vm" ? attackVmStart(labId, getAttackBox(), l) : startContainerAttackBox(labId, l)),
         kind === "vm" ? translate("labs.attackBox.startingVm") : translate("labs.attackBox.startingBox"),
       ),
     [run, labId, kind],

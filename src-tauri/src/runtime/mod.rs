@@ -1034,16 +1034,21 @@ pub async fn lab_check(app: AppHandle, id: String, runtime: Runtime) -> Result<d
 
 /// The command line for the attack box shell of a running lab, wherever it runs: the local
 /// container, or over SSH on the lab host of a remote lab (server / cloud) or the local lab VM.
-async fn lab_shell_command(app: &AppHandle, id: &str, runtime: Runtime) -> Result<String> {
+/// The command line for a lab's attack box shell, and, for an in-app shell (`tag`) in the local
+/// attack box container, that container (whose marked processes end with the shell).
+async fn lab_shell_command(app: &AppHandle, id: &str, runtime: Runtime, tag: Option<&str>) -> Result<(String, Option<String>)> {
     let dir = lab_dir(app, id)?;
     let Some(conn) = server::lab_connection(app, &dir)? else {
         if local_vm(&dir).is_some() && matches!(runtime, Runtime::Docker) {
             let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&lab::vagrant_dir(&dir, runtime)), &[]).await?;
             let target = ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab VM's SSH settings".into()))?;
-            return target.attack_shell_command(&ssh::known_hosts(app)?);
+            return Ok((target.attack_shell_command(&ssh::known_hosts(app)?)?, None));
         }
         validate_id(id)?;
-        return Ok(exegol::shell_command(id));
+        return Ok(match tag {
+            Some(tag) => (exegol::tagged_shell_command(id, tag), Some(exegol::container(id))),
+            None => (exegol::shell_command(id), None),
+        });
     };
     if !matches!(runtime, Runtime::Docker) {
         return Err(Error::Invalid("this lab has no attack box".into()));
@@ -1055,13 +1060,13 @@ async fn lab_shell_command(app: &AppHandle, id: &str, runtime: Runtime) -> Resul
         let out = crate::exec::run_env("vagrant", &["ssh-config"], Some(&lab::vagrant_dir(&dir, runtime)), &conn.env).await?;
         ssh::parse_ssh_config(&out).ok_or_else(|| Error::Invalid("couldn't read the lab host's SSH settings".into()))?
     };
-    target.attack_shell_command(&ssh::known_hosts(app)?)
+    Ok((target.attack_shell_command(&ssh::known_hosts(app)?)?, None))
 }
 
 /// Opens the attack box shell of a running lab in the system terminal.
 #[tauri::command]
 pub async fn lab_attack_shell(app: AppHandle, id: String, runtime: Runtime) -> Result<()> {
-    exegol::open_terminal_async(lab_shell_command(&app, &id, runtime).await?).await
+    exegol::open_terminal_async(lab_shell_command(&app, &id, runtime, None).await?.0).await
 }
 
 /// Which shell an embedded terminal attaches to.
@@ -1074,12 +1079,23 @@ pub enum ShellKind {
     AttackVm,
 }
 
-/// The command line an embedded terminal runs for `kind`.
-pub async fn shell_command_for(app: &AppHandle, id: &str, kind: ShellKind, runtime: Runtime) -> Result<String> {
+/// The command line an embedded terminal runs for `kind`, and the attack box container whose
+/// processes marked with `tag` end with it (see [`end_shell_session`]).
+pub async fn shell_command_for(app: &AppHandle, id: &str, kind: ShellKind, runtime: Runtime, tag: &str) -> Result<(String, Option<String>)> {
     match kind {
-        ShellKind::Lab => lab_shell_command(app, id, runtime).await,
-        ShellKind::AttackVm => attack_vm::shell_command(&lab_dir(app, id)?),
+        ShellKind::Lab => lab_shell_command(app, id, runtime, Some(tag)).await,
+        ShellKind::AttackVm => Ok((attack_vm::shell_command(&lab_dir(app, id)?)?, None)),
     }
+}
+
+/// Ends what an in-app shell left running in the attack box container.
+pub async fn end_shell_session(container: &str, tag: &str) {
+    exegol::end_session(container, tag).await
+}
+
+/// [`end_shell_session`], blocking (the app is quitting).
+pub fn end_shell_session_blocking(container: &str, tag: &str) {
+    exegol::end_session_blocking(container, tag)
 }
 
 /// An attack-box image reference the launcher accepts.

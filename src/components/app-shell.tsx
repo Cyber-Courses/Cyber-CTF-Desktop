@@ -23,6 +23,7 @@ import { operationLabel, SIGNED_OUT_EVENT, useActiveOperations, useDeployingLabs
 import { Spinner } from "@/components/ui/spinner";
 import { StatusDot } from "@/components/ui/status-pill";
 import { Toaster } from "@/components/ui/toaster";
+import { useAttackBoxAutoStart } from "@/features/labs/attack-box-auto";
 import { CtfMark } from "@/components/brand/mark";
 import { engineName } from "@/features/machine/setup-steps/engines";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
@@ -228,6 +229,8 @@ export function AppShell() {
   }, []);
   // What each busy lab is doing and the step it is at, for a live line under its name.
   const ops = useActiveOperations();
+  // Main window only: Settings runs this shell too, and two windows must not both start a box.
+  useAttackBoxAutoStart(ops, ready && !settingsWindow);
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   // Read again as soon as an operation starts or ends: a lab just shut down otherwise kept its
   // "Running" line until the next poll.
