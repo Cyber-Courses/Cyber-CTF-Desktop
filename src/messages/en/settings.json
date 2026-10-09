@@ -1,0 +1,20 @@
+{
+  "appearance": {
+    "title": "Appearance",
+    "description": "How the launcher looks and which language it speaks. Saved on this computer.",
+    "theme": "Theme",
+    "themes": {
+      "dark": "Dark",
+      "black": "Black",
+      "light": "Light"
+    },
+    "themeDescriptions": {
+      "dark": "Dark uses deep neutral greys, easy on the eyes.",
+      "black": "Black uses true black, for OLED screens.",
+      "light": "Light uses warm paper tones, for bright rooms."
+    },
+    "language": "Language",
+    "languageDescription": "The launcher's language. System follows your computer's.",
+    "languageSystem": "System"
+  }
+}

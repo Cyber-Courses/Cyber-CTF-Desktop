@@ -1,0 +1,20 @@
+{
+  "appearance": {
+    "title": "Apparence",
+    "description": "L'apparence du launcher et sa langue. Enregistré sur cet ordinateur.",
+    "theme": "Thème",
+    "themes": {
+      "dark": "Sombre",
+      "black": "Noir",
+      "light": "Clair"
+    },
+    "themeDescriptions": {
+      "dark": "Sombre utilise des gris neutres profonds, reposants pour les yeux.",
+      "black": "Noir utilise un noir pur, pour les écrans OLED.",
+      "light": "Clair utilise des tons papier chaleureux, pour les pièces lumineuses."
+    },
+    "language": "Langue",
+    "languageDescription": "La langue du launcher. Système suit celle de votre ordinateur.",
+    "languageSystem": "Système"
+  }
+}
