@@ -618,7 +618,16 @@ export function LabDetail({
               machines={status.machines}
               networks={status.networks}
               host={status.host}
-              attacker={exegol ? { running: exegol.running, ip: exegol.ip, labNetwork: exegol.labNetwork } : null}
+              attacker={
+                // A server or cloud lab runs its attack box on the lab host, which only that host's report sees.
+                remote
+                  ? status.attacker
+                    ? { running: true, ip: status.attacker.ip, labNetwork: status.attacker.labNetwork }
+                    : null
+                  : exegol
+                    ? { running: exegol.running, ip: exegol.ip, labNetwork: exegol.labNetwork }
+                    : null
+              }
             />
           ) : busy || starting ? null : (
             <Panel>

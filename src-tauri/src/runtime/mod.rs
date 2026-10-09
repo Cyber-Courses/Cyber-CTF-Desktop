@@ -106,7 +106,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::{Error, Result};
 
-pub use model::{Interface, LabStatus, Machine, Network, Park, Place, Port, Service};
+pub use model::{AttackerAt, Interface, LabStatus, Machine, Network, Park, Place, Port, Service};
 
 /// Mirrors `LabRuntime` in CyberBackend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -805,8 +805,51 @@ async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime) -> Resu
     };
     // Its VMs can be up after a setup step failed (Vagrant on ESXi): not running, left behind.
     let status = LabStatus { running: status.running && !crate::deploy_worker::last_deploy_failed(app, id), ..status };
+    // A Docker lab on a Terraform lab host: show its containers and the attack box, not just
+    // the VM they run in.
+    let status = match server::terraform_target(c.provider) {
+        Some(tf) if status.running && runtime == Runtime::Docker => remote_containers(app, id, dir, &state_dir(app, id, tf)?).await.unwrap_or(status),
+        _ => status,
+    };
     let place = if c.provider.is_cloud() { Place::Cloud } else { Place::Server };
     Ok(LabStatus { host: Some(c.name), place: Some(place), provider: Some(c.provider.id().to_string()), ..status })
+}
+
+/// How long a remote lab's container list is reused: the lab page polls its status every few
+/// seconds, and each read is an SSH round trip (through the Proxmox node, sometimes).
+const REMOTE_PROBE_TTL: std::time::Duration = std::time::Duration::from_secs(10);
+static REMOTE_PROBES: std::sync::Mutex<Option<HashMap<String, (std::time::Instant, LabStatus)>>> = std::sync::Mutex::new(None);
+
+/// The compose project a lab runs under: the `name:` of its generated Compose file.
+fn compose_project_name(dir: &Path) -> Option<String> {
+    std::fs::read_to_string(lab::compose_file(dir))
+        .ok()?
+        .lines()
+        .find_map(|l| l.strip_prefix("name:").map(|n| n.trim().trim_matches('"').trim_matches('\'').to_string()))
+        .filter(|n| !n.is_empty())
+}
+
+/// The containers on a Terraform lab host (and the attack box beside them), in the shape of a
+/// local Docker lab's status. None when the host can't be read; the caller keeps the VM view.
+async fn remote_containers(app: &AppHandle, id: &str, dir: &Path, state: &Path) -> Option<LabStatus> {
+    let cached = REMOTE_PROBES.lock().ok().and_then(|g| g.as_ref()?.get(id).filter(|(at, _)| at.elapsed() < REMOTE_PROBE_TTL).map(|(_, s)| s.clone()));
+    if cached.is_some() {
+        return cached;
+    }
+    let project = compose_project_name(dir)?;
+    let target = terraform::ssh_target(state, ssh::launcher_key()?)?;
+    let script = docker::host_probe_script(&project);
+    let out = target.exec(&state.join("known_hosts"), &format!("sudo bash -c {}", ssh::sh_quote(&script))).await.ok()?;
+    let probe = docker::HostProbe::parse(&out)?;
+    let (found, attacker) = docker::status_from_host(&project, &probe);
+    if found.machines.is_empty() {
+        return None;
+    }
+    let status = LabStatus { attacker: attacker.map(|(ip, lab_network)| AttackerAt { ip, lab_network }), ..found };
+    if let Ok(mut g) = REMOTE_PROBES.lock() {
+        g.get_or_insert_with(HashMap::new).insert(id.to_string(), (std::time::Instant::now(), status.clone()));
+    }
+    Some(status)
 }
 
 /// Destroys cloud labs whose auto-stop time has passed, to end billing: on Azure an OS

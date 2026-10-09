@@ -62,6 +62,9 @@ export interface LabStatus {
   /** The engine or hypervisor it runs on: "docker", a Vagrant provider id ("virtualbox",
    *  "vmware_desktop", "parallels", ...) or a server/cloud provider; null when unknown. */
   provider: string | null;
+  /** Server and cloud labs: the attack box beside the lab on its host (address and lab
+   *  network); null elsewhere (the local attack box reports itself). */
+  attacker: { ip: string; labNetwork: string } | null;
 }
 
 export function labStop(id: string, runtime: Runtime, onLog: (line: string) => void) {

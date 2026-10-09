@@ -62,7 +62,12 @@ fn first_published_url(entries: &[PsEntry]) -> Option<String> {
 /// The lab's own name for a Docker network: Compose prefixes the compose key with the
 /// project (`cyberctf-<id>_dmz` -> `dmz`). Other names are returned unchanged.
 pub fn short_network(id: &str, name: &str) -> String {
-    name.strip_prefix(&format!("{}_", compose::project(id))).unwrap_or(name).to_string()
+    strip_project(&compose::project(id), name)
+}
+
+/// `<project>_<net>` -> `<net>`; other names unchanged.
+fn strip_project(project: &str, name: &str) -> String {
+    name.strip_prefix(&format!("{project}_")).unwrap_or(name).to_string()
 }
 
 /// What `docker inspect` tells about one running container: its interfaces and the
@@ -88,10 +93,10 @@ async fn inspect_containers(dir: &Path, id: &str, names: &[String]) -> HashMap<S
         Ok(out) => out,
         Err(_) => return HashMap::new(),
     };
-    parse_inspect(id, &out)
+    parse_inspect(&compose::project(id), &out)
 }
 
-fn parse_inspect(id: &str, out: &str) -> HashMap<String, Inspected> {
+fn parse_inspect(project: &str, out: &str) -> HashMap<String, Inspected> {
     out.lines()
         .filter_map(|line| {
             let mut cols = line.splitn(3, '\t');
@@ -102,7 +107,7 @@ fn parse_inspect(id: &str, out: &str) -> HashMap<String, Inspected> {
                 .split_whitespace()
                 .filter_map(|kv| kv.split_once('='))
                 .filter(|(_, ip)| !ip.is_empty())
-                .map(|(net, ip)| Interface { network: short_network(id, net), ip: ip.to_string() })
+                .map(|(net, ip)| Interface { network: strip_project(project, net), ip: ip.to_string() })
                 .collect();
             let labels: HashMap<String, String> = cols.next().and_then(|j| serde_json::from_str(j).ok()).unwrap_or_default();
             Some((name.trim_start_matches('/').to_string(), Inspected { interfaces, services: declared_services(&labels) }))
@@ -146,7 +151,7 @@ async fn lab_networks(id: &str) -> Vec<Network> {
     let mut args = vec!["network", "inspect", "-f", "{{.Name}}\t{{range .IPAM.Config}}{{.Subnet}} {{end}}\t{{.Internal}}"];
     args.extend(names);
     match run_read("docker", &args, None).await {
-        Ok(out) => parse_networks(id, &out),
+        Ok(out) => parse_networks(&compose::project(id), &out),
         Err(_) => Vec::new(),
     }
 }
@@ -168,7 +173,7 @@ pub async fn subnets_in_use(except: &str) -> Vec<String> {
     run_read("docker", &args, None).await.map(|out| out.split_whitespace().filter(|s| !s.contains(':')).map(str::to_string).collect()).unwrap_or_default()
 }
 
-fn parse_networks(id: &str, out: &str) -> Vec<Network> {
+fn parse_networks(project: &str, out: &str) -> Vec<Network> {
     let mut nets: Vec<Network> = out
         .lines()
         .filter_map(|line| {
@@ -178,7 +183,7 @@ fn parse_networks(id: &str, out: &str) -> Vec<Network> {
             let subnets: Vec<&str> = cols.next().unwrap_or_default().split_whitespace().collect();
             let subnet = subnets.iter().find(|s| !s.contains(':')).or(subnets.first()).copied().unwrap_or_default();
             let internal = cols.next().is_some_and(|c| c.trim() == "true");
-            (!name.is_empty()).then(|| Network { name: short_network(id, name), subnet: subnet.to_string(), internal })
+            (!name.is_empty()).then(|| Network { name: strip_project(project, name), subnet: subnet.to_string(), internal })
         })
         .collect();
     nets.sort_by(|a, b| a.name.cmp(&b.name));
@@ -226,9 +231,8 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     // doing their job, so the lab is "running" when at least one service is up, not when
     // every service is. Only the live services are reported to the UI.
     let running = is_running(&entries);
-    let url = if running { first_published_url(&entries) } else { None };
     let run_names: Vec<String> = entries.iter().filter(|e| e.state == "running").map(|e| e.name.clone()).collect();
-    let mut inspected = inspect_containers(dir, id, &run_names).await;
+    let inspected = inspect_containers(dir, id, &run_names).await;
     let networks = if running { lab_networks(id).await } else { Vec::new() };
     // Serving containers (those that publish a port) that should be up but aren't: a lab
     // whose web died is reported degraded, not fine. One-shot init jobs publish nothing, so
@@ -238,7 +242,60 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
     } else {
         Vec::new()
     };
-    let down: Vec<(String, String)> = down_serving(&entries, &serving);
+    Ok(build_status(entries, inspected, networks, &serving))
+}
+
+/// What a lab host (a server or cloud VM running the lab's Compose project) reports, gathered
+/// over SSH in one go: `docker compose ps`, `docker inspect` of the running containers and
+/// `docker network inspect` of the project's networks, in the formats `status` reads locally.
+pub struct HostProbe {
+    pub ps: String,
+    pub inspect: String,
+    pub networks: String,
+}
+
+/// The shell script that prints a `HostProbe` on the lab host, sections separated by `@@@`.
+pub fn host_probe_script(project: &str) -> String {
+    let p = crate::runtime::ssh::sh_quote(project);
+    format!(
+        "docker compose -p {p} ps --all --format json; echo @@@\n\
+         ids=$(docker ps -q); [ -z \"$ids\" ] || docker inspect -f '{INSPECT}' $ids; echo @@@\n\
+         nets=$(docker network ls -q --filter label=com.docker.compose.project={p}); [ -z \"$nets\" ] || docker network inspect -f '{NETS}' $nets\n"
+    )
+}
+
+const INSPECT: &str = "{{.Name}}\t{{range $k, $v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}\t{{json .Config.Labels}}";
+const NETS: &str = "{{.Name}}\t{{range .IPAM.Config}}{{.Subnet}} {{end}}\t{{.Internal}}";
+
+impl HostProbe {
+    pub fn parse(out: &str) -> Option<HostProbe> {
+        let mut parts = out.split("@@@");
+        Some(HostProbe { ps: parts.next()?.to_string(), inspect: parts.next()?.to_string(), networks: parts.next().unwrap_or_default().to_string() })
+    }
+}
+
+/// A remote lab's machines and networks from a `HostProbe`, plus where the attack box (the
+/// `attacker` container the launcher runs next to the lab) sits: its address and network.
+pub fn status_from_host(project: &str, probe: &HostProbe) -> (LabStatus, Option<(String, String)>) {
+    let entries = compose::parse_ps(&probe.ps);
+    let mut inspected = parse_inspect(project, &probe.inspect);
+    let networks = parse_networks(project, &probe.networks);
+    let attacker = inspected.remove("attacker").and_then(|a| {
+        let lab: Vec<&Interface> = a.interfaces.iter().filter(|i| networks.iter().any(|n| n.name == i.network)).collect();
+        lab.first().map(|i| (i.ip.clone(), i.network.clone()))
+    });
+    let mut status = build_status(entries, inspected, networks, &[]);
+    // A remote lab isn't reachable at 127.0.0.1 on this machine.
+    status.url = None;
+    (status, attacker)
+}
+
+/// The lab's status from its containers, their inspection, its networks and which services
+/// should be serving.
+fn build_status(entries: Vec<PsEntry>, mut inspected: HashMap<String, Inspected>, networks: Vec<Network>, serving: &[String]) -> LabStatus {
+    let running = is_running(&entries);
+    let url = if running { first_published_url(&entries) } else { None };
+    let down: Vec<(String, String)> = down_serving(&entries, serving);
     // The lab's own networks, in order: a container also sits on Docker's own bridges (the
     // default `bridge`, a publish bridge), whose 172.x address isn't the lab address, and
     // `docker inspect` lists them in random order. Keep only lab-network interfaces, in this
@@ -279,7 +336,18 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
             });
         }
     }
-    Ok(LabStatus { running, parked: None, machines, networks, url, host: None, expires_at: None, place: None, provider: Some("docker".to_string()) })
+    LabStatus {
+        running,
+        parked: None,
+        machines,
+        networks,
+        url,
+        host: None,
+        expires_at: None,
+        place: None,
+        provider: Some("docker".to_string()),
+        attacker: None,
+    }
 }
 
 /// Where the lab is reachable on this machine (its first published port), once running.
@@ -292,7 +360,24 @@ pub async fn primary_url(dir: &Path, id: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::compose::parse_ps;
-    use super::{declared_services, down_serving, first_published_url, is_datastore, is_running, parse_inspect, parse_networks, short_network, tcp_ports};
+    use super::{
+        HostProbe, declared_services, down_serving, first_published_url, is_datastore, is_running, parse_inspect, parse_networks, short_network,
+        status_from_host, tcp_ports,
+    };
+
+    #[test]
+    fn a_remote_lab_host_reports_its_containers_and_the_attack_box() {
+        // Captured from a Supplier portal API lab on a Proxmox server.
+        let probe = HostProbe::parse(include_str!("testdata/remote_probe.txt")).unwrap();
+        let (status, attacker) = status_from_host("invoice-portal-api-1", &probe);
+        assert!(status.running);
+        let names: Vec<(&str, &str)> = status.machines.iter().map(|m| (m.name.as_str(), m.ip.as_str())).collect();
+        assert_eq!(names.len(), 2, "{names:?}");
+        assert!(names.contains(&("web", "10.21.0.31")) && names.contains(&("database", "10.21.0.32")), "{names:?}");
+        assert_eq!(status.networks.iter().map(|n| (n.name.as_str(), n.subnet.as_str())).collect::<Vec<_>>(), vec![("lab", "10.21.0.0/24")]);
+        assert_eq!(attacker, Some(("10.21.0.2".to_string(), "lab".to_string())));
+        assert_eq!(status.url, None, "a remote lab isn't on 127.0.0.1");
+    }
 
     // A compose `ps --all` line, as Docker Compose prints it.
     const INIT_EXITED: &str = r#"[
@@ -403,7 +488,7 @@ mod tests {
     fn networks_fall_back_to_the_ipv6_subnet_when_no_ipv4() {
         // A network reported with only an IPv6 subnet keeps it rather than showing nothing.
         let out = "cyberctf-x_v6only\tfd00::/64 \ttrue\n";
-        let n = parse_networks("x", out);
+        let n = parse_networks(&super::compose::project("x"), out);
         assert_eq!(n[0].name, "v6only");
         assert_eq!(n[0].subnet, "fd00::/64");
         assert!(n[0].internal);
@@ -450,7 +535,7 @@ mod tests {
     #[test]
     fn reads_every_interface_with_the_lab_network_name() {
         let out = "/cyberctf-sqli-web-1\tcyberctf-sqli_dmz=172.21.0.3 cyberctf-sqli_internal=172.22.0.2 \n/cyberctf-sqli-db-1\tcyberctf-sqli_internal=172.22.0.3 \n/x\tcyberctf-sqli_dmz= \n";
-        let m: std::collections::HashMap<_, _> = parse_inspect("sqli", out).into_iter().map(|(k, v)| (k, v.interfaces)).collect();
+        let m: std::collections::HashMap<_, _> = parse_inspect(&super::compose::project("sqli"), out).into_iter().map(|(k, v)| (k, v.interfaces)).collect();
         let web: Vec<(&str, &str)> = m["cyberctf-sqli-web-1"].iter().map(|i| (i.network.as_str(), i.ip.as_str())).collect();
         assert_eq!(web, vec![("dmz", "172.21.0.3"), ("internal", "172.22.0.2")]);
         assert_eq!(m["cyberctf-sqli-db-1"][0].network, "internal");
@@ -460,7 +545,7 @@ mod tests {
     #[test]
     fn reads_networks_preferring_ipv4_subnets() {
         let out = "cyberctf-sqli_internal\tfd00::/64 172.22.0.0/16 \ttrue\ncyberctf-sqli_default\t172.21.0.0/16 \tfalse\n";
-        let n = parse_networks("sqli", out);
+        let n = parse_networks(&super::compose::project("sqli"), out);
         assert_eq!(n.iter().map(|n| n.name.as_str()).collect::<Vec<_>>(), vec!["default", "internal"]);
         assert_eq!(n[1].subnet, "172.22.0.0/16");
         assert!(n[1].internal && !n[0].internal);
@@ -479,13 +564,13 @@ mod tests {
     #[test]
     fn reads_the_services_a_lab_declares_and_nothing_else() {
         let out = "/cyberctf-x-app-1\tcyberctf-x_default=172.20.0.2 \t{\"cyberctf.service.web\":\"web:80,443\",\"cyberctf.service.ssh\":\"ssh:22\",\"cyberctf.service.jobs\":\"worker\",\"com.docker.compose.service\":\"app\"}\n";
-        let m = parse_inspect("x", out);
+        let m = parse_inspect(&super::compose::project("x"), out);
         let s = &m["cyberctf-x-app-1"].services;
         let got: Vec<(&str, &str, Vec<u16>)> = s.iter().map(|s| (s.name.as_str(), s.kind.as_str(), s.ports.clone())).collect();
         assert_eq!(got, vec![("jobs", "worker", vec![]), ("ssh", "ssh", vec![22]), ("web", "web", vec![80, 443])]);
         assert_eq!(m["cyberctf-x-app-1"].interfaces[0].ip, "172.20.0.2");
         // No labels, null labels: no services (never inferred).
-        assert!(parse_inspect("x", "/a\t\tnull\n")["a"].services.is_empty());
+        assert!(parse_inspect(&super::compose::project("x"), "/a\t\tnull\n")["a"].services.is_empty());
         assert!(declared_services(&[("cyberctf.service.db".to_string(), "database:abc".to_string())].into()).first().unwrap().ports.is_empty());
     }
 }

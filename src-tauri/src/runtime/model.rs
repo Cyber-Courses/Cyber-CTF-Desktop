@@ -6,14 +6,14 @@ use serde::{Deserialize, Serialize};
 
 /// A port the software inside a container binds: `target` is the port inside the
 /// container, `published` is where it is reachable on 127.0.0.1 (0 = not published).
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Port {
     pub published: u16,
     pub target: u16,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Machine {
     /// The container (a small computer on the lab network).
@@ -46,7 +46,7 @@ pub struct Machine {
 }
 
 /// One service inside a machine, as declared by the lab.
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Service {
     /// The lab's name for it, e.g. "portal", "ssh".
@@ -58,7 +58,7 @@ pub struct Service {
 }
 
 /// One network interface of a machine: the lab network it sits on and its address there.
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Interface {
     /// The lab's own name for the network (the compose key, e.g. "dmz"), not Docker's.
@@ -67,7 +67,7 @@ pub struct Interface {
 }
 
 /// A network segment of the lab (a Docker network = a switch the machines plug into).
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Network {
     /// The lab's own name for it (the compose key), e.g. "default", "dmz", "internal".
@@ -114,7 +114,7 @@ impl Park {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct LabStatus {
     pub running: bool,
@@ -137,4 +137,15 @@ pub struct LabStatus {
     /// "vmware_desktop", "parallels", ...), or a server/cloud provider. "On this machine" alone
     /// is misleading for a VM lab: this says which hypervisor to look in.
     pub provider: Option<String>,
+    /// Where the attack box sits when the lab host runs it (server and cloud labs): the local
+    /// attack box probe can't see a container on another machine.
+    pub attacker: Option<AttackerAt>,
+}
+
+/// The attack box's address on the lab network.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AttackerAt {
+    pub ip: String,
+    pub lab_network: String,
 }
