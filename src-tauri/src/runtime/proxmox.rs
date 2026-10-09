@@ -227,6 +227,70 @@ pub async fn test(h: &HostProfile, secret: &str) -> Report {
     }
 }
 
+/// Whether the host's lab bridge is host-internal (no physical port, e.g. a NAT bridge for
+/// lab VMs): this machine can't route to VMs on it, only the node can. Unknown counts as no.
+pub async fn bridge_is_internal(h: &HostProfile, secret: &str) -> bool {
+    let Ok(session) = sign_in(h, secret).await else { return false };
+    let Ok(node) = session.node(h).await else { return false };
+    let bridge = h.network.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "vmbr0".into());
+    let Ok(ifaces) = session.call(&format!("/nodes/{node}/network")).await else { return false };
+    ifaces
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|i| i["iface"].as_str() == Some(bridge.as_str()))
+        .is_some_and(|i| i["bridge_ports"].as_str().map(str::trim).unwrap_or_default().is_empty())
+}
+
+/// The node's SSH login (`user@host`) for going through it.
+pub fn node_login(h: &HostProfile) -> String {
+    format!("{}@{}", ssh_user(&h.username), h.host)
+}
+
+/// Lets the launcher's key into the node's SSH (password hosts; a token setup already needs
+/// it, see `ssh_key_problem`), so labs on an internal bridge can be reached through the node.
+/// Uses the stored password once, through SSH's own askpass hook; idempotent.
+pub async fn authorize_launcher_key(h: &HostProfile, password: &str, identity: &std::path::Path, public: &str) -> crate::error::Result<()> {
+    let askpass = std::env::temp_dir().join("cyberctf-askpass.sh");
+    std::fs::write(&askpass, "#!/bin/sh\nprintf '%s\\n' \"$CYBERCTF_SSH_PASSWORD\"\n")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&askpass, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let key = ssh::sh_quote(public.trim());
+    let command = format!("umask 077; mkdir -p ~/.ssh; grep -qxF {key} ~/.ssh/authorized_keys 2>/dev/null || echo {key} >> ~/.ssh/authorized_keys");
+    let known = format!("UserKnownHostsFile={}", identity.with_file_name("known_hosts").display());
+    let login = node_login(h);
+    let env = vec![
+        ("SSH_ASKPASS".to_string(), askpass.display().to_string()),
+        ("SSH_ASKPASS_REQUIRE".to_string(), "force".to_string()),
+        ("DISPLAY".to_string(), ":0".to_string()),
+        ("CYBERCTF_SSH_PASSWORD".to_string(), password.to_string()),
+    ];
+    crate::exec::run_env(
+        "ssh",
+        &[
+            "-o",
+            "PreferredAuthentications=password,keyboard-interactive",
+            "-o",
+            "NumberOfPasswordPrompts=1",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            &known,
+            "-o",
+            "LogLevel=ERROR",
+            &login,
+            &command,
+        ],
+        None,
+        &env,
+    )
+    .await
+    .map(|_| ())
+}
+
 /// The SSH user for the snippet upload: the token's user without its realm.
 pub fn ssh_user(username: &str) -> &str {
     token_user(username).split('@').next().unwrap_or("root")
@@ -239,7 +303,7 @@ async fn ssh_key_problem(h: &HostProfile) -> Option<String> {
     };
     let public = std::fs::read_to_string(identity.with_extension("pub")).unwrap_or_default().trim().to_string();
     let user = ssh_user(&h.username).to_string();
-    let target = ssh::Target { host: h.host.clone(), port: 22, user: user.clone(), identity: identity.clone() };
+    let target = ssh::Target { host: h.host.clone(), port: 22, user: user.clone(), identity: identity.clone(), jump: None };
     match target.exec(&identity.with_file_name("known_hosts"), "true").await {
         Ok(_) => None,
         Err(_) => Some(format!(

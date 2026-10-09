@@ -78,7 +78,7 @@ pub async fn server_selftest(app: AppHandle, id: String, events: Channel<Event>)
     let _ = std::fs::remove_dir_all(&work);
 
     let result = match conn.provider {
-        Provider::Proxmox => proxmox(&app, &r, &conn, &work).await,
+        Provider::Proxmox => proxmox(&app, &id, &r, &conn, &work).await,
         Provider::VmwareEsxi => esxi(&r, &conn, &work).await,
         Provider::Aws => Err(Error::Invalid("the VM test is for server hosts; AWS labs are billed, so it isn't run as a test".into())),
         _ => Err(Error::Invalid("the VM test runs only on a Proxmox or ESXi host".into())),
@@ -90,10 +90,12 @@ pub async fn server_selftest(app: AppHandle, id: String, events: Channel<Event>)
 
 // ---------- Proxmox ----------
 
-async fn proxmox(app: &AppHandle, r: &Reporter, conn: &server::Connection, work: &Path) -> Result<()> {
+async fn proxmox(app: &AppHandle, id: &str, r: &Reporter, conn: &server::Connection, work: &Path) -> Result<()> {
     let state = work.join("state");
     let target = "proxmox-selftest";
-    let pubkey = ssh::ensure_key(app).await?.1;
+    let (key, pubkey) = ssh::ensure_key(app).await?;
+    // A host-internal lab bridge: the VM is only reachable from the node, so probe from there.
+    let jump = server::proxmox_jump_for_host(app, id, &key, &pubkey).await?;
 
     r.step("prepare", "Prepare a test VM definition", async {
         write_proxmox_module(&work.join("terraform").join(target))?;
@@ -138,8 +140,11 @@ async fn proxmox(app: &AppHandle, r: &Reporter, conn: &server::Connection, work:
     if let Ok(ip) = ip {
         let _ = r
             .step("ssh", "SSH answers on the VM", async {
-                wait_tcp(&ip, 22, Duration::from_secs(90)).await?;
-                Ok(((), Some(format!("{ip}:22 open"))))
+                match &jump {
+                    None => wait_tcp(&ip, 22, Duration::from_secs(90)).await?,
+                    Some(login) => wait_tcp_from(login, &key, &ip, 22, Duration::from_secs(90)).await?,
+                }
+                Ok(((), Some(if jump.is_some() { format!("{ip}:22 open (through the node)") } else { format!("{ip}:22 open") })))
             })
             .await;
     }
@@ -464,6 +469,25 @@ Vagrant.configure("2") do |config|
   end
 end
 "#;
+
+/// `wait_tcp`, run on a jump host (`user@host`) over SSH with the launcher's key: for a VM only
+/// that host can reach.
+async fn wait_tcp_from(login: &str, identity: &Path, host: &str, port: u16, within: Duration) -> Result<()> {
+    let (user, node) = login.split_once('@').ok_or_else(|| Error::Invalid("unexpected jump host".into()))?;
+    let target = ssh::Target { host: node.to_string(), port: 22, user: user.to_string(), identity: identity.to_path_buf(), jump: None };
+    let known = identity.with_file_name("known_hosts");
+    let probe = format!("timeout 4 bash -c {}", ssh::sh_quote(&format!("</dev/tcp/{host}/{port}")));
+    let deadline = tokio::time::Instant::now() + within;
+    loop {
+        if target.exec(&known, &probe).await.is_ok() {
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(Error::Invalid(format!("no answer on {host}:{port} (from {node})")));
+        }
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
+}
 
 /// Blocks until `host:port` accepts a TCP connection, or the deadline passes.
 async fn wait_tcp(host: &str, port: u16, within: Duration) -> Result<()> {

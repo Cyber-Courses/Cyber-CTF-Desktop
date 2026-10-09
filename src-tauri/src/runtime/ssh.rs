@@ -52,6 +52,9 @@ pub struct Target {
     pub port: u16,
     pub user: String,
     pub identity: PathBuf,
+    /// `user@host` to go through (with the same key) when `host` isn't routable from here: a
+    /// lab VM on a Proxmox node's host-internal bridge, reached via the node.
+    pub jump: Option<String>,
 }
 
 /// Target from `vagrant ssh-config` output (HostName, Port, User, IdentityFile).
@@ -73,7 +76,7 @@ pub fn parse_ssh_config(out: &str) -> Option<Target> {
             _ => {}
         }
     }
-    Some(Target { host: host?, port, user: user?, identity: identity? })
+    Some(Target { host: host?, port, user: user?, identity: identity?, jump: None })
 }
 
 /// A user or host we are willing to put on a command line.
@@ -87,14 +90,29 @@ pub fn sh_quote(s: &str) -> String {
 }
 
 impl Target {
+    /// `-o ProxyCommand=…` through the jump host, with the same key and known_hosts.
+    fn proxy_option(&self, known_hosts: &Path) -> Result<Option<String>> {
+        let Some(jump) = &self.jump else { return Ok(None) };
+        let (user, host) = jump.split_once('@').ok_or_else(|| Error::Invalid("unexpected jump host".into()))?;
+        if !safe_token(user) || !safe_token(host) {
+            return Err(Error::Invalid("unexpected jump host".into()));
+        }
+        Ok(Some(format!(
+            "ProxyCommand=ssh -i {} -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={} -o LogLevel=ERROR -W %h:%p {jump}",
+            sh_quote(&self.identity.to_string_lossy()),
+            sh_quote(&known_hosts.to_string_lossy()),
+        )))
+    }
+
     /// The shell command that opens the remote attack box. `known_hosts` keeps the
     /// launcher's host keys away from the player's own ~/.ssh.
     pub fn attack_shell_command(&self, known_hosts: &Path) -> Result<String> {
         if !safe_token(&self.host) || !safe_token(&self.user) {
             return Err(Error::Invalid("unexpected SSH host or user".into()));
         }
+        let proxy = self.proxy_option(known_hosts)?.map(|p| format!("-o {} ", sh_quote(&p))).unwrap_or_default();
         Ok(format!(
-            "ssh -t -i {} -p {} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={} -o LogLevel=ERROR {}@{} sudo docker exec -it attacker bash",
+            "ssh -t -i {} -p {} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={} -o LogLevel=ERROR {proxy}{}@{} sudo docker exec -it attacker bash",
             sh_quote(&self.identity.to_string_lossy()),
             self.port,
             sh_quote(&known_hosts.to_string_lossy()),
@@ -116,29 +134,28 @@ impl Target {
         let port = self.port.to_string();
         let known = format!("UserKnownHostsFile={}", known_hosts.to_string_lossy());
         let dest = format!("{}@{}", self.user, self.host);
-        run(
-            "ssh",
-            &[
-                "-i",
-                &identity,
-                "-p",
-                &port,
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                "ConnectTimeout=10",
-                "-o",
-                "StrictHostKeyChecking=accept-new",
-                "-o",
-                &known,
-                "-o",
-                "LogLevel=ERROR",
-                &dest,
-                command,
-            ],
-            None,
-        )
-        .await
+        let proxy = self.proxy_option(known_hosts)?;
+        let mut args: Vec<&str> = vec![
+            "-i",
+            &identity,
+            "-p",
+            &port,
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=10",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            &known,
+            "-o",
+            "LogLevel=ERROR",
+        ];
+        if let Some(p) = &proxy {
+            args.extend(["-o", p.as_str()]);
+        }
+        args.extend([dest.as_str(), command]);
+        run("ssh", &args, None).await
     }
 }
 
@@ -161,7 +178,7 @@ mod tests {
 
     #[test]
     fn command_quotes_paths_and_rejects_odd_hosts() {
-        let t = Target { host: "10.0.0.5".into(), port: 22, user: "debian".into(), identity: "/Users/a b/key".into() };
+        let t = Target { host: "10.0.0.5".into(), port: 22, user: "debian".into(), identity: "/Users/a b/key".into(), jump: None };
         let cmd = t.attack_shell_command(Path::new("/x/known_hosts")).unwrap();
         assert!(cmd.contains("-i '/Users/a b/key'"));
         assert!(cmd.ends_with("debian@10.0.0.5 sudo docker exec -it attacker bash"));

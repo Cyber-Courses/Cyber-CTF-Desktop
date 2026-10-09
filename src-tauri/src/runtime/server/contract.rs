@@ -222,6 +222,29 @@ pub fn mark_lab(dir: &Path, host: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// For a Proxmox host whose lab bridge is host-internal: the node login to reach lab VMs
+/// through, after making sure the launcher's key is accepted there. None otherwise.
+pub async fn proxmox_jump(app: &AppHandle, dir: &Path, identity: &Path, public: &str) -> Result<Option<String>> {
+    let Ok(id) = std::fs::read_to_string(dir.join(HOST_MARKER)) else { return Ok(None) };
+    proxmox_jump_for_host(app, id.trim(), identity, public).await
+}
+
+/// `proxmox_jump` for a saved host id.
+pub async fn proxmox_jump_for_host(app: &AppHandle, id: &str, identity: &Path, public: &str) -> Result<Option<String>> {
+    let host = find(&load(app)?, id)?;
+    if host.provider != Provider::Proxmox {
+        return Ok(None);
+    }
+    let secret = get_secret(id)?;
+    if !crate::runtime::proxmox::bridge_is_internal(&host, &secret).await {
+        return Ok(None);
+    }
+    if !crate::runtime::proxmox::is_token(&host.username) {
+        crate::runtime::proxmox::authorize_launcher_key(&host, &secret, identity, public).await?;
+    }
+    Ok(Some(crate::runtime::proxmox::node_login(&host)))
+}
+
 /// The connection a VM lab directory was started with, if it runs on a server host.
 pub fn lab_connection(app: &AppHandle, dir: &Path) -> Result<Option<Connection>> {
     match std::fs::read_to_string(dir.join(HOST_MARKER)) {
