@@ -14,15 +14,23 @@ permissions:
   contents: write
 
 jobs:
-  # The draft release, made once before the builds: each platform job only uploads to it. Four
-  # jobs racing to create it, each failing the whole build on one refused API call ("Resource not
-  # accessible by integration" on v0.3.8's first run), lost a release over a transient error.
+  # The draft release, made once before the builds: each platform job only uploads to it.
+  # Created with the org's cyber-ctf-creator app: on v0.3.8 GITHUB_TOKEN was refused creating it
+  # ("Resource not accessible by integration") on every attempt, while uploading to an existing
+  # draft and publishing it still worked.
   prepare:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/create-github-app-token@v1
+        id: app
+        with:
+          app-id: ${{ secrets.APP_ID_GENERATOR }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY_GENERATOR }}
+          owner: Cyber-Courses
+          repositories: Cyber-CTF-Desktop
       - env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
           set -euo pipefail
           version=$(node -p 'require("./src-tauri/tauri.conf.json").version')
