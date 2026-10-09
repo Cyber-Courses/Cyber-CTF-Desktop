@@ -324,8 +324,10 @@ export function AppShell() {
 
   // Breadcrumb: where you are. A lab page shows "Labs / <lab>".
   const crumbs = tab === "labs" && labTitle ? ["Labs", labTitle] : [tab === "settings" ? "Settings" : "This machine", TITLES[tab]];
+  // `docker --version` reads "Docker version 29.5.3, build d1c06ef": the number is enough next to the engine's name.
+  const dockerVersion = report?.docker.version?.match(/\d+\.\d+(\.\d+)?/)?.[0] ?? null;
   const engine =
-    report?.dockerRunning && report.dockerEngine ? `${engineName(report.dockerEngine)}${report.docker.version ? ` ${report.docker.version}` : ""}` : null;
+    report?.dockerRunning && report.dockerEngine ? `${engineName(report.dockerEngine)}${dockerVersion ? ` ${dockerVersion}` : ""}` : null;
   const hypervisor = report?.vmProviders.find((p) => !p.remote && p.available && p.hypervisor !== false);
 
   return (
