@@ -67,6 +67,24 @@ const labs = [
     runtime: { runtime: "DOCKER", architectures: ["arm64", "x86_64"], providers: ["aws"], hosted: false },
     skills: [],
   },
+  {
+    id: "lab-goat",
+    slug: "cloudgoat-ec2-ssrf",
+    title: "EC2 SSRF",
+    description: "From a low-privilege IAM user to a Lambda function, through an SSRF on EC2.",
+    question: null,
+    difficulty: 2,
+    category: "Cloud",
+    runtime: {
+      runtime: "CLOUD",
+      architectures: [],
+      providers: ["aws"],
+      hosted: false,
+      repository: "CyberCTF/cloudgoat-ec2-ssrf",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+    },
+    skills: [{ id: "s5", name: "IAM" }],
+  },
 ];
 
 const invoiceStatus = {
@@ -111,7 +129,33 @@ const invoiceStatus = {
     },
   ],
 };
-const stopped = { running: false, parked: null, url: null, host: null, expiresAt: null, place: null, provider: null, networks: [], machines: [] };
+const stopped = {
+  running: false,
+  parked: null,
+  url: null,
+  host: null,
+  expiresAt: null,
+  place: null,
+  provider: null,
+  networks: [],
+  machines: [],
+  outputs: [],
+  message: null,
+};
+
+const goatStatus = {
+  ...stopped,
+  running: true,
+  host: "AWS sandbox",
+  place: "cloud",
+  provider: "aws",
+  expiresAt: Math.floor(Date.now() / 1000) + 3 * 3600 + 1800,
+  outputs: [
+    { name: "access_key_id", value: "AKIAEXAMPLE7Q2LJ4ZB", sensitive: false },
+    { name: "secret_key", value: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", sensitive: true },
+  ],
+  message: "You are the IAM user Solus:\n  aws configure --profile solus   # access key AKIAEXAMPLE7Q2LJ4ZB\nGoal: invoke the scenario's Lambda function.",
+};
 
 const report = {
   os: "macos",
@@ -165,7 +209,11 @@ function answer(cmd: string, args: Record<string, unknown> | undefined): unknown
       return {};
     }
     case "lab_status":
-      return args?.id === "lab-invoice" ? invoiceStatus : stopped;
+      return args?.id === "lab-invoice" ? invoiceStatus : args?.id === "lab-goat" ? goatStatus : stopped;
+    case "lab_cloud_preview":
+      return args?.id === "lab-goat"
+        ? { provider: "aws", hourlyUsd: 0.02, inputs: ["PLAYER_CIDR"], allowList: true, outputs: ["access_key_id", "secret_key"] }
+        : null;
     case "running_labs":
       return ["lab-invoice"];
     case "deploying_labs":

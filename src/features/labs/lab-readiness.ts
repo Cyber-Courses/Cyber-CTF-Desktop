@@ -1,5 +1,6 @@
 import type { Lab } from "@/features/labs/use-labs";
-import { localProviders } from "@/features/labs/lab-row";
+import { CLOUDS } from "@/features/labs/run-on";
+import { cloudNames, localProviders, withArticle } from "@/features/labs/lab-row";
 import { providerLabel } from "@/features/machine/hypervisors";
 import type { ServerHost, SystemReport } from "@/lib/tauri";
 
@@ -7,11 +8,17 @@ import type { ServerHost, SystemReport } from "@/lib/tauri";
  * What this machine is missing to run a lab, from facts the launcher already checked: a
  * running container engine for Docker labs; for VM labs, a local hypervisor the lab
  * supports that is fully usable (hypervisor + Vagrant + plugin), or a saved server it
- * can run on. Null when it can run.
+ * can run on; for cloud labs, Terraform and a connected account of a cloud the lab runs on
+ * (its sign-in is checked when the account is picked). Null when it can run.
  */
 export function setupNeeded(lab: Lab, report: SystemReport | null, servers: ServerHost[]): string | null {
   const rt = lab.runtime;
   if (!rt || !report) return null;
+  if (rt.runtime === "CLOUD") {
+    if (!servers.some((h) => CLOUDS.has(h.provider) && rt.providers.includes(h.provider))) return `Needs ${withArticle(cloudNames(rt.providers))} account`;
+    if (!report.terraform?.installed) return "Needs Terraform";
+    return null;
+  }
   if (rt.runtime === "DOCKER") {
     if (!report.docker.installed) return "Needs a container engine";
     if (report.dockerDenied) return "Docker needs permission (see Machine)";

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { StatusDot } from "@/components/ui/status-pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EMULATORS, LabRow } from "@/features/labs/lab-row";
+import { CLOUDS } from "@/features/labs/run-on";
 import { LabDetail } from "@/features/labs/lab-detail";
 import { DIFFICULTY_LABEL, useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
@@ -92,7 +93,13 @@ export function Labs({
     const q = query.trim().toLowerCase();
     return labs.filter((l) => {
       if (q && !`${l.title} ${l.category} ${l.description ?? ""} ${(l.skills ?? []).map((s) => s.name).join(" ")}`.toLowerCase().includes(q)) return false;
-      if (runtime === "CLOUD" ? !l.runtime?.providers.includes("aws") : runtime !== "all" && l.runtime?.runtime !== runtime) return false;
+      // "Cloud": cloud services, and the labs that can run in a cloud account.
+      if (
+        runtime === "CLOUD"
+          ? !(l.runtime?.runtime === "CLOUD" || l.runtime?.providers.some((p) => CLOUDS.has(p)))
+          : runtime !== "all" && l.runtime?.runtime !== runtime
+      )
+        return false;
       if (difficulty && l.difficulty !== difficulty) return false;
       const running = !!statuses[l.id]?.running;
       if (status === "running" && !running) return false;

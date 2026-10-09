@@ -112,6 +112,7 @@ export function RunOnPicker({
   value,
   onChange,
   disabled,
+  local: offerLocal = true,
 }: {
   title: string;
   hosts: ServerHost[];
@@ -126,6 +127,8 @@ export function RunOnPicker({
   value: RunTarget;
   onChange: (t: RunTarget) => void;
   disabled: boolean;
+  /** This machine is a place it can run (false for a cloud lab: cloud accounts only). */
+  local?: boolean;
 }) {
   const checks = useHostChecks(hosts);
   const hostOption = (h: ServerHost): Option => {
@@ -168,7 +171,7 @@ export function RunOnPicker({
     });
   }
   const groups: { label: string; options: Option[] }[] = [
-    { label: "This machine", options: local },
+    { label: "This machine", options: offerLocal ? local : [] },
     {
       label: "Cyber CTF",
       options: hosted

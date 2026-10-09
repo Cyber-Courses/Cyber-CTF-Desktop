@@ -19,9 +19,10 @@ import { LabBrief } from "@/features/labs/lab-brief";
 import { HealthBanner, useLabCheck } from "@/features/labs/lab-health";
 import { AutoStop, StartTimer } from "@/features/labs/lab-timers";
 import { NetworkDiagram } from "@/features/labs/network-diagram";
-import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on";
-import { EMULATORS, localProviders, runPlaces, runsNatively } from "@/features/labs/lab-row";
+import { CLOUDS, RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on";
+import { EMULATORS, cloudNames, localProviders, runPlaces, runsNatively, withArticle } from "@/features/labs/lab-row";
 import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
+import { CloudLaunchNote, CloudPanel, costEstimate } from "@/features/labs/cloud-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
 import { OPERATION_STATUS, useActiveOperations, useDeployingLabs, useWorkerLog } from "@/lib/deploy-store";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
@@ -32,7 +33,10 @@ import {
   labAttackShell,
   labTools,
   exegolShell,
+  labCloudPreview,
   serverList,
+  serverOpenSetup,
+  type CloudPreview,
   type LabTool,
   type Park,
   type Provider,
@@ -112,6 +116,8 @@ export function LabDetail({
   // local log of it, so follow the worker's log file instead.
   const workerLines = useWorkerLog(lab.id, backendDeploying.has(lab.id) && !busy && logs.length === 0);
   const rt = lab.runtime;
+  // Cloud services: no machines, nothing on this machine, created in the player's cloud account.
+  const isCloud = rt?.runtime === "CLOUD";
   // Unknown host (report not in yet) or a lab for any CPU: native, never a wrong "emulated".
   const native = !hostArch || !rt || runsNatively(rt, hostArch);
   // A VM lab built for another CPU runs here only through an emulator (QEMU), when one is ready.
@@ -139,7 +145,10 @@ export function LabDetail({
   const [lastOperation, setLastOperation] = useState<NonNullable<typeof operation>>("launch");
   if (operation && operation !== lastOperation) setLastOperation(operation);
   const tearingDown = operation === "stop" || operation === "shutdown" || operation === "pause";
-  const interrupted = !deployingHere && !running && !parked && leftovers.length > 0;
+  // A cloud lab has no machines to count: its account still recorded (a start that failed or was
+  // cut off) means services may be left behind there, billing.
+  const cloudLeftover = isCloud && !!status?.provider;
+  const interrupted = !deployingHere && !running && !parked && (leftovers.length > 0 || cloudLeftover);
   const act = async (what: "pause" | "shutdown" | "resume" | "provision") => {
     setActing(what);
     try {
@@ -171,8 +180,10 @@ export function LabDetail({
   // come up one after another then (a web server waits for its database), and that's normal.
   // The controller is powered off by design once the lab is built: never "down".
   const down = deployingHere ? [] : (status?.machines ?? []).filter((m) => !m.infra && m.state !== "running");
-  const isDocker = rt?.runtime !== "VM";
+  const isDocker = rt?.runtime !== "VM" && !isCloud;
   const remote = !!status?.host;
+  // What the runtime is, in a word, for the strip and the panel headers.
+  const kindLabel = isCloud ? "cloud services" : isDocker ? "containers" : "vm";
   // A container lab in a VM can only be paused (its containers don't restart on their own after a
   // power-off); a container lab here only shut down (its containers stop; there's no state to
   // save). A VM lab gets both. Nothing on a server host yet.
@@ -219,12 +230,29 @@ export function LabDetail({
     serverList()
       .then((l) => {
         setHosts(l.hosts);
+        // A cloud lab: the first of the player's accounts on a cloud it runs on (never a default
+        // host, which is a server).
+        const account = isCloud ? l.hosts.find((h) => CLOUDS.has(h.provider) && hostOk(h)) : undefined;
         const def = l.hosts.find((h) => h.id === l.default);
         const preferHost = !localReady && def && hostOk(def);
-        setRunOn(preferHost ? { kind: "host", id: def.id } : { kind: "local" });
+        setRunOn(account ? { kind: "host", id: account.id } : preferHost ? { kind: "host", id: def.id } : { kind: "local" });
       })
       .catch(() => setHosts([]));
-  }, [isDocker, hostOk, localReady]);
+  }, [isDocker, isCloud, hostOk, localReady]);
+  // A cloud lab's cost and inputs, from its spec at the catalogue's commit, for the launch dialog.
+  const [preview, setPreview] = useState<CloudPreview | null>(null);
+  useEffect(() => {
+    if (!isCloud || !rt?.repository || !rt.commit) return;
+    let alive = true;
+    labCloudPreview(lab.id, rt.repository, rt.commit)
+      .then((p) => alive && setPreview(p))
+      .catch(() => alive && setPreview(null));
+    return () => {
+      alive = false;
+    };
+  }, [isCloud, lab.id, rt?.repository, rt?.commit]);
+  const cloudAccounts = isCloud ? hosts.filter((h) => CLOUDS.has(h.provider) && hostOk(h)) : [];
+  const pickedAccount = runOn.kind === "host" ? cloudAccounts.find((h) => h.id === runOn.id) : undefined;
   const [shellError, setShellError] = useState<string | null>(null);
 
   // The attack box: a container on a local container lab's networks, the learner's own VM beside
@@ -237,14 +265,20 @@ export function LabDetail({
   const deployFailed = shownLogs.some((l) => l.startsWith("✗"));
   // A failed deploy can leave the VMs up (a provisioning step broke): the lab then reads as
   // running, but its attack box must not start beside a lab that isn't ready.
-  const box = useAttackBox(lab.id, { running, holding: deployingHere, local: !remote, kind: isDocker ? "container" : "vm", failed: deployFailed });
+  const box = useAttackBox(lab.id, {
+    running: running && !isCloud,
+    holding: deployingHere,
+    local: !remote && !isCloud,
+    kind: isDocker ? "container" : "vm",
+    failed: deployFailed,
+  });
   const exegol = box.status;
   const [check, clearCheck] = useLabCheck(lab.id, { running, downCount: down.length, enabled: isDocker });
   // The lab's observers (`tools:` in its spec), read once it runs: static addresses, so the
   // last answer stays good across a stop and a start.
   const [tools, setTools] = useState<LabTool[]>([]);
   useEffect(() => {
-    if (!running) return;
+    if (!running || isCloud) return;
     let alive = true;
     labTools(lab.id, isDocker ? "DOCKER" : "VM")
       .then((t) => alive && setTools(t))
@@ -252,7 +286,7 @@ export function LabDetail({
     return () => {
       alive = false;
     };
-  }, [lab.id, running, isDocker]);
+  }, [lab.id, running, isDocker, isCloud]);
 
   // Reset = stop and start again where it ran: a clean lab.
   async function reset() {
@@ -338,7 +372,7 @@ export function LabDetail({
   ];
   if (running) strip.push(<span key="where">on {status?.host ?? (whereLabel ? `this machine · ${whereLabel}` : "this machine")}</span>);
   else if (parked && whereLabel) strip.push(<span key="where">{whereLabel}</span>);
-  if (rt) strip.push(<span key="rt">{isDocker ? "containers" : "vm"}</span>);
+  if (rt) strip.push(<span key="rt">{kindLabel}</span>);
   if (rt && !native && (isDocker || emulates))
     strip.push(
       <span key="emu" className="text-warning">
@@ -516,12 +550,18 @@ export function LabDetail({
             <Button variant="primary" onClick={() => void onLogin().catch(tell("Couldn't start signing in"))}>
               <LogIn className="size-3.5" /> Sign in to start
             </Button>
+          ) : isCloud && cloudAccounts.length === 0 ? (
+            // A cloud lab with no account of its cloud: connecting one is the next step.
+            <Button variant="primary" onClick={() => void serverOpenSetup(null, "cloud").catch(tell("Couldn't open the cloud account setup"))}>
+              <Play className="size-3.5" /> Connect {withArticle(cloudNames(rt?.providers ?? []))} account
+            </Button>
           ) : (
             <div className="relative">
               <Button
                 variant="primary"
                 // With servers saved, ask where to run first; otherwise start here right away.
-                onClick={() => (hasChoice ? setChoosing(true) : onStart({ kind: "local" }))}
+                // A cloud lab always asks: which account, and what it costs there.
+                onClick={() => (hasChoice || isCloud ? setChoosing(true) : onStart({ kind: "local" }))}
                 disabled={!loggedIn || !rt || hostedLive}
                 title={
                   !rt
@@ -532,7 +572,7 @@ export function LabDetail({
                         ? "It's running hosted by Cyber CTF; stop it first"
                         : undefined
                 }
-                aria-haspopup={hasChoice ? "dialog" : undefined}
+                aria-haspopup={hasChoice || isCloud ? "dialog" : undefined}
               >
                 <Play className="size-3.5" /> Start lab
               </Button>
@@ -547,6 +587,7 @@ export function LabDetail({
                       <Button
                         variant="primary"
                         size="sm"
+                        disabled={isCloud && !pickedAccount}
                         onClick={() => {
                           setChoosing(false);
                           startOn(runOn);
@@ -568,7 +609,13 @@ export function LabDetail({
                     value={runOn}
                     onChange={setRunOn}
                     disabled={busy}
+                    local={!isCloud}
                   />
+                  {isCloud && (
+                    <div className="mt-4">
+                      <CloudLaunchNote preview={preview} autoStopHours={pickedAccount?.autoStopHours ?? null} />
+                    </div>
+                  )}
                 </RunOnDialog>
               )}
             </div>
@@ -614,7 +661,20 @@ export function LabDetail({
               provisioned, and a half-resolved diagram is more confusing than helpful. */}
           {/* Pausing, resuming or provisioning a lab, and a parked lab, keep the diagram: its
               machines exist and their states (paused, off, running) are the point. */}
-          {status && status.machines.length > 0 && (acting !== null || (!busy && (running || parked))) ? (
+          {isCloud ? (
+            running && !busy ? (
+              <CloudPanel message={status?.message ?? null} outputs={status?.outputs ?? []} where={status?.host ?? "your cloud account"} />
+            ) : busy || starting ? null : (
+              <Panel>
+                <PanelHeader title="Cloud services" meta={cloudNames(rt?.providers ?? [])} />
+                <p className="dotted-canvas px-6 py-14 text-center text-[0.8125rem] text-muted-foreground">
+                  {status?.provider
+                    ? "A previous start left cloud services behind in your account. Stop it to remove them, then start again."
+                    : "Start the lab to create its cloud services in your account. Stop it when you're done: that removes them and ends what they cost."}
+                </p>
+              </Panel>
+            )
+          ) : status && status.machines.length > 0 && (acting !== null || (!busy && (running || parked))) ? (
             <NetworkDiagram
               machines={status.machines}
               networks={status.networks}
@@ -623,7 +683,7 @@ export function LabDetail({
             />
           ) : busy || starting ? null : (
             <Panel>
-              <PanelHeader title="Network" meta={rt ? (isDocker ? "containers" : "vm") : undefined} />
+              <PanelHeader title="Network" meta={rt ? kindLabel : undefined} />
               <p className="dotted-canvas px-6 py-14 text-center text-[0.8125rem] text-muted-foreground">
                 {interrupted
                   ? canProvision
@@ -672,7 +732,7 @@ export function LabDetail({
           )}
 
           {/* VM labs on a server host have no attacker yet (their networks live on that host). */}
-          {(isDocker || !remote) && (
+          {!isCloud && (isDocker || !remote) && (
             <AttackBoxPanel
               box={box}
               running={running && !deployingHere}
@@ -687,7 +747,7 @@ export function LabDetail({
               and where it can run, so the page reads as complete at rest. */}
           {!running && rt && (
             <Panel>
-              <PanelHeader title="Where it runs" meta={isDocker ? "containers" : "vm"} />
+              <PanelHeader title="Where it runs" meta={kindLabel} />
               <div>
                 {runPlaces(rt, hostArch, emulates).map(({ key, icon: Icon, label, available }) => (
                   <div
@@ -700,7 +760,14 @@ export function LabDetail({
                     {!available && <span className="ml-auto font-mono text-[0.6875rem] text-faint">n/a</span>}
                   </div>
                 ))}
-                {!native && (
+                {isCloud && (
+                  <div className="border-t border-border px-4 py-2.5 text-[0.75rem] leading-relaxed text-muted-foreground">
+                    {costEstimate(preview?.hourlyUsd)
+                      ? `Billed to you: ${costEstimate(preview?.hourlyUsd)}, by the lab's estimate.`
+                      : "Billed to your cloud account while it runs."}
+                  </div>
+                )}
+                {!native && !isCloud && (
                   <div className="flex items-center gap-2.5 border-t border-border px-4 py-2.5 text-[0.75rem] text-muted-foreground">
                     <StatusDot tone="warn" />{" "}
                     {isDocker
@@ -716,7 +783,7 @@ export function LabDetail({
 
           {running && (
             <Panel>
-              <PanelHeader title="Details" meta={isDocker ? "containers" : "vm"} />
+              <PanelHeader title="Details" meta={kindLabel} />
               <div>
                 <KeyValue k="Runs on">{status?.host ?? "this machine"}</KeyValue>
                 {whereLabel && !status?.host && <KeyValue k="Engine">{whereLabel}</KeyValue>}
@@ -725,6 +792,7 @@ export function LabDetail({
                     <AutoStop at={status.expiresAt} />
                   </KeyValue>
                 )}
+                {isCloud && costEstimate(preview?.hourlyUsd) && <KeyValue k="Estimated cost">{costEstimate(preview?.hourlyUsd)}</KeyValue>}
                 {!binds.length && url && (
                   <KeyValue k="Address">
                     <CopyValue text={url} />
@@ -800,7 +868,9 @@ export function LabDetail({
             void onStop();
           }}
         >
-          Its machines and your attack box are deleted, with everything changed or saved on them. The next start rebuilds the lab from scratch.
+          {isCloud
+            ? "Its cloud services are destroyed in your account, which ends what they cost. The next start creates them again from scratch."
+            : "Its machines and your attack box are deleted, with everything changed or saved on them. The next start rebuilds the lab from scratch."}
           {canShutdown && " To keep them, shut the lab down instead."}
         </ConfirmDialog>
       )}

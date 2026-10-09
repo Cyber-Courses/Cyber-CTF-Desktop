@@ -279,7 +279,19 @@ pub async fn status(dir: &Path, id: &str) -> Result<LabStatus> {
             });
         }
     }
-    Ok(LabStatus { running, parked: None, machines, networks, url, host: None, expires_at: None, place: None, provider: Some("docker".to_string()) })
+    Ok(LabStatus {
+        running,
+        parked: None,
+        machines,
+        networks,
+        url,
+        host: None,
+        expires_at: None,
+        place: None,
+        provider: Some("docker".to_string()),
+        outputs: Vec::new(),
+        message: None,
+    })
 }
 
 /// Where the lab is reachable on this machine (its first published port), once running.

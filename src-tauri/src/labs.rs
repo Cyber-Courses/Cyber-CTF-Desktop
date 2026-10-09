@@ -31,7 +31,7 @@ struct EnvVar {
 
 /// Only CyberCTF repositories at a full commit SHA are downloaded; the API
 /// enforces the same rule when labs are published.
-fn validate_source(repository: &str, commit: &str) -> Result<()> {
+pub(crate) fn validate_source(repository: &str, commit: &str) -> Result<()> {
     let repo_ok = repository.strip_prefix("CyberCTF/").is_some_and(|name| {
         !name.is_empty() && name.len() <= 100 && !name.contains("..") && name.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
     });
@@ -94,6 +94,13 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
     if dir.exists() && runtime::running_here(&dir, lab_id).await {
         return Err(Error::Invalid(
             "A new version of this lab is out, but it is still running here. Stop it, then start it again to get the new version.".into(),
+        ));
+    }
+    // Same for cloud services: the destroy runs the module in this folder, which must stay the
+    // one that created them.
+    if dir.exists() && runtime::cloud_deployed(app, lab_id) {
+        return Err(Error::Invalid(
+            "A new version of this lab is out, but it is still running in your cloud account. Stop it, then start it again to get the new version.".into(),
         ));
     }
 

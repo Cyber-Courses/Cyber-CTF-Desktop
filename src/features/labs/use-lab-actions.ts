@@ -34,6 +34,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
    * `host` = a server host id to run a VM lab on, null for this machine. Omitted, VM labs
    * go to the default server host when the lab supports its hypervisor. `vmProvider` runs a
    * container lab in a VM on this machine (its deploy/vagrant lab host) on that hypervisor.
+   * A cloud lab runs only on the cloud account `host` (never one picked implicitly: it costs).
    */
   const launch = useCallback(
     async (
@@ -51,6 +52,8 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
       beginDeploy(lab.id, "launch");
       try {
         const vm = lab.runtime.runtime === "VM";
+        const cloud = lab.runtime.runtime === "CLOUD";
+        if (cloud && !host) throw new Error("This lab runs in your cloud account: pick one of your cloud accounts to start it on.");
         if (vm && host === undefined) host = await defaultHostFor(lab);
         // Docker labs go to a server host only when one is picked explicitly.
         const remote = host != null;
@@ -72,7 +75,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
         // another CPU (x86 Windows on Apple Silicon) runs here only emulated, on QEMU.
         const local: Provider[] = localProviders(lab.runtime, report?.arch);
         const foreign = vm && !!report?.arch && !runsNatively(lab.runtime, report.arch);
-        const inLocalVm = !vm && !remote && !!vmProvider;
+        const inLocalVm = !vm && !cloud && !remote && !!vmProvider;
         const provider = inLocalVm
           ? vmProvider!
           : vm && !remote
@@ -95,17 +98,20 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
         // The lab network isn't reachable from here, so an attack box goes next to the lab.
         // Remotely or inside a local VM: the container attack box image. A VM lab here: the
         // attack VM's Vagrant box, when Settings start the attack box with each lab.
-        const attackbox = remote || inLocalVm ? getAttackImage() : vm && getAutoAttackBox() ? getAttackBox() : null;
+        // A cloud lab has none: the player works from their own machine.
+        const attackbox = cloud ? null : remote || inLocalVm ? getAttackImage() : vm && getAutoAttackBox() ? getAttackBox() : null;
         await labLaunch(lab.id, provider, remote ? host! : null, attackbox, (line) => appendDeployLog(lab.id, line));
         appendDeployLog(lab.id, "✓ Lab is running");
         setLastRun(lab.id);
         notify(
           "Lab ready",
-          remote
-            ? `${lab.title} is running on your server.`
-            : inLocalVm
-              ? `${lab.title} is running in a VM on this machine.`
-              : `${lab.title} is running on this machine.`,
+          cloud
+            ? `${lab.title} is running in your cloud account.`
+            : remote
+              ? `${lab.title} is running on your server.`
+              : inLocalVm
+                ? `${lab.title} is running in a VM on this machine.`
+                : `${lab.title} is running on this machine.`,
         );
       } catch (e) {
         appendDeployLog(lab.id, `✗ ${String(e)}`);

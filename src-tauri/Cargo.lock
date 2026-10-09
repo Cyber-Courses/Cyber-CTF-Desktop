@@ -829,6 +829,7 @@ version = "0.3.7"
 dependencies = [
  "base64 0.23.1",
  "flate2",
+ "indexmap 2.14.2",
  "isoloom-core",
  "keyring",
  "libc",
@@ -2209,8 +2210,8 @@ dependencies = [
 
 [[package]]
 name = "isoloom-core"
-version = "0.9.0"
-source = "git+https://github.com/isoloom/isoloom?rev=28a9482#28a94829e687a791478853afccc7830e7a3c8c20"
+version = "0.10.0"
+source = "git+https://github.com/isoloom/isoloom?rev=e399b73#e399b7389c3aab573bb577191e81e7b5a1fa6c6d"
 dependencies = [
  "hcl-rs",
  "indexmap 2.14.2",

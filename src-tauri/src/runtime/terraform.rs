@@ -150,15 +150,152 @@ async fn terraform_host(dir: &Path, state: &Path, env: &[(String, String)], comm
     // downloads the provider plugins the first time, which needs the network; say so plainly if
     // that's what failed (otherwise a destroy of an existing lab can look impossible when it's
     // just offline).
-    stream("terraform", &["init", "-input=false", "-no-color", backend.as_str()], Some(dir), &full, &mut log).await.map_err(|e| {
-        let s = e.to_string().to_lowercase();
-        if ["registry", "no such host", "timeout", "tls", "connection", "network is unreachable", "could not download"].iter().any(|m| s.contains(m)) {
-            Error::Invalid("Couldn't download the Terraform provider plugins (the first run needs internet). Check your connection and try again.".into())
-        } else {
-            e
-        }
-    })?;
+    stream("terraform", &["init", "-input=false", "-no-color", backend.as_str()], Some(dir), &full, &mut log).await.map_err(init_error)?;
     stream("terraform", &[command, "-auto-approve", "-input=false", "-no-color"], Some(dir), &full, log).await
+}
+
+/// An init that failed for want of the network, said plainly.
+fn init_error(e: Error) -> Error {
+    let s = e.to_string().to_lowercase();
+    if ["registry", "no such host", "timeout", "tls", "connection", "network is unreachable", "could not download"].iter().any(|m| s.contains(m)) {
+        Error::Invalid("Couldn't download the Terraform provider plugins (the first run needs internet). Check your connection and try again.".into())
+    } else {
+        e
+    }
+}
+
+// --- a lab's own module (cloud-services labs) ---------------------------------------------
+//
+// A cloud-services lab brings its own Terraform root module (`cloud.terraform` in its spec),
+// used as is: it has no backend block pointing at the launcher's state, so the state is named
+// with `-state` (the local backend's own option, as Isoloom's generated `up.sh` does), the
+// plugins go under the state folder (TF_DATA_DIR), and the variables come from var files
+// (the lab's fixed values, then the launch-time inputs) plus `TF_VAR_*` for the launcher's
+// own (`expires_at`, `region`), which Terraform ignores when the module doesn't declare them.
+
+/// Whether a folder is a Terraform module: it holds at least one `.tf` file.
+pub fn is_module(dir: &Path) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|d| d.flatten().any(|e| e.path().extension().is_some_and(|x| x == "tf")))
+}
+
+/// The arguments of a cloud-services `apply` or `destroy`: the state file, then the var files.
+fn services_args(command: &str, state: &Path, var_files: &[std::path::PathBuf]) -> Vec<String> {
+    let mut args: Vec<String> = vec![command.into(), "-auto-approve".into(), "-input=false".into(), "-no-color".into()];
+    args.push(format!("-state={}", state.join("terraform.tfstate").display()));
+    args.extend(var_files.iter().map(|f| format!("-var-file={}", f.display())));
+    args
+}
+
+async fn services_terraform(
+    module: &Path,
+    state: &Path,
+    var_files: &[std::path::PathBuf],
+    env: &[(String, String)],
+    command: &str,
+    mut log: impl FnMut(String),
+) -> Result<()> {
+    if !is_module(module) {
+        return Err(Error::Invalid(format!("this lab has no Terraform module at {}", module.display())));
+    }
+    if run_read("terraform", &["version"], None).await.is_err() {
+        return Err(Error::Invalid("Terraform isn't installed. Install it from the Machine page (Tools on this machine).".into()));
+    }
+    std::fs::create_dir_all(state)?;
+    // Same reasoning as `terraform`: the launcher is this state's only writer, so a lock left now
+    // is a stale one.
+    let _ = std::fs::remove_file(state.join(".terraform.tfstate.lock.info"));
+    let mut full = env.to_vec();
+    full.push(("TF_DATA_DIR".to_string(), state.join(".terraform").display().to_string()));
+    full.push(("TF_IN_AUTOMATION".to_string(), "1".to_string()));
+    stream("terraform", &["init", "-input=false", "-no-color"], Some(module), &full, &mut log).await.map_err(init_error)?;
+    let args = services_args(command, state, var_files);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    stream("terraform", &refs, Some(module), &full, log).await
+}
+
+/// The run record of a cloud-services deploy: when it ends (`expires_at`, for status and the
+/// reaper) and the launcher variables a destroy passes again.
+fn services_record(expires_at: Option<u64>, vars: &[(String, String)]) -> serde_json::Map<String, Value> {
+    let mut run: serde_json::Map<String, Value> = vars.iter().filter(|(k, _)| k == "region").map(|(k, v)| (k.clone(), Value::String(v.clone()))).collect();
+    if let Some(t) = expires_at {
+        run.insert(EXPIRES_AT.into(), Value::from(t));
+    }
+    run.insert("cloud_services".into(), Value::Bool(true));
+    run
+}
+
+/// The launcher variables of a destroy, from the run record: the same `region` and
+/// `expires_at` the apply had (a module may require them even to destroy).
+fn services_saved_vars(run_json: &str) -> Vec<(String, String)> {
+    let mut vars = saved_vars(run_json);
+    if let Ok(v) = serde_json::from_str::<Value>(run_json)
+        && let Some(t) = v[EXPIRES_AT].as_u64()
+    {
+        vars.push(("expires_at".into(), t.to_string()));
+    }
+    vars.retain(|(k, _)| k == "region" || k == "expires_at");
+    vars
+}
+
+/// Applies a lab's own module (see above). `vars` are the launcher's variables (`TF_VAR_*`),
+/// `env` the cloud's credentials, `expires_at` when the lab auto-stops.
+pub async fn apply_services(
+    module: &Path,
+    state: &Path,
+    var_files: &[std::path::PathBuf],
+    vars: &[(String, String)],
+    expires_at: Option<u64>,
+    env: &[(String, String)],
+    log: impl FnMut(String),
+) -> Result<()> {
+    std::fs::create_dir_all(state)?;
+    std::fs::write(state.join(RUN_FILE), serde_json::to_string(&services_record(expires_at, vars)).unwrap_or_default())?;
+    services_terraform(module, state, var_files, &with_env(vars, env), "apply", log).await
+}
+
+/// Destroys what [`apply_services`] created, with the variables it recorded.
+pub async fn destroy_services(
+    module: &Path,
+    state: &Path,
+    var_files: &[std::path::PathBuf],
+    env: &[(String, String)],
+    mut log: impl FnMut(String),
+) -> Result<()> {
+    if !state.join("terraform.tfstate").is_file() {
+        if state.join(RUN_FILE).is_file() {
+            log("No Terraform state for this lab (it may have been reset). If resources were created, check your account and remove them there.".into());
+        }
+        return Ok(());
+    }
+    let vars = std::fs::read_to_string(state.join(RUN_FILE)).map(|raw| services_saved_vars(&raw)).unwrap_or_default();
+    services_terraform(module, state, var_files, &with_env(&vars, env), "destroy", log).await?;
+    let _ = std::fs::remove_file(state.join("terraform.tfstate"));
+    Ok(())
+}
+
+/// The local state as JSON, when there is one.
+pub fn state_json(state: &Path) -> Option<Value> {
+    std::fs::read_to_string(state.join("terraform.tfstate")).ok().and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+}
+
+/// Whether a state holds resources (anything that may bill).
+pub fn has_resources(state: &Value) -> bool {
+    state["resources"].as_array().is_some_and(|r| !r.is_empty())
+}
+
+/// Whether a state holds a failed resource (see `has_tainted`).
+pub fn has_failed(state: &Value) -> bool {
+    has_tainted(state)
+}
+
+/// When the lab of this state auto-stops (Unix seconds), from its run record.
+pub fn expires_at(state: &Path) -> Option<u64> {
+    std::fs::read_to_string(state.join(RUN_FILE)).ok().and_then(|raw| serde_json::from_str::<Value>(&raw).ok()).and_then(|v| v[EXPIRES_AT].as_u64())
+}
+
+/// Now, in Unix seconds.
+pub fn unix_now() -> u64 {
+    now()
 }
 
 /// Creates (or updates) the target's resources. `vars` are Terraform variable names;
@@ -373,6 +510,8 @@ pub fn status(state: &Path) -> LabStatus {
         expires_at: expires_at.filter(|_| created),
         place: None,
         provider: None,
+        outputs: Vec::new(),
+        message: None,
     }
 }
 
@@ -537,6 +676,88 @@ mod tests {
         // Expiry past but the instance is already gone (no ip): nothing to reap.
         std::fs::write(dir.join("terraform.tfstate"), r#"{"outputs":{}}"#).unwrap();
         assert!(!expired(&dir));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_labs_own_module_runs_on_the_launchers_state_and_var_files() {
+        let state = Path::new("/d/deployments/goat/aws");
+        let files = vec![std::path::PathBuf::from("/d/labs/goat/.isoloom/cloud-services/terraform.tfvars.json"), state.join("inputs.tfvars.json")];
+        assert_eq!(
+            services_args("apply", state, &files),
+            [
+                "apply",
+                "-auto-approve",
+                "-input=false",
+                "-no-color",
+                "-state=/d/deployments/goat/aws/terraform.tfstate",
+                "-var-file=/d/labs/goat/.isoloom/cloud-services/terraform.tfvars.json",
+                "-var-file=/d/deployments/goat/aws/inputs.tfvars.json",
+            ]
+        );
+        assert_eq!(services_args("destroy", state, &[])[0], "destroy");
+    }
+
+    #[test]
+    fn a_cloud_services_record_replays_region_and_expiry_on_destroy() {
+        let vars = vec![("region".to_string(), "eu-west-3".to_string()), ("expires_at".to_string(), "5000".to_string())];
+        let run = services_record(Some(5000), &vars);
+        assert_eq!(run.get(EXPIRES_AT).and_then(Value::as_u64), Some(5000));
+        assert_eq!(run.get("region").and_then(Value::as_str), Some("eu-west-3"));
+        let json = serde_json::to_string(&run).unwrap();
+        let mut back = services_saved_vars(&json);
+        back.sort();
+        assert_eq!(back, vec![("expires_at".to_string(), "5000".to_string()), ("region".to_string(), "eu-west-3".to_string())]);
+        // No auto-stop: no expiry recorded nor replayed.
+        let json = serde_json::to_string(&services_record(None, &[])).unwrap();
+        assert!(services_saved_vars(&json).is_empty());
+        assert!(services_saved_vars("garbage").is_empty());
+    }
+
+    /// A lab's own module through apply and destroy with the host Terraform, no cloud: a module of
+    /// `terraform_data` only (built in, nothing to download). Opt-in (needs `terraform`):
+    ///   cargo test services_apply_and_destroy_locally -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore]
+    async fn services_apply_and_destroy_locally() {
+        let root = std::env::temp_dir().join(format!("cyberctf-tf-svc-{}", rand::random::<u32>()));
+        let (module, state) = (root.join("lab/terraform"), root.join("deployments/lab/aws"));
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(
+            module.join("main.tf"),
+            "variable \"expires_at\" {}\nvariable \"whitelist\" {}\nvariable \"size\" {}\nresource \"terraform_data\" \"svc\" { input = \"${var.whitelist}:${var.size}:${var.expires_at}\" }\noutput \"svc\" { value = terraform_data.svc.output }\noutput \"key\" {\n  value     = \"s3cr3t\"\n  sensitive = true\n}\n",
+        )
+        .unwrap();
+        let fixed = root.join("lab/terraform.tfvars.json");
+        std::fs::write(&fixed, r#"{"size": 2}"#).unwrap();
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::write(state.join("inputs.tfvars.json"), r#"{"whitelist": "203.0.113.7/32"}"#).unwrap();
+        let files = vec![fixed, state.join("inputs.tfvars.json")];
+        // `region` isn't declared by the module: as TF_VAR_ it is ignored, not an error.
+        let vars = vec![("expires_at".to_string(), "4102444800".to_string()), ("region".to_string(), "eu-west-3".to_string())];
+        let print = |l: String| println!("{l}");
+        apply_services(&module, &state, &files, &vars, Some(4_102_444_800), &[], print).await.expect("apply");
+        let s = state_json(&state).expect("state beside the launcher's other deployments");
+        assert!(has_resources(&s) && !has_failed(&s));
+        assert_eq!(s["outputs"]["svc"]["value"], "203.0.113.7/32:2:4102444800");
+        assert_eq!(s["outputs"]["key"]["sensitive"], true);
+        assert_eq!(expires_at(&state), Some(4_102_444_800));
+        // Nothing written into the module but Terraform's lock file.
+        assert!(!module.join("terraform.tfstate").exists());
+        destroy_services(&module, &state, &files, &[], print).await.expect("destroy");
+        assert!(state_json(&state).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_module_is_a_folder_with_tf_files() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-tf-mod-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(!is_module(&dir));
+        assert!(!is_module(&dir.join("missing")));
+        // AWSGoat's root module has no main.tf, only other .tf files.
+        std::fs::write(dir.join("providers.tf"), "").unwrap();
+        assert!(is_module(&dir));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
