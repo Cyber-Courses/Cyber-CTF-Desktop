@@ -841,7 +841,8 @@ async fn remote_containers(app: &AppHandle, id: &str, dir: &Path, state: &Path) 
         return cached;
     }
     let project = compose_project_name(dir)?;
-    let target = terraform::ssh_target(state, ssh::launcher_key()?)?;
+    // `ensure_key`, not `launcher_key`: right after the app starts, nothing has loaded the key yet.
+    let target = terraform::ssh_target(state, ssh::ensure_key(app).await.ok()?.0)?;
     let script = docker::host_probe_script(&project);
     let out = target.exec(&state.join("known_hosts"), &format!("sudo bash -c {}", ssh::sh_quote(&script))).await.ok()?;
     let probe = docker::HostProbe::parse(&out)?;
