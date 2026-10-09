@@ -458,14 +458,41 @@ pub fn worker_main(job_path: PathBuf, mut context: tauri::Context) {
         })
         .build(context)
         .expect("error while starting the deploy worker")
-        .run(|_, event| {
+        .run(|_app, event| {
             // Only the deploy ends the worker (`handle.exit(code)` carries its code). A quit from
             // outside (a script or tool quitting "Cyber CTF") reached it once and killed a deploy
             // mid-way, orphaning vagrant with no status written.
-            if let tauri::RunEvent::ExitRequested { code: None, api, .. } = event {
+            if let tauri::RunEvent::ExitRequested { code: None, api, .. } = &event {
                 api.prevent_exit();
             }
+            // macOS still lists the worker as a running "Cyber CTF": with the app itself closed,
+            // opening Cyber CTF (Dock, Finder, `open`) reached the worker, which has no window,
+            // and nothing opened. Hand such a request to the real app, and stay in the background
+            // (an AppleScript "activate" had turned the worker into a foreground app).
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = &event {
+                let _ = _app.set_activation_policy(tauri::ActivationPolicy::Prohibited);
+                open_main_app();
+            }
         });
+}
+
+/// Starts the app itself (a new instance; if one is already open, it is brought forward).
+#[cfg(target_os = "macos")]
+fn open_main_app() {
+    // Contents/MacOS/<binary> -> the .app bundle.
+    let bundle = std::env::current_exe().ok().and_then(|exe| exe.ancestors().nth(3).map(std::path::Path::to_path_buf));
+    match bundle.filter(|b| b.extension().is_some_and(|e| e == "app")) {
+        Some(b) => {
+            let _ = std::process::Command::new("/usr/bin/open").arg("-n").arg(&b).spawn();
+        }
+        // Not in a bundle (a dev build): run the binary without the worker arguments.
+        None => {
+            if let Ok(exe) = std::env::current_exe() {
+                let _ = std::process::Command::new(exe).spawn();
+            }
+        }
+    }
 }
 
 /// Runs the job, logging to its file (also this process's stdout/stderr, for panics), and leaves
