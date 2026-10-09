@@ -268,11 +268,31 @@ async fn run_inner(program: &'static str, args: &[&str], cwd: Option<&Path>, env
 
 /// Like `run`, but adds `env` to the process environment and forwards every
 /// stdout/stderr line to `on_line` as it arrives.
-pub async fn stream(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)], mut on_line: impl FnMut(String)) -> Result<()> {
+pub async fn stream(program: &'static str, args: &[&str], cwd: Option<&Path>, env: &[(String, String)], on_line: impl FnMut(String)) -> Result<()> {
+    stream_from(program, args, cwd, env, None, on_line).await
+}
+
+/// Like `stream`, with the file `stdin` as the command's standard input.
+pub async fn stream_stdin(program: &'static str, args: &[&str], cwd: Option<&Path>, stdin: &Path, on_line: impl FnMut(String)) -> Result<()> {
+    stream_from(program, args, cwd, &[], Some(stdin), on_line).await
+}
+
+async fn stream_from(
+    program: &'static str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    env: &[(String, String)],
+    stdin: Option<&Path>,
+    mut on_line: impl FnMut(String),
+) -> Result<()> {
     let relayed = crate::lan_relay::prepare(program, env).await;
     let env = relayed.env.as_slice();
     let mut cmd = build(program, args);
-    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let input = match stdin {
+        Some(f) => Stdio::from(std::fs::File::open(f)?),
+        None => Stdio::null(),
+    };
+    cmd.stdin(input).stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd.envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
     // Kill the child (and, with it, the long-lived process we stream) if this future is dropped,
     // rather than orphaning a vagrant/docker/terraform run.
@@ -317,6 +337,18 @@ pub async fn stream(program: &'static str, args: &[&str], cwd: Option<&Path>, en
 #[cfg(test)]
 mod tests {
     use super::{DOCKER_ENGINE_OVERRIDES, uses_docker_engine};
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn streams_take_stdin_from_a_file() {
+        // Isoloom's exec check runners are piped into `docker compose exec -T … sh -s` this way.
+        let f = std::env::temp_dir().join(format!("cyberctf-stdin-{}.sh", std::process::id()));
+        std::fs::write(&f, "echo one\necho two\n").unwrap();
+        let mut lines = Vec::new();
+        super::stream_stdin("sh", &["-s"], None, &f, |l| lines.push(l)).await.unwrap();
+        let _ = std::fs::remove_file(&f);
+        assert_eq!(lines, ["one", "two"]);
+    }
 
     #[cfg(unix)]
     #[tokio::test]

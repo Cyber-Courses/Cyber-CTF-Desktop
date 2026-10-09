@@ -47,3 +47,10 @@ export function usableHypervisors(report: SystemReport): ProviderStatus[] {
     return true;
   });
 }
+
+/** An installed hypervisor that still can't run labs once Vagrant and its plugin are in place
+ *  (no /dev/kvm, not in the kvm group, a stuck service): nothing later in setup fixes it, and
+ *  `p.reason` says why. Missing Vagrant alone isn't this; setup installs it next. */
+export function cantRun(p: ProviderStatus, report: SystemReport): boolean {
+  return p.hypervisor === true && !p.available && !!p.reason && report.vagrant.installed && (!p.plugin || p.pluginInstalled);
+}

@@ -251,7 +251,7 @@ pub async fn detect(vagrant_installed: bool) -> Vec<ProviderStatus> {
             Some("Vagrant is not installed".to_string())
         } else if unresponsive {
             Some(
-                "VirtualBox isn't responding (its background service is stuck). Quit VirtualBox and any VM windows, or restart the Mac, then re-check."
+                "VirtualBox isn't responding (its background service is stuck). Quit VirtualBox and any VM windows, or restart the computer, then re-check."
                     .to_string(),
             )
         } else if hypervisor == Some(false) {

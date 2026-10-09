@@ -126,6 +126,10 @@ export function HomeScreen({
   // simply not probed yet.
   const dockerReady = report ? report.docker.installed && report.dockerRunning : null;
   const running = (labs ?? []).filter((l) => statuses[l.id]?.running);
+  // The running labs' own containers: the engine's total also counts the player's other projects.
+  const labContainers = running
+    .filter((l) => l.runtime?.runtime === "DOCKER" && (statuses[l.id]?.place ?? "container") === "container")
+    .reduce((n, l) => n + (statuses[l.id]?.machines.length ?? 0), 0);
   const preview = (labs ?? []).slice(0, 6);
   const activeOps = [...ops.values()];
 
@@ -234,7 +238,7 @@ export function HomeScreen({
             meta={
               <span className="tabular-nums">
                 {running.length} lab{running.length === 1 ? "" : "s"}
-                {metrics ? ` · ${metrics.containers} container${metrics.containers === 1 ? "" : "s"}` : ""}
+                {labContainers > 0 ? ` · ${labContainers} container${labContainers === 1 ? "" : "s"}` : ""}
               </span>
             }
           />

@@ -42,7 +42,10 @@ export function Requirement({
 // ---------- Small parts ----------
 
 /** The install output of the current step, in a log well with a live timer. */
-export function Log({ setup }: { setup: MachineSetupState }) {
+/** The install log, when it is about one of `of` (this step's installs): a failed VirtualBox
+ *  install isn't shown under QEMU once the player picks that instead, or on the next step. */
+export function Log({ setup, of }: { setup: MachineSetupState; of: (string | null | undefined)[] }) {
+  if (!setup.logsFor || !of.includes(setup.logsFor)) return null;
   return <LogConsole lines={setup.logs} running={setup.installing !== null} title="Install" />;
 }
 

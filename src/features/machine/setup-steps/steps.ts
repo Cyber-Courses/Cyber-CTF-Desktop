@@ -1,6 +1,6 @@
 import { Container, Cpu, Crosshair, FlaskConical, Package, Server, type LucideIcon } from "lucide-react";
 import { type SystemReport } from "@/lib/tauri";
-import { INSTALLABLE, usableHypervisors } from "@/features/machine/hypervisors";
+import { cantRun, INSTALLABLE, usableHypervisors } from "@/features/machine/hypervisors";
 import { ENGINES, Engine } from "@/features/machine/setup-steps/engines";
 import { MachineSetupState } from "@/features/machine/setup-steps/use-machine-setup";
 
@@ -110,7 +110,12 @@ export function chosenEngine(report: SystemReport, setup: MachineSetupState): En
 /** The hypervisor the player picked, else an installed one, else the first Cyber CTF can install. */
 export function chosenHypervisor(report: SystemReport, setup: MachineSetupState) {
   const hypervisors = usableHypervisors(report);
-  const fallback = hypervisors.find((p) => p.hypervisor === true) ?? hypervisors.find((p) => INSTALLABLE[p.provider]) ?? hypervisors[0];
+  // An installed one that can run labs first (QEMU without KVM can, when libvirt can't).
+  const fallback =
+    hypervisors.find((p) => p.hypervisor === true && !cantRun(p, report)) ??
+    hypervisors.find((p) => p.hypervisor === true) ??
+    hypervisors.find((p) => INSTALLABLE[p.provider]) ??
+    hypervisors[0];
   return hypervisors.find((p) => p.provider === (setup.hypervisor ?? fallback?.provider)) ?? fallback;
 }
 

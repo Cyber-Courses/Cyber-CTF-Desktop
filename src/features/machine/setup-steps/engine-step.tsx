@@ -166,7 +166,7 @@ export function EngineStep({ report, setup }: { report: SystemReport; setup: Mac
           <p>Then log out and back in.</p>
         </div>
       )}
-      <Log setup={setup} />
+      <Log setup={setup} of={["docker"]} />
       <EngineTrademarks />
     </div>
   );
@@ -195,7 +195,7 @@ function EngineLogo({ engine }: { engine: Engine }) {
 function EngineTrademarks() {
   return (
     <p className="pt-1 text-left text-[0.6875rem] leading-relaxed text-faint">
-      Docker and the Docker logo are trademarks of Docker, Inc. OrbStack and Colima marks belong to their respective owners. Cyber CTF isn&apos;t affiliated
+      Docker and the Docker logo are trademarks of Docker, Inc. Other engine names belong to their respective owners. Cyber CTF isn&apos;t affiliated
       with any of them.
     </p>
   );

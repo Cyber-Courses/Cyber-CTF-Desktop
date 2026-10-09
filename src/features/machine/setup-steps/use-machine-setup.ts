@@ -23,6 +23,8 @@ export function useMachineSetup(report: SystemReport | null, onRefresh: () => vo
   const [installing, setInstalling] = useState<string | null>(null);
   const [installerOpened, setInstallerOpened] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
+  // What the log is about (an install id or a plugin): each step shows only its own.
+  const [logsFor, setLogsFor] = useState<string | null>(null);
   const [dockerTest, setDockerTest] = useState<SelfTestResult>("idle");
   const [vmTest, setVmTest] = useState<SelfTestResult>("idle");
   // The option the player picked on the engine / hypervisor steps (null = not picked yet).
@@ -30,6 +32,7 @@ export function useMachineSetup(report: SystemReport | null, onRefresh: () => vo
   const [hypervisor, setHypervisor] = useState<string | null>(null);
   async function install(id: string, dep: Dependency, first: string) {
     setInstalling(id);
+    setLogsFor(id);
     setLogs([first]);
     try {
       await installDependency(dep, (line) => setLogs((l) => [...l, line]));
@@ -45,6 +48,7 @@ export function useMachineSetup(report: SystemReport | null, onRefresh: () => vo
   /** Adds the Vagrant plugin a hypervisor needs (e.g. vagrant-vmware-desktop). */
   async function installPlugin(plugin: string) {
     setInstalling(plugin);
+    setLogsFor(plugin);
     setLogs([`Installing the Vagrant plugin ${plugin}…`]);
     try {
       await installVagrantPlugin(plugin, (line) => setLogs((l) => [...l, line]));
@@ -61,6 +65,7 @@ export function useMachineSetup(report: SystemReport | null, onRefresh: () => vo
     installerOpened,
     installPlugin,
     logs,
+    logsFor,
     dockerTest,
     setDockerTest,
     vmTest,

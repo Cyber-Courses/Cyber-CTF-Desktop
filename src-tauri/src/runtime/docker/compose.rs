@@ -6,7 +6,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::error::Result;
-use crate::exec::{run_env, run_read, stream as exec_stream};
+use crate::exec::{run_env, run_read, stream as exec_stream, stream_stdin as exec_stream_stdin};
 
 // One compose project per lab, so labs never collide and can be cleaned up by name.
 pub fn project(id: &str) -> String {
@@ -51,14 +51,12 @@ pub(super) async fn output_env(dir: &Path, project: &str, rest: &[&str], env: &[
 }
 
 /// Like [`stream`], with `stdin` (a file) as the command's standard input: Isoloom's `exec`
-/// check runners are piped into the machine (`exec -T <machine> sh -s`). A tiny `sh` does the
-/// redirection, the argv passed through untouched (no quoting).
+/// check runners are piped into the machine (`exec -T <machine> sh -s`). Run as `docker` itself,
+/// so it reaches the same engine as every other compose call (see `exec::build`).
 pub(super) async fn stream_with_stdin(dir: &Path, project: &str, rest: &[&str], stdin: &Path, log: impl FnMut(String)) -> Result<()> {
     let a = args(dir, project, rest);
-    let stdin = stdin.display().to_string();
-    let mut argv: Vec<&str> = vec!["-c", "f=$1; shift; exec docker \"$@\" < \"$f\"", "sh", stdin.as_str()];
-    argv.extend(a.iter().map(String::as_str));
-    exec_stream("sh", &argv, Some(dir), &[], log).await
+    let a: Vec<&str> = a.iter().map(String::as_str).collect();
+    exec_stream_stdin("docker", &a, Some(dir), stdin, log).await
 }
 
 /// Runs a compose subcommand, streaming its output line by line.
