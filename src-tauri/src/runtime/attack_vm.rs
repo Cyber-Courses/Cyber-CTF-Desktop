@@ -234,18 +234,23 @@ async fn controller_status(lab_vagrant_dir: &Path) -> Result<ExegolStatus> {
 }
 
 /// Opens the player's terminal on an SSH session into the attacker.
-pub fn shell(lab_dir: &Path) -> Result<()> {
+/// The command line that opens the attack VM's shell.
+pub fn shell_command(lab_dir: &Path) -> Result<String> {
     let lab = super::lab::vagrant_dir(lab_dir, super::Runtime::Vm);
     if vm::on_qemu(&lab) {
         let inner = format!("cd {} && exec vagrant ssh {}", ssh::sh_quote(&lab.to_string_lossy()), vm::CONTROLLER);
-        return exegol::open_terminal(&format!("sh -c {}", ssh::sh_quote(&inner)));
+        return Ok(format!("sh -c {}", ssh::sh_quote(&inner)));
     }
     let d = dir(lab_dir);
     if !d.join("Vagrantfile").exists() {
         return Err(Error::Invalid("the attack VM isn't started".into()));
     }
     let inner = format!("cd {} && exec vagrant ssh", ssh::sh_quote(&d.to_string_lossy()));
-    exegol::open_terminal(&format!("sh -c {}", ssh::sh_quote(&inner)))
+    Ok(format!("sh -c {}", ssh::sh_quote(&inner)))
+}
+
+pub fn shell(lab_dir: &Path) -> Result<()> {
+    exegol::open_terminal(&shell_command(lab_dir)?)
 }
 
 #[cfg(test)]
