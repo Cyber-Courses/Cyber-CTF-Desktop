@@ -16,6 +16,10 @@
 //!   `CTF_LAUNCH_TOKEN`); a lab asking for anything else can't start here.
 //! - Every module may take `expires_at` (Unix seconds, for its tags) and `region`: passed as
 //!   `TF_VAR_*`, which Terraform ignores for a module that doesn't declare them.
+//! - On AWS, Terraform also gets shared credentials and config files of its own (see
+//!   `AwsFiles`): labs that name a profile (CloudGoat's `profile = var.profile`, and
+//!   `--profile` in its local-exec commands) find the picked account's keys under it, since an
+//!   explicitly set profile beats the environment's keys in the AWS provider.
 //! - What the lab exposes is its outputs (`cloud.outputs`), read from the state; its message
 //!   names them (`{{ cloud.outputs.NAME }}`). Stop destroys everything: nothing is parked.
 
@@ -121,19 +125,105 @@ pub fn write_inputs(state: &Path, values: &serde_json::Map<String, Value>) -> Re
         let _ = std::fs::remove_file(&file);
         return Ok(());
     }
-    std::fs::create_dir_all(state)?;
-    let _ = std::fs::remove_file(&file);
-    let json = serde_json::to_string_pretty(&Value::Object(values.clone())).unwrap_or_default();
+    write_private(&file, &serde_json::to_string_pretty(&Value::Object(values.clone())).unwrap_or_default())
+}
+
+/// Writes a file only its owner can read (mode 0600 from creation, never wider), replacing any
+/// previous one.
+fn write_private(file: &Path, contents: &str) -> Result<()> {
+    if let Some(parent) = file.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let _ = std::fs::remove_file(file);
     #[cfg(unix)]
     {
         use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
-        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file)?;
-        f.write_all(json.as_bytes())?;
+        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(file)?;
+        f.write_all(contents.as_bytes())?;
     }
     #[cfg(not(unix))]
-    std::fs::write(&file, json)?;
+    std::fs::write(file, contents)?;
     Ok(())
+}
+
+/// Terraform's own AWS shared files, beside the state.
+const AWS_CREDENTIALS_FILE: &str = "aws-credentials";
+const AWS_CONFIG_FILE: &str = "aws-config";
+
+/// The AWS shared credentials and config files of one Terraform run: the picked account's keys
+/// (stored AKIA keys, or the exported `aws login` session) as profile `default`, and under the
+/// profile the lab names (`cloud.vars.profile`) when that is another one, with the account's
+/// region. Written right before the run, owner-only, and removed when this is dropped (the run
+/// over, failed or not), so session keys don't linger on disk.
+pub struct AwsFiles {
+    files: Vec<PathBuf>,
+    pub env: Vec<(String, String)>,
+}
+
+impl AwsFiles {
+    /// None when `env` holds no keys (an AWS CLI account without an exportable session: Terraform
+    /// then reads the CLI's own files, as before).
+    pub fn write(state: &Path, env: &[(String, String)], lab_profile: Option<&str>) -> Result<Option<AwsFiles>> {
+        let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str()).filter(|v| !v.is_empty());
+        let (Some(id), Some(secret)) = (get("AWS_ACCESS_KEY_ID"), get("AWS_SECRET_ACCESS_KEY")) else { return Ok(None) };
+        let token = get("AWS_SESSION_TOKEN");
+        let region = get("AWS_REGION").or(get("AWS_DEFAULT_REGION"));
+        let mut profiles = vec!["default"];
+        if let Some(p) = lab_profile.filter(|p| *p != "default" && valid_profile(p)) {
+            profiles.push(p);
+        }
+        let (mut credentials, mut config) = (String::new(), String::new());
+        for p in &profiles {
+            credentials.push_str(&format!("[{p}]\naws_access_key_id = {id}\naws_secret_access_key = {secret}\n"));
+            if let Some(t) = token {
+                credentials.push_str(&format!("aws_session_token = {t}\n"));
+            }
+            config.push_str(&if *p == "default" { "[default]\n".to_string() } else { format!("[profile {p}]\n") });
+            if let Some(r) = region {
+                config.push_str(&format!("region = {r}\n"));
+            }
+        }
+        let mut files = AwsFiles { files: vec![state.join(AWS_CREDENTIALS_FILE), state.join(AWS_CONFIG_FILE)], env: Vec::new() };
+        write_private(&files.files[0], &credentials)?;
+        write_private(&files.files[1], &config)?;
+        files.env = vec![
+            ("AWS_SHARED_CREDENTIALS_FILE".to_string(), files.files[0].display().to_string()),
+            ("AWS_CONFIG_FILE".to_string(), files.files[1].display().to_string()),
+        ];
+        Ok(Some(files))
+    }
+}
+
+impl Drop for AwsFiles {
+    fn drop(&mut self) {
+        for f in &self.files {
+            let _ = std::fs::remove_file(f);
+        }
+    }
+}
+
+/// A profile name that can't break out of its `[...]` line.
+fn valid_profile(p: &str) -> bool {
+    !p.is_empty() && p.len() <= 64 && p.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+}
+
+/// The profile a lab's module names (`cloud.vars.profile`), if any.
+fn lab_profile(cloud: &CloudServices) -> Option<&str> {
+    cloud.vars.get("profile").and_then(Value::as_str)
+}
+
+/// The module's environment plus, on AWS, its own shared files (kept alive by the returned
+/// guard for the length of the run).
+async fn run_env(conn: &server::Connection, state: &Path, cloud: &CloudServices) -> Result<(Vec<(String, String)>, Option<AwsFiles>)> {
+    let mut env = module_env(conn).await;
+    let files = if conn.provider == Provider::Aws { AwsFiles::write(state, &env, lab_profile(cloud))? } else { None };
+    if let Some(f) = &files {
+        // The keys stay in the environment too; a CLI profile name would point outside the files.
+        env.retain(|(k, _)| k != "AWS_PROFILE");
+        env.extend(f.env.iter().cloned());
+    }
+    Ok((env, files))
 }
 
 /// Forgets the launch-time inputs once the lab is destroyed.
@@ -300,9 +390,11 @@ pub(super) async fn start(app: &AppHandle, dir: &Path, id: &str, host: Option<&s
     if let Some(r) = var(&conn.tf_vars, "region") {
         vars.push(("region".into(), r.to_string()));
     }
-    let tf_env = module_env(&conn).await;
+    let (tf_env, aws_files) = run_env(&conn, &state, cloud).await?;
     log(format!("Creating the lab's cloud services ({})…", cloud.terraform));
-    terraform::apply_services(&module, &state, &var_files(dir, &state), &vars, expires_at, &tf_env, &mut *log).await?;
+    let applied = terraform::apply_services(&module, &state, &var_files(dir, &state), &vars, expires_at, &tf_env, &mut *log).await;
+    drop(aws_files);
+    applied?;
     let s = status(&spec, &state);
     for o in &s.outputs {
         if !o.sensitive {
@@ -321,9 +413,12 @@ pub(super) async fn destroy(app: &AppHandle, dir: &Path, id: &str, conn: &server
     let state = super::state_dir(app, id, tf)?;
     // The variable files again (a newer launcher, or a cleared output folder).
     let spec = lab::prepare(dir, Target::CloudServices)?;
-    let module = module_dir(dir, of(&spec)?)?;
-    let env = module_env(conn).await;
-    terraform::destroy_services(&module, &state, &var_files(dir, &state), &env, log).await?;
+    let cloud = of(&spec)?;
+    let module = module_dir(dir, cloud)?;
+    let (env, aws_files) = run_env(conn, &state, cloud).await?;
+    let destroyed = terraform::destroy_services(&module, &state, &var_files(dir, &state), &env, log).await;
+    drop(aws_files);
+    destroyed?;
     forget_inputs(&state);
     Ok(())
 }
@@ -562,6 +657,56 @@ mod tests {
         assert!(cost_line(Some(0.02), 4).contains("$0.02 an hour, so about $0.08"));
         assert!(cost_line(Some(0.5), 0).contains("until you stop it"));
         assert!(cost_line(None, 4).contains("no cost estimate"));
+    }
+
+    #[test]
+    fn aws_shared_files_carry_the_accounts_keys_owner_only_and_go_away() {
+        let state = std::env::temp_dir().join(format!("cyberctf-cloudsvc-aws-{}", rand::random::<u32>()));
+        let env: Vec<(String, String)> =
+            [("AWS_ACCESS_KEY_ID", "ASIAEXAMPLE"), ("AWS_SECRET_ACCESS_KEY", "s3cr3t"), ("AWS_SESSION_TOKEN", "tok"), ("AWS_REGION", "eu-west-3")]
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+        let files = AwsFiles::write(&state, &env, Some("cloudgoat")).unwrap().expect("keys, so files");
+        let (creds, config) = (state.join(AWS_CREDENTIALS_FILE), state.join(AWS_CONFIG_FILE));
+        assert_eq!(
+            std::fs::read_to_string(&creds).unwrap(),
+            "[default]\naws_access_key_id = ASIAEXAMPLE\naws_secret_access_key = s3cr3t\naws_session_token = tok\n[cloudgoat]\naws_access_key_id = ASIAEXAMPLE\naws_secret_access_key = s3cr3t\naws_session_token = tok\n"
+        );
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), "[default]\nregion = eu-west-3\n[profile cloudgoat]\nregion = eu-west-3\n");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            for f in [&creds, &config] {
+                assert_eq!(std::fs::metadata(f).unwrap().permissions().mode() & 0o777, 0o600);
+            }
+        }
+        assert!(files.env.contains(&("AWS_SHARED_CREDENTIALS_FILE".to_string(), creds.display().to_string())));
+        assert!(files.env.contains(&("AWS_CONFIG_FILE".to_string(), config.display().to_string())));
+        // The run over: nothing left on disk.
+        drop(files);
+        assert!(!creds.exists() && !config.exists());
+
+        // Stored AKIA keys, no token; the lab's profile is `default` (or unsafe): one section.
+        let akia: Vec<(String, String)> = env.iter().filter(|(k, _)| k != "AWS_SESSION_TOKEN").cloned().collect();
+        for profile in [Some("default"), Some("x]\n[evil"), None] {
+            let f = AwsFiles::write(&state, &akia, profile).unwrap().unwrap();
+            let text = std::fs::read_to_string(&creds).unwrap();
+            assert_eq!(text.matches('[').count(), 1, "{text}");
+            assert!(!text.contains("session_token"));
+            drop(f);
+        }
+        // No keys (a CLI account without an exportable session): no files, the CLI's own apply.
+        assert!(AwsFiles::write(&state, &[("AWS_PROFILE".to_string(), "work".to_string())], None).unwrap().is_none());
+        assert!(!creds.exists());
+        let _ = std::fs::remove_dir_all(state);
+    }
+
+    #[test]
+    fn the_labs_profile_comes_from_its_vars() {
+        let s = spec("version: 1\nname: t\ncloud:\n  provider: aws\n  terraform: tf\n  vars: { profile: cloudgoat, region: us-east-1 }\n");
+        assert_eq!(lab_profile(of(&s).unwrap()), Some("cloudgoat"));
+        assert_eq!(lab_profile(of(&spec(SPEC)).unwrap()), None);
     }
 
     #[test]
