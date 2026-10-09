@@ -9,6 +9,7 @@ import type { Lab } from "@/features/labs/use-labs";
 import { localProviders, runsNatively } from "@/features/labs/lab-row";
 import { setLastRun } from "@/lib/last-run";
 import { appendDeployLog, beginDeploy, endDeploy, useDeploy } from "@/lib/deploy-store";
+import { translate } from "@/lib/i18n";
 
 /**
  * Start/stop actions for labs, shared across screens. The busy lab, its streamed log lines
@@ -91,29 +92,21 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
         // x86 VMs (Windows AD labs) boot on an Apple Silicon Mac only under QEMU's emulation; say
         // so up front instead of failing deep in Vagrant.
         if (!remote && foreign && provider === null) {
-          throw new Error(
-            `This lab's VMs are built for ${lab.runtime.architectures.join(", ")} and this machine is ${report!.arch}. Install QEMU from the Machine page to run them emulated (many times slower), or run the lab on a server or in your cloud account.`,
-          );
+          throw new Error(translate("labs.actions.foreignCpu", { archs: lab.runtime.architectures.join(", "), arch: report!.arch ?? "" }));
         }
         if (vm && !remote && provider === null) {
-          throw new Error(
-            `No hypervisor for this lab is installed on this machine (it runs on ${local.join(", ") || "none"}). Install one from the Machine page, or run it on a server.`,
-          );
+          throw new Error(translate("labs.actions.noHypervisor", { providers: local.join(", ") || translate("labs.actions.none") }));
         }
         // The lab network isn't reachable from here, so an attack box goes next to the lab.
         // Remotely or inside a local VM: the container attack box image. A VM lab here: the
         // attack VM's Vagrant box, when Settings start the attack box with each lab.
         const attackbox = remote || inLocalVm ? getAttackImage() : vm && getAutoAttackBox() ? getAttackBox() : null;
         await labLaunch(lab.id, provider, remote ? host! : null, attackbox, ports === "default", (line) => appendDeployLog(lab.id, line));
-        appendDeployLog(lab.id, "✓ Lab is running");
+        appendDeployLog(lab.id, translate("labs.actions.labRunning"));
         setLastRun(lab.id);
         notify(
-          "Lab ready",
-          remote
-            ? `${lab.title} is running on your server.`
-            : inLocalVm
-              ? `${lab.title} is running in a VM on this machine.`
-              : `${lab.title} is running on this machine.`,
+          translate("labs.actions.labReady"),
+          translate(remote ? "labs.actions.readyOnServer" : inLocalVm ? "labs.actions.readyInVm" : "labs.actions.readyHere", { title: lab.title }),
         );
       } catch (e) {
         appendDeployLog(lab.id, `✗ ${String(e)}`);
@@ -130,7 +123,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
       beginDeploy(lab.id, "stop");
       try {
         await labStop(lab.id, lab.runtime.runtime, (line) => appendDeployLog(lab.id, line));
-        appendDeployLog(lab.id, "✓ Lab stopped");
+        appendDeployLog(lab.id, translate("labs.actions.labStopped"));
       } catch (e) {
         appendDeployLog(lab.id, `✗ ${String(e)}`);
       } finally {
@@ -147,7 +140,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
       beginDeploy(lab.id, mode);
       try {
         await labPark(lab.id, lab.runtime.runtime, mode, (line) => appendDeployLog(lab.id, line));
-        appendDeployLog(lab.id, mode === "pause" ? "✓ Lab paused" : "✓ Lab shut down");
+        appendDeployLog(lab.id, translate(mode === "pause" ? "labs.actions.labPaused" : "labs.actions.labShutDown"));
       } catch (e) {
         appendDeployLog(lab.id, `✗ ${String(e)}`);
       } finally {
@@ -164,9 +157,9 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
       beginDeploy(lab.id, "resume");
       try {
         await labResume(lab.id, lab.runtime.runtime, (line) => appendDeployLog(lab.id, line));
-        appendDeployLog(lab.id, "✓ Lab is running");
+        appendDeployLog(lab.id, translate("labs.actions.labRunning"));
         setLastRun(lab.id);
-        notify("Lab ready", `${lab.title} is back.`);
+        notify(translate("labs.actions.labReady"), translate("labs.actions.back", { title: lab.title }));
       } catch (e) {
         appendDeployLog(lab.id, `✗ ${String(e)}`);
       } finally {
@@ -183,7 +176,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
       beginDeploy(lab.id, "provision");
       try {
         await labProvision(lab.id, lab.runtime.runtime, machine, (line) => appendDeployLog(lab.id, line));
-        appendDeployLog(lab.id, machine ? `✓ ${machine} provisioned` : "✓ Lab provisioned");
+        appendDeployLog(lab.id, machine ? translate("labs.actions.machineProvisioned", { machine }) : translate("labs.actions.labProvisioned"));
       } catch (e) {
         appendDeployLog(lab.id, `✗ ${String(e)}`);
       } finally {

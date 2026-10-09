@@ -28,10 +28,11 @@ import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
 import { OPERATION_STATUS, useActiveOperations, useDeployingLabs, useWorkerLog } from "@/lib/deploy-store";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { useAttackBox } from "@/features/labs/use-attack-box";
-import { DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
+import { difficultyLabel, type Lab } from "@/features/labs/use-labs";
 import { labTools, serverList, terminalWindow, type LabTool, type Park, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { openExternal, tell } from "@/lib/failure";
+import { useT } from "@/lib/i18n";
 
 const VM_CLOUDS_NOT_YET = ["azure", "gcp", "digitalocean", "linode", "oci"];
 
@@ -79,6 +80,7 @@ export function LabDetail({
    *  placeholder instead of a Start button that flips to Running a moment later. */
   ready?: boolean;
 }) {
+  const t = useT();
   const [resetting, setResetting] = useState(false);
   // Which header action is in flight, so its button (not the others) reads as busy.
   const [acting, setActing] = useState<"pause" | "shutdown" | "resume" | "provision" | null>(null);
@@ -240,7 +242,7 @@ export function LabDetail({
     if (!running) return;
     let alive = true;
     labTools(lab.id, isDocker ? "DOCKER" : "VM")
-      .then((t) => alive && setTools(t))
+      .then((found) => alive && setTools(found))
       .catch(() => alive && setTools([]));
     return () => {
       alive = false;
@@ -274,12 +276,12 @@ export function LabDetail({
   const destLabel =
     status?.host ??
     (runOn.kind === "host"
-      ? (hosts.find((h) => h.id === runOn.id)?.name ?? "your server")
+      ? (hosts.find((h) => h.id === runOn.id)?.name ?? t("labs.detail.yourServer"))
       : runOn.kind === "local-vm"
-        ? "a VM on this machine"
+        ? t("labs.detail.aVmHere")
         : whereLabel
-          ? `this machine · ${whereLabel}`
-          : "this machine");
+          ? t("labs.detail.thisMachineWith", { engine: whereLabel })
+          : t("labs.detail.thisMachine"));
   const shownTimes = logs.length > 0 ? times : [];
   const deploy = (
     <Panel>
@@ -296,11 +298,9 @@ export function LabDetail({
           a clean start would rebuild everything. */}
       {deployFailed && canProvision && !busy && (running || interrupted) && (
         <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3">
-          <p className="min-w-0 flex-1 text-[0.75rem] text-muted-foreground">
-            The setup stopped, but the machines are built. Run it again to continue from where it failed, or Stop &amp; clean up to start over.
-          </p>
+          <p className="min-w-0 flex-1 text-[0.75rem] text-muted-foreground">{t("labs.detail.setupStopped")}</p>
           <Button variant="primary" size="sm" onClick={() => void act("provision")} disabled={busy}>
-            {acting === "provision" ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} Re-run setup
+            {acting === "provision" ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} {t("labs.detail.rerunSetup")}
           </Button>
         </div>
       )}
@@ -316,41 +316,48 @@ export function LabDetail({
     operation && OPERATION_STATUS[operation]
       ? { tone: "warn", word: OPERATION_STATUS[operation]!, pulse: true }
       : running
-        ? { tone: "ok", word: "Running" }
+        ? { tone: "ok", word: t("labs.state.running") }
         : starting
-          ? { tone: "warn", word: acting === "resume" ? "Resuming" : "Starting", pulse: true }
+          ? { tone: "warn", word: acting === "resume" ? t("labs.state.resuming") : t("labs.state.starting"), pulse: true }
           : parked
-            ? { tone: "muted", word: parked === "pause" ? "Paused" : "Shut down" }
+            ? { tone: "muted", word: parked === "pause" ? t("labs.state.paused") : t("labs.state.shutDown") }
             : interrupted
-              ? { tone: "warn", word: "Interrupted" }
-              : { tone: "muted", word: "Not started" };
+              ? { tone: "warn", word: t("labs.state.interrupted") }
+              : { tone: "muted", word: t("labs.state.notStarted") };
   const strip: React.ReactNode[] = [
     <span key="state" className="inline-flex items-center gap-2">
       <StatusDot tone={state.tone} pulse={state.pulse} />
       <b>{state.word}</b>
     </span>,
   ];
-  if (running) strip.push(<span key="where">on {status?.host ?? (whereLabel ? `this machine · ${whereLabel}` : "this machine")}</span>);
+  if (running)
+    strip.push(
+      <span key="where">
+        {t("labs.detail.onWhere", {
+          where: status?.host ?? (whereLabel ? t("labs.detail.thisMachineWith", { engine: whereLabel }) : t("labs.detail.thisMachine")),
+        })}
+      </span>,
+    );
   else if (parked && whereLabel) strip.push(<span key="where">{whereLabel}</span>);
-  if (rt) strip.push(<span key="rt">{isDocker ? "containers" : "vm"}</span>);
+  if (rt) strip.push(<span key="rt">{isDocker ? t("labs.detail.containers") : "vm"}</span>);
   if (rt && !native && (isDocker || emulates))
     strip.push(
       <span key="emu" className="text-warning">
-        emulated (slower)
+        {t("labs.detail.emulatedSlower")}
       </span>,
     );
   if (running && status?.expiresAt) strip.push(<AutoStop key="auto" at={status.expiresAt} />);
   if (lab.difficulty > 0)
     strip.push(
       <LevelBadge key="lvl" level={lab.difficulty}>
-        {DIFFICULTY_LABEL[lab.difficulty]}
+        {difficultyLabel(t, lab.difficulty)}
       </LevelBadge>,
     );
   strip.push(<span key="cat">{lab.category}</span>);
 
   if (!ready) {
     return (
-      <div className="space-y-5" aria-busy="true" aria-label="Loading the lab">
+      <div className="space-y-5" aria-busy="true" aria-label={t("labs.detail.loading")}>
         <Skeleton className="h-3 w-16" />
         <div className="flex items-end gap-4">
           <div className="flex-1 space-y-3">
@@ -381,7 +388,7 @@ export function LabDetail({
         onClick={onBack}
         className="group -mb-1 inline-flex items-center gap-1.5 text-[0.75rem] text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="size-3.5" /> All labs
+        <ArrowLeft className="size-3.5" /> {t("labs.detail.allLabs")}
         <kbd className="kbd opacity-60 transition-opacity group-hover:opacity-100">Esc</kbd>
       </button>
 
@@ -412,47 +419,47 @@ export function LabDetail({
           running ? (
             <>
               {url && (
-                <Button variant="outline" onClick={() => openExternal(url)} title={`Open ${url} in your browser`}>
-                  <ExternalLink className="size-3.5" /> Open in browser
+                <Button variant="outline" onClick={() => openExternal(url)} title={t("labs.detail.openUrl", { url })}>
+                  <ExternalLink className="size-3.5" /> {t("labs.detail.openInBrowser")}
                 </Button>
               )}
               {canPause && (
-                <Tip key="pause" text="Save the machines' state; resume in seconds">
+                <Tip key="pause" text={t("labs.detail.pauseHint")}>
                   <Button variant="outline" onClick={() => void act("pause")} disabled={busy}>
                     {acting === "pause" ? (
                       <>
-                        <Spinner className="size-3.5" /> Pausing…
+                        <Spinner className="size-3.5" /> {t("labs.detail.pausing")}
                       </>
                     ) : (
                       <>
-                        <Pause className="size-3.5" /> Pause
+                        <Pause className="size-3.5" /> {t("labs.detail.pause")}
                       </>
                     )}
                   </Button>
                 </Tip>
               )}
               {canShutdown && (
-                <Tip key="shutdown" text="Power the machines off; they keep their state and boot again on Resume">
+                <Tip key="shutdown" text={t("labs.detail.shutdownHint")}>
                   <Button variant="outline" onClick={() => void act("shutdown")} disabled={busy}>
                     {acting === "shutdown" ? (
                       <>
-                        <Spinner className="size-3.5" /> Shutting down…
+                        <Spinner className="size-3.5" /> {t("labs.detail.shuttingDown")}
                       </>
                     ) : (
                       <>
-                        <Power className="size-3.5" /> Shut down
+                        <Power className="size-3.5" /> {t("labs.detail.shutDown")}
                       </>
                     )}
                   </Button>
                 </Tip>
               )}
-              <Tip key="remove" text="Remove the machines; the next start rebuilds the lab from scratch">
+              <Tip key="remove" text={t("labs.detail.removeHint")}>
                 <Button variant="destructive" onClick={() => setConfirmingRemove(true)} disabled={busy}>
                   {operation === "stop" && !resetting ? (
-                    "Stopping…"
+                    t("labs.detail.stopping")
                   ) : (
                     <>
-                      <Square className="size-3.5" /> Stop &amp; remove
+                      <Square className="size-3.5" /> {t("labs.detail.stopRemove")}
                     </>
                   )}
                 </Button>
@@ -460,20 +467,20 @@ export function LabDetail({
             </>
           ) : parked && onResume ? (
             <>
-              <Tip key="remove-parked" text="Remove the machines; the next start rebuilds the lab from scratch">
+              <Tip key="remove-parked" text={t("labs.detail.removeHint")}>
                 <Button variant="destructive" onClick={() => setConfirmingRemove(true)} disabled={busy}>
-                  <Square className="size-3.5" /> Stop &amp; remove
+                  <Square className="size-3.5" /> {t("labs.detail.stopRemove")}
                 </Button>
               </Tip>
-              <Tip key="resume" text="Bring the lab back as it was">
+              <Tip key="resume" text={t("labs.detail.resumeHint")}>
                 <Button variant="primary" onClick={() => void act("resume")} disabled={busy}>
                   {busy ? (
                     <>
-                      <Spinner className="size-3.5" /> Resuming…
+                      <Spinner className="size-3.5" /> {t("labs.detail.resuming")}
                     </>
                   ) : (
                     <>
-                      <Play className="size-3.5" /> Resume
+                      <Play className="size-3.5" /> {t("labs.detail.resume")}
                     </>
                   )}
                 </Button>
@@ -482,33 +489,28 @@ export function LabDetail({
           ) : starting && operation === "stop" ? (
             // Cleaning up an interrupted run: not running, but this is a stop, not a start.
             <Button variant="destructive" disabled>
-              <Spinner className="size-3.5" /> Stopping…
+              <Spinner className="size-3.5" /> {t("labs.detail.stopping")}
             </Button>
           ) : starting ? (
             <Button variant="primary" disabled>
-              <Spinner className="size-3.5" /> Starting… <StartTimer />
+              <Spinner className="size-3.5" /> {t("labs.detail.starting")} <StartTimer />
             </Button>
           ) : interrupted ? (
             // Machines exist but nothing is deploying and the lab isn't fully up: a previous run
             // was interrupted (e.g. the app restarted mid-start). Clean it up before a fresh start.
-            <Button
-              variant="destructive"
-              onClick={() => onStop()}
-              disabled={busy}
-              title="A previous start was interrupted; stop and clean it up, then start again"
-            >
+            <Button variant="destructive" onClick={() => onStop()} disabled={busy} title={t("labs.detail.interruptedHint")}>
               {busy ? (
-                "Cleaning up…"
+                t("labs.detail.cleaningUp")
               ) : (
                 <>
-                  <Square className="size-3.5" /> Stop &amp; clean up
+                  <Square className="size-3.5" /> {t("labs.detail.stopCleanUp")}
                 </>
               )}
             </Button>
           ) : !loggedIn && onLogin ? (
             // Logged out: say so on the button and log in from it, rather than a greyed-out Start.
-            <Button variant="primary" onClick={() => void onLogin().catch(tell("Couldn't start signing in"))}>
-              <LogIn className="size-3.5" /> Sign in to start
+            <Button variant="primary" onClick={() => void onLogin().catch(tell(t("labs.detail.signInFailed")))}>
+              <LogIn className="size-3.5" /> {t("labs.detail.signInToStart")}
             </Button>
           ) : (
             <div className="relative">
@@ -517,18 +519,10 @@ export function LabDetail({
                 // With servers saved, ask where to run first; otherwise start here right away.
                 onClick={() => (hasChoice ? setChoosing(true) : onStart({ kind: "local" }))}
                 disabled={!loggedIn || !rt || hostedLive}
-                title={
-                  !rt
-                    ? "No runtime for this lab yet"
-                    : !loggedIn
-                      ? "Sign in to start labs"
-                      : hostedLive
-                        ? "It's running hosted by Cyber CTF; stop it first"
-                        : undefined
-                }
+                title={!rt ? t("labs.detail.noRuntime") : !loggedIn ? t("labs.detail.signInHint") : hostedLive ? t("labs.detail.hostedLive") : undefined}
                 aria-haspopup={hasChoice ? "dialog" : undefined}
               >
-                <Play className="size-3.5" /> Start lab
+                <Play className="size-3.5" /> {t("labs.detail.startLab")}
               </Button>
               {choosing && (
                 <RunOnDialog
@@ -536,7 +530,7 @@ export function LabDetail({
                   footer={
                     <>
                       <Button variant="ghost" size="sm" onClick={() => setChoosing(false)}>
-                        Cancel
+                        {t("labs.detail.cancel")}
                       </Button>
                       <Button
                         variant="primary"
@@ -546,7 +540,7 @@ export function LabDetail({
                           startOn(runOn.kind === "local" && isDocker ? { kind: "local", ports } : runOn);
                         }}
                       >
-                        <Play className="size-3.5" /> Start
+                        <Play className="size-3.5" /> {t("labs.detail.start")}
                       </Button>
                     </>
                   }
@@ -555,7 +549,7 @@ export function LabDetail({
                     title={lab.title}
                     hosts={hosts}
                     hostOk={hostOk}
-                    localNote={isDocker ? "On your system, as containers" : "On your system, in a VM"}
+                    localNote={isDocker ? t("labs.detail.localNoteContainers") : t("labs.detail.localNoteVm")}
                     localVm={localVms[0] ?? null}
                     hosted={hostedOk}
                     dockerRunning={isDocker ? dockerRunning : null}
@@ -566,7 +560,7 @@ export function LabDetail({
                       runOn.kind === "local" &&
                       isDocker && (
                         <div className="space-y-1.5">
-                          <p className="section-label">Ports on this machine</p>
+                          <p className="section-label">{t("labs.detail.portsHere")}</p>
                           <PortChoice value={ports} onChange={setPorts} />
                         </div>
                       )
@@ -635,36 +629,36 @@ export function LabDetail({
             />
           ) : busy || starting ? null : (
             <Panel>
-              <PanelHeader title="Network" meta={rt ? (isDocker ? "containers" : "vm") : undefined} />
+              <PanelHeader title={t("labs.detail.network")} meta={rt ? (isDocker ? t("labs.detail.containers") : "vm") : undefined} />
               <p className="dotted-canvas px-6 py-14 text-center text-[0.8125rem] text-muted-foreground">
                 {interrupted
                   ? canProvision
-                    ? "A previous start didn't finish and left machines behind. Re-run setup to continue it, or use “Stop & clean up”, then start again."
-                    : "A previous start was interrupted and left machines behind. Use “Stop & clean up”, then start again."
+                    ? t("labs.detail.interruptedProvision")
+                    : t("labs.detail.interruptedClean")
                   : parked
                     ? parked === "pause"
-                      ? "The lab is paused with its state saved. Resume it to pick up where you left off."
-                      : "The lab is shut down; its machines keep their state. Resume it to boot them again."
+                      ? t("labs.detail.pausedNote")
+                      : t("labs.detail.shutDownNote")
                     : running && remote
-                      ? "Reading the lab's machines from its host…"
-                      : "Start the lab to see its machines and network."}
+                      ? t("labs.detail.readingRemote")
+                      : t("labs.detail.startToSee")}
               </p>
             </Panel>
           )}
 
           {running && !busy && tools.length > 0 && (
             <Panel>
-              <PanelHeader title="Observers" meta={`${tools.length}`} />
+              <PanelHeader title={t("labs.detail.observers")} meta={`${tools.length}`} />
               <div>
-                {tools.map((t) => (
+                {tools.map((tool) => (
                   <div
-                    key={t.name}
+                    key={tool.name}
                     className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-t border-border px-4 py-2.5 text-[0.8125rem] first:border-t-0"
                   >
-                    <span className="font-medium text-foreground">{t.name}</span>
+                    <span className="font-medium text-foreground">{tool.name}</span>
                     <span className="font-mono text-[0.6875rem] text-faint">
-                      {t.addresses.map((a) => `${a.network} ${a.ip}`).join(" · ")}
-                      {t.publish ? ` · http://127.0.0.1:${t.publish}` : ""}
+                      {tool.addresses.map((a) => `${a.network} ${a.ip}`).join(" · ")}
+                      {tool.publish ? ` · http://127.0.0.1:${tool.publish}` : ""}
                     </span>
                   </div>
                 ))}
@@ -680,7 +674,7 @@ export function LabDetail({
         <aside className="h-fit min-w-0 space-y-5 lg:sticky lg:top-2">
           {lab.question && (
             <Panel>
-              <PanelHeader title="Objective" meta="evidence" />
+              <PanelHeader title={t("labs.detail.objective")} meta={t("labs.detail.evidence")} />
               <p className="px-4 py-3.5 text-[0.8125rem] leading-relaxed text-foreground">{lab.question}</p>
             </Panel>
           )}
@@ -701,27 +695,23 @@ export function LabDetail({
               and where it can run, so the page reads as complete at rest. */}
           {!running && rt && (
             <Panel>
-              <PanelHeader title="Where it runs" meta={isDocker ? "containers" : "vm"} />
+              <PanelHeader title={t("labs.detail.whereItRuns")} meta={isDocker ? t("labs.detail.containers") : "vm"} />
               <div>
-                {runPlaces(rt, hostArch, emulates).map(({ key, icon: Icon, label, available }) => (
+                {runPlaces(rt, hostArch, emulates).map(({ key, icon: Icon, available }) => (
                   <div
                     key={key}
                     className="flex items-center gap-2.5 border-t border-border px-4 py-2 text-[0.8125rem] first:border-t-0"
-                    title={available ? undefined : "Not available for this lab"}
+                    title={available ? undefined : t("labs.detail.notAvailable")}
                   >
                     <Icon className={cn("size-3.5 shrink-0", available ? "text-jewel-text" : "text-faint opacity-50")} />
-                    <span className={available ? "text-foreground" : "text-faint"}>{label}</span>
-                    {!available && <span className="ml-auto font-mono text-[0.6875rem] text-faint">n/a</span>}
+                    <span className={available ? "text-foreground" : "text-faint"}>{t(`labs.places.${key}`)}</span>
+                    {!available && <span className="ml-auto font-mono text-[0.6875rem] text-faint">{t("labs.detail.na")}</span>}
                   </div>
                 ))}
                 {!native && (
                   <div className="flex items-center gap-2.5 border-t border-border px-4 py-2.5 text-[0.75rem] text-muted-foreground">
                     <StatusDot tone="warn" />{" "}
-                    {isDocker
-                      ? "Emulated on your CPU (slower than native)."
-                      : emulates
-                        ? "Emulated with QEMU, many times slower than native: a Windows machine takes 15 to 40 minutes to boot."
-                        : "Built for another CPU: install QEMU from the Machine page to run it emulated (slow), or run it on a server or in your cloud account."}
+                    {isDocker ? t("labs.detail.emulatedContainers") : emulates ? t("labs.detail.emulatedQemu") : t("labs.detail.foreignCpu")}
                   </div>
                 )}
               </div>
@@ -730,17 +720,17 @@ export function LabDetail({
 
           {running && (
             <Panel>
-              <PanelHeader title="Details" meta={isDocker ? "containers" : "vm"} />
+              <PanelHeader title={t("labs.detail.details")} meta={isDocker ? t("labs.detail.containers") : "vm"} />
               <div>
-                <KeyValue k="Runs on">{status?.host ?? "this machine"}</KeyValue>
-                {whereLabel && !status?.host && <KeyValue k="Engine">{whereLabel}</KeyValue>}
+                <KeyValue k={t("labs.detail.runsOn")}>{status?.host ?? t("labs.detail.thisMachine")}</KeyValue>
+                {whereLabel && !status?.host && <KeyValue k={t("labs.detail.engine")}>{whereLabel}</KeyValue>}
                 {status?.expiresAt && (
-                  <KeyValue k="Auto-stop">
+                  <KeyValue k={t("labs.detail.autoStop")}>
                     <AutoStop at={status.expiresAt} />
                   </KeyValue>
                 )}
                 {!binds.length && url && (
-                  <KeyValue k="Address">
+                  <KeyValue k={t("labs.detail.address")}>
                     <CopyValue text={url} />
                   </KeyValue>
                 )}
@@ -750,8 +740,8 @@ export function LabDetail({
               {binds.length > 0 && (
                 <div className="border-t border-border px-4 py-3">
                   <div className="mb-2 flex justify-between gap-3">
-                    <span className="section-label">Inside the lab</span>
-                    <span className="section-label">On {status?.host ?? "this machine"}</span>
+                    <span className="section-label">{t("labs.detail.insideLab")}</span>
+                    <span className="section-label">{t("labs.detail.onHost", { where: status?.host ?? t("labs.detail.thisMachine") })}</span>
                   </div>
                   <div className="space-y-1.5">
                     {binds.map((b) => (
@@ -767,18 +757,16 @@ export function LabDetail({
               )}
               {canProvision && (
                 <div className="space-y-2.5 border-t border-border p-4">
-                  <p className="section-label">Setup</p>
-                  <p className="text-[0.75rem] leading-relaxed text-muted-foreground">
-                    Runs the lab’s setup again on its machines, keeping them as they are. Use it when a machine didn’t finish its setup.
-                  </p>
+                  <p className="section-label">{t("labs.detail.setup")}</p>
+                  <p className="text-[0.75rem] leading-relaxed text-muted-foreground">{t("labs.detail.setupDescription")}</p>
                   <Select
                     fieldSize="sm"
-                    aria-label="Machine to set up again"
+                    aria-label={t("labs.detail.provisionTarget")}
                     value={provisionTarget}
                     onChange={(e) => setProvisionTarget(e.target.value)}
                     disabled={busy}
                   >
-                    <option value="">All machines</option>
+                    <option value="">{t("labs.detail.allMachines")}</option>
                     {(status?.machines ?? [])
                       .filter((m) => !m.infra)
                       .map((m) => (
@@ -793,29 +781,29 @@ export function LabDetail({
                     className="w-full"
                     onClick={() => void act("provision")}
                     disabled={busy}
-                    title="Run the lab's setup again (vagrant provision)"
+                    title={t("labs.detail.rerunHint")}
                   >
-                    {acting === "provision" ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} Re-run setup
+                    {acting === "provision" ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />} {t("labs.detail.rerunSetup")}
                   </Button>
                 </div>
               )}
             </Panel>
           )}
-          {!loggedIn && <p className="px-1 text-[0.75rem] text-muted-foreground">Sign in to run labs on this machine.</p>}
+          {!loggedIn && <p className="px-1 text-[0.75rem] text-muted-foreground">{t("labs.detail.signInToRun")}</p>}
         </aside>
       </div>
       {confirmingRemove && (
         <ConfirmDialog
-          title={`Remove ${lab.title}?`}
-          confirmLabel="Remove"
+          title={t("labs.detail.removeTitle", { title: lab.title })}
+          confirmLabel={t("labs.detail.remove")}
           onCancel={() => setConfirmingRemove(false)}
           onConfirm={() => {
             setConfirmingRemove(false);
             void onStop();
           }}
         >
-          Its machines and your attack box are deleted, with everything changed or saved on them. The next start rebuilds the lab from scratch.
-          {canShutdown && " To keep them, shut the lab down instead."}
+          {t("labs.detail.removeBody")}
+          {canShutdown && t("labs.detail.removeKeep")}
         </ConfirmDialog>
       )}
     </div>

@@ -6,19 +6,19 @@ import { Panel } from "@/components/ui/panel";
 import { StatusDot } from "@/components/ui/status-pill";
 import type { HostedSession } from "@/features/hosted/use-hosted-labs";
 import { openExternal } from "@/lib/failure";
+import { useT, type T } from "@/lib/i18n";
+import { hoursMinutes } from "@/features/labs/lab-timers";
 
-const STAGE: Record<string, string> = {
-  REQUESTED: "Asking Cyber CTF for an instance",
-  CLAIMED: "Preparing your instance",
-  PULLING: "Starting the lab",
-};
+const STAGES = ["REQUESTED", "CLAIMED", "PULLING"] as const;
+const stage = (t: T, state: string | undefined) =>
+  STAGES.includes(state as (typeof STAGES)[number]) ? t(`labs.hosted.stages.${state as (typeof STAGES)[number]}`) : undefined;
 
-function expiresIn(iso: string): string {
+function expiresIn(t: T, iso: string): string {
   const ms = new Date(iso).getTime() - Date.now();
   if (!Number.isFinite(ms) || ms <= 0) return "";
   const mins = Math.floor(ms / 60000);
   const h = Math.floor(mins / 60);
-  return `Expires in ${h > 0 ? `${h}h ` : ""}${mins % 60}m.`;
+  return t("labs.hosted.expiresIn", { left: hoursMinutes(t, h, mins % 60) });
 }
 
 /** A lab running hosted by Cyber CTF, on its lab page: starting, running (open its URLs), or failed. */
@@ -33,6 +33,7 @@ export function HostedSessionPanel({
   error: string | null;
   onStop: () => void;
 }) {
+  const t = useT();
   const state = session?.state;
   return (
     <Panel>
@@ -41,29 +42,29 @@ export function HostedSessionPanel({
           {state === "RUNNING" ? (
             <>
               <p className="flex items-center gap-2 text-[0.8125rem] font-medium text-foreground">
-                <StatusDot tone="ok" /> Running, hosted by Cyber CTF
+                <StatusDot tone="ok" /> {t("labs.hosted.running")}
               </p>
               <p className="mt-0.5 pl-4 text-[0.75rem] text-muted-foreground">
-                Open it in your browser and attack it with your own tools. {expiresIn(session!.expiresAt)}
+                {t("labs.hosted.runningHint")} {expiresIn(t, session!.expiresAt)}
               </p>
             </>
           ) : state === "FAILED" || error ? (
             <>
               <p className="flex items-center gap-2 text-[0.8125rem] font-medium text-foreground">
                 <StatusDot tone={state === "FAILED" ? "fail" : "warn"} />
-                {state === "FAILED" ? "Couldn’t start the hosted lab" : "This is taking longer than expected"}
+                {state === "FAILED" ? t("labs.hosted.failed") : t("labs.hosted.slow")}
               </p>
-              <p className="mt-0.5 pl-4 text-[0.75rem] text-muted-foreground">{error ?? session?.message ?? "Try again in a moment."}</p>
+              <p className="mt-0.5 pl-4 text-[0.75rem] text-muted-foreground">{error ?? session?.message ?? t("labs.hosted.tryAgain")}</p>
             </>
           ) : state === "STOPPED" || state === "EXPIRED" ? (
             <p className="flex items-center gap-2 text-[0.8125rem] text-muted-foreground">
               <StatusDot tone="muted" />
-              The hosted session {state === "EXPIRED" ? "expired" : "ended"}.
+              {state === "EXPIRED" ? t("labs.hosted.expired") : t("labs.hosted.ended")}
             </p>
           ) : (
             <p className="flex items-center gap-2 text-[0.8125rem] text-muted-foreground">
-              <StatusDot tone="warn" pulse /> {(state && STAGE[state]) ?? (starting ? "Asking Cyber CTF for an instance" : "Starting")}… This usually takes
-              about 30 seconds.
+              <StatusDot tone="warn" pulse />{" "}
+              {t("labs.hosted.waiting", { stage: stage(t, state) ?? (starting ? t("labs.hosted.stages.REQUESTED") : t("labs.hosted.starting")) })}
             </p>
           )}
         </div>
@@ -73,15 +74,15 @@ export function HostedSessionPanel({
               state === "RUNNING" &&
               session.endpoints.map((e) => (
                 <Button key={e.port} variant="outline" size="sm" onClick={() => openExternal(e.url)}>
-                  Open{session.endpoints.length > 1 ? ` :${e.port}` : ""} <ExternalLink className="size-3.5" />
+                  {session.endpoints.length > 1 ? t("labs.hosted.openPort", { port: e.port }) : t("labs.hosted.open")} <ExternalLink className="size-3.5" />
                 </Button>
               ))}
             <Button variant="outline" size="sm" onClick={onStop}>
               {!session || state === "FAILED" || state === "STOPPED" || state === "EXPIRED" ? (
-                "Dismiss"
+                t("labs.hosted.dismiss")
               ) : (
                 <>
-                  <Square className="size-3.5" /> Stop
+                  <Square className="size-3.5" /> {t("labs.hosted.stop")}
                 </>
               )}
             </Button>
