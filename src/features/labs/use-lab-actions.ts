@@ -2,7 +2,8 @@
 
 import { useCallback } from "react";
 import { serverList, labLaunch, labPark, labProvision, labResume, labStop, type Park, type Provider } from "@/lib/tauri";
-import { getAttackBox, getAttackImage, getAutoAttackBox, getVmProvider } from "@/lib/settings";
+import { getAttackBox, getAttackImage, getAutoAttackBox, getPortMode, getVmProvider, type PortMode } from "@/lib/settings";
+import { askPortMode } from "@/features/labs/port-mode-prompt";
 import { notify } from "@/lib/notify";
 import type { Lab } from "@/features/labs/use-labs";
 import { localProviders, runsNatively } from "@/features/labs/lab-row";
@@ -46,8 +47,15 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
         vagrant: { installed: boolean };
         vmProviders: { provider: Provider; remote: boolean; available: boolean; hypervisor?: boolean | null }[];
       } | null,
+      /** Host ports for a container lab here, already chosen ("Where should it run?"). */
+      chosenPorts?: PortMode,
     ) => {
       if (!lab.runtime) return;
+      // A container lab on this machine publishes its services here: on random free ports or
+      // on the lab's own, the player's call (asked unless Settings remember it). Cancel = no start.
+      const containersHere = lab.runtime.runtime !== "VM" && host == null && !vmProvider;
+      const ports = containersHere ? (chosenPorts ?? getPortMode() ?? (await askPortMode(lab.title))) : null;
+      if (containersHere && !ports) return;
       beginDeploy(lab.id, "launch");
       try {
         const vm = lab.runtime.runtime === "VM";
@@ -96,7 +104,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
         // Remotely or inside a local VM: the container attack box image. A VM lab here: the
         // attack VM's Vagrant box, when Settings start the attack box with each lab.
         const attackbox = remote || inLocalVm ? getAttackImage() : vm && getAutoAttackBox() ? getAttackBox() : null;
-        await labLaunch(lab.id, provider, remote ? host! : null, attackbox, (line) => appendDeployLog(lab.id, line));
+        await labLaunch(lab.id, provider, remote ? host! : null, attackbox, ports === "default", (line) => appendDeployLog(lab.id, line));
         appendDeployLog(lab.id, "✓ Lab is running");
         setLastRun(lab.id);
         notify(

@@ -56,12 +56,15 @@ pub struct Job {
     pub host: Option<String>,
     #[serde(default)]
     pub attackbox_image: Option<String>,
+    /// A container lab on the lab's own ports rather than random free ones.
+    #[serde(default)]
+    pub default_ports: bool,
 }
 
 impl Job {
     /// An operation on an installed lab (no launch payload).
     pub fn on_lab(lab_id: &str, op: Op) -> Job {
-        Job { lab_id: lab_id.to_string(), op, launch: serde_json::Value::Null, provider: None, host: None, attackbox_image: None }
+        Job { lab_id: lab_id.to_string(), op, launch: serde_json::Value::Null, provider: None, host: None, attackbox_image: None, default_ports: false }
     }
 
     /// The worker files' key: the lab's own operations share one (they are serialised by the
@@ -94,7 +97,7 @@ pub fn attack_key(lab_id: &str) -> String {
 /// be started), logging to `log`. A launch returns the lab's local URL.
 pub async fn execute(app: &AppHandle, job: Job, log: impl Fn(String)) -> Result<Option<String>> {
     match job.op {
-        Op::Launch => crate::labs::run(app, job.launch, job.provider, job.host.as_deref(), job.attackbox_image.as_deref(), log).await,
+        Op::Launch => crate::labs::run(app, job.launch, job.provider, job.host.as_deref(), job.attackbox_image.as_deref(), job.default_ports, log).await,
         Op::Resume { runtime } => crate::runtime::resume_lab(app, &job.lab_id, runtime, log).await.map(|_| None),
         Op::Park { runtime, mode } => crate::runtime::park_lab(app, &job.lab_id, runtime, mode, log).await.map(|_| None),
         Op::Provision { runtime, machine } => crate::runtime::provision_lab(app, &job.lab_id, runtime, machine.as_deref(), log).await.map(|_| None),
@@ -530,6 +533,7 @@ mod tests {
             provider: Some(crate::runtime::providers::Provider::Virtualbox),
             host: None,
             attackbox_image: Some("cyberctf/attack-box".into()),
+            default_ports: true,
         };
         let bytes = serde_json::to_vec(&job).unwrap();
         assert_eq!(serde_json::from_slice::<Job>(&bytes).unwrap(), job);

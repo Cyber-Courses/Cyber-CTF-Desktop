@@ -159,10 +159,11 @@ pub(super) fn serving_services_from_config(json: &str) -> Vec<String> {
 }
 
 /// A Compose override that gives every port published on an ephemeral host port (none set in
-/// `docker compose config` JSON) a fixed one from `pick`, so it survives stop / start. A service's
+/// `docker compose config` JSON) a fixed one from `pick` (given the container port), so it
+/// survives stop / start. A service's
 /// whole `ports` list is replaced (`!override`: Compose would otherwise add the entries). None
 /// when nothing is ephemeral.
-pub(super) fn pinned_ports(json: &str, mut pick: impl FnMut() -> Option<u16>) -> Option<String> {
+pub(super) fn pinned_ports(json: &str, mut pick: impl FnMut(u16) -> Option<u16>) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     let mut out = String::new();
     for (name, svc) in v.get("services")?.as_object()? {
@@ -179,7 +180,7 @@ pub(super) fn pinned_ports(json: &str, mut pick: impl FnMut() -> Option<u16>) ->
         for p in ports {
             let target = p.get("target").and_then(|t| t.as_u64())?;
             let published =
-                if ephemeral(p) { pick()?.to_string() } else { p["published"].as_str().map(str::to_string).unwrap_or_else(|| p["published"].to_string()) };
+                if ephemeral(p) { pick(u16::try_from(target).ok()?)?.to_string() } else { p["published"].as_str().map(str::to_string).unwrap_or_else(|| p["published"].to_string()) };
             let ip = p.get("host_ip").and_then(|i| i.as_str()).filter(|i| !i.is_empty()).map(|i| format!("{i}:")).unwrap_or_default();
             let proto = p.get("protocol").and_then(|i| i.as_str()).unwrap_or("tcp");
             lines.push(format!("      - \"{ip}{published}:{target}/{proto}\"\n"));
@@ -197,7 +198,7 @@ mod tests {
     fn pins_ephemeral_ports_and_keeps_fixed_ones() {
         let json = r#"{"services":{"web":{"ports":[{"host_ip":"127.0.0.1","target":80,"protocol":"tcp"},{"host_ip":"127.0.0.1","target":443,"published":"8443","protocol":"tcp"}]},"db":{},"dns":{"ports":[{"target":53,"published":"","protocol":"udp"}]}}}"#;
         let mut next = 40000;
-        let yaml = pinned_ports(json, || {
+        let yaml = pinned_ports(json, |_| {
             next += 1;
             Some(next)
         })
@@ -211,8 +212,15 @@ mod tests {
         );
         assert!(!yaml.contains("db"));
         // Nothing ephemeral, or no free port: no override.
-        assert!(pinned_ports(r#"{"services":{"web":{"ports":[{"target":80,"published":"8080"}]}}}"#, || Some(1)).is_none());
-        assert!(pinned_ports(r#"{"services":{"web":{"ports":[{"target":80}]}}}"#, || None).is_none());
+        assert!(pinned_ports(r#"{"services":{"web":{"ports":[{"target":80,"published":"8080"}]}}}"#, |_| Some(1)).is_none());
+        assert!(pinned_ports(r#"{"services":{"web":{"ports":[{"target":80}]}}}"#, |_| None).is_none());
+    }
+
+    #[test]
+    fn the_pick_sees_each_container_port() {
+        let json = r#"{"services":{"a":{"ports":[{"target":8000}]},"b":{"ports":[{"target":3000,"protocol":"tcp"}]}}}"#;
+        let yaml = pinned_ports(json, Some).unwrap();
+        assert!(yaml.contains("\"8000:8000/tcp\"") && yaml.contains("\"3000:3000/tcp\""), "{yaml}");
     }
 
     #[test]

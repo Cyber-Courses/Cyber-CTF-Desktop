@@ -285,7 +285,12 @@ export function NetworkDiagram({
         </div>
         <div className="port-tabs">
           {tabs.map((t) => (
-            <span key={t.id} className="port-tab" style={{ left: t.left - scrollX }} title={`Published on this machine. Click to copy http://127.0.0.1:${t.port}`}>
+            <span
+              key={t.id}
+              className="port-tab"
+              style={{ left: t.left - scrollX }}
+              title={`Published on this machine. Click to copy http://127.0.0.1:${t.port}`}
+            >
               <CopyText text={`http://127.0.0.1:${t.port}`}>
                 <Plug size={11} />
                 <span className="mono">:{t.port}</span>

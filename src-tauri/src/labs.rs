@@ -140,6 +140,7 @@ pub(crate) async fn run(
     provider: Option<Provider>,
     host: Option<&str>,
     attackbox_image: Option<&str>,
+    default_ports: bool,
     log: impl Fn(String),
 ) -> Result<Option<String>> {
     let launch: Launch = serde_json::from_value(launch_json).map_err(|e| Error::Invalid(format!("invalid launch spec: {e}")))?;
@@ -151,6 +152,7 @@ pub(crate) async fn run(
         .filter(|v| v.name == "CTF_API_URL" || v.name == "CTF_LAUNCH_TOKEN")
         .map(|v| (v.name, v.value))
         .chain(attackbox_image.map(|i| ("CYBERCTF_ATTACKBOX_IMAGE".to_string(), i.to_string())))
+        .chain(default_ports.then(|| (runtime::PORTS_ENV.to_string(), "default".to_string())))
         .collect();
     runtime::start(app, &dir, &launch.lab_id, launch.runtime, provider, host, &env, log).await?;
     // Where the lab's target is reachable on this machine, for the website to open.
@@ -159,13 +161,15 @@ pub(crate) async fn run(
 
 #[tauri::command]
 /// `attackbox_image` starts an attack box next to the lab on a server host (where the
-/// lab network isn't reachable from this machine).
+/// lab network isn't reachable from this machine). `default_ports` publishes a container lab's
+/// services on their own ports instead of random free ones.
 pub async fn lab_launch(
     app: AppHandle,
     lab_id: String,
     provider: Option<Provider>,
     host: Option<String>,
     attackbox_image: Option<String>,
+    default_ports: Option<bool>,
     logs: Channel<String>,
 ) -> Result<()> {
     if let Some(image) = &attackbox_image
@@ -179,7 +183,15 @@ pub async fn lab_launch(
     let startlab = data["startLab"].clone();
     // The deploy runs in a detached worker process, so quitting (or crashing) this app never
     // cuts a vagrant/docker/terraform run short; this command only follows the worker's log.
-    let job = crate::deploy_worker::Job { lab_id, op: crate::deploy_worker::Op::Launch, launch: startlab, provider, host, attackbox_image };
+    let job = crate::deploy_worker::Job {
+        lab_id,
+        op: crate::deploy_worker::Op::Launch,
+        launch: startlab,
+        provider,
+        host,
+        attackbox_image,
+        default_ports: default_ports.unwrap_or(false),
+    };
     crate::deploy_worker::run_job(&app, job, logs).await
 }
 

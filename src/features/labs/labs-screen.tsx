@@ -139,7 +139,9 @@ export function Labs({
         onBack={() => setDetailSlug(null)}
         readyVms={readyVms}
         dockerRunning={report ? report.dockerRunning : null}
-        onStart={(t) => launch(detail, t.kind === "host" ? t.id : null, t.kind === "local-vm" ? t.provider : undefined, report)}
+        onStart={(t) =>
+          launch(detail, t.kind === "host" ? t.id : null, t.kind === "local-vm" ? t.provider : undefined, report, t.kind === "local" ? t.ports : undefined)
+        }
         onStop={() => stop(detail)}
         onPark={(mode) => park(detail, mode)}
         onResume={() => resume(detail)}

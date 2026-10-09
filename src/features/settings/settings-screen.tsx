@@ -9,6 +9,7 @@ import { AboutSection } from "@/features/settings/about-section";
 import { AccountSection } from "@/features/settings/account-section";
 import { AppearanceSection } from "@/features/settings/appearance-section";
 import { AttackBoxRows } from "@/features/settings/attack-box-rows";
+import { LabPortsRow } from "@/features/settings/lab-ports-row";
 import { CleanupSection } from "@/features/settings/cleanup-section";
 import { HypervisorRow } from "@/features/settings/hypervisor-row";
 import { Section, useSavedFlash } from "@/features/settings/settings-layout";
@@ -88,6 +89,7 @@ export function SettingsScreen({
 
         {tab === "labs" && (
           <Section title="Labs" description="How labs start on this machine. Saved on this computer only." saved={labsSaved}>
+            <LabPortsRow onSaved={flashLabs} />
             <AttackBoxRows onSaved={flashLabs} />
             <HypervisorRow report={report} onSaved={flashLabs} onNavigate={onNavigate} onRefresh={recheck} />
           </Section>

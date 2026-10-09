@@ -198,7 +198,7 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
         Some(id) => crate::runtime::lab_running_here(app, id).await,
         None => false,
     };
-    let url = match labs::run(app, data["claimLaunch"].clone(), None, host.as_deref(), image, |_line: String| {}).await {
+    let url = match labs::run(app, data["claimLaunch"].clone(), None, host.as_deref(), image, false, |_line: String| {}).await {
         Ok(url) => url,
         Err(e) => {
             if !was_running && let Some(id) = lab_id.as_deref() {

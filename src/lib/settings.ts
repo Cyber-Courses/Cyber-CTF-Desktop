@@ -139,3 +139,30 @@ export function setAutoAttackBox(on: boolean) {
     /* ignore */
   }
 }
+
+const PORT_MODE_KEY = "cyberctf.labs.ports";
+
+/**
+ * Host ports for a container lab on this machine: `random` free ports (never collide), or each
+ * service on its `default` container port (CTFd on 8000), which fails the start when something
+ * already holds one. Null: ask at each start.
+ */
+export type PortMode = "random" | "default";
+
+export function getPortMode(): PortMode | null {
+  try {
+    const v = localStorage.getItem(PORT_MODE_KEY);
+    return v === "random" || v === "default" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setPortMode(mode: PortMode | null) {
+  try {
+    if (mode) localStorage.setItem(PORT_MODE_KEY, mode);
+    else localStorage.removeItem(PORT_MODE_KEY);
+  } catch {
+    /* ignore */
+  }
+}

@@ -10,11 +10,13 @@ import { ProviderGlyph } from "@/features/servers/provider-glyph";
 import { HypervisorLogo } from "@/features/machine/hypervisor-logo";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { useFocusTrap } from "@/lib/use-focus-trap";
+import type { PortMode } from "@/lib/settings";
 
 export const CLOUDS = new Set(["aws", "azure", "gcp", "digitalocean", "linode", "oci"]);
 
 /** Where a lab starts: this machine (Docker, or a VM on a local hypervisor) or a saved host. */
-export type RunTarget = { kind: "local" } | { kind: "local-vm"; provider: Provider } | { kind: "host"; id: string } | { kind: "hosted" };
+/** `ports` on this machine: chosen in the dialog (container labs), else asked at the start. */
+export type RunTarget = { kind: "local"; ports?: PortMode } | { kind: "local-vm"; provider: Provider } | { kind: "host"; id: string } | { kind: "hosted" };
 
 export const targetKey = (t: RunTarget) => (t.kind === "local" || t.kind === "hosted" ? t.kind : t.kind === "local-vm" ? `vm:${t.provider}` : `host:${t.id}`);
 
@@ -112,6 +114,7 @@ export function RunOnPicker({
   value,
   onChange,
   disabled,
+  localExtra,
 }: {
   title: string;
   hosts: ServerHost[];
@@ -126,6 +129,8 @@ export function RunOnPicker({
   value: RunTarget;
   onChange: (t: RunTarget) => void;
   disabled: boolean;
+  /** Shown right under the "This machine" group (e.g. the host-port choice). */
+  localExtra?: React.ReactNode;
 }) {
   const checks = useHostChecks(hosts);
   const hostOption = (h: ServerHost): Option => {
@@ -194,7 +199,7 @@ export function RunOnPicker({
         <p className="serif-title text-[1.5rem] text-foreground">Where should it run?</p>
         <p className="mt-1 text-[0.8125rem] text-muted-foreground">{title}</p>
       </div>
-      {groups.map((g) => (
+      {groups.flatMap((g) => [
         <div key={g.label} className="space-y-1.5">
           <p className="section-label">{g.label}</p>
           <RadioList label={g.label}>
@@ -218,8 +223,9 @@ export function RunOnPicker({
               />
             ))}
           </RadioList>
-        </div>
-      ))}
+        </div>,
+        g.label === "This machine" && localExtra ? <div key="local-extra">{localExtra}</div> : null,
+      ])}
     </div>
   );
 }

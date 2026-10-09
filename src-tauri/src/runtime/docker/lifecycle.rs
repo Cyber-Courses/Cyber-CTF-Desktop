@@ -47,16 +47,27 @@ async fn published_host_ports(dir: &Path, project: &str, env: &[(String, String)
     Ok(compose::host_ports_from_config(&out))
 }
 
-/// Picks free loopback host ports for the lab's ephemeral ones and pins them (see
-/// `compose::PORTS_FILE`), so a shut down / resume keeps the lab at the same address. Done on a
-/// fresh start only: the pins of containers that already exist must stay as they were created.
+/// Set (to "default") in a launch's env when the player chose the lab's default ports: each
+/// service is published on its own container port (CTFd on 8000) instead of a random free one.
+pub const PORTS_ENV: &str = "CYBERCTF_PORTS";
+
+/// Pins the lab's ephemeral host ports (see `compose::PORTS_FILE`), so a shut down / resume keeps
+/// the lab at the same address: free loopback ports picked at random, or with `PORTS_ENV` set to
+/// "default" each container's own port (a second service on the same port falls back to a random
+/// one). Done on a fresh start only: the pins of containers that already exist must stay as they
+/// were created. A default port something else holds is caught by `start`'s in-use check.
 async fn pin_ports(dir: &Path, project: &str, env: &[(String, String)]) {
+    let defaults = env.iter().any(|(k, v)| k == PORTS_ENV && v == "default");
     let file = dir.join(compose::PORTS_FILE);
     let _ = std::fs::remove_file(&file);
     let Ok(config) = compose::output_env(dir, project, &["config", "--format", "json"], env).await else { return };
     // Hold each port until all are picked, so the OS doesn't hand out the same one twice.
     let mut held = Vec::new();
-    let pins = compose::pinned_ports(&config, || {
+    let mut taken = std::collections::HashSet::new();
+    let pins = compose::pinned_ports(&config, |target| {
+        if defaults && target != 0 && taken.insert(target) {
+            return Some(target);
+        }
         let l = std::net::TcpListener::bind(("127.0.0.1", 0)).ok()?;
         let port = l.local_addr().ok()?.port();
         held.push(l);
@@ -89,7 +100,7 @@ pub async fn start(dir: &Path, id: &str, env: &[(String, String)], mut log: impl
         for port in published_host_ports(dir, &project, env).await? {
             if port_in_use(port) {
                 return Err(Error::Invalid(format!(
-                    "Host port {port} is already in use — another lab is probably using it. Stop that lab, then start this one."
+                    "Host port {port} is already in use on this machine (another lab or app holds it). Stop whatever uses it, or start the lab with random ports."
                 )));
             }
         }

@@ -20,6 +20,8 @@ import { HealthBanner, useLabCheck } from "@/features/labs/lab-health";
 import { AutoStop, StartTimer } from "@/features/labs/lab-timers";
 import { NetworkDiagram } from "@/features/labs/network-diagram";
 import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on";
+import { PortChoice } from "@/features/labs/port-mode-prompt";
+import { getPortMode, type PortMode } from "@/lib/settings";
 import { EMULATORS, localProviders, runPlaces, runsNatively } from "@/features/labs/lab-row";
 import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
@@ -27,16 +29,7 @@ import { OPERATION_STATUS, useActiveOperations, useDeployingLabs, useWorkerLog }
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
 import { useAttackBox } from "@/features/labs/use-attack-box";
 import { DIFFICULTY_LABEL, type Lab } from "@/features/labs/use-labs";
-import {
-  labTools,
-  serverList,
-  terminalWindow,
-  type LabTool,
-  type Park,
-  type Provider,
-  type ServerHost,
-  type LabStatus,
-} from "@/lib/tauri";
+import { labTools, serverList, terminalWindow, type LabTool, type Park, type Provider, type ServerHost, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { openExternal, tell } from "@/lib/failure";
 
@@ -183,6 +176,8 @@ export function LabDetail({
   // through their deploy/ layer). VM labs default to the default host; Docker labs to here.
   const [hosts, setHosts] = useState<ServerHost[]>([]);
   const [runOn, setRunOn] = useState<RunTarget>({ kind: "local" });
+  // A container lab here: its host ports, picked in "Where should it run?" (Settings' choice first).
+  const [ports, setPorts] = useState<PortMode>(() => getPortMode() ?? "random");
   // A container lab can also run in a VM here: on the hypervisor chosen in Settings (readyVms
   // lists it first), else the first ready one its deploy/ supports. One option, not a catalogue.
   const localVms = isDocker ? readyVms.filter((p) => rt?.providers.includes(p)).slice(0, 1) : [];
@@ -548,7 +543,7 @@ export function LabDetail({
                         size="sm"
                         onClick={() => {
                           setChoosing(false);
-                          startOn(runOn);
+                          startOn(runOn.kind === "local" && isDocker ? { kind: "local", ports } : runOn);
                         }}
                       >
                         <Play className="size-3.5" /> Start
@@ -567,6 +562,15 @@ export function LabDetail({
                     value={runOn}
                     onChange={setRunOn}
                     disabled={busy}
+                    localExtra={
+                      runOn.kind === "local" &&
+                      isDocker && (
+                        <div className="space-y-1.5">
+                          <p className="section-label">Ports on this machine</p>
+                          <PortChoice value={ports} onChange={setPorts} />
+                        </div>
+                      )
+                    }
                   />
                 </RunOnDialog>
               )}

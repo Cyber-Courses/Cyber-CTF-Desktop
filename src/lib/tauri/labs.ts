@@ -176,10 +176,18 @@ export const attackVmShell = (id: string) => invoke<void>("attack_vm_shell", { i
 
 /** Opens the attack box shell wherever the lab runs (local container, or SSH to a remote lab host). */
 export const labAttackShell = (id: string, runtime: Runtime) => invoke<void>("lab_attack_shell", { id, runtime });
-export function labLaunch(labId: string, provider: Provider | null, host: string | null, attackboxImage: string | null, onLog: (line: string) => void) {
+/** `defaultPorts`: a container lab here publishes its services on their own ports, not random ones. */
+export function labLaunch(
+  labId: string,
+  provider: Provider | null,
+  host: string | null,
+  attackboxImage: string | null,
+  defaultPorts: boolean,
+  onLog: (line: string) => void,
+) {
   const logs = new Channel<string>();
   logs.onmessage = onLog;
-  return invoke<void>("lab_launch", { labId, provider, host, attackboxImage, logs });
+  return invoke<void>("lab_launch", { labId, provider, host, attackboxImage, defaultPorts, logs });
 }
 
 /** Whether leaving now would interrupt a lab deploy (a cloud apply keeps billing if cut off). */
@@ -222,8 +230,7 @@ export type ShellKind = "lab" | "attackVm";
 export type TermEvent = { kind: "data"; data: string } | { kind: "exit"; code: number | null };
 
 /** Opens (or focuses) the shell window for a lab. */
-export const terminalWindow = (id: string, kind: ShellKind, runtime: Runtime, title: string) =>
-  invoke<void>("terminal_window", { id, kind, runtime, title });
+export const terminalWindow = (id: string, kind: ShellKind, runtime: Runtime, title: string) => invoke<void>("terminal_window", { id, kind, runtime, title });
 
 /** Starts the shell in a pseudo-terminal; returns the session that write/resize/close take. */
 export function terminalOpen(id: string, kind: ShellKind, runtime: Runtime, cols: number, rows: number, onEvent: (e: TermEvent) => void) {
