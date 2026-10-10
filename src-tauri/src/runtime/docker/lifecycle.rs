@@ -57,14 +57,27 @@ pub const PORTS_ENV: &str = "CYBERCTF_PORTS";
 /// one). Done on a fresh start only: the pins of containers that already exist must stay as they
 /// were created. A default port something else holds is caught by `start`'s in-use check.
 async fn pin_ports(dir: &Path, project: &str, env: &[(String, String)]) {
-    let defaults = env.iter().any(|(k, v)| k == PORTS_ENV && v == "default");
     let file = dir.join(compose::PORTS_FILE);
     let _ = std::fs::remove_file(&file);
     let Ok(config) = compose::output_env(dir, project, &["config", "--format", "json"], env).await else { return };
+    if let Some(pins) = pick_pins(&config, default_ports(env)) {
+        let _ = std::fs::write(&file, pins);
+    }
+}
+
+/// Whether the player chose the lab's default ports (see [`PORTS_ENV`]).
+fn default_ports(env: &[(String, String)]) -> bool {
+    env.iter().any(|(k, v)| k == PORTS_ENV && v == "default")
+}
+
+/// The pinned-ports override for a lab's Compose `config`: each ephemeral port gets a free
+/// loopback port, or with `defaults` its own container port (once; a second service on the
+/// same port gets a free one).
+fn pick_pins(config: &str, defaults: bool) -> Option<String> {
     // Hold each port until all are picked, so the OS doesn't hand out the same one twice.
     let mut held = Vec::new();
     let mut taken = std::collections::HashSet::new();
-    let pins = compose::pinned_ports(&config, |target| {
+    let pins = compose::pinned_ports(config, |target| {
         if defaults && target != 0 && taken.insert(target) {
             return Some(target);
         }
@@ -74,9 +87,7 @@ async fn pin_ports(dir: &Path, project: &str, env: &[(String, String)]) {
         Some(port)
     });
     drop(held);
-    if let Some(pins) = pins {
-        let _ = std::fs::write(&file, pins);
-    }
+    pins
 }
 
 /// Where the lab's services answer on this machine: (service, container port, host port) for
@@ -108,22 +119,30 @@ pub async fn start(dir: &Path, id: &str, env: &[(String, String)], mut log: impl
     remove_stale_networks(dir, &project, env).await;
     // --wait blocks until containers are healthy; bound it so a container stuck in a failing
     // healthcheck surfaces as a timeout instead of hanging the start indefinitely.
-    let up = ["up", "-d", "--pull", "missing", "--wait", "--wait-timeout", "600"];
     // Compose's --wait fails when a one-shot job exits (even with 0) unless a running service
     // depends on it: an `init:` on a machine nothing depends on. Isoloom's start plan names
     // those jobs: wait for everything else, then run each attached, failing on its exit code.
     let plan =
         std::fs::read_to_string(crate::runtime::lab::compose_file(dir)).ok().and_then(|c| isoloom_core::generate::start_plan(&c).ok()).unwrap_or_default();
-    if plan.jobs.is_empty() {
-        return compose::stream(dir, &project, &up, env, log).await;
-    }
-    let mut args: Vec<&str> = up.to_vec();
-    args.extend(plan.wait.iter().map(String::as_str));
-    compose::stream(dir, &project, &args, env, &mut log).await?;
-    for job in &plan.jobs {
-        compose::stream(dir, &project, &["up", "--no-deps", "--exit-code-from", job, job], env, &mut log).await?;
+    for step in start_steps(&plan) {
+        let step: Vec<&str> = step.iter().map(String::as_str).collect();
+        compose::stream(dir, &project, &step, env, &mut log).await?;
     }
     Ok(())
+}
+
+/// The Compose commands that start a lab with Isoloom's start `plan`: `up --wait` (on the
+/// services to wait for, when some are one-shot jobs), then each job attached, in order.
+fn start_steps(plan: &isoloom_core::generate::StartPlan) -> Vec<Vec<String>> {
+    let up = ["up", "-d", "--pull", "missing", "--wait", "--wait-timeout", "600"];
+    let mut first: Vec<String> = up.iter().map(|s| s.to_string()).collect();
+    if plan.jobs.is_empty() {
+        return vec![first];
+    }
+    first.extend(plan.wait.iter().cloned());
+    let mut steps = vec![first];
+    steps.extend(plan.jobs.iter().map(|job| ["up", "--no-deps", "--exit-code-from", job, job].iter().map(|s| s.to_string()).collect()));
+    steps
 }
 
 /// Stops the lab's containers, keeping them, their networks and volumes: the lab resumes as it
@@ -151,7 +170,17 @@ pub async fn resume(dir: &Path, id: &str, mut log: impl FnMut(String)) -> Result
 /// is still plugged into one (the attack box) is unplugged first. Best effort.
 async fn remove_stale_networks(dir: &Path, project: &str, env: &[(String, String)]) {
     let Ok(config) = compose::output_env(dir, project, &["config", "--format", "json"], env).await else { return };
-    let wanted: Vec<String> = serde_json::from_str::<serde_json::Value>(&config)
+    let filter = format!("label=com.docker.compose.project={project}");
+    let Ok(listed) = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await else { return };
+    for net in stale_networks(&config, project, &listed) {
+        remove_network(&net).await;
+    }
+}
+
+/// The networks in `listed` (one name a line) that the Compose `config` doesn't define: each
+/// network there is its `name:`, else `<project>_<key>`.
+fn stale_networks(config: &str, project: &str, listed: &str) -> Vec<String> {
+    let wanted: Vec<String> = serde_json::from_str::<serde_json::Value>(config)
         .ok()
         .and_then(|v| {
             v.get("networks")
@@ -159,11 +188,7 @@ async fn remove_stale_networks(dir: &Path, project: &str, env: &[(String, String
                 .map(|n| n.iter().map(|(k, v)| v["name"].as_str().map(str::to_string).unwrap_or_else(|| format!("{project}_{k}"))).collect())
         })
         .unwrap_or_default();
-    let filter = format!("label=com.docker.compose.project={project}");
-    let Ok(listed) = run("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await else { return };
-    for net in listed.lines().map(str::trim).filter(|n| !n.is_empty() && !wanted.iter().any(|w| w == n)) {
-        remove_network(net).await;
-    }
+    listed.lines().map(str::trim).filter(|n| !n.is_empty() && !wanted.iter().any(|w| w == n)).map(str::to_string).collect()
 }
 
 /// Removes containers, networks and volumes: the next start is a clean lab.
@@ -200,4 +225,67 @@ async fn remove_network(net: &str) {
         }
     }
     let _ = run("docker", &["network", "rm", net], None).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PORTS_ENV, default_ports, pick_pins, port_in_use, stale_networks, start_steps};
+    use isoloom_core::generate::StartPlan;
+
+    #[test]
+    fn default_ports_only_when_asked_for() {
+        assert!(!default_ports(&[]));
+        assert!(!default_ports(&[(PORTS_ENV.into(), "random".into())]));
+        assert!(default_ports(&[("X".into(), "y".into()), (PORTS_ENV.into(), "default".into())]));
+    }
+
+    #[test]
+    fn default_ports_go_to_the_first_service_on_each_port() {
+        let config = r#"{"services":{"a":{"ports":[{"target":8000}]},"b":{"ports":[{"target":8000}]}}}"#;
+        let yaml = pick_pins(config, true).unwrap();
+        assert_eq!(yaml.matches("\"8000:8000/tcp\"").count(), 1, "{yaml}");
+        assert_eq!(yaml.matches(":8000/tcp\"").count(), 2, "the second one gets a free port: {yaml}");
+    }
+
+    #[test]
+    fn random_ports_are_distinct_free_loopback_ports() {
+        let config = r#"{"services":{"a":{"ports":[{"target":80},{"target":443}]}}}"#;
+        let yaml = pick_pins(config, false).unwrap();
+        let picked: Vec<u16> = yaml.lines().filter_map(|l| l.trim().strip_prefix("- \"")).map(|l| l.split(':').next().unwrap().parse().unwrap()).collect();
+        assert_eq!(picked.len(), 2, "{yaml}");
+        assert_ne!(picked[0], picked[1]);
+        assert!(picked.iter().all(|p| *p != 80 && *p != 443));
+        assert_eq!(pick_pins("not json", false), None);
+    }
+
+    #[test]
+    fn a_held_port_is_in_use() {
+        let held = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        assert!(port_in_use(held.local_addr().unwrap().port()));
+    }
+
+    #[test]
+    fn a_plain_start_waits_for_everything() {
+        let steps = start_steps(&StartPlan::default());
+        assert_eq!(steps, [["up", "-d", "--pull", "missing", "--wait", "--wait-timeout", "600"]]);
+    }
+
+    #[test]
+    fn one_shot_jobs_run_attached_after_the_rest_is_up() {
+        let plan = StartPlan { wait: vec!["web".into(), "db".into()], jobs: vec!["seed".into(), "claim".into()] };
+        let steps = start_steps(&plan);
+        assert_eq!(steps.len(), 3);
+        assert_eq!(steps[0][7..], ["web", "db"]);
+        assert_eq!(steps[1], ["up", "--no-deps", "--exit-code-from", "seed", "seed"]);
+        assert_eq!(steps[2], ["up", "--no-deps", "--exit-code-from", "claim", "claim"]);
+    }
+
+    #[test]
+    fn stale_networks_are_the_listed_ones_the_config_no_longer_has() {
+        let config = r#"{"networks":{"lab":{"name":"cyberctf-x_lab"},"back":{}}}"#;
+        let listed = "cyberctf-x_lab\ncyberctf-x_back\ncyberctf-x_old\n\n";
+        assert_eq!(stale_networks(config, "cyberctf-x", listed), ["cyberctf-x_old"]);
+        // An unreadable config keeps nothing: every listed network is stale.
+        assert_eq!(stale_networks("garbage", "p", " a \nb"), ["a", "b"]);
+    }
 }
