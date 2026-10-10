@@ -1,4 +1,5 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
+import { invokeStreaming } from "@/lib/tauri/stream";
 
 export type Provider =
   | "virtualbox"
@@ -94,18 +95,13 @@ export interface MachineMetrics {
 /** Live machine health (CPU/memory/disk/uptime + running containers). */
 export const machineMetrics = () => invoke<MachineMetrics>("machine_metrics");
 
-/** Opens the guided "set up this machine" window. */
-/** Opens the setup window, optionally at one step (e.g. "docker", "vm"). */
+/** Opens the guided "set up this machine" window, optionally at one step (e.g. "docker", "vm"). */
 export const machineOpenSetup = (step?: string) => invoke<void>("machine_open_setup", { step: step ?? null });
 
 export type Dependency = "docker" | "vagrant" | "terraform" | "virtualbox" | "qemu" | "utm" | "libvirt" | "awscli" | "azurecli" | "gcloud" | "wsl";
 
 /** Assisted one-click install of a lab dependency, streaming the installer output. */
-export function installDependency(dependency: Dependency, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("install_dependency", { dependency, logs });
-}
+export const installDependency = (dependency: Dependency, onLog: (line: string) => void) => invokeStreaming("install_dependency", { dependency }, onLog);
 
 /** A tool Cyber CTF installed (and can therefore offer to remove). `at` is in epoch seconds. */
 export interface InstalledTool {
@@ -116,18 +112,10 @@ export interface InstalledTool {
 export const installedTools = () => invoke<InstalledTool[]>("installed_tools");
 
 /** Removes a tool Cyber CTF installed, streaming the output. */
-export function uninstallDependency(dependency: Dependency, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("uninstall_dependency", { dependency, logs });
-}
+export const uninstallDependency = (dependency: Dependency, onLog: (line: string) => void) => invokeStreaming("uninstall_dependency", { dependency }, onLog);
 
 /** Installs a Vagrant plugin (userland), streaming the output. */
-export function installVagrantPlugin(plugin: string, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("install_vagrant_plugin", { plugin, logs });
-}
+export const installVagrantPlugin = (plugin: string, onLog: (line: string) => void) => invokeStreaming("install_vagrant_plugin", { plugin }, onLog);
 
 /** One step of a setup self-test, as it progresses. */
 export interface SelfTestEvent {
@@ -138,11 +126,8 @@ export interface SelfTestEvent {
 }
 
 /** Runs a setup self-test: `docker` boots a throwaway two-container lab, `vm` checks the hypervisor + Vagrant. */
-export function machineSelftest(kind: "docker" | "vm", provider: Provider | null, onEvent: (e: SelfTestEvent) => void) {
-  const events = new Channel<SelfTestEvent>();
-  events.onmessage = onEvent;
-  return invoke<void>("machine_selftest", { kind, provider, events });
-}
+export const machineSelftest = (kind: "docker" | "vm", provider: Provider | null, onEvent: (e: SelfTestEvent) => void) =>
+  invokeStreaming<SelfTestEvent>("machine_selftest", { kind, provider }, onEvent, "events");
 
 /** Starts a self-test's download (test image / VM box) in the background, so the test itself is quick. */
 export const machineSelftestPrefetch = (kind: "docker" | "vm", provider: Provider | null) => invoke<void>("machine_selftest_prefetch", { kind, provider });

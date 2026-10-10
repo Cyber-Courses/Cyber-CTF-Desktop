@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { useRef, useState } from "react";
 import { Cloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { confirmLaunch } from "@/lib/tauri";
 import { useFocusTrap } from "@/lib/use-focus-trap";
+import { useTauriEvent } from "@/lib/use-tauri-event";
 import { tell } from "@/lib/failure";
 import { useT } from "@/lib/i18n";
 
@@ -22,10 +22,7 @@ export function LaunchConfirm() {
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const off = listen<Request>("launch-confirm", (e) => setReq(e.payload));
-    return () => void off.then((f) => f());
-  }, []);
+  useTauriEvent<Request>("launch-confirm", setReq);
   useFocusTrap(ref, !!req);
 
   if (!req) return null;

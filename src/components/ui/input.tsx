@@ -1,4 +1,4 @@
-import { forwardRef, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { forwardRef, type InputHTMLAttributes, type SelectHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -25,8 +25,4 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
 
 export function Select({ className, fieldSize = "default", mono = false, ...props }: SelectHTMLAttributes<HTMLSelectElement> & FieldProps) {
   return <select className={cn(fieldClass(fieldSize, mono), "pr-8", className)} {...props} />;
-}
-
-export function Textarea({ className, mono = false, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & { mono?: boolean }) {
-  return <textarea className={cn(fieldClass("default", mono), "h-auto min-h-20 py-2 leading-relaxed", className)} {...props} />;
 }

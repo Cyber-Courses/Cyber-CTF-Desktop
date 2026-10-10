@@ -27,16 +27,6 @@ export function PanelHeader({ title, meta, action, className }: { title: ReactNo
   );
 }
 
-/** Small section label above a panel (e.g. "Running now"), with an optional right-hand link. */
-export function RailLabel({ children, right }: { children: ReactNode; right?: ReactNode }) {
-  return (
-    <div className="mb-2.5 flex items-center gap-2">
-      <span className="text-[0.8125rem] font-medium text-foreground">{children}</span>
-      {right && <span className="ml-auto">{right}</span>}
-    </div>
-  );
-}
-
 /** A key/value line inside a panel (Details, Attack box). Value in mono, right-aligned. */
 export function KeyValue({ k, children, className }: { k: ReactNode; children: ReactNode; className?: string }) {
   return (

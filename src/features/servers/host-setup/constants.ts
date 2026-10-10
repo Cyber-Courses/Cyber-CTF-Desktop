@@ -1,7 +1,7 @@
 import { type CloudProvider, type ServerHostInput, type RemoteProvider } from "@/lib/tauri";
 
 // The server setup flow, a step-by-step wizard shown in its own window (src/app/server-setup).
-// Matches the "Set up this machine" wizard (components/machine/machine-setup.tsx).
+// Matches the "Set up this machine" wizard (features/machine/machine-setup.tsx).
 
 export const KIND: Record<RemoteProvider, { label: string; note: string; port: number; user: string; plugin: string }> = {
   proxmox: { label: "Proxmox VE", note: "Signs in to the Proxmox API", port: 8006, user: "root@pam", plugin: "vagrant-proxmox" },
@@ -113,8 +113,6 @@ export const OCI_REGIONS: [string, string][] = [
 ];
 
 export type StepKey = "provider" | "hypervisor" | "tools" | "connection" | "placement" | "account" | "credentials" | "options" | "test";
-/** Cloud providers offered in the cloud setup. AWS, Azure and GCP each provision labs in the
- *  player's own account; `ready` gates which are selectable. */
 /** A cloud host's default name: the provider's short name (the user can rename it). */
 export const CLOUD_DEFAULT_NAME: Record<CloudProvider, string> = {
   aws: "AWS",
@@ -125,6 +123,8 @@ export const CLOUD_DEFAULT_NAME: Record<CloudProvider, string> = {
   oci: "Oracle Cloud",
 };
 
+/** Each cloud's full name and CLI (none for the token and key clouds); `ready` gates which can
+ *  be picked. */
 export const CLOUD_META: Record<CloudProvider, { label: string; cli: string; ready: boolean }> = {
   aws: { label: "Amazon Web Services", cli: "aws", ready: true },
   azure: { label: "Microsoft Azure", cli: "az", ready: true },
@@ -134,8 +134,8 @@ export const CLOUD_META: Record<CloudProvider, { label: string; cli: string; rea
   oci: { label: "Oracle Cloud", cli: "", ready: true },
 };
 
-/** The provider picker. AWS, Azure and GCP are live targets; the rest are coming soon.
- *  `logo` marks the ones with an SVG in public/brands (others fall back to a cloud icon). */
+/** The provider picker. `logo` marks the ones with an SVG in public/brands (others fall back to
+ *  a cloud icon). */
 export const CLOUD_PICKER: { id: string; label: string; ready: boolean; logo: boolean }[] = [
   { id: "aws", label: "Amazon Web Services", ready: true, logo: true },
   { id: "azure", label: "Microsoft Azure", ready: true, logo: true },

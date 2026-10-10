@@ -39,7 +39,7 @@ const SETTLED: HostedState[] = ["RUNNING", "FAILED", "STOPPED", "EXPIRED"];
  * The player's active hosted session: hydrated on mount from `myActiveLabSession` (so it
  * persists across views and restarts), launched with `launch`, polled until it settles, and
  * cleared with `stop`. Only hosted sessions are tracked here; other targets run through the
- * local runtime. Shared by the lab page and Home.
+ * local runtime. Used by the lab page.
  */
 export function useHostedLabs() {
   const [session, setSession] = useState<HostedSession | null>(null);

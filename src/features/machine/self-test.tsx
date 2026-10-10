@@ -8,6 +8,7 @@ import { StepRow } from "@/features/machine/step-row";
 import { machineSelftest, type SelfTestEvent } from "@/lib/tauri";
 import { getVmProvider, setLastTest } from "@/lib/settings";
 import { formatElapsed } from "@/lib/format";
+import { useNow } from "@/lib/use-now";
 import { useT, type MessageKey } from "@/lib/i18n";
 
 export type SelfTestResult = "idle" | "running" | "ok" | "fail";
@@ -56,12 +57,7 @@ export function SelfTest({
   const [run, setRun] = useState<{ start: number; end?: number } | null>(null);
   const [times, setTimes] = useState<Record<string, { start: number; end?: number }>>({});
   // Re-render once a second while running, so the counters tick.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (result !== "running") return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [result]);
+  const [now, touchNow] = useNow(1000, result === "running");
 
   const report = useCallback(
     (r: SelfTestResult) => {
@@ -75,7 +71,7 @@ export function SelfTest({
     setEvents({});
     setTimes({});
     setRun({ start: Date.now() });
-    setNow(Date.now());
+    touchNow();
     report("running");
     const onEvent = (e: SelfTestEvent) => {
       setEvents((prev) => ({ ...prev, [e.step]: e }));
@@ -95,7 +91,7 @@ export function SelfTest({
     } finally {
       setRun((r) => (r ? { ...r, end: Date.now() } : r));
     }
-  }, [kind, report]);
+  }, [kind, report, touchNow]);
 
   useEffect(() => {
     if (auto && !started.current) {

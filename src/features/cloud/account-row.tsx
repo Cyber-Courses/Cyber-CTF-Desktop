@@ -4,8 +4,8 @@ import { useState, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Pencil, Trash2, X, XCircle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { type ServerCheck, type ServerHost, type ServerTest, type Tool } from "@/lib/tauri";
-import { StatusDot, StatusPill, type Tone } from "@/components/ui/status-pill";
+import { type ServerCheck, type ServerHost, type ServerTest } from "@/lib/tauri";
+import { StatusPill, type Tone } from "@/components/ui/status-pill";
 import { useFormat, useT } from "@/lib/i18n";
 
 export function AccountRow({
@@ -153,16 +153,5 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
     >
       {children}
     </button>
-  );
-}
-
-export function Status({ tool }: { tool?: Tool }) {
-  const t = useT();
-  const installed = !!tool?.installed;
-  return (
-    <span className="flex items-center gap-2 font-mono text-[0.6875rem] text-faint">
-      <StatusDot tone={installed ? "ok" : "muted"} />
-      {tool ? (installed ? (tool.version ?? t("cloud.account.installed")) : t("cloud.account.notInstalled")) : "…"}
-    </span>
   );
 }

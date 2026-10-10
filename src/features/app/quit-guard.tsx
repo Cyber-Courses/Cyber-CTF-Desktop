@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { forceQuit, lingerQuit } from "@/lib/tauri";
 import { useFocusTrap } from "@/lib/use-focus-trap";
+import { useTauriEvent } from "@/lib/use-tauri-event";
 import { useT } from "@/lib/i18n";
 
 /**
@@ -19,10 +19,7 @@ export function QuitGuard() {
   const [quitting, setQuitting] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const off = listen<number>("quit-blocked", (e) => setCount(typeof e.payload === "number" ? e.payload : 1));
-    return () => void off.then((f) => f());
-  }, []);
+  useTauriEvent<number>("quit-blocked", (n) => setCount(typeof n === "number" ? n : 1));
   useFocusTrap(ref, count !== null);
 
   if (count === null) return null;

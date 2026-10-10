@@ -1,4 +1,5 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
+import { invokeStreaming } from "@/lib/tauri/stream";
 import type { Provider, SelfTestEvent } from "@/lib/tauri/machine";
 
 // --- Server (the player's own ESXi / Proxmox host) ---
@@ -80,28 +81,8 @@ export interface HostCapacity {
 }
 export const serverCapacity = (id: string) => invoke<HostCapacity | null>("server_capacity", { id });
 /** Real-VM self-test: provisions a throwaway VM on the host, checks it, then destroys it. */
-export function serverSelftest(id: string, onEvent: (e: SelfTestEvent) => void) {
-  const events = new Channel<SelfTestEvent>();
-  events.onmessage = onEvent;
-  return invoke<void>("server_selftest", { id, events });
-}
+export const serverSelftest = (id: string, onEvent: (e: SelfTestEvent) => void) => invokeStreaming<SelfTestEvent>("server_selftest", { id }, onEvent, "events");
 /** Opens (or focuses) the setup window, for a new host or to edit `id`. */
 export const serverOpenSetup = (id: string | null, kind: "server" | "cloud" = "server") => invoke<void>("server_open_setup", { id, kind });
 /** Emitted by the setup window after a save; the main window reloads its host list. */
 export const SERVER_CHANGED = "server:changed";
-
-export interface ProvisioningImage {
-  name: string;
-  image: string;
-  present: boolean;
-}
-
-/** The Docker images provisioning uses (Terraform, Ansible) and whether each is pulled. */
-export const provisioningImages = () => invoke<ProvisioningImage[]>("provisioning_images");
-
-/** Pulls a provisioning image, streaming docker's output. */
-export function provisioningPull(image: string, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("provisioning_pull", { image, logs });
-}
