@@ -1,45 +1,45 @@
 {
   "host": {
-    "yourMachine": "Your machine",
-    "serverSub": "server · docker host",
-    "host": "host",
+    "yourMachine": "Dein Rechner",
+    "serverSub": "Server · Docker-Host",
+    "host": "Host",
     "online": "online",
-    "portTab": "Published on this machine. Click to copy {url}"
+    "portTab": "Auf diesem Rechner veröffentlicht. Klicken, um {url} zu kopieren"
   },
   "copy": {
-    "title": "Copy {text}",
-    "failed": "Couldn't copy to the clipboard"
+    "title": "{text} kopieren",
+    "failed": "Kopieren in die Zwischenablage fehlgeschlagen"
   },
-  "lab": "lab",
-  "bridge": "{name} bridge",
+  "lab": "Lab",
+  "bridge": "Bridge {name}",
   "zone": {
-    "network": "{name} network",
-    "noInternet": "no internet"
+    "network": "Netzwerk {name}",
+    "noInternet": "kein Internet"
   },
   "attacker": {
-    "you": "YOU",
-    "kicker": "ATTACKER",
+    "you": "DU",
+    "kicker": "ANGREIFER",
     "label": "Attack box",
-    "attached": "attached",
-    "notAttached": "not attached"
+    "attached": "verbunden",
+    "notAttached": "nicht verbunden"
   },
-  "published": "published",
+  "published": "veröffentlicht",
   "computer": {
-    "resolving": "resolving…",
-    "noPorts": "no ports"
+    "resolving": "wird aufgelöst…",
+    "noPorts": "keine Ports"
   },
   "states": {
-    "running": "running",
-    "paused": "paused",
-    "off": "off",
-    "stopped": "stopped"
+    "running": "läuft",
+    "paused": "pausiert",
+    "off": "aus",
+    "stopped": "gestoppt"
   },
   "services": {
-    "database": "database",
-    "web": "web / api",
-    "cache": "cache",
-    "worker": "worker",
-    "ssh": "ssh",
-    "service": "service"
+    "database": "Datenbank",
+    "web": "Web / API",
+    "cache": "Cache",
+    "worker": "Worker",
+    "ssh": "SSH",
+    "service": "Dienst"
   }
 }
