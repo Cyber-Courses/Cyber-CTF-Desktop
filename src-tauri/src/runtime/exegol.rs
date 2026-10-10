@@ -272,9 +272,9 @@ pub fn open_terminal(command: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{applescript_string, main_first};
     #[cfg(target_os = "linux")]
     use super::{SESSION_VAR, end_session_script};
+    use super::{applescript_string, main_first};
 
     #[test]
     fn main_lab_network_comes_first() {
