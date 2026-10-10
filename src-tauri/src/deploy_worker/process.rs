@@ -97,7 +97,8 @@ fn proc_state(stat: &str) -> Option<char> {
     stat.rsplit_once(") ").and_then(|(_, rest)| rest.chars().next())
 }
 
-/// A deploy worker's command line: `<app> deploy --job <file>`.
+/// A deploy worker's command line: `<app> deploy --job <file>`. (Windows checks the pid alone.)
+#[cfg(any(unix, test))]
 fn is_worker(cmdline: &str) -> bool {
     cmdline.contains(" deploy ") && cmdline.contains("--job")
 }

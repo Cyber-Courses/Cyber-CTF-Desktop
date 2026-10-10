@@ -166,6 +166,8 @@ pub async fn uninstall_dependency(app: AppHandle, dependency: Dependency, logs: 
 
 #[cfg(test)]
 mod tests {
+    // Every test here is for macOS or Linux.
+    #[cfg_attr(windows, allow(unused_imports))]
     use super::*;
 
     #[cfg(target_os = "macos")]

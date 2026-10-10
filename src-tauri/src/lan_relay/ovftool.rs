@@ -43,7 +43,7 @@ pub(super) fn wrapper_dir() -> std::io::Result<PathBuf> {
     Ok(dir)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 

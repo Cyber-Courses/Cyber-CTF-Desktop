@@ -93,6 +93,8 @@ mod tests {
         assert!(compose.status.success(), "docker compose plugin not found");
     }
 
+    // Unix PATH entries.
+    #[cfg(unix)]
     #[test]
     fn appends_existing_dirs_once_and_keeps_order() {
         let tmp = std::env::temp_dir();
