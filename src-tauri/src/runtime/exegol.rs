@@ -95,15 +95,15 @@ pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result
     let _ = run("docker", &["rm", "-f", &name], None).await;
     log(format!("Starting the attack box on {attack_net}…"));
     // --init: `sleep` as PID 1 ignores SIGTERM, so every `docker stop` waited out its timeout.
-    if let Err(e) = stream(
-        "docker",
-        &["run", "-d", "--init", "--name", &name, "--network", &attack_net, "--hostname", "attacker", "--cap-add", "NET_ADMIN", image, "sleep", "infinity"],
-        None,
-        &[],
-        &mut log,
-    )
-    .await
-    {
+    let mut args = vec!["run", "-d", "--init", "--name", &name, "--network", &attack_net, "--hostname", "attacker", "--cap-add", "NET_ADMIN"];
+    // The folder shared with the attack box (Settings), at /shared inside it.
+    let volume = crate::shared_folder::current().map(|p| format!("{}:{}", p.display(), crate::shared_folder::MOUNT_POINT));
+    if let Some(v) = &volume {
+        log(format!("Sharing {} as {}.", v.rsplit_once(':').map(|(h, _)| h).unwrap_or(v), crate::shared_folder::MOUNT_POINT));
+        args.extend(["-v", v.as_str()]);
+    }
+    args.extend([image, "sleep", "infinity"]);
+    if let Err(e) = stream("docker", &args, None, &[], &mut log).await {
         // No box, so no use for its own network either: it would only hold a subnet.
         let _ = run("docker", &["network", "rm", &attack_net], None).await;
         return Err(e);

@@ -11,6 +11,7 @@ import { isDockerReady } from "@/features/machine/setup-steps/steps";
 import { useMachineFormat } from "@/features/machine/use-machine-format";
 import { useT } from "@/lib/i18n";
 import { useImageSizes } from "@/lib/use-image-sizes";
+import { SharedFolderControl } from "@/features/settings/shared-folder";
 
 // ---------- Virtual machines ----------
 
@@ -77,6 +78,7 @@ export function AttackStep({ report }: { report: SystemReport }) {
           }}
         />
       </div>
+      <SharedFolderControl framed />
       {!isDockerReady(report) && <p className="text-left text-[0.75rem] text-muted-foreground">{t("machine.attack.needsEngine")}</p>}
       <p className="text-left text-[0.75rem] text-muted-foreground">{t("machine.attack.firstStart")}</p>
     </div>

@@ -115,7 +115,10 @@
   },
   "installedTools": {
     "title": "Tools Cyber CTF installed",
-    "count": { "one": "{count} installed", "other": "{count} installed" },
+    "count": {
+      "one": "{count} installed",
+      "other": "{count} installed"
+    },
     "intro": "Installed during setup. Remove the ones you no longer need; tools you had before aren't listed.",
     "installedAgo": "installed {ago}",
     "remove": "Remove",
@@ -156,5 +159,12 @@
     "firstRun": "First-run setup",
     "firstRunDescription": "Walk through the onboarding again. Your settings and labs are kept.",
     "replay": "Replay"
+  },
+  "sharedFolder": {
+    "title": "Shared folder",
+    "description": "A folder on this computer that your attack box sees at {mount}: tools in, loot out. It stays when a lab is removed.",
+    "pick": "Folder to share with the attack box",
+    "change": "Change…",
+    "open": "Open the folder"
   }
 }

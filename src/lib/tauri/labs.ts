@@ -241,3 +241,9 @@ export function terminalOpen(id: string, kind: ShellKind, runtime: Runtime, cols
 export const terminalWrite = (session: number, data: string) => invoke<void>("terminal_write", { session, data });
 export const terminalResize = (session: number, cols: number, rows: number) => invoke<void>("terminal_resize", { session, cols, rows });
 export const terminalClose = (session: number) => invoke<void>("terminal_close", { session });
+
+/** The folder shared with the attack box, at `mountPoint` inside it (off until chosen). */
+export type SharedFolder = { enabled: boolean; path: string; mountPoint: string };
+export const sharedFolderGet = () => invoke<SharedFolder>("shared_folder_get");
+export const sharedFolderSet = (enabled: boolean, path: string) => invoke<SharedFolder>("shared_folder_set", { enabled, path });
+export const sharedFolderOpen = () => invoke<void>("shared_folder_open");

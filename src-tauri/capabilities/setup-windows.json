@@ -2,11 +2,15 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "setup-windows",
   "description": "the server and machine setup windows: close themselves, drag, notify the main window",
-  "windows": ["server-setup", "machine-setup"],
+  "windows": [
+    "server-setup",
+    "machine-setup"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-close",
     "core:window:allow-start-dragging",
-    "opener:default"
+    "opener:default",
+    "dialog:allow-open"
   ]
 }
