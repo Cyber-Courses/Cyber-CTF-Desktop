@@ -1,45 +1,45 @@
 {
   "host": {
-    "yourMachine": "Your machine",
-    "serverSub": "server · docker host",
-    "host": "host",
-    "online": "online",
-    "portTab": "Published on this machine. Click to copy {url}"
+    "yourMachine": "あなたのマシン",
+    "serverSub": "サーバー · Docker ホスト",
+    "host": "ホスト",
+    "online": "オンライン",
+    "portTab": "このマシンで公開中。クリックして {url} をコピー"
   },
   "copy": {
-    "title": "Copy {text}",
-    "failed": "Couldn't copy to the clipboard"
+    "title": "{text} をコピー",
+    "failed": "クリップボードにコピーできませんでした"
   },
-  "lab": "lab",
-  "bridge": "{name} bridge",
+  "lab": "ラボ",
+  "bridge": "{name} ブリッジ",
   "zone": {
-    "network": "{name} network",
-    "noInternet": "no internet"
+    "network": "{name} ネットワーク",
+    "noInternet": "インターネットなし"
   },
   "attacker": {
-    "you": "YOU",
-    "kicker": "ATTACKER",
-    "label": "Attack box",
-    "attached": "attached",
-    "notAttached": "not attached"
+    "you": "あなた",
+    "kicker": "攻撃者",
+    "label": "アタックボックス",
+    "attached": "接続済み",
+    "notAttached": "未接続"
   },
-  "published": "published",
+  "published": "公開中",
   "computer": {
-    "resolving": "resolving…",
-    "noPorts": "no ports"
+    "resolving": "解決中…",
+    "noPorts": "ポートなし"
   },
   "states": {
-    "running": "running",
-    "paused": "paused",
-    "off": "off",
-    "stopped": "stopped"
+    "running": "実行中",
+    "paused": "一時停止",
+    "off": "オフ",
+    "stopped": "停止"
   },
   "services": {
-    "database": "database",
-    "web": "web / api",
-    "cache": "cache",
-    "worker": "worker",
-    "ssh": "ssh",
-    "service": "service"
+    "database": "データベース",
+    "web": "Web / API",
+    "cache": "キャッシュ",
+    "worker": "ワーカー",
+    "ssh": "SSH",
+    "service": "サービス"
   }
 }

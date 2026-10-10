@@ -1,20 +1,20 @@
 {
   "confirm": {
-    "cancel": "Cancel"
+    "cancel": "キャンセル"
   },
   "copy": {
-    "title": "Copy {text}"
+    "title": "{text} をコピー"
   },
   "log": {
-    "output": "Output",
+    "output": "出力",
     "running": "{title}…",
-    "failed": "{title} failed",
-    "done": "{title} · done"
+    "failed": "{title} に失敗しました",
+    "done": "{title} · 完了"
   },
   "toast": {
-    "dismiss": "Dismiss"
+    "dismiss": "閉じる"
   },
   "spinner": {
-    "loading": "Loading"
+    "loading": "読み込み中"
   }
 }

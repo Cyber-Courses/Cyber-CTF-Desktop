@@ -1,4 +1,4 @@
 {
-  "slowStart": "This hosted lab is taking longer than expected to start. It may still come up shortly; otherwise stop it and try again.",
-  "stopFailed": "Couldn't stop the hosted lab: {error}"
+  "slowStart": "このホスト型ラボの起動に想定より時間がかかっています。まもなく起動する可能性がありますが、起動しない場合は停止して再試行してください。",
+  "stopFailed": "ホスト型ラボを停止できませんでした：{error}"
 }
