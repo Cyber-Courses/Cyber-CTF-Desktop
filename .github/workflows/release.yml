@@ -28,7 +28,7 @@ jobs:
           app-id: ${{ secrets.APP_ID_GENERATOR }}
           private-key: ${{ secrets.APP_PRIVATE_KEY_GENERATOR }}
           owner: Cyber-Courses
-          repositories: Cyber-CTF-Desktop
+          repositories: Cyber-CTF-Launcher
       - env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
