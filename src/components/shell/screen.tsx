@@ -1,0 +1,84 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { Labs } from "@/features/labs/labs-screen";
+import { HomeScreen } from "@/features/home/home-screen";
+import { MachineScreen } from "@/features/machine/machine-screen";
+import { ServerScreen } from "@/features/servers/servers-screen";
+import { CloudScreen } from "@/features/cloud/cloud-screen";
+import { SettingsScreen } from "@/features/settings/settings-screen";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Spinner } from "@/components/ui/spinner";
+import { authLogin, type AuthStatus, type SystemReport } from "@/lib/tauri";
+import { useT } from "@/lib/i18n";
+import type { Tab } from "@/components/shell/shell-model";
+
+/** The screen for `tab`, in the main column. */
+export function Screen({
+  tab,
+  report,
+  checkError,
+  auth,
+  openLab,
+  onRefresh,
+  onNavigate,
+  onAuthChange,
+  onLabChange,
+}: {
+  tab: Tab;
+  report: SystemReport | null;
+  checkError: string | null;
+  auth: AuthStatus | null;
+  openLab: { slug: string | null; tick: number };
+  onRefresh: () => void | Promise<void>;
+  onNavigate: (t: Tab, slug?: string) => void;
+  onAuthChange: (status: AuthStatus) => void;
+  onLabChange: (title: string | null) => void;
+}): ReactNode {
+  const t = useT();
+  const waiting = (what: string) => <WaitingForCheck what={what} checkError={checkError} onRetry={onRefresh} />;
+  if (tab === "home") return <HomeScreen report={report} auth={auth} onNavigate={onNavigate} />;
+  if (tab === "settings") return <SettingsScreen auth={auth} onAuthChange={onAuthChange} onNavigate={onNavigate} />;
+  if (tab === "machine") return report ? <MachineScreen report={report} onRefresh={onRefresh} onNavigate={onNavigate} /> : waiting(t("shell.screen.checking"));
+  if (tab === "server") return <ServerScreen onNavigate={onNavigate} />;
+  if (tab === "cloud") return <CloudScreen />;
+  if (tab === "events")
+    return (
+      <EmptyState icon="sparkles" title={t("shell.screen.comingSoon", { title: t("shell.tabs.events") })} description={t("shell.screen.eventsDescription")} />
+    );
+  return report ? (
+    <Labs
+      loggedIn={auth?.loggedIn ?? false}
+      authReady={auth !== null}
+      onLogin={async () => onAuthChange(await authLogin())}
+      hostArch={report.arch}
+      report={report}
+      openLab={openLab}
+      onDetailChange={onLabChange}
+    />
+  ) : (
+    waiting(t("shell.screen.loading"))
+  );
+}
+
+/** Shown where the machine check is needed and hasn't answered: a retry when it failed. */
+function WaitingForCheck({ what, checkError, onRetry }: { what: string; checkError: string | null; onRetry: () => void | Promise<void> }) {
+  const t = useT();
+  return checkError ? (
+    <EmptyState
+      icon="alert"
+      title={t("shell.screen.checkFailed")}
+      description={checkError}
+      action={
+        <Button variant="outline" size="sm" onClick={() => void onRetry()}>
+          {t("shell.screen.tryAgain")}
+        </Button>
+      }
+    />
+  ) : (
+    <p className="flex items-center gap-2.5 text-[0.8125rem] text-muted-foreground">
+      <Spinner className="size-3.5" /> {what}
+    </p>
+  );
+}

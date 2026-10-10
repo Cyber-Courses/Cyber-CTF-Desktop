@@ -1,7 +1,7 @@
 "use client";
 
 import "@xterm/xterm/css/xterm.css";
-import { Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Terminal } from "@xterm/xterm";
@@ -9,6 +9,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { RotateCw, SquareTerminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
+import { useIsMac } from "@/lib/platform";
 import { labAttackShell, attackVmShell, terminalClose, terminalOpen, terminalResize, terminalWrite, type Runtime, type ShellKind } from "@/lib/tauri";
 
 /** Reads a CSS custom property from the page, so the terminal follows the app's theme. */
@@ -95,11 +96,7 @@ function Shell() {
   const openOutside = () => void (kind === "attackVm" ? attackVmShell(id) : labAttackShell(id, runtime)).catch(() => {});
 
   // macOS overlays the traffic lights on this bar; elsewhere the window has its own title bar.
-  const isMac = useSyncExternalStore(
-    () => () => {},
-    () => navigator.userAgent.includes("Mac"),
-    () => false,
-  );
+  const isMac = useIsMac();
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
