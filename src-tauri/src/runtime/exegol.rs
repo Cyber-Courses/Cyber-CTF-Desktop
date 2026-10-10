@@ -66,15 +66,18 @@ pub async fn status(id: &str, image: &str) -> ExegolStatus {
     let tmpl = format!("{{{{.State.Running}}}}\t{{{{with index .NetworkSettings.Networks \"{lab_net}\"}}}}{{{{.IPAddress}}}}{{{{end}}}}");
     let probe = run_read("docker", &["inspect", "-f", &tmpl, &name], None).await;
     let (running, ip) = match probe {
-        Ok(out) => {
-            let line = out.lines().next().unwrap_or_default();
-            let (r, rest) = line.split_once('\t').unwrap_or(("false", ""));
-            (r.trim() == "true", rest.split_whitespace().next().unwrap_or_default().to_string())
-        }
+        Ok(out) => parse_probe(&out),
         Err(_) => (false, String::new()),
     };
     let lab_network = if running && !lab_net.is_empty() { super::docker::short_network(id, &lab_net) } else { String::new() };
     ExegolStatus { image_present, running, ip, lab_network, shell_cmd: format!("docker exec -it {name} bash") }
+}
+
+/// `<running>\t<ip>` from the status probe: whether the box runs, and its lab address.
+fn parse_probe(out: &str) -> (bool, String) {
+    let line = out.lines().next().unwrap_or_default();
+    let (r, rest) = line.split_once('\t').unwrap_or(("false", ""));
+    (r.trim() == "true", rest.split_whitespace().next().unwrap_or_default().to_string())
 }
 
 pub async fn start(id: &str, image: &str, mut log: impl FnMut(String)) -> Result<()> {
@@ -308,5 +311,47 @@ mod tests {
         let _ = other.wait();
         // A tag that could inject shell is refused.
         assert!(end_session_script("1'; rm -rf /; '").is_none() && end_session_script("").is_none());
+    }
+
+    #[test]
+    fn names_and_shell_commands_follow_the_lab_id() {
+        assert_eq!(super::container("web"), "cyberctf-web-attacker");
+        assert_eq!(super::shell_command("web"), "docker exec -it cyberctf-web-attacker bash");
+        assert_eq!(super::tagged_shell_command("web", "12-3"), "docker exec -it -e CYBERCTF_SHELL=12-3 cyberctf-web-attacker bash");
+    }
+
+    #[test]
+    fn images_are_plain_references() {
+        assert!(super::valid_image("nwodtuhs/exegol:free"));
+        assert!(super::valid_image("ghcr.io/org/kali@sha256:abc"));
+        assert!(!super::valid_image(""));
+        assert!(!super::valid_image("-v"));
+        assert!(!super::valid_image("img; rm -rf /"));
+        assert!(!super::valid_image(&"a".repeat(201)));
+    }
+
+    #[test]
+    fn session_scripts_only_for_our_tags() {
+        let s = super::end_session_script("42-1").unwrap();
+        assert!(s.contains("grep -qx 'CYBERCTF_SHELL=42-1'"), "{s}");
+        assert!(super::end_session_script("").is_none());
+        assert!(super::end_session_script("a b").is_none());
+        assert!(super::end_session_script("x'y").is_none());
+    }
+
+    #[tokio::test]
+    async fn ending_an_untagged_session_runs_nothing() {
+        // An invalid tag never reaches docker, async or blocking.
+        super::end_session("cyberctf-x-attacker", "bad tag").await;
+        super::end_session_blocking("cyberctf-x-attacker", "");
+    }
+
+    #[test]
+    fn the_status_probe_reads_running_and_the_address() {
+        assert_eq!(super::parse_probe("true\t10.0.0.5\n"), (true, "10.0.0.5".to_string()));
+        assert_eq!(super::parse_probe("true\t\n"), (true, String::new()));
+        assert_eq!(super::parse_probe("false\t"), (false, String::new()));
+        assert_eq!(super::parse_probe(""), (false, String::new()));
+        assert_eq!(super::parse_probe("true"), (false, String::new()));
     }
 }

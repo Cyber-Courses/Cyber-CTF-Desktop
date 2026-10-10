@@ -209,20 +209,26 @@ pub async fn status(lab_dir: &Path, box_name: &str) -> Result<ExegolStatus> {
 
 async fn own_status(lab_dir: &Path, box_name: &str) -> ExegolStatus {
     let d = dir(lab_dir);
-    let image_present =
-        run_read("vagrant", &["box", "list"], None).await.map(|out| out.lines().any(|l| l.split_whitespace().next() == Some(box_name))).unwrap_or(false);
-    let (running, ip, lab_network) = if d.join("Vagrantfile").exists() {
-        match vm::status(&d, &[]).await {
-            Ok(s) => {
-                let first = s.machines.into_iter().next();
-                let ip = first.as_ref().map(|m| m.ip.clone()).unwrap_or_default();
-                let net = first.and_then(|m| m.interfaces.into_iter().next()).map(|i| i.network).unwrap_or_default();
-                (s.running, if s.running { ip } else { String::new() }, if s.running { net } else { String::new() })
-            }
-            Err(_) => (false, String::new(), String::new()),
+    let image_present = run_read("vagrant", &["box", "list"], None).await.map(|out| box_listed(&out, box_name)).unwrap_or(false);
+    let status = if d.join("Vagrantfile").exists() { vm::status(&d, &[]).await.ok() } else { None };
+    own_view(&d, image_present, status)
+}
+
+/// Whether `vagrant box list` output lists `box_name`.
+fn box_listed(out: &str, box_name: &str) -> bool {
+    out.lines().any(|l| l.split_whitespace().next() == Some(box_name))
+}
+
+/// The attacker's status from its own folder's VM status (None: never started, or unreadable).
+fn own_view(d: &Path, image_present: bool, status: Option<super::LabStatus>) -> ExegolStatus {
+    let (running, ip, lab_network) = match status {
+        Some(s) => {
+            let first = s.machines.into_iter().next();
+            let ip = first.as_ref().map(|m| m.ip.clone()).unwrap_or_default();
+            let net = first.and_then(|m| m.interfaces.into_iter().next()).map(|i| i.network).unwrap_or_default();
+            (s.running, if s.running { ip } else { String::new() }, if s.running { net } else { String::new() })
         }
-    } else {
-        (false, String::new(), String::new())
+        None => (false, String::new(), String::new()),
     };
     ExegolStatus { image_present, running, ip, lab_network, shell_cmd: format!("cd {} && vagrant ssh", ssh::sh_quote(&d.to_string_lossy())) }
 }
@@ -232,19 +238,24 @@ pub const QEMU_ATTACKER: &str = "On QEMU, the lab network links exactly two VMs,
 
 /// The controller standing in for the attacker on QEMU, in the same status shape.
 async fn controller_status(lab_vagrant_dir: &Path) -> Result<ExegolStatus> {
-    let controller = vm::status(lab_vagrant_dir, &[]).await?.machines.into_iter().find(|m| m.name == vm::CONTROLLER);
+    Ok(controller_view(lab_vagrant_dir, vm::status(lab_vagrant_dir, &[]).await?.machines))
+}
+
+/// The controller's status, in the attacker's shape, from the lab's machines.
+fn controller_view(lab_vagrant_dir: &Path, machines: Vec<super::Machine>) -> ExegolStatus {
+    let controller = machines.into_iter().find(|m| m.name == vm::CONTROLLER);
     let running = controller.as_ref().is_some_and(|m| m.state == "running");
     let (ip, lab_network) = match controller.filter(|_| running) {
         Some(m) => (m.ip.clone(), m.interfaces.into_iter().next().map(|i| i.network).unwrap_or_default()),
         None => (String::new(), String::new()),
     };
-    Ok(ExegolStatus {
+    ExegolStatus {
         image_present: true,
         running,
         ip,
         lab_network,
         shell_cmd: format!("cd {} && vagrant ssh {}", ssh::sh_quote(&lab_vagrant_dir.to_string_lossy()), vm::CONTROLLER),
-    })
+    }
 }
 
 /// Opens the player's terminal on an SSH session into the attacker.
@@ -336,5 +347,149 @@ mod tests {
         assert!(!valid_box("kali"));
         assert!(!valid_box("owner/name; rm -rf /"));
         assert!(!valid_box("owner/name\"\nconfig"));
+    }
+
+    fn temp_lab() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("cyberctf-attack-vm-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn machine(name: &str, state: &str, ip: &str) -> crate::runtime::Machine {
+        crate::runtime::Machine {
+            name: name.into(),
+            state: state.into(),
+            image: String::new(),
+            ip: ip.into(),
+            ports: Vec::new(),
+            interfaces: vec![crate::runtime::Interface { network: "lab".into(), ip: ip.into() }],
+            services: Vec::new(),
+            infra: false,
+        }
+    }
+
+    fn lab_status(running: bool, machines: Vec<crate::runtime::Machine>) -> crate::runtime::LabStatus {
+        crate::runtime::LabStatus {
+            running,
+            parked: None,
+            machines,
+            networks: Vec::new(),
+            url: None,
+            host: None,
+            expires_at: None,
+            place: None,
+            provider: None,
+            attacker: None,
+        }
+    }
+
+    #[test]
+    fn plan_needs_a_named_machine_and_a_network() {
+        assert!(plan("").unwrap_err().to_string().contains("names no machine"));
+        let no_net = "config.vm.define \"a\" do |m|\n  v.name = \"lab · a\"\nend\n";
+        assert!(plan(no_net).unwrap_err().to_string().contains("no network"));
+        // A /31 network has no room for anyone.
+        let tiny = "config.vm.define \"a\" do |m|\n  m.vm.network \"private_network\", ip: \"10.0.0.0\", netmask: \"255.255.255.254\", virtualbox__intnet: \"isoloom-lab-n\"\n  v.name = \"lab · a\"\nend\n";
+        assert!(plan(tiny).unwrap_err().to_string().contains("no subnet"));
+    }
+
+    #[test]
+    fn cidrs_and_masks() {
+        assert_eq!(super::parse_cidr("10.0.0.0/24"), Some(("10.0.0.0".parse().unwrap(), 24)));
+        assert_eq!(super::parse_cidr("10.0.0.0/31"), None);
+        assert_eq!(super::parse_cidr("10.0.0.0"), None);
+        assert_eq!(super::parse_cidr("x/24"), None);
+        assert_eq!(super::mask_of(0), Ipv4Addr::new(0, 0, 0, 0));
+        assert_eq!(super::mask_of(16), Ipv4Addr::new(255, 255, 0, 0));
+    }
+
+    #[test]
+    fn its_folder_lives_in_the_lab() {
+        let lab = std::path::Path::new("lab");
+        assert_eq!(super::dir(lab), lab.join(".cyberctf-attack-vm"));
+    }
+
+    #[tokio::test]
+    async fn starting_on_qemu_or_with_a_bad_box_runs_nothing() {
+        use super::super::providers::Provider;
+        let lab = temp_lab();
+        let mut lines = Vec::new();
+        super::start(&lab, &lab, Provider::Qemu, "kalilinux/rolling", |l| lines.push(l)).await.unwrap();
+        assert_eq!(lines, [super::QEMU_ATTACKER]);
+        let err = super::start(&lab, &lab, Provider::Virtualbox, "bad box", |_| {}).await.unwrap_err();
+        assert!(err.to_string().contains("invalid attack VM box"), "{err}");
+        // The lab's Vagrantfile is missing: an I/O error before anything starts.
+        let err = super::start(&lab, &lab, Provider::Virtualbox, "kalilinux/rolling", |_| {}).await.unwrap_err();
+        assert!(matches!(err, crate::error::Error::Io(_)), "{err}");
+        // A Vagrantfile without machines can't be planned.
+        std::fs::write(lab.join("Vagrantfile"), "").unwrap();
+        assert!(super::start(&lab, &lab, Provider::Virtualbox, "kalilinux/rolling", |_| {}).await.is_err());
+        assert!(!super::dir(&lab).exists());
+        std::fs::remove_dir_all(lab).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_never_started_attacker_has_nothing_to_stop_park_or_resume() {
+        use super::super::model::Park;
+        let lab = temp_lab();
+        let mut lines = Vec::new();
+        super::stop(&lab, |l| lines.push(l)).await;
+        super::park(&lab, Park::Pause, |l| lines.push(l)).await.unwrap();
+        super::resume(&lab, |l| lines.push(l)).await.unwrap();
+        assert!(lines.is_empty());
+        std::fs::remove_dir_all(lab).unwrap();
+    }
+
+    #[test]
+    fn the_shell_goes_to_the_attacker_or_the_controller_on_qemu() {
+        let lab = temp_lab();
+        assert!(super::shell_command(&lab).unwrap_err().to_string().contains("isn't started"));
+        std::fs::create_dir_all(super::dir(&lab)).unwrap();
+        std::fs::write(super::dir(&lab).join("Vagrantfile"), "").unwrap();
+        let cmd = super::shell_command(&lab).unwrap();
+        assert!(cmd.starts_with("sh -c "), "{cmd}");
+        assert!(cmd.contains("exec vagrant ssh") && !cmd.contains("isoloom-controller"), "{cmd}");
+        // On QEMU, the controller is the attacker.
+        let vagrant = crate::runtime::lab::vagrant_dir(&lab, crate::runtime::Runtime::Vm);
+        std::fs::create_dir_all(vagrant.join(".vagrant").join("machines").join("isoloom-controller").join("qemu")).unwrap();
+        let cmd = super::shell_command(&lab).unwrap();
+        assert!(cmd.contains("exec vagrant ssh isoloom-controller"), "{cmd}");
+        std::fs::remove_dir_all(lab).unwrap();
+    }
+
+    #[test]
+    fn a_box_is_listed_by_its_first_word() {
+        let out = "kalilinux/rolling (virtualbox, 2024.4.0)\ngeneric/debian12  (virtualbox, 4.3.12)\n";
+        assert!(super::box_listed(out, "kalilinux/rolling"));
+        assert!(super::box_listed(out, "generic/debian12"));
+        assert!(!super::box_listed(out, "kalilinux"));
+        assert!(!super::box_listed("There are no installed boxes!", "kalilinux/rolling"));
+    }
+
+    #[test]
+    fn its_own_status_shows_an_address_only_while_running() {
+        let d = std::path::Path::new("attack");
+        let up = super::own_view(d, true, Some(lab_status(true, vec![machine("attacker", "running", "10.0.0.2")])));
+        assert!(up.image_present && up.running);
+        assert_eq!((up.ip.as_str(), up.lab_network.as_str()), ("10.0.0.2", "lab"));
+        assert!(up.shell_cmd.ends_with("&& vagrant ssh"), "{}", up.shell_cmd);
+        let down = super::own_view(d, false, Some(lab_status(false, vec![machine("attacker", "poweroff", "10.0.0.2")])));
+        assert!(!down.running && down.ip.is_empty() && down.lab_network.is_empty());
+        let never = super::own_view(d, false, None);
+        assert!(!never.running && never.ip.is_empty());
+        let empty = super::own_view(d, true, Some(lab_status(true, Vec::new())));
+        assert!(empty.running && empty.ip.is_empty());
+    }
+
+    #[test]
+    fn on_qemu_the_controller_stands_in() {
+        let d = std::path::Path::new("lab");
+        let s = super::controller_view(d, vec![machine("dc01", "running", "10.0.0.10"), machine("isoloom-controller", "running", "10.0.0.253")]);
+        assert!(s.running && s.image_present);
+        assert_eq!((s.ip.as_str(), s.lab_network.as_str()), ("10.0.0.253", "lab"));
+        assert!(s.shell_cmd.ends_with("vagrant ssh isoloom-controller"), "{}", s.shell_cmd);
+        let off = super::controller_view(d, vec![machine("isoloom-controller", "poweroff", "10.0.0.253")]);
+        assert!(!off.running && off.ip.is_empty());
+        assert!(!super::controller_view(d, Vec::new()).running);
     }
 }
