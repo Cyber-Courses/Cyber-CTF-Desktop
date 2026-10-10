@@ -65,3 +65,21 @@ pub fn end_shell_session_blocking(container: &str, tag: &str) {
 pub fn valid_image(image: &str) -> bool {
     exegol::valid_image(image)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ShellKind, valid_image};
+
+    #[test]
+    fn the_ui_names_the_shell_kinds_in_camel_case() {
+        assert!(matches!(serde_json::from_str::<ShellKind>("\"lab\"").unwrap(), ShellKind::Lab));
+        assert!(matches!(serde_json::from_str::<ShellKind>("\"attackVm\"").unwrap(), ShellKind::AttackVm));
+        assert!(serde_json::from_str::<ShellKind>("\"attack_vm\"").is_err());
+    }
+
+    #[test]
+    fn attack_box_images_are_checked_like_the_commands_check_them() {
+        assert!(valid_image("nwodtuhs/exegol:free"));
+        assert!(!valid_image("-x"));
+    }
+}
