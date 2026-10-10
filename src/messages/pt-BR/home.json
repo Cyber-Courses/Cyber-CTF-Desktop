@@ -1,90 +1,90 @@
 {
   "greeting": {
-    "morning": "Good morning",
-    "afternoon": "Good afternoon",
-    "evening": "Good evening"
+    "morning": "Bom dia",
+    "afternoon": "Boa tarde",
+    "evening": "Boa noite"
   },
   "title": {
     "named": "{greeting}, <em>{name}.</em>",
     "plain": "{greeting}.",
-    "welcome": "Welcome to Cyber <em>CTF.</em>"
+    "welcome": "Bem-vindo ao Cyber <em>CTF.</em>"
   },
   "status": {
-    "checking": "Checking this machine…",
-    "setUpDocker": "Set up Docker to start running labs.",
+    "checking": "Verificando esta máquina…",
+    "setUpDocker": "Configure o Docker para começar a rodar labs.",
     "running": {
-      "one": "1 lab running on this machine.",
-      "other": "{count} labs running on this machine."
+      "one": "1 lab rodando nesta máquina.",
+      "other": "{count} labs rodando nesta máquina."
     },
-    "ready": "This machine is ready. Pick a lab to attack."
+    "ready": "Esta máquina está pronta. Escolha um lab para atacar."
   },
   "actions": {
-    "setUp": "Set up this machine",
-    "setUpFailed": "Couldn't open machine setup",
-    "browse": "Browse labs"
+    "setUp": "Configurar esta máquina",
+    "setUpFailed": "Não foi possível abrir a configuração da máquina",
+    "browse": "Ver labs"
   },
   "stats": {
     "cpu": "CPU",
-    "memory": "Memory",
-    "disk": "Disk",
-    "cores": "{cores} cores",
-    "usage": "{used} of {total} GB"
+    "memory": "Memória",
+    "disk": "Disco",
+    "cores": "{cores} núcleos",
+    "usage": "{used} de {total} GB"
   },
   "capacity": {
     "total": "{total} GB",
-    "cloud": "Cloud",
-    "server": "Server",
+    "cloud": "Nuvem",
+    "server": "Servidor",
     "ok": {
-      "title": "Ready for labs",
-      "detail": "Plenty of RAM for container labs and most VM labs."
+      "title": "Pronta para labs",
+      "detail": "RAM de sobra para labs de contêiner e a maioria dos labs de VM."
     },
     "tight": {
-      "title": "Enough for container labs",
-      "detail": "Heavy multi-VM labs or the full Exegol image may run slowly here."
+      "title": "Suficiente para labs de contêiner",
+      "detail": "Labs pesados com várias VMs ou a imagem completa do Exegol podem ficar lentos aqui."
     },
     "low": {
-      "title": "Low on RAM for labs",
-      "detail": "Labs may struggle on this machine. For heavier labs, run them in the cloud or on a server."
+      "title": "Pouca RAM para labs",
+      "detail": "Os labs podem ter dificuldade nesta máquina. Para labs mais pesados, rode-os na nuvem ou num servidor."
     }
   },
   "running": {
-    "title": "Running now",
+    "title": "Rodando agora",
     "labs": {
       "one": "1 lab",
       "other": "{count} labs"
     },
     "containers": {
-      "one": "1 container",
-      "other": "{count} containers"
+      "one": "1 contêiner",
+      "other": "{count} contêineres"
     },
-    "empty": "Nothing running. Start a lab from its page."
+    "empty": "Nada rodando. Inicie um lab pela página dele."
   },
   "deploy": {
-    "inProgress": "In progress",
-    "view": "View",
-    "running": "running"
+    "inProgress": "Em andamento",
+    "view": "Ver",
+    "running": "rodando"
   },
   "machine": {
-    "title": "This machine",
-    "open": "Open",
-    "dockerEngine": "Docker engine",
-    "running": "Running",
-    "stopped": "Stopped",
-    "containers": "Containers",
-    "none": "none",
-    "cores": "Cores"
+    "title": "Esta máquina",
+    "open": "Abrir",
+    "dockerEngine": "Engine do Docker",
+    "running": "Rodando",
+    "stopped": "Parado",
+    "containers": "Contêineres",
+    "none": "nenhum",
+    "cores": "Núcleos"
   },
   "jumpBack": {
-    "title": "Jump back in",
-    "meta": "recently launched",
-    "lastRun": "{slug} · last run {ago}",
-    "resume": "Resume"
+    "title": "Continue de onde parou",
+    "meta": "iniciados recentemente",
+    "lastRun": "{slug} · última execução {ago}",
+    "resume": "Retomar"
   },
   "labs": {
     "title": "Labs",
-    "all": "All labs",
-    "loading": "Loading labs…",
-    "empty": "No labs published yet."
+    "all": "Todos os labs",
+    "loading": "Carregando labs…",
+    "empty": "Nenhum lab publicado ainda."
   },
-  "signInHint": "Sign in (bottom-left) so labs launched from the website run here."
+  "signInHint": "Entre (canto inferior esquerdo) para que os labs iniciados pelo site rodem aqui."
 }
