@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Container, Server, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelHeader } from "@/components/ui/panel";
@@ -12,6 +12,7 @@ import { useMachineFormat } from "@/features/machine/use-machine-format";
 import { useT } from "@/lib/i18n";
 import { apiQuery, machineWorkloadStop, machineWorkloads, type Workload } from "@/lib/tauri";
 import { ignore } from "@/lib/failure";
+import { usePoll } from "@/lib/use-poll";
 
 /** What's running on this machine (Docker and Vagrant), with a Stop per lab. Polled every 8s,
  *  and again whenever `refreshKey` changes (e.g. after a setup test). */
@@ -22,24 +23,7 @@ export function RunningNowPanel({ refreshKey }: { refreshKey: unknown }) {
   const [stopping, setStopping] = useState<string | null>(null);
   // One workloads read at a time: the read shells out to docker/vagrant and can be slow, so the
   // 8s poll must not stack reads on top of one still in flight.
-  const loading = useRef(false);
-  const alive = useRef(true);
-  useEffect(() => () => void (alive.current = false), []);
-  const load = useCallback(() => {
-    if (loading.current) return;
-    loading.current = true;
-    machineWorkloads()
-      .then((w) => alive.current && setWorkloads(w))
-      .catch(() => alive.current && setWorkloads([]))
-      .finally(() => {
-        loading.current = false;
-      });
-  }, []);
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 8000);
-    return () => clearInterval(id);
-  }, [load, refreshKey]);
+  const load = usePoll(machineWorkloads, 8000, { serial: true, restartKey: refreshKey, onValue: setWorkloads, onError: () => setWorkloads([]) });
 
   // Lab titles for the list (the runtime only knows ids).
   const [titles, setTitles] = useState<Record<string, string>>({});
