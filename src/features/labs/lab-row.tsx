@@ -1,11 +1,12 @@
 "use client";
 
+import { useState, type ButtonHTMLAttributes } from "react";
 import { ChevronRight, ExternalLink, LogIn, Wrench } from "lucide-react";
 import { difficultyLabel, type Lab } from "@/features/labs/use-labs";
-import { runPlaces, runsNatively } from "@/features/labs/lab-runtime";
+import { runsNatively } from "@/features/labs/lab-runtime";
+import { rowPhase, type RowPhase } from "@/features/labs/lab-row-state";
+import { RunPlaceIcons } from "@/features/labs/run-place-icons";
 import { machineOpenSetup, type LabStatus } from "@/lib/tauri";
-import { cn } from "@/lib/utils";
-import { useState, type ButtonHTMLAttributes } from "react";
 import { Button } from "@/components/ui/button";
 import { LevelBadge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/ui/status-pill";
@@ -17,17 +18,25 @@ import { useT } from "@/lib/i18n";
 // Home imports it from here, beside the row it feeds.
 export { emulatorReady } from "@/features/labs/lab-runtime";
 
+const PHASE_WORDS = {
+  starting: "labs.state.startingEllipsis",
+  running: "labs.state.running",
+  paused: "labs.state.paused",
+  shutDown: "labs.state.shutDown",
+  solved: "labs.state.solved",
+  notStarted: "labs.state.notStarted",
+} as const satisfies Record<Exclude<RowPhase, "busy">, string>;
+
 /** A row action: compact, and it doesn't open the row when clicked. */
 function RowButton({
-  tone = "default",
+  danger = false,
   onClick,
   ...props
-}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & { tone?: "default" | "primary" | "danger"; onClick: () => void }) {
-  const variant = tone === "primary" ? "primary" : tone === "danger" ? "destructive" : "outline";
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & { danger?: boolean; onClick: () => void }) {
   return (
     <Button
       size="xs"
-      variant={variant}
+      variant={danger ? "destructive" : "outline"}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -95,19 +104,8 @@ export function LabRow({
   const doing = busy ? `${(operation && OPERATION_STATUS[operation]) ?? t("labs.state.working")}…` : null;
   // Stop deletes the lab's machines: ask first, as the lab's own page does.
   const [confirmingStop, setConfirmingStop] = useState(false);
-  const stateLabel = busy
-    ? doing
-    : deploying && !running
-      ? t("labs.state.startingEllipsis")
-      : running
-        ? t("labs.state.running")
-        : parked
-          ? parked === "pause"
-            ? t("labs.state.paused")
-            : t("labs.state.shutDown")
-          : solved
-            ? t("labs.state.solved")
-            : t("labs.state.notStarted");
+  const phase = rowPhase({ status, busy, deploying, solved });
+  const stateLabel = phase === "busy" ? doing : t(PHASE_WORDS[phase]);
 
   return (
     <div className="@container border-t border-border first:border-t-0">
@@ -125,7 +123,7 @@ export function LabRow({
         className="group grid h-13 cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto_1rem] items-center gap-3.5 px-4 text-[0.8125rem] outline-none transition-colors hover:bg-glass focus-visible:bg-glass focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @min-[44rem]:grid-cols-[auto_minmax(0,1fr)_8rem_5.5rem_7rem_9.5rem_1rem]"
       >
         <span title={stateLabel ?? undefined} className="flex w-2 justify-center">
-          {busy || (deploying && !running) ? (
+          {phase === "busy" || phase === "starting" ? (
             <StatusDot tone="warn" pulse />
           ) : running ? (
             <StatusDot tone="ok" />
@@ -169,24 +167,7 @@ export function LabRow({
             <>
               {/* Fixed to the longest label ("docker") so the place icons line up from row to row. */}
               <span className="w-[6ch] shrink-0">{rt.runtime === "VM" ? "vm" : "docker"}</span>
-              <span className="inline-flex items-center gap-1">
-                {/* Every place is shown: where it runs (green), where it can (jewel), and where
-                    it can't (greyed), so the row reads as the full set of options at a glance. */}
-                {runPlaces(rt, hostArch, emulates).map(({ key, icon: Icon, available }) => {
-                  const label = t(`labs.places.${key}`);
-                  const inUse = running && status?.place === key;
-                  const hint = inUse
-                    ? t("labs.row.runningOn", { where: status?.host ?? label })
-                    : available
-                      ? t("labs.row.canRunOn", { where: label })
-                      : t("labs.row.notAvailable", { where: label });
-                  return (
-                    <span key={key} title={hint} aria-label={hint} className="inline-flex">
-                      <Icon className={cn("size-3", inUse ? "text-success" : available ? "text-jewel-text" : "text-faint opacity-50")} />
-                    </span>
-                  );
-                })}
-              </span>
+              <RunPlaceIcons runtime={rt} hostArch={hostArch} emulates={emulates} running={running} status={status} />
             </>
           )}
         </span>
@@ -199,7 +180,7 @@ export function LabRow({
                   <ExternalLink className="size-3" /> {t("labs.row.openButton")}
                 </RowButton>
               )}
-              <RowButton tone="danger" onClick={() => setConfirmingStop(true)} disabled={busy}>
+              <RowButton danger onClick={() => setConfirmingStop(true)} disabled={busy}>
                 {doing ?? t("labs.row.stop")}
               </RowButton>
             </>
