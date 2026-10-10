@@ -41,8 +41,8 @@ on:
         description: "Only delete the submission open in Partner Center (a refused or unwanted draft)"
         type: boolean
         default: false
-  # Every published release (release.yml): app version X.Y.Z ships as MSIX (X+1).Y.Z.0, which
-  # stays above the 1.1.0.0 the Store got by hand and keeps rising with each release.
+  # Every published release (release.yml): app version X.Y.Z ships as MSIX X.Y.Z.0. (Until 0.3.16
+  # it was (X+1).Y.Z.0; the app moved to 1.4.0 so both numbers match.)
   workflow_call:
     inputs:
       tag:
@@ -85,8 +85,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "${{ inputs.tag }}" ]; then
+            # The same number as everywhere else (1.4.0 ships as 1.4.0.0).
             IFS=. read -r major minor patch <<< "${TAG#v}"
-            echo "version=$((major + 1)).${minor}.${patch}.0" >> "$GITHUB_OUTPUT"
+            echo "version=${major}.${minor}.${patch}.0" >> "$GITHUB_OUTPUT"
           else
             echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           fi
@@ -180,8 +181,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "${{ inputs.tag }}" ]; then
+            # The same number as everywhere else (1.4.0 ships as 1.4.0.0).
             IFS=. read -r major minor patch <<< "${TAG#v}"
-            echo "version=$((major + 1)).${minor}.${patch}.0" >> "$GITHUB_OUTPUT"
+            echo "version=${major}.${minor}.${patch}.0" >> "$GITHUB_OUTPUT"
           else
             echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           fi
