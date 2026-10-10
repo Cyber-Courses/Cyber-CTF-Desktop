@@ -37,7 +37,7 @@ const SIZES: Record<Size, string> = {
   "icon-sm": "size-7 [&_svg:not([class*='size-'])]:size-3.5",
 };
 
-export function buttonVariants({ variant = "default", size = "default", className }: { variant?: Variant; size?: Size; className?: string } = {}) {
+function buttonVariants({ variant = "default", size = "default", className }: { variant?: Variant; size?: Size; className?: string } = {}) {
   return cn(BASE, VARIANTS[variant], variant !== "link" && SIZES[size], className);
 }
 

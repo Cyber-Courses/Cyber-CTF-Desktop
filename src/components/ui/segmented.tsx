@@ -40,20 +40,3 @@ export function Segmented<T extends string | number | null>({
     </div>
   );
 }
-
-/** Filter chips: a selected chip is filled with ink. */
-export function Chip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onClick}
-      className={cn(
-        "h-7 rounded-full px-3 text-[0.75rem] transition-colors",
-        selected ? "bg-foreground text-background" : "bg-glass text-muted-foreground shadow-[inset_0_0_0_1px_var(--border)] hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
-  );
-}

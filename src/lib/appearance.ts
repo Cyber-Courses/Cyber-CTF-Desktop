@@ -21,7 +21,7 @@ function parse(v: string | null): Appearance {
   return v === "black" || v === "light" ? v : "dark";
 }
 
-export function getAppearance(): Appearance {
+function getAppearance(): Appearance {
   try {
     return parse(localStorage.getItem(KEY));
   } catch {
@@ -29,7 +29,7 @@ export function getAppearance(): Appearance {
   }
 }
 
-export function applyAppearance(mode: Appearance) {
+function applyAppearance(mode: Appearance) {
   const root = document.documentElement;
   root.classList.remove("black", "light");
   if (mode !== "dark") root.classList.add(mode);
@@ -40,12 +40,10 @@ export function applyAppearance(mode: Appearance) {
  *  system's colour: light over a dark app). No-op outside the desktop app. */
 function applyWindowTheme(mode: Appearance) {
   if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
-  import("@tauri-apps/api/window")
-    .then(({ getCurrentWindow }) => getCurrentWindow().setTheme(mode === "light" ? "light" : "dark"))
-    .catch(() => {});
+  import("@tauri-apps/api/window").then(({ getCurrentWindow }) => getCurrentWindow().setTheme(mode === "light" ? "light" : "dark")).catch(() => {});
 }
 
-export function setAppearance(mode: Appearance) {
+function setAppearance(mode: Appearance) {
   try {
     localStorage.setItem(KEY, mode);
   } catch {

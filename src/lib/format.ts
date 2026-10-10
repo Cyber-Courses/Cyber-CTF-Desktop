@@ -37,13 +37,3 @@ export function formatBytes(b: number) {
   if (b >= 1e6) return translate("common.units.megabytes", { n: Math.round(b / 1e6) });
   return translate("common.units.kilobytes", { n: Math.max(1, Math.round(b / 1e3)) });
 }
-
-/** 3d 4h, 5h 12m, 42m. */
-export function formatUptime(secs: number) {
-  const d = Math.floor(secs / 86400);
-  const h = Math.floor((secs % 86400) / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  if (d) return translate("common.units.uptimeDays", { days: d, hours: h });
-  if (h) return translate("common.units.uptimeHours", { hours: h, minutes: m });
-  return translate("common.units.uptimeMinutes", { minutes: m });
-}

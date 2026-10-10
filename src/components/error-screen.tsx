@@ -25,7 +25,7 @@ function errorDetails(error: Error & { digest?: string }): string {
  * A crash, in the app's own style (a lit panel, the message in a log well):
  * what went wrong, a retry, and the details to copy. Used inline in a step and as a full window.
  */
-export function ErrorPanel({
+function ErrorPanel({
   error,
   retry,
   title: titleProp,
