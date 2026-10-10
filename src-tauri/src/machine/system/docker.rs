@@ -168,4 +168,18 @@ mod tests {
         assert_eq!(context_engine("podman-machine-default", "macos"), Some("podman"));
         assert_eq!(context_engine("rancher-desktop", "windows"), Some("rancher-desktop"));
     }
+
+    #[tokio::test]
+    async fn an_engine_the_launcher_cannot_start_is_refused_without_running_anything() {
+        let err = launch("some-engine").await.unwrap_err();
+        assert!(err.to_string().contains("can't start some-engine here"));
+    }
+
+    #[test]
+    fn more_engines_by_name() {
+        assert_eq!(engine_named("podman", "default"), "podman");
+        assert_eq!(engine_named("Ubuntu", "rancher-desktop"), "rancher-desktop");
+        assert_eq!(context_engine("colima", "macos"), Some("colima"));
+        assert_eq!(context_engine("default", "macos"), None);
+    }
 }

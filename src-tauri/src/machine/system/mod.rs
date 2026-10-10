@@ -141,6 +141,11 @@ fn first_line(out: &str) -> Option<String> {
 }
 
 async fn package_manager() -> PkgManager {
+    pkg_manager(package_manager_version().await)
+}
+
+/// This OS's package manager, given its `--version` output when it is installed.
+fn pkg_manager(version: Option<String>) -> PkgManager {
     let name = if cfg!(target_os = "windows") {
         "winget"
     } else if cfg!(target_os = "linux") {
@@ -148,7 +153,6 @@ async fn package_manager() -> PkgManager {
     } else {
         "Homebrew"
     };
-    let version = package_manager_version().await;
     let installed = version.is_some();
     let version = version.and_then(|v| first_line(&v)).filter(|v| !v.is_empty());
     PkgManager { name: name.to_string(), installed, version }
@@ -203,5 +207,19 @@ mod tests {
     fn a_version_is_the_first_line_trimmed() {
         assert_eq!(super::first_line("Homebrew 4.6.3 \nHomebrew/core\n").as_deref(), Some("Homebrew 4.6.3"));
         assert_eq!(super::first_line(""), None);
+    }
+
+    #[test]
+    fn the_package_manager_reports_its_first_version_line() {
+        let pm = super::pkg_manager(Some("Homebrew 4.6.3\nHomebrew/core\n".into()));
+        assert!(pm.installed);
+        assert_eq!(pm.version.as_deref(), Some("Homebrew 4.6.3"));
+        assert!(!pm.name.is_empty());
+        let empty = super::pkg_manager(Some(String::new()));
+        assert!(empty.installed && empty.version.is_none());
+        let missing = super::pkg_manager(None);
+        assert!(!missing.installed && missing.version.is_none());
+        let v = serde_json::to_value(super::Tool { installed: true, version: Some("1".into()) }).unwrap();
+        assert_eq!(v, serde_json::json!({ "installed": true, "version": "1" }));
     }
 }

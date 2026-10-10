@@ -43,17 +43,22 @@ pub async fn image_download_size(image: String) -> Option<u64> {
     let url = format!("https://hub.docker.com/v2/repositories/{repo}/tags/{tag}");
     let res = reqwest::Client::new().get(url).timeout(Duration::from_secs(8)).send().await.ok()?;
     let v: serde_json::Value = res.error_for_status().ok()?.json().await.ok()?;
+    size_for_arch(&v, hub_arch())
+}
+
+/// The size Docker Hub's tag description gives for `arch`, when it gives one.
+fn size_for_arch(v: &serde_json::Value, arch: &str) -> Option<u64> {
     v.get("images")?
         .as_array()?
         .iter()
-        .find(|i| i.get("architecture").and_then(|a| a.as_str()) == Some(hub_arch()))
+        .find(|i| i.get("architecture").and_then(|a| a.as_str()) == Some(arch))
         .and_then(|i| i.get("size")?.as_u64())
         .filter(|s| *s > 0)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::hub_ref;
+    use super::{hub_arch, hub_ref, image_download_size, size_for_arch};
 
     #[test]
     fn maps_image_references_to_docker_hub() {
@@ -64,5 +69,25 @@ mod tests {
         assert_eq!(r("docker.io/kalilinux/kali-rolling:2026.3").as_deref(), Some("kalilinux/kali-rolling:2026.3"));
         assert_eq!(r("ghcr.io/org/image:1"), None);
         assert_eq!(r("localhost:5000/x"), None);
+    }
+
+    #[test]
+    fn the_size_is_this_architectures_and_never_zero() {
+        let v = serde_json::json!({ "images": [
+            { "architecture": "amd64", "size": 1000 },
+            { "architecture": "arm64", "size": 0 },
+        ] });
+        assert_eq!(size_for_arch(&v, "amd64"), Some(1000));
+        assert_eq!(size_for_arch(&v, "arm64"), None);
+        assert_eq!(size_for_arch(&v, "riscv64"), None);
+        assert_eq!(size_for_arch(&serde_json::json!({}), "amd64"), None);
+        assert!(!hub_arch().is_empty());
+        assert_eq!(hub_ref("a/b@sha256:abc").map(|r| r.1).as_deref(), Some("latest"));
+    }
+
+    #[tokio::test]
+    async fn an_invalid_or_foreign_image_has_no_size_without_asking() {
+        assert_eq!(image_download_size("bad image; rm -rf /".into()).await, None);
+        assert_eq!(image_download_size("ghcr.io/org/image:1".into()).await, None);
     }
 }

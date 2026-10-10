@@ -138,7 +138,53 @@ pub async fn machine_selftest(app: AppHandle, kind: Kind, provider: Option<Provi
 
 #[cfg(test)]
 mod tests {
-    use super::explain;
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    /// A reporter whose events land in a list.
+    fn reporter() -> (Reporter, Arc<Mutex<Vec<serde_json::Value>>>) {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        let channel = Channel::new(move |body| {
+            if let tauri::ipc::InvokeResponseBody::Json(json) = body {
+                sink.lock().unwrap().push(serde_json::from_str(&json).unwrap());
+            }
+            Ok(())
+        });
+        (Reporter(channel), seen)
+    }
+
+    fn states(seen: &Mutex<Vec<serde_json::Value>>) -> Vec<String> {
+        seen.lock().unwrap().iter().map(|e| format!("{}:{}", e["step"].as_str().unwrap(), e["state"].as_str().unwrap())).collect()
+    }
+
+    #[tokio::test]
+    async fn a_step_reports_running_then_ok_or_fail() {
+        let (r, seen) = reporter();
+        let v = r.step("one", "First", async { Ok((7, Some("fine".into()))) }).await.unwrap();
+        assert_eq!(v, 7);
+        let err = r.step::<()>("two", "Second", async { Err(Error::Invalid("Cannot connect to the Docker daemon".into())) }).await.unwrap_err();
+        assert!(err.to_string().contains("Docker daemon"));
+        assert_eq!(states(&seen), ["one:running", "one:ok", "two:running", "two:fail"]);
+        let events = seen.lock().unwrap();
+        assert_eq!(events[1]["detail"], "fine");
+        assert!(events[3]["detail"].as_str().unwrap().starts_with("The container engine isn't reachable"));
+    }
+
+    #[test]
+    fn progress_lines_are_trimmed_and_short_and_cleanup_reports_only_after_a_pass() {
+        let (r, seen) = reporter();
+        r.progress("box", "Box", "   ".into());
+        r.progress("box", "Box", format!("  {}  ", "x".repeat(500)));
+        r.cleanup::<()>("Clean", &Ok(()), Ok(()), Some("kept".into()));
+        r.cleanup::<()>("Clean", &Ok(()), Err(Error::Invalid("left over".into())), None);
+        r.cleanup::<()>("Clean", &Err(Error::Invalid("x".into())), Ok(()), None);
+        assert_eq!(states(&seen), ["box:running", "cleanup:ok", "cleanup:fail"]);
+        let events = seen.lock().unwrap();
+        assert_eq!(events[0]["detail"].as_str().unwrap().chars().count(), PROGRESS_MAX);
+        assert_eq!(events[2]["detail"], "left over");
+        let _ = arm();
+    }
 
     #[test]
     fn kvm_failure_gets_a_hint_and_keeps_the_details() {
