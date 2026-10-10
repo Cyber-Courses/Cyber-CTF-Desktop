@@ -21,7 +21,7 @@ use crate::account::auth;
 use crate::account::colocation;
 use crate::error::{Error, Result};
 use crate::labs;
-use crate::runtime::server;
+use crate::runtime::{Runtime, server};
 
 /// A stable identifier for this installation, generated once and kept in the app data
 /// dir. It is the merge key for the agent, so reinstalling re-registers the same machine
@@ -34,12 +34,17 @@ fn install_id(app: &AppHandle) -> Result<String> {
             return Ok(trimmed.to_string());
         }
     }
-    let id: String = (0..16).map(|_| format!("{:02x}", rand::random::<u8>())).collect();
+    let id = random_hex();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(&path, &id)?;
     Ok(id)
+}
+
+/// 16 random bytes as hex: install ids, co-location tokens and nonces.
+fn random_hex() -> String {
+    (0..16).map(|_| format!("{:02x}", rand::random::<u8>())).collect()
 }
 
 /// A human label for this machine (editable server-side later). Not an identifier.
@@ -116,11 +121,6 @@ async fn update_state(session_id: &str, state: &str, p: Progress<'_>) -> Result<
     .map(|_| ())
 }
 
-fn random_hex() -> String {
-    (0..16).map(|_| format!("{:02x}", rand::random::<u8>())).collect()
-}
-
-/// Claims one pending session and runs its lab on this machine.
 /// Cloud-launch confirmations awaiting the user's answer, keyed by session id. The agent inserts
 /// a sender and awaits it; `confirm_launch` (from the UI) resolves it.
 fn pending_confirmations() -> &'static Mutex<HashMap<String, oneshot::Sender<bool>>> {
@@ -157,6 +157,61 @@ async fn confirm_cloud_launch(app: &AppHandle, session_id: &str, repo: &str, com
     approved
 }
 
+/// Where a claimed launch runs: the target picked on the website (one of this launcher's hosts
+/// or cloud accounts); else VM labs go to the default server host and Docker labs run here.
+fn launch_host(app: &AppHandle, claim: &Value) -> Result<Option<String>> {
+    Ok(match claim["target"].as_str() {
+        Some(target) => Some(
+            server::host_name(app, target).map(|_| target.to_string()).ok_or_else(|| Error::Invalid("that host is no longer set up in the launcher".into()))?,
+        ),
+        None => (claim["runtime"] == "VM").then(|| server::default_host(app)).flatten(),
+    })
+}
+
+/// Running on a cloud account costs money, so a website launch onto one isn't auto-run: ask
+/// the user to confirm on this machine first (local and server targets still run unattended).
+async fn confirm_if_cloud(app: &AppHandle, session_id: &str, claim: &Value, host: Option<&str>) -> Result<()> {
+    let Some(id) = host.filter(|id| server::host_provider(app, id).is_some_and(|p| p.is_cloud())) else { return Ok(()) };
+    let target = server::host_name(app, id).unwrap_or_else(|| id.to_string());
+    let repo = claim["repository"].as_str().unwrap_or("");
+    let commit = claim["commit"].as_str().unwrap_or("");
+    if confirm_cloud_launch(app, session_id, repo, commit, &target).await {
+        Ok(())
+    } else {
+        Err(Error::Invalid(format!("Launch on {target} was not confirmed on this machine.")))
+    }
+}
+
+fn claim_runtime(claim: &Value) -> Runtime {
+    if claim["runtime"] == "VM" { Runtime::Vm } else { Runtime::Docker }
+}
+
+/// Stops a claimed lab that must not keep running under a failed session.
+async fn tear_down(app: &AppHandle, lab_id: Option<&str>, runtime: Runtime) {
+    if let Some(id) = lab_id {
+        let _ = crate::runtime::stop_lab(app, id, runtime).await;
+    }
+}
+
+/// Tells the backend the lab runs: where its target is reachable, plus a loopback control
+/// endpoint + one-time token/nonce so the website can verify co-location before trusting the
+/// 127.0.0.1 URL. The relay path for a remote/headless agent is the next step.
+async fn report_running(app: &AppHandle, session_id: &str, host: Option<&str>, url: Option<&str>) -> Result<()> {
+    let running_on = host.and_then(|h| server::host_name(app, h)).map(|n| format!("Running on {n}"));
+    let token = random_hex();
+    let nonce = random_hex();
+    let control_url = colocation::serve(token.clone(), nonce.clone()).await.ok().map(|port| format!("http://127.0.0.1:{port}"));
+    let progress = Progress {
+        local_url: url,
+        control_url: control_url.as_deref(),
+        token: Some(&token),
+        nonce: Some(&nonce),
+        message: Some(running_on.as_deref().unwrap_or("Running on your machine")),
+    };
+    update_state(session_id, "RUNNING", progress).await
+}
+
+/// Claims one pending session and runs its lab on this machine.
 async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
     let data = api::graphql(
         "mutation ($id: ID!) { claimLaunch(sessionId: $id) { labId runtime repository commit target env { name value } } }",
@@ -164,75 +219,34 @@ async fn claim_and_run(app: &AppHandle, session_id: &str) -> Result<()> {
         true,
     )
     .await?;
+    let claim = &data["claimLaunch"];
     update_state(session_id, "PULLING", Progress { message: Some("Preparing the lab on your machine"), ..Default::default() }).await?;
-    // Run the lab locally and report where its target is reachable, plus a loopback control
-    // endpoint + one-time token/nonce so the website can verify co-location before trusting
-    // the 127.0.0.1 URL. The relay path for a remote/headless agent is the next step.
-    // Where to run it: the target picked on the website (one of this launcher's hosts or
-    // cloud accounts); else VM labs go to the default server host and Docker labs run here.
-    let host = match data["claimLaunch"]["target"].as_str() {
-        Some(target) => Some(
-            server::host_name(app, target).map(|_| target.to_string()).ok_or_else(|| Error::Invalid("that host is no longer set up in the launcher".into()))?,
-        ),
-        None => (data["claimLaunch"]["runtime"] == "VM").then(|| server::default_host(app)).flatten(),
-    };
-    // Running on a cloud account costs money, so a website launch onto one isn't auto-run: ask
-    // the user to confirm on this machine first (local and server targets still run unattended).
-    if let Some(id) = host.as_deref()
-        && server::host_provider(app, id).is_some_and(|p| p.is_cloud())
-    {
-        let target = server::host_name(app, id).unwrap_or_else(|| id.to_string());
-        let repo = data["claimLaunch"]["repository"].as_str().unwrap_or("");
-        let commit = data["claimLaunch"]["commit"].as_str().unwrap_or("");
-        if !confirm_cloud_launch(app, session_id, repo, commit, &target).await {
-            return Err(Error::Invalid(format!("Launch on {target} was not confirmed on this machine.")));
-        }
-    }
+    let host = launch_host(app, claim)?;
+    confirm_if_cloud(app, session_id, claim, host.as_deref()).await?;
     let image = host.as_ref().map(|_| DEFAULT_ATTACK_IMAGE);
-    let runtime = if data["claimLaunch"]["runtime"] == "VM" { crate::runtime::Runtime::Vm } else { crate::runtime::Runtime::Docker };
-    let lab_id = data["claimLaunch"]["labId"].as_str().map(str::to_string);
+    let runtime = claim_runtime(claim);
+    let lab_id = claim["labId"].as_str();
     // A lab already up here is refused below, and must be left alone; anything else this start
     // brought up before failing (one unhealthy service, say) is torn down, or it would keep
     // running under a FAILED session and every later launch of it would be refused.
-    let was_running = match lab_id.as_deref() {
+    let was_running = match lab_id {
         Some(id) => crate::runtime::lab_running_here(app, id).await,
         None => false,
     };
-    let url = match labs::run(app, data["claimLaunch"].clone(), None, host.as_deref(), image, false, |_line: String| {}).await {
+    let url = match labs::run(app, claim.clone(), None, host.as_deref(), image, false, |_line: String| {}).await {
         Ok(url) => url,
         Err(e) => {
-            if !was_running && let Some(id) = lab_id.as_deref() {
-                let _ = crate::runtime::stop_lab(app, id, runtime).await;
+            if !was_running {
+                tear_down(app, lab_id, runtime).await;
             }
             return Err(e);
         }
     };
-    // The lab is actually running on this machine now. If anything below fails (reporting back to
-    // the backend), tear it down before returning the error, so we don't leave infra running
-    // under a session the poller will mark FAILED.
-    let report = async {
-        let running_on = host.as_deref().and_then(|h| server::host_name(app, h)).map(|n| format!("Running on {n}"));
-        let token = random_hex();
-        let nonce = random_hex();
-        let control_url = colocation::serve(token.clone(), nonce.clone()).await.ok().map(|port| format!("http://127.0.0.1:{port}"));
-        update_state(
-            session_id,
-            "RUNNING",
-            Progress {
-                local_url: url.as_deref(),
-                control_url: control_url.as_deref(),
-                token: Some(&token),
-                nonce: Some(&nonce),
-                message: Some(running_on.as_deref().unwrap_or("Running on your machine")),
-            },
-        )
-        .await
-    }
-    .await;
-    if let Err(e) = report {
-        if let Some(id) = lab_id.as_deref() {
-            let _ = crate::runtime::stop_lab(app, id, runtime).await;
-        }
+    // The lab is actually running on this machine now. If reporting back to the backend fails,
+    // tear it down before returning the error, so we don't leave infra running under a session
+    // the poller will mark FAILED.
+    if let Err(e) = report_running(app, session_id, host.as_deref(), url.as_deref()).await {
+        tear_down(app, lab_id, runtime).await;
         return Err(e);
     }
     // A lab launched from the website just started here: let the player know on this machine.
@@ -301,4 +315,23 @@ pub fn spawn(app: AppHandle) {
 #[tauri::command]
 pub fn agent_info(app: AppHandle) -> Result<Value> {
     Ok(json!({ "installId": install_id(&app)?, "name": machine_name(), "arch": arch(), "capabilities": capabilities() }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_claim_runs_as_a_vm_lab_only_when_it_says_so() {
+        assert!(matches!(claim_runtime(&json!({ "runtime": "VM" })), Runtime::Vm));
+        assert!(matches!(claim_runtime(&json!({ "runtime": "DOCKER" })), Runtime::Docker));
+        assert!(matches!(claim_runtime(&json!({})), Runtime::Docker));
+    }
+
+    #[test]
+    fn random_hex_is_32_hex_digits() {
+        let (a, b) = (random_hex(), random_hex());
+        assert!(a.len() == 32 && a.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b);
+    }
 }
