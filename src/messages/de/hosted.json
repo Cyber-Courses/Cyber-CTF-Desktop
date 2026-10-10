@@ -1,4 +1,4 @@
 {
-  "slowStart": "This hosted lab is taking longer than expected to start. It may still come up shortly; otherwise stop it and try again.",
-  "stopFailed": "Couldn't stop the hosted lab: {error}"
+  "slowStart": "Dieses gehostete Lab braucht länger als erwartet zum Starten. Vielleicht ist es gleich bereit; andernfalls stoppe es und versuche es erneut.",
+  "stopFailed": "Das gehostete Lab konnte nicht gestoppt werden: {error}"
 }
