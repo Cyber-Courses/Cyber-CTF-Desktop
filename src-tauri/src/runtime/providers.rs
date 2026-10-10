@@ -257,26 +257,38 @@ pub async fn detect(vagrant_installed: bool) -> Vec<ProviderStatus> {
                 Err(crate::error::Error::CommandFailed { ref stderr, .. }) if stderr.contains("timed out")
             );
 
-        let reason = if !vagrant_installed {
-            Some("Vagrant is not installed".to_string())
-        } else if unresponsive {
-            Some(
-                "VirtualBox isn't responding (its background service is stuck). Quit VirtualBox and any VM windows, or restart the computer, then re-check."
-                    .to_string(),
-            )
-        } else if hypervisor == Some(false) {
-            provider.probe().map(|(program, _)| format!("`{program}` was not found")).or_else(|| Some("not installed".to_string()))
-        } else if let Some(why) = (provider == Provider::Libvirt).then(kvm_problem).flatten() {
-            Some(why)
-        } else if !plugin_installed {
-            plugin.as_deref().map(|p| format!("Vagrant plugin `{p}` is not installed"))
-        } else {
-            None
-        };
+        let reason = unavailable_reason(provider, vagrant_installed, unresponsive, hypervisor, plugin.as_deref(), plugin_installed);
 
         statuses.push(ProviderStatus { provider, remote: provider.is_remote(), available: reason.is_none(), hypervisor, plugin, plugin_installed, reason });
     }
     statuses
+}
+
+/// Why a provider can't be used here (None: it can), from what `detect` found out about it.
+fn unavailable_reason(
+    provider: Provider,
+    vagrant_installed: bool,
+    unresponsive: bool,
+    hypervisor: Option<bool>,
+    plugin: Option<&str>,
+    plugin_installed: bool,
+) -> Option<String> {
+    if !vagrant_installed {
+        Some("Vagrant is not installed".to_string())
+    } else if unresponsive {
+        Some(
+            "VirtualBox isn't responding (its background service is stuck). Quit VirtualBox and any VM windows, or restart the computer, then re-check."
+                .to_string(),
+        )
+    } else if hypervisor == Some(false) {
+        provider.probe().map(|(program, _)| format!("`{program}` was not found")).or_else(|| Some("not installed".to_string()))
+    } else if let Some(why) = (provider == Provider::Libvirt).then(kvm_problem).flatten() {
+        Some(why)
+    } else if !plugin_installed {
+        plugin.map(|p| format!("Vagrant plugin `{p}` is not installed"))
+    } else {
+        None
+    }
 }
 
 /// Verifies a local provider is actually usable before a start, so a missing hypervisor or
@@ -408,5 +420,90 @@ mod tests {
             let round: Provider = serde_json::from_value(serde_json::Value::String(p.id().to_string())).unwrap();
             assert_eq!(round, p);
         }
+    }
+
+    #[test]
+    fn from_id_knows_only_the_detectable_catalogue() {
+        for p in Provider::ALL {
+            assert_eq!(Provider::from_id(p.id()), Some(p));
+        }
+        assert_eq!(Provider::from_id("aws"), None);
+        assert_eq!(Provider::from_id("nope"), None);
+    }
+
+    #[test]
+    fn applicability_follows_the_os() {
+        use std::env::consts::OS;
+        assert_eq!(Provider::Hyperv.applicable(), OS == "windows");
+        assert_eq!(Provider::Parallels.applicable(), OS == "macos");
+        assert_eq!(Provider::Utm.applicable(), OS == "macos");
+        assert_eq!(Provider::Libvirt.applicable(), OS == "linux");
+        for remote in [Provider::VmwareEsxi, Provider::Proxmox, Provider::Qemu, Provider::Aws] {
+            assert!(remote.applicable(), "{remote:?}");
+        }
+    }
+
+    #[test]
+    fn probes_name_the_hypervisors_tool() {
+        assert_eq!(Provider::Virtualbox.probe().unwrap().0, "VBoxManage");
+        assert_eq!(Provider::VmwareDesktop.probe().unwrap().0, "vmrun");
+        assert_eq!(Provider::Parallels.probe().unwrap().0, "prlctl");
+        assert_eq!(Provider::Libvirt.probe().unwrap().0, "virsh");
+        assert!(Provider::Qemu.probe().unwrap().0.starts_with("qemu-system-"));
+        assert_eq!(qemu_binary(), if std::env::consts::ARCH == "aarch64" { "qemu-system-aarch64" } else { "qemu-system-x86_64" });
+        for none in [Provider::Hyperv, Provider::Utm, Provider::VmwareEsxi, Provider::Proxmox, Provider::Gcp, Provider::Oci] {
+            assert!(none.probe().is_none(), "{none:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn remote_providers_have_nothing_local_to_check() {
+        assert_eq!(Provider::Proxmox.hypervisor_installed().await, None);
+        assert_eq!(Provider::Hyperv.hypervisor_installed().await, None);
+        assert_eq!(Provider::Utm.hypervisor_installed().await, Some(std::path::Path::new(UTM_APP).exists()));
+        for p in [Provider::VmwareEsxi, Provider::Proxmox, Provider::Aws, Provider::Linode] {
+            assert_eq!(ensure_usable(p).await, Ok(()));
+        }
+    }
+
+    #[test]
+    fn kvm_problems_are_explained() {
+        // Whatever this machine has, an answer is either nothing or a sentence about /dev/kvm.
+        if let Some(why) = kvm_problem() {
+            assert!(why.contains("/dev/kvm"), "{why}");
+        }
+    }
+
+    #[test]
+    fn the_first_missing_layer_is_the_reason() {
+        let r = |p, vagrant, stuck, hv, plugin, installed| unavailable_reason(p, vagrant, stuck, hv, plugin, installed);
+        assert_eq!(r(Provider::Virtualbox, false, true, Some(false), None, false).as_deref(), Some("Vagrant is not installed"));
+        assert!(r(Provider::Virtualbox, true, true, Some(true), None, true).unwrap().contains("isn't responding"));
+        assert_eq!(r(Provider::Virtualbox, true, false, Some(false), None, true).as_deref(), Some("`VBoxManage` was not found"));
+        assert_eq!(r(Provider::Utm, true, false, Some(false), Some("vagrant_utm"), true).as_deref(), Some("not installed"));
+        assert_eq!(
+            r(Provider::Parallels, true, false, Some(true), Some("vagrant-parallels"), false).as_deref(),
+            Some("Vagrant plugin `vagrant-parallels` is not installed")
+        );
+        assert_eq!(r(Provider::Virtualbox, true, false, Some(true), None, true), None);
+        assert_eq!(r(Provider::VmwareEsxi, true, false, None, Some("vagrant-vmware-esxi"), true), None);
+        // libvirt also needs a usable /dev/kvm.
+        assert_eq!(r(Provider::Libvirt, true, false, Some(true), Some("vagrant-libvirt"), true), kvm_problem());
+    }
+
+    #[test]
+    fn statuses_serialize_in_camel_case() {
+        let s = ProviderStatus {
+            provider: Provider::Virtualbox,
+            remote: false,
+            available: true,
+            hypervisor: Some(true),
+            plugin: None,
+            plugin_installed: true,
+            reason: None,
+        };
+        let v = serde_json::to_value(s).unwrap();
+        assert_eq!(v["provider"], "virtualbox");
+        assert_eq!(v["pluginInstalled"], true);
     }
 }
