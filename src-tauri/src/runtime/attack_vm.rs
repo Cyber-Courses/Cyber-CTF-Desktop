@@ -86,7 +86,8 @@ pub(crate) fn vagrantfile(lab: &str, box_name: &str, links: &[Link], shared: Opt
     );
     // The folder shared with the attack box (Settings), at /shared inside it.
     if let Some(p) = shared {
-        let host = p.display().to_string().replace('\\', "\\\\");
+        // A Ruby double-quoted string: `#` too, or a folder named `#{...}` would run as Ruby.
+        let host = p.display().to_string().replace('\\', "\\\\").replace('#', "\\#");
         out.push_str(&format!("    m.vm.synced_folder \"{host}\", \"{}\"\n", crate::shared_folder::MOUNT_POINT));
     }
     for l in links {
@@ -338,3 +339,6 @@ mod tests {
         assert!(!valid_box("owner/name\"\nconfig"));
     }
 }
+
+#[cfg(test)]
+mod proptests;
