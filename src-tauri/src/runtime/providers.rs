@@ -106,8 +106,11 @@ impl Provider {
     /// platform-specific; remote ones (ESXi, Proxmox) apply anywhere. We only surface
     /// providers that are possible on this machine, not the whole catalogue.
     fn applicable(self) -> bool {
-        use std::env::consts::OS;
+        use std::env::consts::{ARCH, OS};
         match self {
+            // Neither ships for Windows on Arm (no installer, no Arm VMs there): VM labs on those
+            // PCs go to Hyper-V, a server or the cloud.
+            Provider::Virtualbox | Provider::VmwareDesktop if OS == "windows" && ARCH == "aarch64" => false,
             Provider::Hyperv => OS == "windows",
             Provider::Parallels | Provider::Utm => OS == "macos",
             Provider::Libvirt => OS == "linux",
