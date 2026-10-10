@@ -10,6 +10,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { SERVER_CHANGED, serverList, systemCheck, type ServerHostInput, type SystemReport } from "@/lib/tauri";
 import { warn } from "@/lib/failure";
 import { useT } from "@/lib/i18n";
+import { installDevMock } from "@/lib/dev-mock";
+
+// Development only: ?mock in a plain browser answers the Tauri commands with sample data.
+installDevMock();
 
 /** The server setup window (opened by `server_open_setup`), closed when setup ends. */
 function Setup() {
