@@ -308,7 +308,7 @@ jobs:
           if (-not $pending) { Write-Host "::error::No open submission in Partner Center."; exit 1 }
           $id = $pending.id
           Write-Host "Submitting $id for certification"
-          Invoke-RestMethod -Method Post -Uri "$api/submissions/$id/commit" -Headers (Get-StoreHeaders) | Out-Null
+          Invoke-RestMethod -Method Post -Uri "$api/submissions/$id/commit" -Headers (Get-StoreHeaders) -ContentType "application/json" | Out-Null
           do {
             Start-Sleep -Seconds 20
             $status = Invoke-RestMethod -Uri "$api/submissions/$id/status" -Headers (Get-StoreHeaders)
