@@ -1,48 +1,48 @@
 {
   "operation": {
     "status": {
-      "launch": "Starting",
-      "resume": "Resuming",
-      "pause": "Pausing",
-      "shutdown": "Shutting down",
-      "stop": "Stopping"
+      "launch": "起動中",
+      "resume": "再開中",
+      "pause": "一時停止中",
+      "shutdown": "シャットダウン中",
+      "stop": "停止中"
     },
     "label": {
-      "launch": "Deploying…",
-      "resume": "Resuming…",
-      "pause": "Pausing…",
-      "shutdown": "Shutting down…",
-      "provision": "Provisioning…",
-      "provisionMachine": "Provisioning {machine}…",
-      "attackVm": "Starting the attack VM…",
-      "stop": "Stopping…"
+      "launch": "デプロイ中…",
+      "resume": "再開中…",
+      "pause": "一時停止中…",
+      "shutdown": "シャットダウン中…",
+      "provision": "プロビジョニング中…",
+      "provisionMachine": "{machine} をプロビジョニング中…",
+      "attackVm": "攻撃用 VM を起動中…",
+      "stop": "停止中…"
     }
   },
   "time": {
-    "justNow": "just now",
-    "minutesAgo": "{count} min ago",
-    "hoursAgo": "{count} h ago",
-    "yesterday": "yesterday",
-    "daysAgo": "{count} days ago"
+    "justNow": "たった今",
+    "minutesAgo": "{count} 分前",
+    "hoursAgo": "{count} 時間前",
+    "yesterday": "昨日",
+    "daysAgo": "{count} 日前"
   },
   "units": {
-    "seconds": "{n}s",
+    "seconds": "{n}秒",
     "gigabytes": "{n} GB",
     "megabytes": "{n} MB",
     "kilobytes": "{n} kB",
-    "uptimeDays": "{days}d {hours}h",
-    "uptimeHours": "{hours}h {minutes}m",
-    "uptimeMinutes": "{minutes}m"
+    "uptimeDays": "{days}日 {hours}時間",
+    "uptimeHours": "{hours}時間 {minutes}分",
+    "uptimeMinutes": "{minutes}分"
   },
   "attackPresets": {
-    "cyberctf": "Kali with its standard toolset, ready to use",
-    "kali": "Official Kali base, add tools as needed",
-    "parrot": "Parrot Security toolset",
-    "exegolFree": "Exegol Community: full toolkit, updated after Full; for learning and personal use",
-    "exegolFreeTerms": "Non-commercial use",
-    "exegolFull": "The latest Exegol toolkit; needs an Exegol Pro, Team or Enterprise plan",
-    "exegolFullTerms": "Paid plan",
-    "kaliVm": "Official Kali box; it has the internet, add tools as you go",
-    "debianVm": "A plain base to build your own toolset on"
+    "cyberctf": "標準ツール一式入りの Kali、すぐに使えます",
+    "kali": "公式 Kali ベース、必要に応じてツールを追加",
+    "parrot": "Parrot Security のツール一式",
+    "exegolFree": "Exegol Community：フルツールキット、Full より後に更新。学習・個人利用向け",
+    "exegolFreeTerms": "非商用利用",
+    "exegolFull": "最新の Exegol ツールキット。Exegol Pro、Team、Enterprise プランが必要です",
+    "exegolFullTerms": "有料プラン",
+    "kaliVm": "公式 Kali Box。インターネットに接続でき、ツールは随時追加できます",
+    "debianVm": "独自のツール環境を構築するためのシンプルなベース"
   }
 }
