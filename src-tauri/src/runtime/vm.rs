@@ -637,3 +637,6 @@ mod tests {
         assert!(parse_status("").is_empty());
     }
 }
+
+#[cfg(test)]
+mod proptests;
