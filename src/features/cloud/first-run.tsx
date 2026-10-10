@@ -2,22 +2,16 @@
 
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { CloudProvider } from "@/lib/tauri";
+import { MAIN_PROVIDERS } from "@/features/cloud/cloud-model";
 import { LogoTile } from "@/features/cloud/account-row";
 import { useT } from "@/lib/i18n";
-
-const PROVIDERS: { id: CloudProvider; label: string }[] = [
-  { id: "aws", label: "Amazon Web Services" },
-  { id: "azure", label: "Microsoft Azure" },
-  { id: "gcp", label: "Google Cloud" },
-];
 
 export function FirstRun({ onSetup }: { onSetup: () => void }) {
   const t = useT();
   return (
     <div className="surface-panel flex flex-col items-center rounded-panel px-6 py-10 text-center">
       <div className="flex items-center justify-center gap-2.5">
-        {PROVIDERS.map((p) => (
+        {MAIN_PROVIDERS.map((p) => (
           <LogoTile key={p.id} provider={p.id} label={p.label} />
         ))}
       </div>
