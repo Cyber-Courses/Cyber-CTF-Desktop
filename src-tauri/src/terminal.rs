@@ -124,24 +124,34 @@ pub async fn terminal_open(
     with_sessions(|s| s.insert(session, Session { writer, master: pair.master, child, window, remote }));
 
     std::thread::spawn(move || {
-        let mut chunk = [0u8; 8192];
-        let mut pending = Vec::new();
-        loop {
-            match reader.read(&mut chunk) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => {
-                    pending.extend_from_slice(&chunk[..n]);
-                    let data = take_text(&mut pending);
-                    if !data.is_empty() && events.send(TermEvent::Data { data }).is_err() {
-                        break;
-                    }
+        forward(
+            &mut reader,
+            |e| events.send(e).is_ok(),
+            || with_sessions(|s| s.remove(&session)).and_then(|mut sess| sess.child.wait().ok()).map(|st| st.exit_code()),
+        );
+    });
+    Ok(session)
+}
+
+/// Streams the shell's output to `send` as text until it ends (or `send` refuses more), then
+/// sends its exit code from `exit`.
+fn forward(reader: &mut dyn Read, mut send: impl FnMut(TermEvent) -> bool, exit: impl FnOnce() -> Option<u32>) {
+    let mut chunk = [0u8; 8192];
+    let mut pending = Vec::new();
+    loop {
+        match reader.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                pending.extend_from_slice(&chunk[..n]);
+                let data = take_text(&mut pending);
+                if !data.is_empty() && !send(TermEvent::Data { data }) {
+                    break;
                 }
             }
         }
-        let code = with_sessions(|s| s.remove(&session)).and_then(|mut sess| sess.child.wait().ok()).map(|st| st.exit_code());
-        let _ = events.send(TermEvent::Exit { code });
-    });
-    Ok(session)
+    }
+    let code = exit();
+    send(TermEvent::Exit { code });
 }
 
 /// Sends keystrokes (or pasted text) to the shell.
@@ -197,23 +207,28 @@ fn window_title(title: &str) -> String {
     title.chars().filter(|c| !c.is_control()).take(80).collect()
 }
 
-/// Opens (or focuses) a lab's shell window.
-#[tauri::command]
-pub fn terminal_window(app: AppHandle, id: String, kind: ShellKind, runtime: Runtime, title: String) -> Result<()> {
-    crate::runtime::validate_id(&id)?;
+/// A lab shell window's label and page.
+fn shell_window(id: &str, kind: ShellKind, runtime: Runtime) -> (String, String) {
     let k = match kind {
         ShellKind::Lab => "lab",
         ShellKind::AttackVm => "attackVm",
     };
-    let label = format!("shell-{k}-{id}");
-    if crate::window::focus_existing(&app, &label) {
-        return Ok(());
-    }
     let rt = match runtime {
         Runtime::Docker => "DOCKER",
         Runtime::Vm => "VM",
     };
-    let window = crate::window::builder(&app, &label, format!("shell?id={id}&kind={k}&runtime={rt}"))
+    (format!("shell-{k}-{id}"), format!("shell?id={id}&kind={k}&runtime={rt}"))
+}
+
+/// Opens (or focuses) a lab's shell window.
+#[tauri::command]
+pub fn terminal_window(app: AppHandle, id: String, kind: ShellKind, runtime: Runtime, title: String) -> Result<()> {
+    crate::runtime::validate_id(&id)?;
+    let (label, page) = shell_window(&id, kind, runtime);
+    if crate::window::focus_existing(&app, &label) {
+        return Ok(());
+    }
+    let window = crate::window::builder(&app, &label, page)
         .title(format!("{} · attack box", window_title(&title)))
         .inner_size(900.0, 560.0)
         .min_inner_size(480.0, 280.0)
@@ -273,5 +288,68 @@ mod tests {
         }
         assert!(String::from_utf8_lossy(&out).contains("hi"));
         assert_eq!(child.wait().unwrap().exit_code(), 3);
+    }
+
+    #[test]
+    fn shell_windows_are_named_by_kind_and_lab() {
+        assert_eq!(shell_window("sqli", ShellKind::Lab, Runtime::Docker), ("shell-lab-sqli".into(), "shell?id=sqli&kind=lab&runtime=DOCKER".into()));
+        assert_eq!(shell_window("goad", ShellKind::AttackVm, Runtime::Vm), ("shell-attackVm-goad".into(), "shell?id=goad&kind=attackVm&runtime=VM".into()));
+        let size = pty_size(1, 1);
+        assert_eq!((size.cols, size.rows), (10, 2));
+    }
+
+    fn events(input: &[u8], accept: usize) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut reader = std::io::Cursor::new(input.to_vec());
+        forward(
+            &mut reader,
+            |e| {
+                out.push(serde_json::to_string(&e).unwrap());
+                out.len() <= accept
+            },
+            || Some(7),
+        );
+        out
+    }
+
+    #[test]
+    fn output_is_forwarded_then_the_exit_code() {
+        assert_eq!(events(b"hello", 10), [r#"{"kind":"data","data":"hello"}"#, r#"{"kind":"exit","code":7}"#]);
+        assert_eq!(events(b"", 10), [r#"{"kind":"exit","code":7}"#]);
+    }
+
+    #[test]
+    fn a_closed_view_stops_the_stream() {
+        let big = vec![b'a'; 20000];
+        let out = events(&big, 0);
+        assert_eq!(out.len(), 2, "one data event refused, then the exit");
+    }
+
+    #[test]
+    fn unknown_sessions_are_ended_or_ignored() {
+        assert_eq!(terminal_write(u32::MAX, "x".into()).unwrap_err().to_string(), "the shell has ended");
+        assert!(terminal_resize(u32::MAX, 80, 24).is_ok());
+        assert!(terminal_close(u32::MAX).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_session_takes_input_resizes_and_ends_with_its_window() {
+        let pair = native_pty_system().openpty(pty_size(80, 24)).unwrap();
+        let mut cmd = CommandBuilder::new("sh");
+        cmd.args(["-c", "cat"]);
+        let child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let writer = pair.master.take_writer().unwrap();
+        let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let window = format!("test-window-{id}");
+        with_sessions(|s| s.insert(id, Session { writer, master: pair.master, child, window: window.clone(), remote: None }));
+        terminal_write(id, "hi\n".into()).unwrap();
+        terminal_resize(id, 100, 30).unwrap();
+        close_window("some-other-window");
+        assert!(with_sessions(|s| s.contains_key(&id)));
+        close_window(&window);
+        assert!(!with_sessions(|s| s.contains_key(&id)));
+        assert!(terminal_write(id, "x".into()).is_err());
     }
 }

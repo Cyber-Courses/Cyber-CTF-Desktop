@@ -10,8 +10,13 @@ pub const MAIN: &str = "main";
 /// room for the menu bar and dock) when that is less, so a tall dialog fits its content on a big
 /// display and still opens fully on a small laptop screen, where its body scrolls instead.
 pub fn height_fitting(app: &AppHandle, wanted: f64) -> f64 {
-    let available = app.primary_monitor().ok().flatten().map(|m| m.size().height as f64 / m.scale_factor() - 80.0).unwrap_or(wanted);
-    wanted.min(available).max(480.0)
+    let available = app.primary_monitor().ok().flatten().map(|m| m.size().height as f64 / m.scale_factor() - 80.0);
+    fit_height(wanted, available)
+}
+
+/// `wanted`, or the screen's `available` height when that is less, never under 480.
+fn fit_height(wanted: f64, available: Option<f64>) -> f64 {
+    wanted.min(available.unwrap_or(wanted)).max(480.0)
 }
 
 /// Focuses the window `label`. False when it isn't open.
@@ -66,5 +71,18 @@ pub fn reveal_main(app: &AppHandle) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fit_height;
+
+    #[test]
+    fn a_window_fits_the_screen_but_stays_usable() {
+        assert_eq!(fit_height(920.0, None), 920.0);
+        assert_eq!(fit_height(920.0, Some(1400.0)), 920.0);
+        assert_eq!(fit_height(920.0, Some(700.0)), 700.0);
+        assert_eq!(fit_height(920.0, Some(300.0)), 480.0);
     }
 }

@@ -133,4 +133,21 @@ mod tests {
         let err = run_step(&step("cyberctf-no-such-tool", &[]), &mut |_| {}).await.unwrap_err();
         assert_eq!(err.to_string(), "cyberctf-no-such-tool is not available on this machine.");
     }
+
+    #[test]
+    fn channel_log_sends_each_line_to_the_ui() {
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        let channel: Channel<String> = Channel::new(move |body| {
+            if let tauri::ipc::InvokeResponseBody::Json(json) = body {
+                sink.lock().unwrap().push(serde_json::from_str::<String>(&json).unwrap());
+            }
+            Ok(())
+        });
+        let mut log = channel_log(channel);
+        log("one".into());
+        log("two".into());
+        assert_eq!(seen.lock().unwrap().as_slice(), ["one", "two"]);
+        assert_eq!(command_line(&step("brew", &["install", "qemu"])), "$ brew install qemu");
+    }
 }

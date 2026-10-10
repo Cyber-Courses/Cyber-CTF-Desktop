@@ -163,12 +163,93 @@ pub async fn install_vagrant_plugin(plugin: String, logs: Channel<String>) -> Re
 
 #[cfg(test)]
 mod tests {
-    use super::valid_plugin;
+    use super::*;
+
+    const ALL: [Dependency; 11] = [
+        Dependency::Docker,
+        Dependency::Vagrant,
+        Dependency::Terraform,
+        Dependency::Virtualbox,
+        Dependency::Qemu,
+        Dependency::Utm,
+        Dependency::Libvirt,
+        Dependency::Awscli,
+        Dependency::Azurecli,
+        Dependency::Gcloud,
+        Dependency::Wsl,
+    ];
 
     #[test]
     fn only_vagrant_plugin_names_are_installed() {
         assert!(valid_plugin("vagrant-vmware-esxi") && valid_plugin("vagrant_proxmox"));
         assert!(!valid_plugin("vagrant-x; touch /tmp/x") && !valid_plugin("--plugin-source") && !valid_plugin("rails"));
         assert!(!valid_plugin(&format!("vagrant-{}", "a".repeat(64))));
+    }
+
+    /// The plan for every dependency on this OS: the ones that install here have steps, the
+    /// others say why not.
+    fn plans() -> Vec<(Dependency, Result<Vec<Step>>)> {
+        ALL.into_iter().map(|d| (d, plan(d))).collect()
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_installs_through_homebrew() {
+        if crate::platform::brew_bin().is_none() {
+            assert!(plan(Dependency::Docker).err().unwrap().to_string().contains("Homebrew is required"));
+            return;
+        }
+        for (dep, p) in plans() {
+            match dep {
+                Dependency::Libvirt | Dependency::Wsl => assert!(p.is_err(), "{dep:?}"),
+                _ => assert!(!p.unwrap().is_empty(), "{dep:?}"),
+            }
+        }
+        let azure = plan(Dependency::Azurecli).unwrap();
+        assert_eq!(azure.len(), 3);
+        assert!(azure[2].note.is_some() && azure[2].args.contains(&"azure-cli-preview".to_string()));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_installs_through_pkexec_except_the_per_user_gcloud() {
+        for (dep, p) in plans() {
+            match dep {
+                Dependency::Utm | Dependency::Wsl => assert!(p.is_err(), "{dep:?}"),
+                Dependency::Gcloud => assert_eq!(p.unwrap()[0].program, "sh"),
+                _ => assert_eq!(p.unwrap()[0].program, "pkexec", "{dep:?}"),
+            }
+        }
+        assert!(plan(Dependency::Awscli).unwrap()[0].args.join(" ").contains("awscli-exe-linux"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_installs_through_winget_and_wsl_through_its_installer() {
+        for (dep, p) in plans() {
+            match dep {
+                Dependency::Utm | Dependency::Libvirt => assert!(p.is_err(), "{dep:?}"),
+                Dependency::Virtualbox if std::env::consts::ARCH == "aarch64" => assert!(p.is_err()),
+                Dependency::Wsl => assert_eq!(p.unwrap()[0].program, "powershell"),
+                _ => {
+                    let steps = p.unwrap();
+                    assert_eq!(steps[0].program, "winget");
+                    assert!(steps[0].args.contains(&"--accept-package-agreements".to_string()));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn dependencies_use_lowercase_names() {
+        assert_eq!(serde_json::to_string(&Dependency::Azurecli).unwrap(), "\"azurecli\"");
+        assert_eq!(serde_json::from_str::<Dependency>("\"wsl\"").unwrap(), Dependency::Wsl);
+    }
+
+    #[tokio::test]
+    async fn an_invalid_plugin_is_refused_before_running_anything() {
+        let channel = Channel::new(|_| Ok(()));
+        let err = install_vagrant_plugin("rails".into(), channel).await.unwrap_err();
+        assert_eq!(err.to_string(), "invalid plugin name `rails`");
     }
 }
