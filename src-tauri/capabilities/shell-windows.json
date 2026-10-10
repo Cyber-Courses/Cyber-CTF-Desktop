@@ -2,11 +2,14 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "shell-windows",
   "description": "the attack box shell windows: close, drag, open links",
-  "windows": ["shell-*"],
+  "windows": [
+    "shell-*"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-close",
     "core:window:allow-start-dragging",
-    "opener:default"
+    "opener:default",
+    "core:window:allow-set-theme"
   ]
 }
