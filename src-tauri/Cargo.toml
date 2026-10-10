@@ -4,7 +4,7 @@ version = "1.4.0"
 description = "CyberCTF desktop launcher: runs Docker and VM labs locally"
 authors = ["Cyber-Courses"]
 license = ""
-repository = "https://github.com/Cyber-Courses/Cyber-CTF-Desktop"
+repository = "https://github.com/Cyber-Courses/Cyber-CTF-Launcher"
 edition = "2024"
 rust-version = "1.90"
 
