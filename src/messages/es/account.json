@@ -1,9 +1,9 @@
 {
-  "waitingForBrowser": "Waiting for the browser…",
-  "signIn": "Sign in",
-  "settings": "Settings",
-  "online": "Online: labs you launch from the website run on this machine",
-  "signedIn": "Signed in",
-  "signedInKeychain": "signed in · keychain",
-  "signOut": "Sign out"
+  "waitingForBrowser": "Esperando al navegador…",
+  "signIn": "Iniciar sesión",
+  "settings": "Ajustes",
+  "online": "En línea: los labs que lances desde el sitio web se ejecutan en esta máquina",
+  "signedIn": "Sesión iniciada",
+  "signedInKeychain": "sesión iniciada · llavero",
+  "signOut": "Cerrar sesión"
 }
