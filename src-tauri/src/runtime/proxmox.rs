@@ -35,9 +35,34 @@ pub fn terraform_token(username: &str, secret: &str) -> String {
     format!("{username}={secret}")
 }
 
-fn endpoint(h: &HostProfile) -> String {
-    let host = if h.host.contains(':') { format!("[{}]", h.host) } else { h.host.clone() };
-    format!("https://{host}:{}/api2/json", h.port)
+/// A host as it goes in a URL (IPv6 in brackets).
+fn host_for_url(host: &str) -> String {
+    if host.contains(':') { format!("[{host}]") } else { host.to_string() }
+}
+
+/// The API base URL, e.g. `https://pve.lan:8006/api2/json`.
+pub fn api_url(h: &HostProfile) -> String {
+    format!("https://{}:{}/api2/json", host_for_url(&h.host), h.port)
+}
+
+/// The endpoint the Terraform provider takes, e.g. `https://pve.lan:8006/`.
+pub fn terraform_endpoint(h: &HostProfile) -> String {
+    format!("https://{}:{}/", host_for_url(&h.host), h.port)
+}
+
+/// The bridge lab VMs attach to (the host's setting, else the Proxmox default).
+fn lab_bridge(h: &HostProfile) -> String {
+    h.network.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "vmbr0".into())
+}
+
+/// An interface of `/nodes/<node>/network` by name.
+fn find_iface<'a>(ifaces: &'a Value, name: &str) -> Option<&'a Value> {
+    ifaces.as_array()?.iter().find(|i| i["iface"].as_str() == Some(name))
+}
+
+/// A bridge without physical ports (`bridge_ports` empty or missing).
+fn has_no_ports(iface: &Value) -> bool {
+    iface["bridge_ports"].as_str().map(str::trim).unwrap_or_default().is_empty()
 }
 
 /// A signed-in API client.
@@ -59,7 +84,7 @@ pub enum SignInError {
 pub async fn sign_in(h: &HostProfile, secret: &str) -> Result<Session, SignInError> {
     let client =
         reqwest::Client::builder().timeout(TIMEOUT).tls_danger_accept_invalid_certs(h.insecure_tls).build().map_err(|e| SignInError::Failed(e.to_string()))?;
-    let base = endpoint(h);
+    let base = api_url(h);
     if is_token(&h.username) {
         let session = Session { client, base, auth: ("Authorization", format!("PVEAPIToken={}={secret}", h.username)) };
         // Any authenticated call proves the token.
@@ -200,11 +225,10 @@ pub async fn test(h: &HostProfile, secret: &str) -> Report {
         Ok(storages) => problems.extend(storage_problems(&storages, &vm_storage)),
         Err(e) => problems.push(format!("Couldn't list the node's storage ({e}).")),
     }
-    let bridge = h.network.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "vmbr0".into());
+    let bridge = lab_bridge(h);
     match session.call(&format!("/nodes/{node}/network")).await {
         Ok(ifaces) => {
-            let found = ifaces.as_array().into_iter().flatten().any(|i| i["iface"].as_str() == Some(bridge.as_str()));
-            if !found {
+            if find_iface(&ifaces, &bridge).is_none() {
                 problems.push(format!("Bridge \"{bridge}\" doesn't exist on {node}. Use one of the node's bridges (System > Network), e.g. vmbr0."));
             }
         }
@@ -232,14 +256,8 @@ pub async fn test(h: &HostProfile, secret: &str) -> Report {
 pub async fn bridge_is_internal(h: &HostProfile, secret: &str) -> bool {
     let Ok(session) = sign_in(h, secret).await else { return false };
     let Ok(node) = session.node(h).await else { return false };
-    let bridge = h.network.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "vmbr0".into());
     let Ok(ifaces) = session.call(&format!("/nodes/{node}/network")).await else { return false };
-    ifaces
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|i| i["iface"].as_str() == Some(bridge.as_str()))
-        .is_some_and(|i| i["bridge_ports"].as_str().map(str::trim).unwrap_or_default().is_empty())
+    find_iface(&ifaces, &lab_bridge(h)).is_some_and(has_no_ports)
 }
 
 /// The node's SSH login (`user@host`) for going through it.
@@ -263,7 +281,7 @@ pub async fn authorize_launcher_key(h: &HostProfile, password: &str, identity: &
     }
     let key = ssh::sh_quote(public.trim());
     let command = format!("umask 077; mkdir -p ~/.ssh; grep -qxF {key} ~/.ssh/authorized_keys 2>/dev/null || echo {key} >> ~/.ssh/authorized_keys");
-    let known = format!("UserKnownHostsFile={}", identity.with_file_name("known_hosts").display());
+    let known_hosts = identity.with_file_name("known_hosts").display().to_string();
     let login = node_login(h);
     let env = vec![
         ("SSH_ASKPASS".to_string(), askpass.display().to_string()),
@@ -271,27 +289,14 @@ pub async fn authorize_launcher_key(h: &HostProfile, password: &str, identity: &
         ("DISPLAY".to_string(), ":0".to_string()),
         ("CYBERCTF_SSH_PASSWORD".to_string(), password.to_string()),
     ];
-    crate::exec::run_env(
-        "ssh",
-        &[
-            "-o",
-            "PreferredAuthentications=password,keyboard-interactive",
-            "-o",
-            "NumberOfPasswordPrompts=1",
-            "-o",
-            "StrictHostKeyChecking=accept-new",
-            "-o",
-            &known,
-            "-o",
-            "LogLevel=ERROR",
-            &login,
-            &command,
-        ],
-        None,
-        &env,
-    )
-    .await
-    .map(|_| ())
+    let password_auth = ["PreferredAuthentications=password,keyboard-interactive".to_string(), "NumberOfPasswordPrompts=1".to_string()];
+    let mut args: Vec<String> = Vec::new();
+    for o in password_auth.into_iter().chain(ssh::options(false, &known_hosts)) {
+        args.extend(["-o".into(), o]);
+    }
+    args.extend([login, command]);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    crate::exec::run_env("ssh", &refs, None, &env).await.map(|_| ())
 }
 
 /// The SSH user for the snippet upload: the token's user without its realm.
@@ -306,7 +311,7 @@ async fn ssh_key_problem(h: &HostProfile) -> Option<String> {
     };
     let public = std::fs::read_to_string(identity.with_extension("pub")).unwrap_or_default().trim().to_string();
     let user = ssh_user(&h.username).to_string();
-    let target = ssh::Target { host: h.host.clone(), port: 22, user: user.clone(), identity: identity.clone(), jump: None };
+    let target = ssh::Target::direct(&h.host, &user, identity.clone());
     match target.exec(&identity.with_file_name("known_hosts"), "true").await {
         Ok(_) => None,
         Err(_) => Some(format!(
@@ -333,6 +338,52 @@ mod tests {
         assert_eq!(terraform_token("root@pam!cyberctf", "abc"), "root@pam!cyberctf=abc");
     }
 
+    fn host(addr: &str, network: Option<&str>) -> HostProfile {
+        HostProfile {
+            gcp_project: None,
+            id: "t".into(),
+            name: "t".into(),
+            provider: crate::runtime::providers::Provider::Proxmox,
+            host: addr.into(),
+            port: 8006,
+            username: "root@pam".into(),
+            datastore: None,
+            network: network.map(str::to_string),
+            node: None,
+            insecure_tls: false,
+            auto_stop_hours: None,
+            use_cli_creds: false,
+            aws_profile: None,
+            monthly_limit: None,
+        }
+    }
+
+    #[test]
+    fn urls_bracket_ipv6_hosts() {
+        assert_eq!(api_url(&host("10.0.0.5", None)), "https://10.0.0.5:8006/api2/json");
+        assert_eq!(api_url(&host("fd00::5", None)), "https://[fd00::5]:8006/api2/json");
+        assert_eq!(terraform_endpoint(&host("pve.lan", None)), "https://pve.lan:8006/");
+        assert_eq!(terraform_endpoint(&host("fd00::5", None)), "https://[fd00::5]:8006/");
+        assert_eq!(node_login(&host("pve.lan", None)), "root@pve.lan");
+    }
+
+    #[test]
+    fn lab_bridge_defaults_to_vmbr0() {
+        assert_eq!(lab_bridge(&host("h", None)), "vmbr0");
+        assert_eq!(lab_bridge(&host("h", Some(""))), "vmbr0");
+        assert_eq!(lab_bridge(&host("h", Some("vmbr1"))), "vmbr1");
+    }
+
+    #[test]
+    fn internal_bridges_have_no_ports() {
+        let ifaces = json!([{"iface": "vmbr0", "bridge_ports": "eno1"}, {"iface": "vmbr1", "bridge_ports": " "}, {"iface": "vmbr2"}]);
+        assert!(!find_iface(&ifaces, "vmbr0").is_some_and(has_no_ports));
+        assert!(find_iface(&ifaces, "vmbr1").is_some_and(has_no_ports));
+        assert!(find_iface(&ifaces, "vmbr2").is_some_and(has_no_ports));
+        assert!(find_iface(&ifaces, "vmbr9").is_none());
+        assert!(find_iface(&json!(null), "vmbr0").is_none());
+    }
+
     #[test]
     fn storage_problems_name_the_fix() {
         let ok = json!([{"storage": "local", "content": "iso,vztmpl,snippets,backup"}, {"storage": "local-lvm", "content": "images,rootdir"}]);
@@ -352,23 +403,13 @@ mod tests {
     #[ignore]
     async fn proxmox_live_test() {
         let var = |k: &str| std::env::var(k).ok();
-        let host = var("CYBERCTF_TEST_PVE_HOST").expect("CYBERCTF_TEST_PVE_HOST");
+        let address = var("CYBERCTF_TEST_PVE_HOST").expect("CYBERCTF_TEST_PVE_HOST");
         let profile = |username: &str, bridge: &str| HostProfile {
-            gcp_project: None,
-            id: "t".into(),
-            name: "t".into(),
-            provider: crate::runtime::providers::Provider::Proxmox,
-            host: host.clone(),
-            port: 8006,
             username: username.into(),
             datastore: Some(var("CYBERCTF_TEST_PVE_STORAGE").unwrap_or_else(|| "local-lvm".into())),
-            network: Some(bridge.into()),
             node: Some("pve".into()),
             insecure_tls: true,
-            auto_stop_hours: None,
-            use_cli_creds: false,
-            aws_profile: None,
-            monthly_limit: None,
+            ..host(&address, Some(bridge))
         };
         let bridge = var("CYBERCTF_TEST_PVE_BRIDGE").unwrap_or_else(|| "vmbr1".into());
         let password = var("CYBERCTF_TEST_PVE_PASSWORD").expect("CYBERCTF_TEST_PVE_PASSWORD");
