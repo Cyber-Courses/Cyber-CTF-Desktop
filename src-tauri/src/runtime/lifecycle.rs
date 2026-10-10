@@ -6,7 +6,7 @@ use std::path::Path;
 use tauri::{AppHandle, Manager};
 
 use super::inflight::{Action, DeployGuard, lock_lab};
-use super::paths::{lab_dir, local_vm, mark_local_vm, mark_parked, parked, recorded_runtime, state_dir, vagrant_dirs, validate_id};
+use super::paths::{deployed_ids, lab_dir, local_vm, mark_local_vm, mark_parked, parked, recorded_runtime, state_dir, vagrant_dirs};
 use super::{Park, Runtime, attack_vm, docker, lab, registry, server, terraform, vm};
 use crate::error::{Error, Result};
 
@@ -20,11 +20,7 @@ async fn park(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mode: Par
     }
     match runtime {
         Runtime::Docker if local_vm(dir).is_some() => {
-            // Inside the VM the containers don't restart on their own after a power-off, so a
-            // container lab in a VM is paused (its state saved), never shut down.
-            if mode == Park::Shutdown {
-                return Err(Error::Invalid("A container lab running in a VM can be paused, not shut down.".into()));
-            }
+            refuse_vm_shutdown(mode)?;
             vm::park(&lab::vagrant_dir(dir, runtime), mode, &[], &mut log).await?;
         }
         Runtime::Docker => docker::park(dir, id, &mut log).await?,
@@ -36,11 +32,25 @@ async fn park(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mode: Par
         }
     }
     mark_parked(dir, Some(mode))?;
-    log(match mode {
-        Park::Pause => "Lab paused. Resume it to pick up where you left off.".into(),
-        Park::Shutdown => "Lab shut down. Resume it to boot its machines again.".into(),
-    });
+    log(parked_message(mode).into());
     Ok(())
+}
+
+/// Inside the VM the containers don't restart on their own after a power-off, so a container
+/// lab in a VM is paused (its state saved), never shut down.
+fn refuse_vm_shutdown(mode: Park) -> Result<()> {
+    if mode == Park::Shutdown {
+        return Err(Error::Invalid("A container lab running in a VM can be paused, not shut down.".into()));
+    }
+    Ok(())
+}
+
+/// The last line of a park.
+fn parked_message(mode: Park) -> &'static str {
+    match mode {
+        Park::Pause => "Lab paused. Resume it to pick up where you left off.",
+        Park::Shutdown => "Lab shut down. Resume it to boot its machines again.",
+    }
 }
 
 /// Brings a parked lab back, as it was.
@@ -103,6 +113,15 @@ async fn provision(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mach
     let env: Vec<(String, String)> = conn.map(|c| c.env).unwrap_or_default();
     let vagrant = lab::vagrant_dir(dir, runtime);
     let status = vm::status(&vagrant, &env).await?;
+    log(provision_target(&status, machine)?);
+    vm::provision(&vagrant, machine, &env, &mut log).await?;
+    log("Provisioning done.".into());
+    Ok(())
+}
+
+/// Whether provisioning can run on `machine` (or every machine) of a lab in `status`, and the
+/// line that says so.
+fn provision_target(status: &super::LabStatus, machine: Option<&str>) -> Result<String> {
     if !status.running {
         return Err(Error::Invalid("Start (or resume) the lab first: provisioning runs on its running machines.".into()));
     }
@@ -111,13 +130,10 @@ async fn provision(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mach
     {
         return Err(Error::Invalid(format!("this lab has no machine `{m}`")));
     }
-    log(match machine {
+    Ok(match machine {
         Some(m) => format!("Re-running provisioning on {m}…"),
         None => "Re-running provisioning on every machine…".into(),
-    });
-    vm::provision(&vagrant, machine, &env, &mut log).await?;
-    log("Provisioning done.".into());
-    Ok(())
+    })
 }
 
 /// Stops a lab wherever it runs, destroying remote VMs so the next start is clean.
@@ -198,9 +214,7 @@ pub async fn clear_parked(dir: &Path, id: &str, log: &impl Fn(String)) {
 /// while the app is open; a lab that expired while the app was closed is reaped at the next sweep.
 pub async fn reap_expired_labs(app: &AppHandle) {
     let Ok(base) = app.path().app_data_dir() else { return };
-    let Ok(entries) = std::fs::read_dir(base.join("deployments")) else { return };
-    let ids: Vec<String> = entries.flatten().filter_map(|e| e.file_name().into_string().ok()).filter(|id| validate_id(id).is_ok()).collect();
-    for id in ids {
+    for id in deployed_ids(&base) {
         let Ok(dir) = lab_dir(app, &id) else { continue };
         let Ok(Some(c)) = server::lab_connection(app, &dir) else { continue };
         let Some(target) = server::terraform_target(c.provider) else { continue };
@@ -239,4 +253,38 @@ pub async fn provision_lab(app: &AppHandle, id: &str, runtime: Runtime, machine:
 /// cleaning up after a launch that started infra but then failed to report back).
 pub async fn stop_lab(app: &AppHandle, id: &str, runtime: Runtime) -> Result<()> {
     stop(app, &lab_dir(app, id)?, id, runtime, |_l: String| {}).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Park, clear_parked, parked_message, provision_target, refuse_vm_shutdown};
+    use crate::runtime::test_support::status_with;
+
+    #[test]
+    fn provisioning_needs_a_running_lab_and_a_known_machine() {
+        let err = provision_target(&status_with(false, &["dc01"]), None).unwrap_err().to_string();
+        assert!(err.starts_with("Start (or resume) the lab first"), "{err}");
+        let up = status_with(true, &["dc01", "ws01"]);
+        assert_eq!(provision_target(&up, Some("nope")).unwrap_err().to_string(), "this lab has no machine `nope`");
+        assert_eq!(provision_target(&up, Some("ws01")).unwrap(), "Re-running provisioning on ws01…");
+        assert_eq!(provision_target(&up, None).unwrap(), "Re-running provisioning on every machine…");
+    }
+
+    #[test]
+    fn a_container_lab_in_a_vm_pauses_but_never_shuts_down() {
+        assert!(refuse_vm_shutdown(Park::Pause).is_ok());
+        assert!(refuse_vm_shutdown(Park::Shutdown).unwrap_err().to_string().contains("paused, not shut down"));
+        assert!(parked_message(Park::Pause).starts_with("Lab paused."));
+        assert!(parked_message(Park::Shutdown).starts_with("Lab shut down."));
+    }
+
+    #[tokio::test]
+    async fn clearing_a_lab_that_is_not_parked_does_nothing() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-clear-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let lines = std::sync::Mutex::new(Vec::<String>::new());
+        clear_parked(&dir, "web-1", &|l: String| lines.lock().unwrap().push(l)).await;
+        assert!(lines.lock().unwrap().is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }
