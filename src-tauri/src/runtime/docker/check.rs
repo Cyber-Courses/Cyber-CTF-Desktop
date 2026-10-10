@@ -35,6 +35,15 @@ pub struct Check {
     pub results: Vec<CheckResult>,
 }
 
+/// Isoloom's stand-in for the lab's access machine (the player's seat) and its routes, as named in
+/// its Compose file: the services a lab with an access machine defines.
+const STAND_INS: [&str; 2] = ["isoloom-access", "isoloom-access-routes"];
+
+/// The stand-ins the lab's Compose file defines.
+fn stand_ins(compose: &str) -> Vec<&'static str> {
+    STAND_INS.into_iter().filter(|n| compose.contains(&format!("\n  {n}:\n"))).collect()
+}
+
 /// Runs every check runner of the lab (compose `check` profile): containers on the lab's
 /// networks that assert what the lab declares and that the intended exploit path still
 /// works, so a learner who broke their box is told to reset it instead of fighting a lab that
@@ -53,6 +62,19 @@ pub async fn check(dir: &Path, id: &str) -> Result<Check> {
     let mut lines: Vec<String> = Vec::new();
     let mut results: Vec<CheckResult> = Vec::new();
     let mut ran = true;
+    // The runners run with --no-deps (`compose run` would otherwise rerun the lab's completed init
+    // jobs), so the stand-in for the lab's access machine, which the access runner shares its
+    // network with, is started first: it is in the `check` profile, so the lab's `up` left it down.
+    let compose_text = std::fs::read_to_string(crate::runtime::lab::compose_file(dir)).unwrap_or_default();
+    let stand_ins = stand_ins(&compose_text);
+    if !stand_ins.is_empty() {
+        let mut args = vec!["--profile", "check", "up", "-d", "--wait", "--no-deps"];
+        args.extend(stand_ins.iter().copied());
+        if let Err(e) = compose::stream(dir, &project, &args, &[], |l| lines.push(l)).await {
+            lines.push(format!("the access machine's stand-in didn't start: {e}"));
+            ran = false;
+        }
+    }
     for (pos, group) in checks::by_position(&spec, &plan) {
         let service =
             if pos == default { crate::runtime::lab::CHECK_SERVICE.to_string() } else { format!("{}-{}", crate::runtime::lab::CHECK_SERVICE, pos.id()) };
@@ -112,4 +134,17 @@ pub async fn check(dir: &Path, id: &str) -> Result<Check> {
     }
     let ok = ran && results.iter().all(|r| r.ok);
     Ok(Check { available: true, ok, output: lines.join("\n"), results })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stand_ins;
+
+    #[test]
+    fn the_access_stand_in_is_found_by_its_service_name() {
+        let compose = "services:\n  web:\n    image: x\n  isoloom-access:\n    image: alpine\n  isoloom-access-routes:\n    image: alpine\n  isoloom-check:\n    network_mode: service:isoloom-access\n";
+        assert_eq!(stand_ins(compose), ["isoloom-access", "isoloom-access-routes"]);
+        // Mentioned, not defined: no stand-in.
+        assert!(stand_ins("services:\n  isoloom-check:\n    network_mode: service:isoloom-access\n").is_empty());
+    }
 }
