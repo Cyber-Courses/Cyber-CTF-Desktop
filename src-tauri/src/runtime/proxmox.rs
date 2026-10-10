@@ -149,13 +149,17 @@ impl Session {
 
     /// The configured node, or the first one when none is set.
     pub async fn node(&self, h: &HostProfile) -> Result<String, CallError> {
-        let nodes = self.call("/nodes").await?;
-        let names: Vec<&str> = nodes.as_array().into_iter().flatten().filter_map(|n| n["node"].as_str()).collect();
-        match h.node.as_deref().filter(|n| !n.is_empty()) {
-            Some(n) if names.contains(&n) => Ok(n.to_string()),
-            Some(n) => Err(CallError::Other(format!("there is no node \"{n}\" on this host (found: {})", names.join(", ")))),
-            None => names.first().map(|n| n.to_string()).ok_or_else(|| CallError::Other("this user can't see any node".into())),
-        }
+        pick_node(&self.call("/nodes").await?, h.node.as_deref())
+    }
+}
+
+/// The configured node among `/nodes`, or the first one when none is set.
+fn pick_node(nodes: &Value, configured: Option<&str>) -> Result<String, CallError> {
+    let names: Vec<&str> = nodes.as_array().into_iter().flatten().filter_map(|n| n["node"].as_str()).collect();
+    match configured.filter(|n| !n.is_empty()) {
+        Some(n) if names.contains(&n) => Ok(n.to_string()),
+        Some(n) => Err(CallError::Other(format!("there is no node \"{n}\" on this host (found: {})", names.join(", ")))),
+        None => names.first().map(|n| n.to_string()).ok_or_else(|| CallError::Other("this user can't see any node".into())),
     }
 }
 
@@ -202,21 +206,11 @@ fn storage_problems(storages: &Value, vm_storage: &str) -> Vec<String> {
 pub async fn test(h: &HostProfile, secret: &str) -> Report {
     let session = match sign_in(h, secret).await {
         Ok(s) => s,
-        Err(SignInError::Rejected) if is_token(&h.username) => {
-            return fail(Some(false), "Proxmox rejected the API token. Check the token id (user@realm!name) and its secret.");
-        }
-        Err(SignInError::Rejected) => return fail(Some(false), "Proxmox rejected the credentials. Use user@realm, e.g. root@pam."),
-        Err(SignInError::Failed(e)) => return fail(None, format!("Reachable, but the API call failed: {e}")),
+        Err(e) => return sign_in_report(e, is_token(&h.username)),
     };
     let node = match session.node(h).await {
         Ok(n) => n,
-        Err(CallError::Status(403)) => {
-            return fail(
-                Some(true),
-                "Signed in, but this user or token can't list nodes. Give it the Administrator role, or create the token with privilege separation off.",
-            );
-        }
-        Err(e) => return fail(Some(true), format!("Signed in, but listing nodes failed: {e}")),
+        Err(e) => return node_report(e),
     };
 
     let mut problems = Vec::new();
@@ -227,11 +221,7 @@ pub async fn test(h: &HostProfile, secret: &str) -> Report {
     }
     let bridge = lab_bridge(h);
     match session.call(&format!("/nodes/{node}/network")).await {
-        Ok(ifaces) => {
-            if find_iface(&ifaces, &bridge).is_none() {
-                problems.push(format!("Bridge \"{bridge}\" doesn't exist on {node}. Use one of the node's bridges (System > Network), e.g. vmbr0."));
-            }
-        }
+        Ok(ifaces) => problems.extend(bridge_problem(&ifaces, &bridge, &node)),
         Err(e) => problems.push(format!("Couldn't list the node's network ({e}).")),
     }
     if is_token(&h.username)
@@ -239,7 +229,38 @@ pub async fn test(h: &HostProfile, secret: &str) -> Report {
     {
         problems.push(problem);
     }
+    outcome(&node, &bridge, &problems)
+}
 
+/// "Test connection" when signing in failed.
+fn sign_in_report(e: SignInError, token: bool) -> Report {
+    match e {
+        SignInError::Rejected if token => fail(Some(false), "Proxmox rejected the API token. Check the token id (user@realm!name) and its secret."),
+        SignInError::Rejected => fail(Some(false), "Proxmox rejected the credentials. Use user@realm, e.g. root@pam."),
+        SignInError::Failed(e) => fail(None, format!("Reachable, but the API call failed: {e}")),
+    }
+}
+
+/// "Test connection" when listing the nodes failed.
+fn node_report(e: CallError) -> Report {
+    match e {
+        CallError::Status(403) => fail(
+            Some(true),
+            "Signed in, but this user or token can't list nodes. Give it the Administrator role, or create the token with privilege separation off.",
+        ),
+        e => fail(Some(true), format!("Signed in, but listing nodes failed: {e}")),
+    }
+}
+
+/// The lab bridge missing from the node's interfaces, as a fix-it sentence.
+fn bridge_problem(ifaces: &Value, bridge: &str, node: &str) -> Option<String> {
+    find_iface(ifaces, bridge)
+        .is_none()
+        .then(|| format!("Bridge \"{bridge}\" doesn't exist on {node}. Use one of the node's bridges (System > Network), e.g. vmbr0."))
+}
+
+/// "Test connection" once signed in: ready, or every problem a launch would hit.
+fn outcome(node: &str, bridge: &str, problems: &[String]) -> Report {
     if problems.is_empty() {
         Report {
             ok: true,
@@ -272,6 +293,21 @@ pub async fn authorize_launcher_key(h: &HostProfile, password: &str, identity: &
     // Next to the launcher's key (the player's own app data), not the shared system temp dir:
     // on Linux /tmp is common to every account, and a file another user left there under this
     // name can't be rewritten (or could be swapped for something else).
+    let askpass = write_askpass(identity)?;
+    let env = vec![
+        ("SSH_ASKPASS".to_string(), askpass.display().to_string()),
+        ("SSH_ASKPASS_REQUIRE".to_string(), "force".to_string()),
+        ("DISPLAY".to_string(), ":0".to_string()),
+        ("CYBERCTF_SSH_PASSWORD".to_string(), password.to_string()),
+    ];
+    let args = authorize_args(h, identity, public);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    crate::exec::run_env("ssh", &refs, None, &env).await.map(|_| ())
+}
+
+/// The askpass helper next to the launcher's key: it answers SSH's prompt with the password
+/// passed in the environment.
+fn write_askpass(identity: &std::path::Path) -> crate::error::Result<std::path::PathBuf> {
     let askpass = identity.with_file_name("askpass.sh");
     std::fs::write(&askpass, "#!/bin/sh\nprintf '%s\\n' \"$CYBERCTF_SSH_PASSWORD\"\n")?;
     #[cfg(unix)]
@@ -279,24 +315,21 @@ pub async fn authorize_launcher_key(h: &HostProfile, password: &str, identity: &
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&askpass, std::fs::Permissions::from_mode(0o700))?;
     }
+    Ok(askpass)
+}
+
+/// The `ssh` arguments that add `public` to the node's authorized keys, signing in by password.
+fn authorize_args(h: &HostProfile, identity: &std::path::Path, public: &str) -> Vec<String> {
     let key = ssh::sh_quote(public.trim());
     let command = format!("umask 077; mkdir -p ~/.ssh; grep -qxF {key} ~/.ssh/authorized_keys 2>/dev/null || echo {key} >> ~/.ssh/authorized_keys");
     let known_hosts = identity.with_file_name("known_hosts").display().to_string();
-    let login = node_login(h);
-    let env = vec![
-        ("SSH_ASKPASS".to_string(), askpass.display().to_string()),
-        ("SSH_ASKPASS_REQUIRE".to_string(), "force".to_string()),
-        ("DISPLAY".to_string(), ":0".to_string()),
-        ("CYBERCTF_SSH_PASSWORD".to_string(), password.to_string()),
-    ];
     let password_auth = ["PreferredAuthentications=password,keyboard-interactive".to_string(), "NumberOfPasswordPrompts=1".to_string()];
     let mut args: Vec<String> = Vec::new();
     for o in password_auth.into_iter().chain(ssh::options(false, &known_hosts)) {
         args.extend(["-o".into(), o]);
     }
-    args.extend([login, command]);
-    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    crate::exec::run_env("ssh", &refs, None, &env).await.map(|_| ())
+    args.extend([node_login(h), command]);
+    args
 }
 
 /// The SSH user for the snippet upload: the token's user without its realm.
@@ -434,5 +467,102 @@ mod tests {
             println!("bad token: {}", r.message);
             assert_eq!(r.authenticated, Some(false));
         }
+    }
+
+    #[test]
+    fn the_configured_node_or_the_first() {
+        let nodes = json!([{"node": "pve"}, {"node": "pve2"}]);
+        assert_eq!(pick_node(&nodes, None).unwrap(), "pve");
+        assert_eq!(pick_node(&nodes, Some("")).unwrap(), "pve");
+        assert_eq!(pick_node(&nodes, Some("pve2")).unwrap(), "pve2");
+        let err = pick_node(&nodes, Some("nope")).unwrap_err().to_string();
+        assert_eq!(err, "there is no node \"nope\" on this host (found: pve, pve2)");
+        assert_eq!(pick_node(&json!([]), None).unwrap_err().to_string(), "this user can't see any node");
+        assert!(pick_node(&json!(null), None).is_err());
+    }
+
+    #[test]
+    fn call_errors_read_as_http_codes_or_their_message() {
+        assert_eq!(CallError::Status(401).to_string(), "HTTP 401");
+        assert_eq!(CallError::Other("boom".into()).to_string(), "boom");
+    }
+
+    #[test]
+    fn sign_in_failures_say_what_to_fix() {
+        let r = sign_in_report(SignInError::Rejected, true);
+        assert!(!r.ok && r.authenticated == Some(false) && r.message.contains("API token"));
+        let r = sign_in_report(SignInError::Rejected, false);
+        assert!(r.authenticated == Some(false) && r.message.contains("root@pam"));
+        let r = sign_in_report(SignInError::Failed("TLS".into()), false);
+        assert_eq!(r.authenticated, None);
+        assert_eq!(r.message, "Reachable, but the API call failed: TLS");
+    }
+
+    #[test]
+    fn node_listing_failures_are_signed_in_failures() {
+        let r = node_report(CallError::Status(403));
+        assert!(!r.ok && r.authenticated == Some(true) && r.message.contains("Administrator role"));
+        let r = node_report(CallError::Status(500));
+        assert_eq!(r.message, "Signed in, but listing nodes failed: HTTP 500");
+    }
+
+    #[test]
+    fn a_missing_bridge_is_a_problem() {
+        let ifaces = json!([{"iface": "vmbr0"}]);
+        assert_eq!(bridge_problem(&ifaces, "vmbr0", "pve"), None);
+        assert!(bridge_problem(&ifaces, "vmbr1", "pve").unwrap().starts_with("Bridge \"vmbr1\" doesn't exist on pve."));
+    }
+
+    #[test]
+    fn the_outcome_lists_every_problem() {
+        let ok = outcome("pve", "vmbr0", &[]);
+        assert!(ok.ok && ok.authenticated == Some(true));
+        assert!(ok.message.contains("node pve") && ok.message.contains("vmbr0"));
+        let bad = outcome("pve", "vmbr0", &["one".into(), "two".into()]);
+        assert!(!bad.ok);
+        assert_eq!(bad.message, "Signed in, but a lab launch would fail:\n• one\n• two");
+    }
+
+    #[test]
+    fn storage_needs_each_content_once() {
+        // The VM disks on `local` too: still one check per (storage, content).
+        let all = json!([{"storage": "local", "content": "iso, snippets, images"}]);
+        assert!(storage_problems(&all, "local").is_empty());
+        assert_eq!(storage_content(&json!([{"storage": "x"}]), "x"), Some(vec![String::new()]));
+        assert_eq!(storage_content(&json!({}), "x"), None);
+    }
+
+    #[test]
+    fn authorizing_the_key_signs_in_by_password_once() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-pve-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let identity = dir.join("id_ed25519");
+        let askpass = write_askpass(&identity).unwrap();
+        assert_eq!(askpass, dir.join("askpass.sh"));
+        assert!(std::fs::read_to_string(&askpass).unwrap().contains("$CYBERCTF_SSH_PASSWORD"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&askpass).unwrap().permissions().mode() & 0o777, 0o700);
+        }
+        let args = authorize_args(&host("pve.lan", None), &identity, "ssh-ed25519 AAAA launcher\n");
+        assert_eq!(args[..4], ["-o", "PreferredAuthentications=password,keyboard-interactive", "-o", "NumberOfPasswordPrompts=1"]);
+        assert!(args.contains(&format!("UserKnownHostsFile={}", dir.join("known_hosts").display())));
+        assert_eq!(args[args.len() - 2], "root@pve.lan");
+        assert!(args.last().unwrap().contains("grep -qxF 'ssh-ed25519 AAAA launcher' ~/.ssh/authorized_keys"), "{args:?}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_host_fails_to_sign_in() {
+        // Port 1 on the loopback refuses at once: no network beyond this machine.
+        let mut h = host("127.0.0.1", None);
+        h.port = 1;
+        assert!(matches!(sign_in(&h, "pw").await, Err(SignInError::Failed(_))));
+        let r = test(&h, "pw").await;
+        assert!(!r.ok && r.authenticated.is_none(), "{}", r.message);
+        assert!(!bridge_is_internal(&h, "pw").await);
+        h.username = "root@pam!t".into();
+        assert!(matches!(sign_in(&h, "pw").await, Err(SignInError::Failed(_))));
     }
 }
