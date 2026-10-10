@@ -6,6 +6,7 @@ import { StatusDot } from "@/components/ui/status-pill";
 import { serverSelftest, type SelfTestEvent, type ServerHost } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { formatElapsed } from "@/lib/format";
+import { useNow } from "@/lib/use-now";
 import { useT, type MessageKey } from "@/lib/i18n";
 
 /** The step plan each provider reports, shown up front so the list doesn't grow as it runs. */
@@ -36,7 +37,6 @@ export function ServerSelfTest({ id, provider, onDone }: { id: string; provider:
   const [running, setRunning] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [startAt] = useState(() => Date.now());
-  const [now, setNow] = useState(() => Date.now());
   const hadFail = useRef(false);
   const doneRef = useRef(onDone);
   useEffect(() => {
@@ -64,11 +64,7 @@ export function ServerSelfTest({ id, provider, onDone }: { id: string; provider:
     };
   }, [id]);
 
-  useEffect(() => {
-    if (!running) return;
-    const t = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(t);
-  }, [running]);
+  const [now] = useNow(500, running);
 
   const failed = Object.values(states).some((s) => s.state === "fail") || !!error;
   const fmt = formatElapsed(now - startAt);

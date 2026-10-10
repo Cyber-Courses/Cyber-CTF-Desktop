@@ -13,11 +13,11 @@ import { ProviderGlyph } from "@/features/servers/provider-glyph";
 import { formatAgo, formatBytes } from "@/lib/format";
 import { VmTest } from "@/features/servers/vm-tests";
 import { openExternal } from "@/lib/failure";
+import { isMac } from "@/lib/platform";
 import { useT } from "@/lib/i18n";
 
 /** A host on a private LAN address: what macOS's Local Network permission governs. */
 const isPrivateHost = (h: string) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h) || h.endsWith(".local");
-const onMac = () => typeof navigator !== "undefined" && /Mac/.test(navigator.userAgent);
 const LOCAL_NETWORK_SETTINGS = "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork";
 
 export function HostRow({
@@ -124,7 +124,7 @@ export function HostRow({
             </p>
           )}
           {/* A denied Local Network permission looks exactly like a host that is down. */}
-          {result && !result.ok && !needsPassword && onMac() && isPrivateHost(host.host) && (
+          {result && !result.ok && !needsPassword && isMac() && isPrivateHost(host.host) && (
             <p className="mt-1 text-[0.75rem] text-muted-foreground">
               {t("servers.host.localNetwork")}{" "}
               <button type="button" className="text-link underline underline-offset-2" onClick={() => openExternal(LOCAL_NETWORK_SETTINGS)}>
