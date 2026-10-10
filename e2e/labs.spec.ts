@@ -107,4 +107,15 @@ test.describe("labs", () => {
     await page.keyboard.press("Escape");
     await expect(pageTitle(page)).toHaveText("Labs");
   });
+
+  test("Escape closing the command palette stays on the lab page", async ({ page }) => {
+    await row(page, "Blind orders").click();
+    await expect(pageTitle(page)).toHaveText("Blind orders");
+    await page.keyboard.press("ControlOrMeta+k");
+    const palette = page.getByRole("dialog", { name: "Command menu" });
+    await expect(palette).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(palette).toBeHidden();
+    await expect(pageTitle(page)).toHaveText("Blind orders");
+  });
 });

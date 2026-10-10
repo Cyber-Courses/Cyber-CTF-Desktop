@@ -61,6 +61,7 @@ export function CommandPalette({ open, onClose, commands }: { open: boolean; onC
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
       e.preventDefault();
+      e.stopPropagation();
       onClose();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();

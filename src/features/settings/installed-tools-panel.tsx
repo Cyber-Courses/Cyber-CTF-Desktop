@@ -41,7 +41,9 @@ export function InstalledToolsPanel() {
   const [log, setLog] = useState<string[]>([]);
 
   const load = useCallback(() => {
-    installedTools().then(setTools).catch(warn("reading the tools Cyber CTF installed"));
+    installedTools()
+      .then((t) => setTools(t ?? []))
+      .catch(warn("reading the tools Cyber CTF installed"));
   }, []);
   useEffect(load, [load]);
 
