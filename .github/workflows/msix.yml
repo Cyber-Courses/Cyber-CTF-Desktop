@@ -297,8 +297,13 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $api = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$env:STORE_PRODUCT_ID"
-          function H { @{ Authorization = "Bearer " + (Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$env:STORE_TENANT_ID/oauth2/token" -Body @{
-            grant_type = "client_credentials"; client_id = $env:STORE_CLIENT_ID; client_secret = $env:STORE_CLIENT_SECRET; resource = "https://manage.devcenter.microsoft.com" }).access_token } }
+          function H {
+            $token = (Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$env:STORE_TENANT_ID/oauth2/token" -Body @{
+                grant_type = "client_credentials"; client_id = $env:STORE_CLIENT_ID; client_secret = $env:STORE_CLIENT_SECRET
+                resource = "https://manage.devcenter.microsoft.com"
+              }).access_token
+            return @{ Authorization = "Bearer $token" }
+          }
           $pending = (Invoke-RestMethod -Uri $api -Headers (H)).pendingApplicationSubmission
           if (-not $pending) { Write-Host "::error::No open submission in Partner Center."; exit 1 }
           $id = $pending.id
