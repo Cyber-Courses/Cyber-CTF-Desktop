@@ -1,4 +1,5 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
+import { invokeStreaming } from "@/lib/tauri/stream";
 import type { Provider } from "@/lib/tauri/machine";
 
 export type Runtime = "DOCKER" | "VM";
@@ -67,31 +68,16 @@ export interface LabStatus {
   attacker: { ip: string; labNetwork: string } | null;
 }
 
-export function labStop(id: string, runtime: Runtime, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("lab_stop", { id, runtime, logs });
-}
+export const labStop = (id: string, runtime: Runtime, onLog: (line: string) => void) => invokeStreaming("lab_stop", { id, runtime }, onLog);
 
 /** Pauses or shuts a lab down, keeping its machines; `labResume` brings it back as it was. */
-export function labPark(id: string, runtime: Runtime, mode: Park, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("lab_park", { id, runtime, mode, logs });
-}
+export const labPark = (id: string, runtime: Runtime, mode: Park, onLog: (line: string) => void) => invokeStreaming("lab_park", { id, runtime, mode }, onLog);
 
 /** Runs a VM lab's provisioners again on one machine (or all with `null`), in place. */
-export function labProvision(id: string, runtime: Runtime, machine: string | null, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("lab_provision", { id, runtime, machine, logs });
-}
+export const labProvision = (id: string, runtime: Runtime, machine: string | null, onLog: (line: string) => void) =>
+  invokeStreaming("lab_provision", { id, runtime, machine }, onLog);
 
-export function labResume(id: string, runtime: Runtime, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("lab_resume", { id, runtime, logs });
-}
+export const labResume = (id: string, runtime: Runtime, onLog: (line: string) => void) => invokeStreaming("lab_resume", { id, runtime }, onLog);
 
 export const labStatus = (id: string, runtime: Runtime) => invoke<LabStatus>("lab_status", { id, runtime });
 
@@ -145,63 +131,31 @@ export interface ExegolStatus {
 /** Status of a lab's attack box (Exegol) for the configured image. */
 export const exegolStatus = (id: string, image: string) => invoke<ExegolStatus>("exegol_status", { id, image });
 
-export function exegolStart(id: string, image: string, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("exegol_start", { id, image, logs });
-}
+export const exegolStart = (id: string, image: string, onLog: (line: string) => void) => invokeStreaming("exegol_start", { id, image }, onLog);
 
-export function exegolStop(id: string, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("exegol_stop", { id, logs });
-}
-
-/** Opens the OS terminal attached to the running attack box. */
-export const exegolShell = (id: string) => invoke<void>("exegol_shell", { id });
+export const exegolStop = (id: string, onLog: (line: string) => void) => invokeStreaming("exegol_stop", { id }, onLog);
 
 /** The attack VM beside a VM lab (a Vagrant box), in the container attack box's status shape. */
 export const attackVmStatus = (id: string, boxName: string) => invoke<ExegolStatus>("attack_vm_status", { id, boxName });
-export function attackVmStart(id: string, boxName: string, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("attack_vm_start", { id, boxName, logs });
-}
-export function attackVmStop(id: string, onLog: (line: string) => void) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("attack_vm_stop", { id, logs });
-}
+export const attackVmStart = (id: string, boxName: string, onLog: (line: string) => void) => invokeStreaming("attack_vm_start", { id, boxName }, onLog);
+export const attackVmStop = (id: string, onLog: (line: string) => void) => invokeStreaming("attack_vm_stop", { id }, onLog);
 export const attackVmShell = (id: string) => invoke<void>("attack_vm_shell", { id });
 
 /** Opens the attack box shell wherever the lab runs (local container, or SSH to a remote lab host). */
 export const labAttackShell = (id: string, runtime: Runtime) => invoke<void>("lab_attack_shell", { id, runtime });
 /** `defaultPorts`: a container lab here publishes its services on their own ports, not random ones. */
-export function labLaunch(
+export const labLaunch = (
   labId: string,
   provider: Provider | null,
   host: string | null,
   attackboxImage: string | null,
   defaultPorts: boolean,
   onLog: (line: string) => void,
-) {
-  const logs = new Channel<string>();
-  logs.onmessage = onLog;
-  return invoke<void>("lab_launch", { labId, provider, host, attackboxImage, defaultPorts, logs });
-}
-
-/** Whether leaving now would interrupt a lab deploy (a cloud apply keeps billing if cut off). */
-export const deployInProgress = () => invoke<boolean>("deploy_in_progress");
+) => invokeStreaming("lab_launch", { labId, provider, host, attackboxImage, defaultPorts }, onLog);
 
 /** The lab ids currently starting or stopping in the backend. Read on load to rehydrate the
  *  "starting" state after a window reload, which loses the in-memory deploy store. */
 export const deployingLabs = () => invoke<string[]>("deploying_labs");
-
-/** The lab ids being stopped right now (a teardown in flight is not a deploy). */
-export const stoppingLabs = () => invoke<string[]>("stopping_labs");
-
-/** The lab ids being paused or shut down right now (machines kept). */
-export const parkingLabs = () => invoke<string[]>("parking_labs");
 
 /** One operation in flight on a lab, with the step its log is at (sidebar). */
 export interface ActiveOperation {
@@ -233,11 +187,8 @@ export type TermEvent = { kind: "data"; data: string } | { kind: "exit"; code: n
 export const terminalWindow = (id: string, kind: ShellKind, runtime: Runtime, title: string) => invoke<void>("terminal_window", { id, kind, runtime, title });
 
 /** Starts the shell in a pseudo-terminal; returns the session that write/resize/close take. */
-export function terminalOpen(id: string, kind: ShellKind, runtime: Runtime, cols: number, rows: number, onEvent: (e: TermEvent) => void) {
-  const events = new Channel<TermEvent>();
-  events.onmessage = onEvent;
-  return invoke<number>("terminal_open", { id, kind, runtime, cols, rows, events });
-}
+export const terminalOpen = (id: string, kind: ShellKind, runtime: Runtime, cols: number, rows: number, onEvent: (e: TermEvent) => void) =>
+  invokeStreaming<TermEvent, number>("terminal_open", { id, kind, runtime, cols, rows }, onEvent, "events");
 export const terminalWrite = (session: number, data: string) => invoke<void>("terminal_write", { session, data });
 export const terminalResize = (session: number, cols: number, rows: number) => invoke<void>("terminal_resize", { session, cols, rows });
 export const terminalClose = (session: number) => invoke<void>("terminal_close", { session });
