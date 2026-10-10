@@ -14,9 +14,10 @@ if (typeof window !== "undefined") {
     unobserve() {}
     disconnect() {}
   }
-  vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+  // Assigned, not `vi.stubGlobal`: a test's `vi.unstubAllGlobals()` must not take them away.
+  globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver;
   if (!window.matchMedia) {
-    vi.stubGlobal("matchMedia", (query: string) => ({
+    window.matchMedia = (query: string) => ({
       matches: false,
       media: query,
       onchange: null,
@@ -25,7 +26,7 @@ if (typeof window !== "undefined") {
       addListener: () => {},
       removeListener: () => {},
       dispatchEvent: () => false,
-    }));
+    });
   }
   Element.prototype.scrollIntoView ??= () => {};
   HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
