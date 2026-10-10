@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { emulatorReady, hostSupports, localProviders, readyHypervisors, runPlaces, runsNatively } from "@/features/labs/lab-runtime";
+import { emulatorReady, hostSupports, localProviders, pickLocalHypervisor, readyHypervisors, runPlaces, runsNatively } from "@/features/labs/lab-runtime";
 import type { LabRuntimeInfo } from "@/features/labs/use-labs";
 import type { Provider, ServerHost, SystemReport } from "@/lib/tauri";
 
@@ -66,6 +66,19 @@ describe("localProviders", () => {
   });
   it("is the emulator alone for a VM lab built for another CPU", () => {
     expect(localProviders(lab, "arm64")).toEqual(["qemu"]);
+  });
+});
+
+describe("pickLocalHypervisor", () => {
+  const local = ["parallels", "virtualbox"] as Provider[];
+  it("takes a ready hypervisor the lab can use, never just the first listed", () => {
+    expect(pickLocalHypervisor(local, ["virtualbox"] as Provider[], null)).toBe("virtualbox");
+    expect(pickLocalHypervisor(local, ["qemu"] as Provider[], null)).toBeNull();
+  });
+  it("falls back to the preference, then the first one, before the report is in", () => {
+    expect(pickLocalHypervisor(local, undefined, "virtualbox" as Provider)).toBe("virtualbox");
+    expect(pickLocalHypervisor(local, undefined, "qemu" as Provider)).toBe("parallels");
+    expect(pickLocalHypervisor([], undefined, null)).toBeNull();
   });
 });
 

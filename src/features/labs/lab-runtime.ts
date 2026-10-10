@@ -45,6 +45,15 @@ export function localProviders(rt: LabRuntimeInfo, hostArch?: string): Provider[
   return rt.providers.filter((p: string) => isLocal(p));
 }
 
+/** The hypervisor a VM lab starts on here: a ready one among those it can use (`local`), else
+ *  null. Never the lab's first listed provider: the catalogue lists them alphabetically, and
+ *  picking e.g. "parallels" on a VirtualBox machine fails at once with "prlctl was not found".
+ *  With no machine report yet (`ready` undefined), the Settings preference, then the first one. */
+export function pickLocalHypervisor(local: Provider[], ready: Provider[] | undefined, preferred: Provider | null): Provider | null {
+  if (ready === undefined) return (preferred && local.includes(preferred) ? preferred : local[0]) ?? null;
+  return ready.find((p) => local.includes(p)) ?? null;
+}
+
 /** Whether a saved server or cloud account can run the lab. */
 export const hostSupports = (rt: LabRuntimeInfo | null, h: ServerHost) =>
   !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && VM_CLOUDS_NOT_YET.has(h.provider));
