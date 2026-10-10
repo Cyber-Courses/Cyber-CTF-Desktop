@@ -115,10 +115,11 @@ mod tests {
 
     #[test]
     fn only_plain_absolute_paths_are_shared() {
+        let (root, home) = if cfg!(windows) { (r"C:\", r"C:\Users\alex") } else { ("/", "/Users/alex") };
         assert!(check(Path::new("relative/dir")).is_err());
-        assert!(check(Path::new("/home/a\"b")).is_err());
-        assert!(check(Path::new("/Users/alex/CyberCTF/shared")).is_ok());
-        assert!(check(Path::new("/Users/alex/My Tools")).is_ok());
+        assert!(check(&Path::new(root).join("home").join("a\"b")).is_err());
+        assert!(check(&Path::new(home).join("CyberCTF").join("shared")).is_ok());
+        assert!(check(&Path::new(home).join("My Tools")).is_ok());
     }
 
     #[test]

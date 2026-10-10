@@ -47,6 +47,8 @@ pub(super) fn wrapper_dir() -> std::io::Result<PathBuf> {
 mod tests {
     use super::*;
 
+    // The wrapper is a shell script (the relay is macOS-only).
+    #[cfg(unix)]
     #[test]
     fn wrapper_adds_the_relay_port_to_the_vi_target() {
         let dir = wrapper_dir().unwrap();

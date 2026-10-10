@@ -145,6 +145,8 @@ mod tests {
         assert_eq!(lab_root(Path::new("/tmp/selftest/terraform/proxmox")), Path::new("/tmp/selftest/terraform/proxmox"));
     }
 
+    // The Docker Terraform runner is macOS-only; Unix paths.
+    #[cfg(unix)]
     #[test]
     fn container_mounts_add_key_folders_once() {
         let env = vec![
