@@ -33,6 +33,16 @@ export function applyAppearance(mode: Appearance) {
   const root = document.documentElement;
   root.classList.remove("black", "light");
   if (mode !== "dark") root.classList.add(mode);
+  applyWindowTheme(mode);
+}
+
+/** The window's own frame follows the appearance (on Windows the title bar is otherwise the
+ *  system's colour: light over a dark app). No-op outside the desktop app. */
+function applyWindowTheme(mode: Appearance) {
+  if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
+  import("@tauri-apps/api/window")
+    .then(({ getCurrentWindow }) => getCurrentWindow().setTheme(mode === "light" ? "light" : "dark"))
+    .catch(() => {});
 }
 
 export function setAppearance(mode: Appearance) {
@@ -49,8 +59,11 @@ export function useAppearance(): [Appearance, (mode: Appearance) => void] {
   const [mode, setMode] = useState<Appearance>("dark");
   useEffect(() => {
     // Read once on mount (localStorage isn't available during render).
+    const current = getAppearance();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMode(getAppearance());
+    setMode(current);
+    // public/appearance.js set the page's colours before paint; the window frame follows here.
+    applyWindowTheme(current);
     const onStorage = (e: StorageEvent) => {
       if (e.key !== KEY) return;
       const next = parse(e.newValue);

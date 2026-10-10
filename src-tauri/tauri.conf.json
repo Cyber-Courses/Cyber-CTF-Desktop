@@ -20,7 +20,8 @@
         "minHeight": 640,
         "resizable": true,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "theme": "Dark"
       }
     ],
     "security": {
@@ -38,7 +39,9 @@
     "active": true,
     "linux": {
       "deb": {
-        "depends": ["pkexec | policykit-1"]
+        "depends": [
+          "pkexec | policykit-1"
+        ]
       }
     },
     "targets": [
