@@ -109,6 +109,11 @@ async fn vagrant(dir: &Path, args: &[&str], env: &[(String, String)], mut log: i
         log(line);
     })
     .await;
+    lead_with_verdict(result, verdict)
+}
+
+/// A failed command's error, led by Ansible's verdict when the stream had one.
+fn lead_with_verdict(result: Result<()>, verdict: Option<String>) -> Result<()> {
     match (result, verdict) {
         (Err(crate::error::Error::CommandFailed { command, stderr }), Some(v)) => {
             Err(crate::error::Error::CommandFailed { command, stderr: format!("{v}\n{stderr}") })
@@ -120,11 +125,15 @@ async fn vagrant(dir: &Path, args: &[&str], env: &[(String, String)], mut log: i
 /// Parks the lab's VMs without destroying them: `Pause` saves their state to disk (`vagrant
 /// suspend`, resumes in seconds), `Shutdown` powers them off cleanly (`vagrant halt`).
 pub async fn park(dir: &Path, mode: Park, env: &[(String, String)], mut log: impl FnMut(String)) -> Result<()> {
-    let verb = match mode {
+    stream("vagrant", &[park_verb(mode)], Some(dir), env, &mut log).await
+}
+
+/// The Vagrant command that parks VMs in `mode`.
+fn park_verb(mode: Park) -> &'static str {
+    match mode {
         Park::Pause => "suspend",
         Park::Shutdown => "halt",
-    };
-    stream("vagrant", &[verb], Some(dir), env, &mut log).await
+    }
 }
 
 /// Brings parked VMs back: a saved VM resumes where it was, a powered-off one boots. Never
@@ -133,13 +142,18 @@ pub async fn park(dir: &Path, mode: Park, env: &[(String, String)], mut log: imp
 pub async fn resume(dir: &Path, env: &[(String, String)], mut log: impl FnMut(String)) -> Result<()> {
     discard_aborted_saved(dir, &mut log).await;
     let provider = status(dir, env).await.ok().and_then(|s| s.provider);
-    let mut args = vec!["up", "--no-provision"];
-    if let Some(p) = provider.as_deref() {
-        args.extend(["--provider", p]);
-    }
-    stream("vagrant", &args, Some(dir), env, &mut log).await?;
+    stream("vagrant", &resume_args(provider.as_deref()), Some(dir), env, &mut log).await?;
     park_controller(dir, env, &mut log).await;
     Ok(())
+}
+
+/// `vagrant up` that brings parked VMs back on the provider they were created with.
+fn resume_args(provider: Option<&str>) -> Vec<&str> {
+    let mut args = vec!["up", "--no-provision"];
+    if let Some(p) = provider {
+        args.extend(["--provider", p]);
+    }
+    args
 }
 
 /// Ansible's own account of a failure in a streamed Vagrant line (the `<machine>: ` prefix
@@ -207,8 +221,18 @@ pub fn is_stale_state_error(line: &str) -> bool {
 /// recorded provider differs, tear the old one's machines down (best effort, using whatever env
 /// it needs) and reset `.vagrant` so the new provider starts from a clean slate.
 pub async fn reconcile_provider(dir: &Path, requested: Provider, env: &[(String, String)], log: &mut impl FnMut(String)) {
+    if !recorded_on_other_provider(dir, requested) {
+        return;
+    }
+    log("This lab last ran on a different target. Clearing that state so it can start fresh here…".into());
+    stop_bounded(dir, env).await;
+    let _ = std::fs::remove_dir_all(dir.join(".vagrant"));
+}
+
+/// Whether Vagrant recorded a machine of this folder under a provider other than `requested`.
+fn recorded_on_other_provider(dir: &Path, requested: Provider) -> bool {
     let machines = dir.join(".vagrant").join("machines");
-    let Ok(entries) = std::fs::read_dir(&machines) else { return };
+    let Ok(entries) = std::fs::read_dir(&machines) else { return false };
     let mut mismatch = false;
     for machine in entries.flatten() {
         if let Ok(provs) = std::fs::read_dir(machine.path()) {
@@ -219,12 +243,7 @@ pub async fn reconcile_provider(dir: &Path, requested: Provider, env: &[(String,
             }
         }
     }
-    if !mismatch {
-        return;
-    }
-    log("This lab last ran on a different target. Clearing that state so it can start fresh here…".into());
-    stop_bounded(dir, env).await;
-    let _ = std::fs::remove_dir_all(dir.join(".vagrant"));
+    mismatch
 }
 
 /// The on-disk folder VirtualBox creates for a VM is a sanitized form of its name: the middot in
@@ -270,17 +289,58 @@ pub(super) fn vm_names_from(text: &str) -> Vec<String> {
 /// VirtualBox's default machine folder (where VM directories live), parsed from
 /// `VBoxManage list systemproperties`; falls back to `~/VirtualBox VMs`.
 async fn vbox_machine_folder() -> Option<PathBuf> {
-    if let Ok(out) = run("VBoxManage", &["list", "systemproperties"], None).await {
-        for line in out.lines() {
-            if let Some(path) = line.strip_prefix("Default machine folder:") {
-                let path = path.trim();
-                if !path.is_empty() {
-                    return Some(PathBuf::from(path));
-                }
+    if let Ok(out) = run("VBoxManage", &["list", "systemproperties"], None).await
+        && let Some(path) = parse_machine_folder(&out)
+    {
+        return Some(path);
+    }
+    std::env::var_os("HOME").map(|h| PathBuf::from(h).join("VirtualBox VMs"))
+}
+
+/// The `Default machine folder:` of `VBoxManage list systemproperties`.
+fn parse_machine_folder(out: &str) -> Option<PathBuf> {
+    for line in out.lines() {
+        if let Some(path) = line.strip_prefix("Default machine folder:") {
+            let path = path.trim();
+            if !path.is_empty() {
+                return Some(PathBuf::from(path));
             }
         }
     }
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join("VirtualBox VMs"))
+    None
+}
+
+/// `(name, uuid)` of each VM in `VBoxManage list vms` (`"<name>" {<uuid>}` per line).
+fn parse_vbox_vms(out: &str) -> Vec<(String, String)> {
+    let mut vms = Vec::new();
+    for line in out.lines() {
+        let (Some(open), Some(close)) = (line.rfind('{'), line.rfind('}')) else { continue };
+        if close <= open {
+            continue;
+        }
+        let uuid = line[open + 1..close].to_string();
+        let name = line[..open].trim().trim_matches('"').to_string();
+        vms.push((name, uuid));
+    }
+    vms
+}
+
+/// Deletes the folders under `base` named EXACTLY like one of `wanted`'s VirtualBox folders.
+fn remove_leftover_folders(base: &Path, wanted: &HashSet<String>, log: &mut impl FnMut(String)) {
+    let folders: HashSet<String> = wanted.iter().flat_map(|n| folder_candidates(n)).collect();
+    let Ok(entries) = std::fs::read_dir(base) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() && folders.contains(entry.file_name().to_string_lossy().as_ref()) {
+            log(format!("Removing a leftover VM folder: {}", entry.file_name().to_string_lossy()));
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+}
+
+/// The names in `prlctl list -o name` output that are ours.
+fn ours_in_prlctl<'a>(out: &'a str, wanted: &HashSet<String>) -> Vec<&'a str> {
+    out.lines().map(str::trim).filter(|name| !name.is_empty() && wanted.contains(*name)).collect()
 }
 
 /// Removes VirtualBox VMs and leftover machine folders that belong to this lab (name matches one
@@ -291,14 +351,7 @@ async fn vbox_machine_folder() -> Option<PathBuf> {
 pub(super) async fn recover_virtualbox(wanted: &HashSet<String>, log: &mut impl FnMut(String)) {
     // Registered VMs of ours that are still around: power off and delete (removes their files).
     if let Ok(out) = run("VBoxManage", &["list", "vms"], None).await {
-        for line in out.lines() {
-            // `"<name>" {<uuid>}`
-            let (Some(open), Some(close)) = (line.rfind('{'), line.rfind('}')) else { continue };
-            if close <= open {
-                continue;
-            }
-            let uuid = line[open + 1..close].to_string();
-            let name = line[..open].trim().trim_matches('"').to_string();
+        for (name, uuid) in parse_vbox_vms(&out) {
             if wanted.contains(&name) {
                 log(format!("Removing a leftover VM left by a previous run: {name}"));
                 // A VM in the "saved" state (suspended, or the host slept) can't be powered off
@@ -312,17 +365,8 @@ pub(super) async fn recover_virtualbox(wanted: &HashSet<String>, log: &mut impl 
     }
     // Unregistered leftover folders (the import failed before registering the VM): delete only a
     // folder whose name is EXACTLY one of our VMs' sanitized folder names.
-    let folders: HashSet<String> = wanted.iter().flat_map(|n| folder_candidates(n)).collect();
-    if let Some(base) = vbox_machine_folder().await
-        && let Ok(entries) = std::fs::read_dir(&base)
-    {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() && folders.contains(entry.file_name().to_string_lossy().as_ref()) {
-                log(format!("Removing a leftover VM folder: {}", entry.file_name().to_string_lossy()));
-                let _ = std::fs::remove_dir_all(&path);
-            }
-        }
+    if let Some(base) = vbox_machine_folder().await {
+        remove_leftover_folders(&base, wanted, log);
     }
 }
 
@@ -330,13 +374,10 @@ pub(super) async fn recover_virtualbox(wanted: &HashSet<String>, log: &mut impl 
 /// then delete ours.
 pub(super) async fn recover_parallels(wanted: &HashSet<String>, log: &mut impl FnMut(String)) {
     let Ok(out) = run("prlctl", &["list", "-a", "--no-header", "-o", "name"], None).await else { return };
-    for line in out.lines() {
-        let name = line.trim();
-        if !name.is_empty() && wanted.contains(name) {
-            log(format!("Removing a leftover VM left by a previous run: {name}"));
-            let _ = run("prlctl", &["stop", name, "--kill"], None).await;
-            let _ = run("prlctl", &["delete", name], None).await;
-        }
+    for name in ours_in_prlctl(&out, wanted) {
+        log(format!("Removing a leftover VM left by a previous run: {name}"));
+        let _ = run("prlctl", &["stop", name, "--kill"], None).await;
+        let _ = run("prlctl", &["delete", name], None).await;
     }
 }
 
@@ -383,7 +424,12 @@ fn parse_status(out: &str) -> Vec<Machine> {
 
 pub async fn status(dir: &Path, env: &[(String, String)]) -> Result<LabStatus> {
     let out = run_env_timed("vagrant", &["status", "--machine-readable"], Some(dir), env, STATUS_TIMEOUT).await?;
-    let mut machines = parse_status(&out);
+    Ok(status_from(&out, dir))
+}
+
+/// The status of the VMs in `dir` from `vagrant status --machine-readable` output.
+fn status_from(out: &str, dir: &Path) -> LabStatus {
+    let mut machines = parse_status(out);
     // The lab is up when its targets are; the controller is powered off once they are built.
     let targets = machines.iter().filter(|m| !m.infra);
     let running = targets.clone().count() > 0 && targets.clone().all(|m| m.state == "running");
@@ -408,7 +454,7 @@ pub async fn status(dir: &Path, env: &[(String, String)]) -> Result<LabStatus> {
         let (_ts, _target, kind, data) = (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
         (kind == "provider-name" && !data.is_empty()).then(|| data.to_string())
     });
-    Ok(LabStatus { running, parked: None, machines, networks, url: None, host: None, expires_at: None, place: None, provider, attacker: None })
+    LabStatus { running, parked: None, machines, networks, url: None, host: None, expires_at: None, place: None, provider, attacker: None }
 }
 
 /// Each machine's lab interfaces and the lab's network segments, read from the generated
@@ -635,5 +681,223 @@ mod tests {
                    short,line\n";
         assert!(parse_status(out).is_empty());
         assert!(parse_status("").is_empty());
+    }
+
+    fn temp_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("cyberctf-vm-{tag}-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    const CONTROLLED: &str = "Vagrant.configure(\"2\") do |config|\n  config.vm.define \"isoloom-controller\" do |m|\n  end\nend\n";
+
+    #[test]
+    fn a_controller_is_read_from_its_define_line() {
+        let dir = temp_dir("ctl");
+        assert!(!super::has_controller(&dir), "no Vagrantfile");
+        std::fs::write(dir.join("Vagrantfile"), "config.vm.define \"dc01\" do |m|\nend\n").unwrap();
+        assert!(!super::has_controller(&dir));
+        std::fs::write(dir.join("Vagrantfile"), CONTROLLED).unwrap();
+        assert!(super::has_controller(&dir));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn no_controller_or_one_on_qemu_is_never_powered_off() {
+        let dir = temp_dir("park-ctl");
+        let mut lines = Vec::new();
+        super::park_controller(&dir, &[], &mut |l| lines.push(l)).await;
+        // On QEMU the controller is the attacker: it stays on (no Vagrant run at all).
+        std::fs::write(dir.join("Vagrantfile"), CONTROLLED).unwrap();
+        std::fs::create_dir_all(dir.join(".vagrant").join("machines").join(super::CONTROLLER).join("qemu")).unwrap();
+        super::park_controller(&dir, &[], &mut |l| lines.push(l)).await;
+        assert!(lines.is_empty(), "{lines:?}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn discarding_saved_state_needs_named_vms() {
+        // No Vagrantfile, so no VM names: nothing is asked of VirtualBox.
+        let dir = temp_dir("discard");
+        let mut lines = Vec::new();
+        super::discard_aborted_saved(&dir, &mut |l| lines.push(l)).await;
+        assert!(lines.is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_failure_leads_with_ansibles_verdict() {
+        use crate::error::Error;
+        let failed = || Err(Error::CommandFailed { command: "vagrant up".into(), stderr: "non-zero exit status".into() });
+        match super::lead_with_verdict(failed(), Some("fatal: [ws01]: UNREACHABLE!".into())) {
+            Err(Error::CommandFailed { command, stderr }) => {
+                assert_eq!(command, "vagrant up");
+                assert_eq!(stderr, "fatal: [ws01]: UNREACHABLE!\nnon-zero exit status");
+            }
+            other => panic!("{other:?}"),
+        }
+        // No verdict: the error as it was; success stays success; other errors are untouched.
+        match super::lead_with_verdict(failed(), None) {
+            Err(Error::CommandFailed { stderr, .. }) => assert_eq!(stderr, "non-zero exit status"),
+            other => panic!("{other:?}"),
+        }
+        assert!(super::lead_with_verdict(Ok(()), Some("fatal: [x]".into())).is_ok());
+        assert!(matches!(super::lead_with_verdict(Err(Error::Invalid("x".into())), Some("v".into())), Err(Error::Invalid(m)) if m == "x"));
+    }
+
+    #[test]
+    fn parking_suspends_or_halts_and_resuming_keeps_the_provider() {
+        use super::super::model::Park;
+        assert_eq!(super::park_verb(Park::Pause), "suspend");
+        assert_eq!(super::park_verb(Park::Shutdown), "halt");
+        assert_eq!(super::resume_args(None), ["up", "--no-provision"]);
+        assert_eq!(super::resume_args(Some("virtualbox")), ["up", "--no-provision", "--provider", "virtualbox"]);
+    }
+
+    #[test]
+    fn ansible_verdict_cuts_long_non_ascii_lines_on_a_char_boundary() {
+        let long = format!("fatal: [a]: FAILED! => {}", "é".repeat(300));
+        let v = super::ansible_verdict(&long).unwrap();
+        assert!(v.ends_with("..."));
+        assert!(v.len() <= 300);
+        // A machine prefix with a space is not Vagrant's, so not a verdict.
+        assert_eq!(super::ansible_verdict("two words: fatal: [a]: FAILED!"), None);
+        assert_eq!(super::ansible_verdict("fatal: [a]: FAILED!").as_deref(), Some("fatal: [a]: FAILED!"));
+    }
+
+    #[test]
+    fn another_recorded_provider_is_a_mismatch() {
+        use super::super::providers::Provider;
+        let dir = temp_dir("reconcile");
+        assert!(!super::recorded_on_other_provider(&dir, Provider::Virtualbox), "never started");
+        let machines = dir.join(".vagrant").join("machines");
+        std::fs::create_dir_all(machines.join("dc01").join("virtualbox")).unwrap();
+        // A stray file is not a provider folder.
+        std::fs::write(machines.join("dc01").join("index_uuid"), "x").unwrap();
+        assert!(!super::recorded_on_other_provider(&dir, Provider::Virtualbox));
+        assert!(super::recorded_on_other_provider(&dir, Provider::VmwareEsxi));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn reconciling_on_the_same_provider_keeps_the_state() {
+        use super::super::providers::Provider;
+        let dir = temp_dir("reconcile-same");
+        let mut lines = Vec::new();
+        super::reconcile_provider(&dir, Provider::Virtualbox, &[], &mut |l| lines.push(l)).await;
+        std::fs::create_dir_all(dir.join(".vagrant").join("machines").join("dc01").join("virtualbox")).unwrap();
+        super::reconcile_provider(&dir, Provider::Virtualbox, &[], &mut |l| lines.push(l)).await;
+        assert!(lines.is_empty());
+        assert!(dir.join(".vagrant").is_dir());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn reads_virtualboxs_machine_folder() {
+        let out = "API version: 7_0\nDefault machine folder:          /Users/a/VirtualBox VMs\nVRDE auth library: x\n";
+        assert_eq!(super::parse_machine_folder(out), Some(std::path::PathBuf::from("/Users/a/VirtualBox VMs")));
+        assert_eq!(super::parse_machine_folder("Default machine folder:   \n"), None);
+        assert_eq!(super::parse_machine_folder(""), None);
+    }
+
+    #[test]
+    fn lists_virtualbox_vms_by_name_and_uuid() {
+        let out = "\"minilab · dc01\" {1111-aaaa}\n\"other\" {2222-bbbb}\ngarbage\n} backwards {\n";
+        assert_eq!(super::parse_vbox_vms(out), vec![("minilab · dc01".to_string(), "1111-aaaa".to_string()), ("other".to_string(), "2222-bbbb".to_string())]);
+    }
+
+    #[test]
+    fn only_our_parallels_vms_are_picked() {
+        let wanted: std::collections::HashSet<String> = ["minilab · dc01".to_string()].into();
+        let out = "minilab · dc01\n  \nminilab-dc01\nsomeone else\n";
+        assert_eq!(super::ours_in_prlctl(out, &wanted), ["minilab · dc01"]);
+    }
+
+    #[test]
+    fn leftover_folders_go_by_their_exact_sanitized_names() {
+        let base = temp_dir("vbox-folders");
+        for f in ["minilab - dc01", "minilab-dc01", "unrelated"] {
+            std::fs::create_dir_all(base.join(f)).unwrap();
+        }
+        std::fs::write(base.join("minilab · dc01"), "a file, not a folder").unwrap();
+        let wanted: std::collections::HashSet<String> = ["minilab · dc01".to_string()].into();
+        let mut lines = Vec::new();
+        super::remove_leftover_folders(&base, &wanted, &mut |l| lines.push(l));
+        assert!(!base.join("minilab - dc01").exists());
+        assert!(base.join("minilab-dc01").is_dir(), "a lossy match is never deleted");
+        assert!(base.join("unrelated").is_dir());
+        assert!(base.join("minilab · dc01").is_file());
+        assert_eq!(lines, ["Removing a leftover VM folder: minilab - dc01"]);
+        // A missing base folder is nothing to do.
+        super::remove_leftover_folders(&base.join("nope"), &wanted, &mut |l| lines.push(l));
+        assert_eq!(lines.len(), 1);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn status_without_a_lab_spec_has_machines_and_the_provider() {
+        let dir = temp_dir("status");
+        let out = "1,dc01,provider-name,virtualbox\n1,dc01,state,running\n1,isoloom-controller,state,poweroff\n";
+        let s = super::status_from(out, &dir);
+        assert!(s.running, "the targets are up, the controller doesn't count");
+        assert_eq!(s.provider.as_deref(), Some("virtualbox"));
+        assert_eq!(s.machines.len(), 2);
+        assert!(s.networks.is_empty());
+        // Only the controller: nothing of the lab is running.
+        let s = super::status_from("1,isoloom-controller,state,running\n", &dir);
+        assert!(!s.running);
+        assert_eq!(s.provider, None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn status_reads_the_network_diagram_from_the_labs_spec() {
+        let lab = temp_dir("status-lab");
+        std::fs::write(
+            lab.join("isoloom.yml"),
+            "version: 1\nname: t\nnetworks:\n  lab: { cidr: 10.30.0.0/24 }\nmachines:\n  web:\n    networks: { lab: 10 }\n    docker: { image: nginx:1.27 }\n",
+        )
+        .unwrap();
+        let vagrant = lab.join(".isoloom").join("vagrant");
+        std::fs::create_dir_all(&vagrant).unwrap();
+        let s = super::status_from("1,web,state,running\n1,other,state,running\n", &vagrant);
+        assert!(s.running);
+        let web = s.machines.iter().find(|m| m.name == "web").unwrap();
+        assert_eq!(web.ip, "10.30.0.10");
+        assert_eq!(web.interfaces.len(), 1);
+        assert_eq!(s.machines.iter().find(|m| m.name == "other").unwrap().ip, "");
+        assert_eq!(s.networks.iter().map(|n| n.name.as_str()).collect::<Vec<_>>(), ["lab"]);
+        std::fs::remove_dir_all(lab).unwrap();
+    }
+
+    #[test]
+    fn vm_names_come_from_the_vagrantfile_on_disk() {
+        let dir = temp_dir("names");
+        assert!(super::vm_names(&dir).is_empty());
+        std::fs::write(dir.join("Vagrantfile"), "v.name = \"b\"\nv.name = \"a\"\nv.name = \"a\"\nv.name = \"\"\nv.name\n").unwrap();
+        assert_eq!(super::vm_names(&dir), ["a", "b"]);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn quoted_and_field_read_vagrantfile_values() {
+        assert_eq!(super::quoted("x \"a\" \"b\"").as_deref(), Some("a"));
+        assert_eq!(super::quoted("no quotes"), None);
+        assert_eq!(super::quoted("\"open"), None);
+        assert_eq!(super::field("ip: \"10.0.0.1\", netmask: \"255.0.0.0\"", "netmask:").as_deref(), Some("255.0.0.0"));
+        assert_eq!(super::field("ip: \"10.0.0.1\"", "netmask:"), None);
+    }
+
+    #[test]
+    fn topology_skips_lines_outside_a_machine_or_without_an_address() {
+        let vf = "m.vm.network \"private_network\", ip: \"10.0.0.9\", virtualbox__intnet: \"isoloom-l-lab\"\n\
+                  config.vm.define \"a\" do |m|\n\
+                  m.vm.network \"forwarded_port\", guest: 80\n\
+                  m.vm.network \"private_network\", ip: \"10.0.0.5\"\n\
+                  m.vm.network \"private_network\", ip: \"10.0.0.5\", netmask: \"bad\", virtualbox__intnet: \"isoloom-l-lab\"\n";
+        let (ifaces, nets) = super::vagrant_topology(vf, "l");
+        assert_eq!(ifaces.len(), 1);
+        assert_eq!(ifaces["a"].len(), 1);
+        assert_eq!(nets[0].subnet, "", "an unreadable mask leaves the subnet blank");
     }
 }
