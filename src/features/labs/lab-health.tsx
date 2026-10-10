@@ -7,7 +7,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { labCheck, type LabCheck } from "@/lib/tauri";
 import { useT } from "@/lib/i18n";
 
-export type CheckState = LabCheck | "checking" | null;
+type CheckState = LabCheck | "checking" | null;
 
 /** When a container goes down, check (once per incident) whether the lab is still solvable. */
 export function useLabCheck(labId: string, { running, downCount, enabled }: { running: boolean; downCount: number; enabled: boolean }) {

@@ -134,4 +134,3 @@ export const difficultyLabel = (t: T, level: number) => {
   const key = DIFFICULTY_KEYS[level - 1];
   return key ? t(`labs.difficulty.${key}`) : "";
 };
-export const DIFFICULTY_DOT = ["", "bg-success", "bg-warning", "bg-destructive"];

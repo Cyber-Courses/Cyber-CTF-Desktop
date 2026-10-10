@@ -58,7 +58,7 @@ export function pickLocalHypervisor(local: Provider[], ready: Provider[] | undef
 export const hostSupports = (rt: LabRuntimeInfo | null, h: ServerHost) =>
   !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && VM_CLOUDS_NOT_YET.has(h.provider));
 
-export type PlaceKey = NonNullable<LabStatus["place"]> | "hosted";
+type PlaceKey = NonNullable<LabStatus["place"]> | "hosted";
 
 /** Every place a lab could run, and whether this one can (its runtime here, then its providers).
  *  Its words are `labs.places.<key>`.
