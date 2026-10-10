@@ -1,0 +1,231 @@
+//! Worker processes: starting one detached, telling a live worker from a stale pidfile, listing
+//! the running ones, and stopping one with everything it started.
+
+use std::path::Path;
+use std::time::Duration;
+
+use tauri::AppHandle;
+
+use super::Job;
+use super::files::{self, Files, read_pid};
+use crate::error::{Error, Result};
+
+/// A worker just started: its files and its process id.
+pub struct Spawned {
+    pub files: Files,
+    pub pid: u32,
+}
+
+/// Starts the worker for `job`, detached from this process. `Err` when it can't be started; the
+/// caller then deploys in-process as a fallback.
+pub fn spawn(app: &AppHandle, job: &Job) -> Result<Spawned> {
+    crate::runtime::validate_id(&job.lab_id)?;
+    let f = files::of(app, &job.key())?;
+    // A fresh run: no verdict or log left from an earlier one.
+    let _ = std::fs::remove_file(&f.status);
+    std::fs::write(&f.job, serde_json::to_vec(job).map_err(|e| Error::Invalid(e.to_string()))?).map_err(Error::Io)?;
+    let log = std::fs::File::create(&f.log).map_err(Error::Io)?;
+    let exe = std::env::current_exe().map_err(Error::Io)?;
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg("deploy").arg("--job").arg(&f.job).stdin(std::process::Stdio::null()).stdout(log.try_clone().map_err(Error::Io)?).stderr(log);
+    detach(&mut cmd);
+    let mut child = cmd.spawn().map_err(Error::Io)?;
+    let pid = child.id();
+    std::fs::write(&f.pid, pid.to_string()).map_err(Error::Io)?;
+    // Reaped when it exits: unreaped, a finished worker stays a zombie for as long as the app
+    // runs, and a zombie still answers `kill -0`. Its pidfile goes with it: a worker that
+    // finished before the line above wrote the pidfile would otherwise leave one behind.
+    let pidfile = f.pid.clone();
+    std::thread::spawn(move || {
+        let _ = child.wait();
+        if read_pid(&pidfile) == Some(pid) {
+            let _ = std::fs::remove_file(&pidfile);
+        }
+    });
+    Ok(Spawned { files: f, pid })
+}
+
+/// Its own process group (and session leader on unix): closing the app's terminal or the app
+/// itself sends it nothing, and stopping it later stops its children too.
+fn detach(cmd: &mut std::process::Command) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    }
+}
+
+/// Whether `pid` is a live deploy worker: running (not a zombie) and this app's `deploy --job`
+/// process, not another program that got the number of a worker long gone.
+pub fn alive(pid: u32) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+        let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+        proc_state(&stat).is_some_and(|c| c != 'Z' && c != 'X') && is_worker(&String::from_utf8_lossy(&cmdline).replace('\0', " "))
+    }
+    #[cfg(all(unix, not(target_os = "linux")))]
+    {
+        std::process::Command::new("ps")
+            .args(["-o", "stat=,command=", "-p", &pid.to_string()])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .is_some_and(|l| !l.starts_with('Z') && is_worker(&l))
+    }
+    #[cfg(windows)]
+    {
+        crate::exec::headless_std(std::process::Command::new("tasklist").args(["/FI", &format!("PID eq {pid}"), "/NH"]))
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()))
+            .unwrap_or(false)
+    }
+}
+
+/// The state letter in a `/proc/<pid>/stat` line. It follows the command name, which is in
+/// parentheses and may hold spaces.
+#[cfg(any(target_os = "linux", test))]
+fn proc_state(stat: &str) -> Option<char> {
+    stat.rsplit_once(") ").and_then(|(_, rest)| rest.chars().next())
+}
+
+/// A deploy worker's command line: `<app> deploy --job <file>`.
+fn is_worker(cmdline: &str) -> bool {
+    cmdline.contains(" deploy ") && cmdline.contains("--job")
+}
+
+/// The keys (lab ids, and `<lab>.attack` for attack VM starts) whose worker is running right
+/// now: a pidfile naming a live process. A pidfile whose process is gone (the worker finished,
+/// or died) is removed on the way.
+pub fn running(app: &AppHandle) -> Vec<String> {
+    let Ok(d) = files::dir(app) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(&d) else { return Vec::new() };
+    let mut out = Vec::new();
+    for e in entries.flatten() {
+        let p = e.path();
+        let Some(key) = pidfile_key(&p) else { continue };
+        match read_pid(&p) {
+            Some(pid) if alive(pid) => out.push(key),
+            _ => {
+                let _ = std::fs::remove_file(&p);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// The worker key a pidfile (`<key>.pid`) is for.
+fn pidfile_key(path: &Path) -> Option<String> {
+    if path.extension().and_then(|x| x.to_str()) != Some("pid") {
+        return None;
+    }
+    path.file_stem().and_then(|s| s.to_str()).map(str::to_string)
+}
+
+/// The jobs whose worker runs right now, each with the step its log is at (for the sidebar).
+pub fn running_jobs(app: &AppHandle) -> Vec<(Job, Option<String>)> {
+    let Ok(d) = files::dir(app) else { return Vec::new() };
+    running(app)
+        .into_iter()
+        .filter_map(|key| {
+            let f = Files::of(&d, &key);
+            let job: Job = serde_json::from_slice(&std::fs::read(&f.job).ok()?).ok()?;
+            let step = std::fs::read_to_string(&f.log).ok().and_then(|l| super::progress::last_step(&l));
+            Some((job, step))
+        })
+        .collect()
+}
+
+/// Stops the worker of `key` (a lab id, or its attack VM's key), with everything it started
+/// (its process group), if one runs.
+pub fn kill(app: &AppHandle, key: &str) {
+    let Ok(f) = files::of(app, key) else { return };
+    if let Some(pid) = f.pid().filter(|p| alive(*p)) {
+        #[cfg(unix)]
+        signal_group(pid, "-TERM");
+        #[cfg(windows)]
+        {
+            let _ = crate::exec::headless_std(std::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"])).status();
+        }
+    }
+    let _ = std::fs::remove_file(&f.pid);
+}
+
+/// Sends `signal` to the process group `pid` leads: the worker and its vagrant/docker/terraform.
+#[cfg(unix)]
+fn signal_group(pid: u32, signal: &str) {
+    // The negative pid is the process group.
+    let _ = std::process::Command::new("kill").args([signal, &format!("-{pid}")]).status();
+}
+
+/// [`kill`], then waits until the worker is gone (SIGKILL to its group after 20 s), so what
+/// follows (a teardown) never races a `compose up` or `vagrant up` that is still creating what
+/// it removes.
+pub async fn kill_and_wait(app: &AppHandle, key: &str) {
+    let Ok(f) = files::of(app, key) else { return };
+    let Some(pid) = f.pid().filter(|p| alive(*p)) else { return };
+    kill(app, key);
+    if gone_within(pid, 40).await {
+        return;
+    }
+    #[cfg(unix)]
+    signal_group(pid, "-KILL");
+    gone_within(pid, 10).await;
+}
+
+/// Whether `pid` stops being a live worker within `checks` half-second checks.
+async fn gone_within(pid: u32, checks: u32) -> bool {
+    for _ in 0..checks {
+        if !alive(pid) {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_deploy_worker_counts_as_one() {
+        assert!(is_worker("/usr/bin/cyberctf-desktop deploy --job /data/deploys/lab-1.json"));
+        assert!(!is_worker("/usr/bin/firefox-esr --new-window"));
+        assert!(!is_worker(""));
+    }
+
+    #[test]
+    fn the_process_state_follows_a_command_name_with_spaces() {
+        assert_eq!(proc_state("1234 (cyberctf-desktop) S 1 1234"), Some('S'));
+        assert_eq!(proc_state("1234 (Web Content) Z 1 1234"), Some('Z'));
+        assert_eq!(proc_state(""), None);
+    }
+
+    #[test]
+    fn only_pidfiles_name_a_worker() {
+        assert_eq!(pidfile_key(Path::new("/d/lab-1.pid")).as_deref(), Some("lab-1"));
+        assert_eq!(pidfile_key(Path::new("/d/lab-1.attack.pid")).as_deref(), Some("lab-1.attack"));
+        assert_eq!(pidfile_key(Path::new("/d/lab-1.log")), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_finished_or_foreign_process_is_not_alive() {
+        // This test binary is alive but isn't a worker; a reaped child is gone.
+        assert!(!alive(std::process::id()));
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        assert!(!alive(pid));
+    }
+}
