@@ -297,21 +297,21 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $api = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$env:STORE_PRODUCT_ID"
-          function H {
+          function Get-StoreHeaders {
             $token = (Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$env:STORE_TENANT_ID/oauth2/token" -Body @{
                 grant_type = "client_credentials"; client_id = $env:STORE_CLIENT_ID; client_secret = $env:STORE_CLIENT_SECRET
                 resource = "https://manage.devcenter.microsoft.com"
               }).access_token
             return @{ Authorization = "Bearer $token" }
           }
-          $pending = (Invoke-RestMethod -Uri $api -Headers (H)).pendingApplicationSubmission
+          $pending = (Invoke-RestMethod -Uri $api -Headers (Get-StoreHeaders)).pendingApplicationSubmission
           if (-not $pending) { Write-Host "::error::No open submission in Partner Center."; exit 1 }
           $id = $pending.id
           Write-Host "Submitting $id for certification"
-          Invoke-RestMethod -Method Post -Uri "$api/submissions/$id/commit" -Headers (H) | Out-Null
+          Invoke-RestMethod -Method Post -Uri "$api/submissions/$id/commit" -Headers (Get-StoreHeaders) | Out-Null
           do {
             Start-Sleep -Seconds 20
-            $status = Invoke-RestMethod -Uri "$api/submissions/$id/status" -Headers (H)
+            $status = Invoke-RestMethod -Uri "$api/submissions/$id/status" -Headers (Get-StoreHeaders)
             Write-Host "Status: $($status.status)"
           } while ($status.status -eq "CommitStarted")
           if ($status.status -eq "CommitFailed") {
