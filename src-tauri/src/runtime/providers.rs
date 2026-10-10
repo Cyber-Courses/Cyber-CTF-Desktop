@@ -1,6 +1,7 @@
 //! Vagrant providers the launcher knows how to drive. Vagrant abstracts the
 //! hypervisor; we only detect what is usable on this machine and pass
-//! `--provider` through.
+//! `--provider` through. The cloud accounts share the enum (labs run there through Terraform)
+//! but are never detected here.
 
 use serde::{Deserialize, Serialize};
 
@@ -155,6 +156,16 @@ impl Provider {
             | Provider::Oci => None,
         }
     }
+
+    /// Whether the hypervisor itself is installed here. None when there's nothing local to check:
+    /// remote providers, and Hyper-V (a Windows feature, not probed).
+    async fn hypervisor_installed(self) -> Option<bool> {
+        if self == Provider::Utm {
+            return Some(std::path::Path::new(UTM_APP).exists());
+        }
+        let (program, args) = self.probe()?;
+        Some(tool_present(program, args).await)
+    }
 }
 
 const UTM_APP: &str = "/Applications/UTM.app";
@@ -211,9 +222,13 @@ async fn tool_present(program: &'static str, args: &[&str]) -> bool {
     }
 }
 
+/// The Vagrant plugins installed (none when `vagrant plugin list` fails).
+async fn installed_plugins() -> Vec<String> {
+    run_read("vagrant", &["plugin", "list"], None).await.map(|o| parse_plugins(&o)).unwrap_or_default()
+}
+
 pub async fn detect(vagrant_installed: bool) -> Vec<ProviderStatus> {
-    let plugins =
-        if vagrant_installed { run_read("vagrant", &["plugin", "list"], None).await.map(|o| parse_plugins(&o)).unwrap_or_default() } else { Vec::new() };
+    let plugins = if vagrant_installed { installed_plugins().await } else { Vec::new() };
 
     let mut statuses = Vec::new();
     for provider in Provider::ALL {
@@ -223,15 +238,7 @@ pub async fn detect(vagrant_installed: bool) -> Vec<ProviderStatus> {
         }
 
         // The hypervisor layer (the VM software itself).
-        let hypervisor = if provider.is_remote() || provider == Provider::Hyperv {
-            None
-        } else if provider == Provider::Utm {
-            Some(std::path::Path::new(UTM_APP).exists())
-        } else if let Some((program, args)) = provider.probe() {
-            Some(tool_present(program, args).await)
-        } else {
-            None
-        };
+        let hypervisor = provider.hypervisor_installed().await;
 
         // The Vagrant layer (the plugin that drives this provider).
         let plugin = provider.plugin().map(str::to_string);
@@ -276,22 +283,13 @@ pub async fn detect(vagrant_installed: bool) -> Vec<ProviderStatus> {
 /// Vagrant plugin fails with an actionable message instead of a raw Vagrant error mid-boot.
 /// Remote and cloud providers are validated by their own host/connection checks, so they pass.
 pub async fn ensure_usable(provider: Provider) -> std::result::Result<(), String> {
-    if provider.is_remote() || provider.is_cloud() {
+    if provider.is_remote() {
         return Ok(());
     }
     if !tool_present("vagrant", &["--version"]).await {
         return Err("Vagrant isn't installed. Install it from the Machine page, then start the lab again.".into());
     }
-    let hypervisor_ok = if provider == Provider::Hyperv {
-        true // a Windows feature, not probed here
-    } else if provider == Provider::Utm {
-        std::path::Path::new(UTM_APP).exists()
-    } else if let Some((program, args)) = provider.probe() {
-        tool_present(program, args).await
-    } else {
-        true
-    };
-    if !hypervisor_ok {
+    if provider.hypervisor_installed().await == Some(false) {
         let what = provider.probe().map(|(p, _)| format!("`{p}` was not found")).unwrap_or_else(|| "its hypervisor isn't installed".into());
         return Err(format!("Can't run on {} here: {what}. Install it from the Machine page, then start the lab again.", provider.id()));
     }
@@ -300,14 +298,13 @@ pub async fn ensure_usable(provider: Provider) -> std::result::Result<(), String
     {
         return Err(format!("Can't run on libvirt here: {why}."));
     }
-    if let Some(needed) = provider.plugin() {
-        let plugins = run_read("vagrant", &["plugin", "list"], None).await.map(|o| parse_plugins(&o)).unwrap_or_default();
-        if !plugins.iter().any(|i| i == needed) {
-            return Err(format!(
-                "The Vagrant plugin `{needed}` for {} isn't installed. Install it from the Machine page, then start the lab again.",
-                provider.id()
-            ));
-        }
+    if let Some(needed) = provider.plugin()
+        && !installed_plugins().await.iter().any(|i| i == needed)
+    {
+        return Err(format!(
+            "The Vagrant plugin `{needed}` for {} isn't installed. Install it from the Machine page, then start the lab again.",
+            provider.id()
+        ));
     }
     Ok(())
 }

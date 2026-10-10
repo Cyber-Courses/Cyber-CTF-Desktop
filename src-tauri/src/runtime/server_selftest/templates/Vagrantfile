@@ -1,0 +1,20 @@
+
+# Minimal throwaway VM for the server self-test (no lab provisioning).
+Vagrant.configure("2") do |config|
+  config.vm.define "cyberctf-selftest"
+  config.vm.hostname = "cyberctf-selftest"
+  config.vm.box = "bento/debian-12"
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+  # Set on macOS, where Vagrant's own SSH can't reach the LAN (see lan_relay).
+  config.ssh.proxy_command = ENV["ISOLOOM_SSH_PROXY_COMMAND"] if ENV["ISOLOOM_SSH_PROXY_COMMAND"]
+  config.vm.provider "vmware_esxi" do |esxi|
+    esxi.esxi_hostname = ENV["CYBERCTF_ESXI_HOSTNAME"]
+    esxi.esxi_hostport = Integer(ENV.fetch("CYBERCTF_ESXI_HOSTPORT", "22"))
+    esxi.esxi_username = ENV.fetch("CYBERCTF_ESXI_USERNAME", "root")
+    esxi.esxi_password = "env:CYBERCTF_ESXI_PASSWORD"
+    esxi.esxi_disk_store = ENV["CYBERCTF_ESXI_DISK_STORE"] if ENV["CYBERCTF_ESXI_DISK_STORE"]
+    esxi.esxi_virtual_network = ENV["CYBERCTF_ESXI_VIRTUAL_NETWORK"] if ENV["CYBERCTF_ESXI_VIRTUAL_NETWORK"]
+    esxi.guest_numvcpus = 1
+    esxi.guest_memsize = 1536
+  end
+end

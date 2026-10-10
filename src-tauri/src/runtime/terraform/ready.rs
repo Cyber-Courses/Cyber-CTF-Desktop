@@ -1,0 +1,115 @@
+//! After apply the VM exists, but cloud-init is still installing Docker and starting the lab:
+//! waiting on the bootstrap's report over SSH, so "running" means the lab is up.
+
+use std::path::Path;
+use std::time::{Duration, Instant};
+
+use super::state::{output, ssh_target};
+use crate::error::{Error, Result};
+use crate::runtime::ssh;
+
+/// How long the lab host may take to install Docker and start the lab after boot.
+const READY_TIMEOUT: Duration = Duration::from_secs(40 * 60);
+/// Give up on confirming (not on the lab) when SSH never answers this long.
+const SSH_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+const POLL: Duration = Duration::from_secs(10);
+
+/// The bootstrap's report, read from the lab host.
+#[derive(Debug, PartialEq)]
+enum Progress {
+    Running(String),
+    Ready,
+    Failed(String),
+}
+
+/// First line of `cat <ready_file>`: "running: <step>", "ready" or "failed: <step>".
+fn parse_progress(first_line: &str) -> Progress {
+    let line = first_line.trim();
+    if line == "ready" {
+        Progress::Ready
+    } else if let Some(step) = line.strip_prefix("failed:") {
+        Progress::Failed(step.trim().to_string())
+    } else {
+        Progress::Running(line.strip_prefix("running:").unwrap_or("booting").trim().to_string())
+    }
+}
+
+/// Waits for the bootstrap's `ready_file` over SSH; a failed bootstrap fails the launch with
+/// its log. Modules without a `ready_file` output (older labs) are not waited on.
+pub(super) async fn wait_ready(state: &Path, log: &mut impl FnMut(String)) -> Result<()> {
+    let Some(ready_file) = output(state, "ready_file") else { return Ok(()) };
+    let Some(target) = ssh::launcher_key().and_then(|identity| ssh_target(state, identity)) else {
+        log("Can't reach the lab host over SSH to confirm it started; check it from the lab page.".into());
+        return Ok(());
+    };
+    let known_hosts = state.join("known_hosts");
+    let command = format!("cat {} 2>/dev/null || true; echo; tail -n 25 /var/log/cyberctf-lab.log 2>/dev/null || true", ssh::sh_quote(&ready_file));
+
+    log("Waiting for the lab host to install Docker and start the lab…".into());
+    let started = Instant::now();
+    let mut reached = false;
+    let mut last_step = String::new();
+    loop {
+        match target.exec(&known_hosts, &command).await {
+            Ok(out) => {
+                reached = true;
+                let mut lines = out.lines();
+                match parse_progress(lines.next().unwrap_or_default()) {
+                    Progress::Ready => {
+                        log("Lab host ready.".into());
+                        return Ok(());
+                    }
+                    Progress::Failed(step) => {
+                        let tail: Vec<&str> = lines.filter(|l| !l.trim().is_empty()).collect();
+                        return Err(Error::CommandFailed { command: format!("lab host: {step}"), stderr: tail.join("\n") });
+                    }
+                    Progress::Running(step) => {
+                        if step != last_step {
+                            log(format!("Lab host: {step}…"));
+                            last_step = step;
+                        }
+                    }
+                }
+            }
+            Err(_) if !reached && started.elapsed() >= SSH_TIMEOUT => {
+                log("The lab host doesn't answer over SSH, so the launcher can't confirm the lab started. It may still be starting; check it from the lab page.".into());
+                return Ok(());
+            }
+            // Booting (SSH not up yet) or a dropped connection: try again.
+            Err(_) => {}
+        }
+        if started.elapsed() >= READY_TIMEOUT {
+            return Err(Error::Invalid(format!(
+                "the lab host didn't finish starting the lab within {} minutes (last step: {})",
+                READY_TIMEOUT.as_secs() / 60,
+                if last_step.is_empty() { "booting" } else { &last_step }
+            )));
+        }
+        tokio::time::sleep(POLL).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime::terraform::tests::temp_state;
+
+    #[test]
+    fn parses_bootstrap_progress() {
+        assert_eq!(parse_progress("ready\n"), Progress::Ready);
+        assert_eq!(parse_progress("running: downloading the lab"), Progress::Running("downloading the lab".into()));
+        assert_eq!(parse_progress("failed: starting the lab"), Progress::Failed("starting the lab".into()));
+        // No status file yet: cloud-init hasn't reached the bootstrap.
+        assert_eq!(parse_progress(""), Progress::Running("booting".into()));
+    }
+
+    #[tokio::test]
+    async fn no_ready_file_output_means_no_wait() {
+        let dir = temp_state();
+        std::fs::write(dir.join("terraform.tfstate"), r#"{"outputs":{"ip":{"value":"10.0.0.9"}}}"#).unwrap();
+        let mut lines = Vec::new();
+        wait_ready(&dir, &mut |l| lines.push(l)).await.unwrap();
+        assert!(lines.is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}

@@ -1,0 +1,189 @@
+//! Terraform runs of a lab's Isoloom module (`.isoloom/docker-vm/proxmox`, `.isoloom/proxmox`,
+//! `.isoloom/cloud-docker/<cloud>`: Proxmox servers and the clouds). A local `terraform` binary
+//! is required; state is kept as plain files on the host. A containerised terraform would be
+//! simpler to ship but couldn't reach the host's cloud CLI auth (`~/.aws`, `az login` /
+//! `~/.azure`, gcloud ADC), so the cloud targets need the host binary. Variables reach it as
+//! `TF_VAR_*` through the environment (never on the command line).
+//!
+//! State lives outside the lab folder (`state_dir`), because reinstalling a lab at a new
+//! commit replaces that folder and must not orphan the VM it created.
+//!
+//! - this module: `apply` / `destroy` and the variables they pass.
+//! - `runner`: running terraform itself (host binary or container).
+//! - `ready`: waiting for the lab host's bootstrap after apply.
+//! - `state`: what the state files say (status, outputs, SSH target, expiry).
+
+mod ready;
+mod runner;
+mod state;
+
+use std::path::{Path, PathBuf};
+
+pub use state::{JUMP_FILE, expired, ssh_endpoint, ssh_target, status};
+
+use self::ready::wait_ready;
+use self::runner::terraform;
+use self::state::{RUN_FILE, STATE_FILE, now, run_record, saved_vars};
+use super::ssh;
+use crate::error::Result;
+
+/// Creates (or updates) the target's resources. `vars` are Terraform variable names;
+/// `env` is raw environment the provider reads itself (cloud credentials).
+pub async fn apply(module: &Path, state: &Path, vars: &[(String, String)], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
+    std::fs::create_dir_all(state)?;
+    // Remember the non-secret variables, so a later destroy has them without the launch spec.
+    let run = run_record(vars, now());
+    std::fs::write(state.join(RUN_FILE), serde_json::to_string(&run).unwrap_or_default())?;
+    let mut log = log;
+    let vars = with_ssh_key(vars, ssh::launcher_key());
+    terraform(module, state, &with_env(&vars, env), "apply", &mut log).await?;
+    wait_ready(state, &mut log).await
+}
+
+/// Destroys everything the target created. `vars` carry the connection again (the
+/// provider needs it); the lab variables are restored from the last apply.
+pub async fn destroy(module: &Path, state: &Path, vars: &[(String, String)], env: &[(String, String)], log: impl FnMut(String)) -> Result<()> {
+    let mut log = log;
+    if !state.join(STATE_FILE).is_file() {
+        // A recorded deploy whose state is gone (e.g. the app data was wiped): there's nothing to
+        // destroy from here, but resources may still exist on the account. Say so rather than
+        // reporting a clean stop.
+        if state.join(RUN_FILE).is_file() {
+            log("No Terraform state for this lab (it may have been reset). If resources were created, check your account and remove them there.".into());
+        }
+        return Ok(());
+    }
+    let mut all: Vec<(String, String)> = vars.to_vec();
+    if let Ok(raw) = std::fs::read_to_string(state.join(RUN_FILE)) {
+        all.extend(saved_vars(&raw));
+    }
+    let key = ssh::launcher_key();
+    let public = key.as_ref().and_then(|k| std::fs::read_to_string(k.with_extension("pub")).ok());
+    let all = with_destroy_keys(all, key, public);
+    terraform(module, state, &with_env(&all, env), "destroy", log).await?;
+    let _ = std::fs::remove_file(state.join(STATE_FILE));
+    // Drop the per-deployment known_hosts too: the next lab can get a recycled host IP with a
+    // new host key, and a stale pinned key would make its SSH (wait_ready, attack shell) fail.
+    let _ = std::fs::remove_file(state.join("known_hosts"));
+    Ok(())
+}
+
+/// Modules validate the SSH key variables even to destroy, and older runs didn't save them: the
+/// launcher's key (`key`, its public half `public`) fills in what's missing.
+fn with_destroy_keys(mut vars: Vec<(String, String)>, key: Option<PathBuf>, public: Option<String>) -> Vec<(String, String)> {
+    let has = |vars: &[(String, String)], name: &str| vars.iter().any(|(k, _)| k == name);
+    if !has(&vars, "ssh_public_key")
+        && let Some(public) = public
+    {
+        vars.push(("ssh_public_key".into(), public.trim().to_string()));
+    }
+    if !has(&vars, "ssh_private_key_file")
+        && let Some(key) = key
+    {
+        vars.push(("ssh_private_key_file".into(), key.to_string_lossy().to_string()));
+    }
+    vars
+}
+
+/// Proxmox token setups upload the cloud-init snippet over SSH with the launcher's key
+/// (a token can't SSH): point the module at it.
+fn with_ssh_key(vars: &[(String, String)], key: Option<PathBuf>) -> Vec<(String, String)> {
+    let mut out = vars.to_vec();
+    let token = vars.iter().any(|(k, v)| k == "proxmox_api_token" && !v.is_empty());
+    let set = vars.iter().any(|(k, _)| k == "proxmox_ssh_private_key_file");
+    if let (true, false, Some(key)) = (token, set, key) {
+        out.push(("proxmox_ssh_private_key_file".into(), key.to_string_lossy().to_string()));
+    }
+    out
+}
+
+/// The run's environment: variables as `TF_VAR_<name>`, then the raw provider environment.
+fn with_env(vars: &[(String, String)], env: &[(String, String)]) -> Vec<(String, String)> {
+    vars.iter().map(|(k, v)| (format!("TF_VAR_{k}"), v.clone())).chain(env.iter().cloned()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A fresh, empty state folder in the system temp dir.
+    pub fn temp_state() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("cyberctf-tf-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn pair(k: &str, v: &str) -> (String, String) {
+        (k.to_string(), v.to_string())
+    }
+
+    #[test]
+    fn with_env_prefixes_vars_and_appends_raw_env() {
+        let vars = vec![pair("region", "eu-west-3")];
+        let env = vec![pair("AWS_ACCESS_KEY_ID", "AKIA")];
+        let out = with_env(&vars, &env);
+        assert!(out.contains(&pair("TF_VAR_region", "eu-west-3")));
+        assert!(out.contains(&pair("AWS_ACCESS_KEY_ID", "AKIA")));
+    }
+
+    #[test]
+    fn token_setups_get_the_launcher_key() {
+        let key = Some(PathBuf::from("/k/id_ed25519"));
+        let token = vec![pair("proxmox_api_token", "root@pam!x=s")];
+        assert!(with_ssh_key(&token, key.clone()).contains(&pair("proxmox_ssh_private_key_file", "/k/id_ed25519")));
+        let password = vec![pair("proxmox_password", "p")];
+        assert_eq!(with_ssh_key(&password, key), password);
+    }
+
+    #[test]
+    fn destroy_fills_in_missing_launcher_keys_only() {
+        let key = Some(PathBuf::from("/k/id"));
+        let public = Some("ssh-ed25519 AAAA cyberctf-launcher\n".to_string());
+        let filled = with_destroy_keys(vec![pair("region", "r")], key.clone(), public.clone());
+        assert_eq!(filled, [pair("region", "r"), pair("ssh_public_key", "ssh-ed25519 AAAA cyberctf-launcher"), pair("ssh_private_key_file", "/k/id")]);
+        // Saved values win.
+        let saved = vec![pair("ssh_public_key", "saved"), pair("ssh_private_key_file", "/saved")];
+        assert_eq!(with_destroy_keys(saved.clone(), key, public), saved);
+        // No launcher key yet: nothing to add.
+        assert_eq!(with_destroy_keys(vec![], None, None), vec![]);
+    }
+
+    /// The launcher's Proxmox path against a real host (opt-in, slow), with a lab's Isoloom
+    /// module (Docker on one VM):
+    ///   CYBERCTF_TEST_MODULE=<lab>/.isoloom/docker-vm/proxmox CYBERCTF_TEST_PVE_HOST=... \
+    ///   CYBERCTF_TEST_PVE_PASSWORD=... cargo test proxmox_apply_status_destroy -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore]
+    async fn proxmox_apply_status_destroy() {
+        let var = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("{k} is required"));
+        let host = var("CYBERCTF_TEST_PVE_HOST");
+        let state = std::env::temp_dir().join(format!("cyberctf-tf-it-{}", rand::random::<u32>()));
+        let module = PathBuf::from(var("CYBERCTF_TEST_MODULE"));
+        let (key, public) = (var("CYBERCTF_TEST_SSH_KEY"), std::fs::read_to_string(format!("{}.pub", var("CYBERCTF_TEST_SSH_KEY"))).unwrap());
+        let connection: Vec<(String, String)> = [
+            ("proxmox_endpoint", format!("https://{host}:8006/")),
+            ("proxmox_username", "root@pam".into()),
+            ("proxmox_password", var("CYBERCTF_TEST_PVE_PASSWORD")),
+            ("proxmox_insecure", "true".into()),
+            ("node", std::env::var("CYBERCTF_TEST_PVE_NODE").unwrap_or_else(|_| "pve".into())),
+            ("datastore", std::env::var("CYBERCTF_TEST_PVE_STORAGE").unwrap_or_else(|_| "local".into())),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let mut vars = connection.clone();
+        vars.extend([("ssh_public_key".to_string(), public.trim().to_string()), ("ssh_private_key_file".into(), key)]);
+        let print = |l: String| println!("{l}");
+
+        let applied = apply(&module, &state, &vars, &[], print).await;
+        let s = status(&state);
+        println!("status after apply: running={} machines={}", s.running, s.machines.len());
+        let destroyed = destroy(&module, &state, &connection, &[], print).await;
+        let after = status(&state);
+        let _ = std::fs::remove_dir_all(&state);
+        applied.expect("apply");
+        assert!(s.running, "state outputs should show the VM");
+        destroyed.expect("destroy");
+        assert!(!after.running, "state should be gone after destroy");
+    }
+}
