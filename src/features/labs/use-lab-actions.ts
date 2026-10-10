@@ -6,7 +6,7 @@ import { getAttackBox, getAttackImage, getAutoAttackBox, getPortMode, getVmProvi
 import { askPortMode } from "@/features/labs/port-mode-prompt";
 import { notify } from "@/lib/notify";
 import type { Lab } from "@/features/labs/use-labs";
-import { localProviders, runsNatively } from "@/features/labs/lab-row";
+import { localProviders, readyHypervisors, runsNatively } from "@/features/labs/lab-runtime";
 import { setLastRun } from "@/lib/last-run";
 import { appendDeployLog, beginDeploy, endDeploy, useDeploy } from "@/lib/deploy-store";
 import { translate } from "@/lib/i18n";
@@ -66,14 +66,7 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
         const preferred = getVmProvider();
         // Hypervisors ready on this machine (Vagrant + the tool), the Settings default first;
         // unknown (undefined) until the machine report has loaded.
-        const ready: Provider[] | undefined = report
-          ? (() => {
-              const r = report.vagrant.installed
-                ? report.vmProviders.filter((p) => !p.remote && p.available && p.hypervisor !== false).map((p) => p.provider)
-                : [];
-              return preferred && r.includes(preferred) ? [preferred, ...r.filter((p) => p !== preferred)] : r;
-            })()
-          : undefined;
+        const ready = report ? readyHypervisors(report, preferred) : undefined;
         // Locally: a ready hypervisor among those the lab supports. Never the lab's first
         // listed provider: the catalogue lists them alphabetically, and picking e.g. "parallels"
         // on a VirtualBox machine fails at once with "prlctl was not found". With no report yet,

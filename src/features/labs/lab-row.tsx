@@ -1,9 +1,9 @@
 "use client";
 
-import { ChevronRight, Cloud, Container, ExternalLink, Globe, LogIn, Monitor, Server, Wrench, type LucideIcon } from "lucide-react";
+import { ChevronRight, ExternalLink, LogIn, Wrench } from "lucide-react";
 import { difficultyLabel, type Lab } from "@/features/labs/use-labs";
-import { CLOUDS } from "@/features/labs/run-on";
-import { machineOpenSetup, type LabStatus, type Provider, type SystemReport } from "@/lib/tauri";
+import { runPlaces, runsNatively } from "@/features/labs/lab-runtime";
+import { machineOpenSetup, type LabStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { useState, type ButtonHTMLAttributes } from "react";
 import { Button } from "@/components/ui/button";
@@ -14,46 +14,8 @@ import { OPERATION_STATUS } from "@/lib/deploy-store";
 import { openExternal, tell } from "@/lib/failure";
 import { useT } from "@/lib/i18n";
 
-const SERVERS = new Set(["vmware_esxi", "proxmox"]);
-
-/** Whether the lab is built for this CPU (no architectures listed = any). */
-export const runsNatively = (rt: NonNullable<Lab["runtime"]>, hostArch: string) => !rt.architectures.length || rt.architectures.includes(hostArch);
-
-/** Hypervisors that run VMs built for another CPU, emulated (slowly): QEMU runs an x86 lab on
- *  an Apple Silicon Mac. */
-export const EMULATORS: readonly Provider[] = ["qemu"];
-
-/** Whether an emulator (QEMU) is ready on this machine: Vagrant, the hypervisor and its plugin. */
-export const emulatorReady = (report: SystemReport | null | undefined) =>
-  !!report?.vagrant.installed && report.vmProviders.some((p) => EMULATORS.includes(p.provider) && !p.remote && p.available && p.hypervisor !== false);
-
-/** The hypervisors on this machine that can run the lab's VMs: those the lab lists, except for
- *  a VM lab built for another CPU, which only an emulator can run (whatever the lab lists: its
- *  list names the hypervisors of its own CPU). */
-export function localProviders(rt: NonNullable<Lab["runtime"]>, hostArch?: string): Provider[] {
-  if (rt.runtime === "VM" && hostArch && !runsNatively(rt, hostArch)) return [...EMULATORS];
-  return rt.providers.filter((p: string) => !SERVERS.has(p) && !CLOUDS.has(p) && p !== "hosted") as Provider[];
-}
-
-type PlaceKey = NonNullable<LabStatus["place"]> | "hosted";
-
-/** Every place a lab could run, and whether this one can (its runtime here, then its providers).
- *  Its words are `labs.places.<key>`.
- *  A VM lab built for another CPU (x86 Windows on Apple Silicon) runs on this machine only
- *  emulated, so "VM on this machine" needs `emulates` (QEMU ready); containers run emulated
- *  anyway. */
-export function runPlaces(rt: NonNullable<Lab["runtime"]>, hostArch?: string, emulates = false): { key: PlaceKey; icon: LucideIcon; available: boolean }[] {
-  // providers also carries "hosted" (not a launcher Provider), so compare as strings.
-  const local = rt.providers.some((p: string) => !SERVERS.has(p) && !CLOUDS.has(p) && p !== "hosted");
-  const vm = rt.runtime === "VM";
-  return [
-    { key: "container", icon: Container, available: !vm },
-    { key: "local_vm", icon: Monitor, available: (vm || local) && (!(vm && hostArch && !runsNatively(rt, hostArch)) || emulates) },
-    { key: "server", icon: Server, available: rt.providers.some((p) => SERVERS.has(p)) },
-    { key: "cloud", icon: Cloud, available: rt.providers.some((p) => CLOUDS.has(p)) },
-    { key: "hosted", icon: Globe, available: rt.hosted ?? false },
-  ];
-}
+// Home imports it from here, beside the row it feeds.
+export { emulatorReady } from "@/features/labs/lab-runtime";
 
 /** A row action: compact, and it doesn't open the row when clicked. */
 function RowButton({

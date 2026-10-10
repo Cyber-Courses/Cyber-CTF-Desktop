@@ -9,7 +9,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Input } from "@/components/ui/input";
 import { StatusDot } from "@/components/ui/status-pill";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EMULATORS, LabRow } from "@/features/labs/lab-row";
+import { LabRow } from "@/features/labs/lab-row";
+import { EMULATORS, readyHypervisors } from "@/features/labs/lab-runtime";
 import { LabDetail } from "@/features/labs/lab-detail";
 import { difficultyLabel, useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
@@ -59,13 +60,8 @@ export function Labs({
   const [difficulty, setDifficulty] = useState(0);
   const [servers, setServers] = useState<ServerHost[]>([]);
   // Local hypervisors ready for a lab VM (Vagrant + hypervisor), the Settings default first.
-  const readyVms = useMemo(() => {
-    const ready = (report?.vagrant.installed ? report.vmProviders : [])
-      .filter((p) => !p.remote && p.available && p.hypervisor !== false)
-      .map((p) => p.provider);
-    const preferred = getVmProvider();
-    return preferred && ready.includes(preferred) ? [preferred, ...ready.filter((p) => p !== preferred)] : ready;
-  }, [report]);
+  const readyVms = useMemo(() => (report ? readyHypervisors(report, getVmProvider()) : []), [report]);
+  const emulates = readyVms.some((p) => EMULATORS.includes(p));
 
   // Saved servers count as somewhere a VM lab can run (for the "needs setup" hint).
   useEffect(() => {
@@ -163,7 +159,7 @@ export function Labs({
       loggedIn={loggedIn}
       onLogin={onLogin}
       hostArch={hostArch}
-      emulates={readyVms.some((p) => EMULATORS.includes(p))}
+      emulates={emulates}
       solved={completed.has(lab.id)}
       deploying={deploying.has(lab.id)}
       setup={isRunning(lab) ? null : setupNeeded(lab, report ?? null, servers)}

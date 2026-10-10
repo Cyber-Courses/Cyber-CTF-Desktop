@@ -22,7 +22,7 @@ import { NetworkDiagram } from "@/features/labs/network-diagram";
 import { RunOnDialog, RunOnPicker, type RunTarget } from "@/features/labs/run-on";
 import { PortChoice } from "@/features/labs/port-mode-prompt";
 import { getPortMode, type PortMode } from "@/lib/settings";
-import { EMULATORS, localProviders, runPlaces, runsNatively } from "@/features/labs/lab-row";
+import { EMULATORS, hostSupports, localProviders, runPlaces, runsNatively } from "@/features/labs/lab-runtime";
 import { HostedSessionPanel } from "@/features/labs/hosted-session-panel";
 import { useHostedLabs } from "@/features/hosted/use-hosted-labs";
 import { OPERATION_STATUS, useActiveOperations, useDeployingLabs, useWorkerLog } from "@/lib/deploy-store";
@@ -33,8 +33,6 @@ import { labTools, serverList, terminalWindow, type LabTool, type Park, type Pro
 import { cn } from "@/lib/utils";
 import { openExternal, tell } from "@/lib/failure";
 import { useT } from "@/lib/i18n";
-
-const VM_CLOUDS_NOT_YET = ["azure", "gcp", "digitalocean", "linode", "oci"];
 
 export function LabDetail({
   lab,
@@ -201,12 +199,7 @@ export function LabDetail({
     setHostedTried(true);
     void hosted.launch(lab.id);
   };
-  const hostOk = useCallback(
-    // VM labs: one VM per machine on ESXi, Proxmox and AWS (Isoloom's vagrant, proxmox and
-    // cloud-vm outputs); the other clouds run container labs only for now.
-    (h: ServerHost) => !!rt?.providers.includes(h.provider) && !(rt.runtime === "VM" && VM_CLOUDS_NOT_YET.includes(h.provider)),
-    [rt],
-  );
+  const hostOk = useCallback((h: ServerHost) => hostSupports(rt, h), [rt]);
   // Prefer this machine when a local hypervisor can run the lab; fall back to the default server
   // only when none can. A default server shouldn't silently capture every VM lab.
   const localReady = isDocker || (!!rt && (readyVms ?? []).some((p) => localProviders(rt, hostArch).includes(p)));
