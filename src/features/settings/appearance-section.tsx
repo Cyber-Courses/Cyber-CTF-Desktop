@@ -1,6 +1,7 @@
 "use client";
 
 import { Segmented } from "@/components/ui/segmented";
+import { Select } from "@/components/ui/input";
 import { APPEARANCES, useAppearance, type Appearance } from "@/lib/appearance";
 import { LOCALES, LOCALE_NAMES, getLocalePreference, setLocalePreference, useLocale, useT, type Locale } from "@/lib/i18n";
 import { Row, Section, useSavedFlash } from "@/features/settings/settings-layout";
@@ -35,16 +36,24 @@ export function AppearanceSection() {
         title={t("settings.appearance.language")}
         description={t("settings.appearance.languageDescription")}
         control={
-          <Segmented<Locale | "system">
-            label={t("settings.appearance.language")}
+          <Select
+            fieldSize="sm"
+            aria-label={t("settings.appearance.language")}
             value={language}
-            options={[{ value: "system", label: t("settings.appearance.languageSystem") }, ...LOCALES.map((l) => ({ value: l, label: LOCALE_NAMES[l] }))]}
-            onChange={(next) => {
+            onChange={(e) => {
+              const next = e.target.value as Locale | "system";
               if (next === language) return;
               setLocalePreference(next);
               flash();
             }}
-          />
+          >
+            <option value="system">{t("settings.appearance.languageSystem")}</option>
+            {LOCALES.map((l) => (
+              <option key={l} value={l}>
+                {LOCALE_NAMES[l]}
+              </option>
+            ))}
+          </Select>
         }
       />
     </Section>

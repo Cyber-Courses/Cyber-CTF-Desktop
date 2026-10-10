@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import de from "@/messages/de";
 import en from "@/messages/en";
+import es from "@/messages/es";
 import fr from "@/messages/fr";
+import ja from "@/messages/ja";
+import ptBR from "@/messages/pt-BR";
+
+const OTHERS = { fr, es, de, "pt-BR": ptBR, ja };
 
 /** Every leaf path of a message tree ({ one, other } plurals count as one leaf). */
 function leaves(node: unknown, prefix = ""): string[] {
@@ -15,19 +21,22 @@ const at = (tree: unknown, path: string) => path.split(".").reduce<unknown>((n, 
 const texts = (v: unknown): string[] => (typeof v === "string" ? [v] : Object.values(v as Record<string, string>));
 
 describe("messages", () => {
-  it("French has every English message, and nothing English doesn't", () => {
-    expect(leaves(fr).sort()).toEqual(leaves(en).sort());
-  });
+  for (const [lang, tree] of Object.entries(OTHERS)) {
+    it(`${lang} has every English message, and nothing English doesn't`, () => {
+      expect(leaves(tree).sort()).toEqual(leaves(en).sort());
+    });
 
-  it("French keeps the same placeholders and tags", () => {
-    for (const path of leaves(en)) {
-      const e = texts(at(en, path)).flatMap(placeholders);
-      const f = texts(at(fr, path)).flatMap(placeholders);
-      expect(new Set(f), path).toEqual(new Set(e));
-    }
-  });
+    it(`${lang} keeps the same placeholders and tags`, () => {
+      for (const path of leaves(en)) {
+        const e = texts(at(en, path)).flatMap(placeholders);
+        const f = texts(at(tree, path)).flatMap(placeholders);
+        expect(new Set(f), `${lang} ${path}`).toEqual(new Set(e));
+      }
+    });
+  }
 
   it("no em dashes (house style)", () => {
-    for (const tree of [en, fr]) for (const path of leaves(tree)) for (const s of texts(at(tree, path))) expect(s.includes("—"), path).toBe(false);
+    for (const tree of [en, ...Object.values(OTHERS)])
+      for (const path of leaves(tree)) for (const s of texts(at(tree, path))) expect(s.includes("\u2014"), path).toBe(false);
   });
 });
