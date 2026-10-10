@@ -15,3 +15,6 @@ The package itself (x64 + Arm64 `.msixbundle`) declares the app's languages and 
 Update `releaseNotes` in each listing before tagging a release. Set the repository variable
 `STORE_AUTO_SUBMIT=false` to have a release leave its Store submission as a draft to review in
 Partner Center instead of sending it for certification.
+
+Trailers need an audio track (the Store refuses a video without one, even a silent video): add a
+silent stereo AAC track if the video has none.
