@@ -240,6 +240,18 @@ mod tests {
     }
 
     #[test]
+    fn check_validates_azure_and_oci_accounts() {
+        let azure = |host: &str, sub: &str| input(serde_json::json!({ "name": "A", "provider": "azure", "host": host, "username": sub }));
+        assert!(azure("westeurope", "00000000-0000-0000-0000-000000000000").check().is_ok());
+        assert_eq!(error(&azure("West Europe", "00000000-0000-0000-0000-000000000000")), "region must be an Azure location, e.g. westeurope");
+        assert_eq!(error(&azure("westeurope", "not-a-guid")), "subscription must be a GUID (see `az account show`)");
+        let oci = |host: &str, ocid: &str| input(serde_json::json!({ "name": "O", "provider": "oci", "host": host, "username": ocid }));
+        assert!(oci("eu-frankfurt-1", "ocid1.tenancy.oc1..aaaaaaaabbbbbbbb").check().is_ok());
+        assert_eq!(error(&oci("EU_Frankfurt", "ocid1.tenancy.oc1..aaaaaaaabbbbbbbb")), "region must be an OCI region id, e.g. eu-frankfurt-1");
+        assert_eq!(error(&oci("eu-frankfurt-1", "tenancy")), "compartment must be an OCID (ocid1.compartment... or the tenancy OCID)");
+    }
+
+    #[test]
     fn aws_regions_and_keys() {
         for good in ["eu-west-3", "us-east-1", "us-gov-west-1", "ap-southeast-2"] {
             assert!(valid_region(good), "{good}");
