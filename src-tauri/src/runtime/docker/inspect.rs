@@ -574,3 +574,6 @@ mod tests {
         assert!(declared_services(&[("cyberctf.service.db".to_string(), "database:abc".to_string())].into()).first().unwrap().ports.is_empty());
     }
 }
+
+#[cfg(test)]
+mod proptests;
