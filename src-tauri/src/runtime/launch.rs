@@ -458,7 +458,8 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{
-        LocalRun, start_on_docker, Provider, Runtime, budget_verdict, check_qemu, emulated_arches, local_run, log_lines, low_memory_warning, parse_ipv4, terraform_vars,
+        LocalRun, Provider, Runtime, budget_verdict, check_qemu, emulated_arches, local_run, log_lines, low_memory_warning, parse_ipv4, start_on_docker,
+        terraform_vars,
     };
     use super::{server, warn_if_low_memory, welcome};
 
