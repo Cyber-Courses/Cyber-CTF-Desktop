@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
-import { activeOperations, deployingLabs, labDeployLog, parkingLabs, stoppingLabs, type ActiveOperation } from "@/lib/tauri";
+import { useSyncExternalStore } from "react";
+import { activeOperations, deployingLabs, labDeployLog, type ActiveOperation } from "@/lib/tauri";
 import { ignore } from "@/lib/failure";
+import { usePolled } from "@/lib/use-poll";
 import { translate } from "@/lib/i18n";
 
 /**
@@ -80,7 +81,7 @@ export function appendDeployLog(labId: string, line: string) {
 export const SIGNED_OUT_EVENT = "cyberctf:signed-out";
 
 /** The backend's "You're signed out…" / "…session expired…" errors (account/auth.rs). */
-export function noteSignedOut(text: string) {
+function noteSignedOut(text: string) {
   if (typeof window !== "undefined" && /\bsigned out\b/i.test(text)) window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
 }
 
@@ -109,11 +110,6 @@ export function useDeploy(): DeployState {
   return useSyncExternalStore(subscribeDeploy, getDeploySnapshot, getDeploySnapshot);
 }
 
-/** This lab's run, or an empty one, so callers can read `logs`/`times`/`busy` unconditionally. */
-export function useDeployRun(labId: string): DeployRun {
-  return useDeploy().runs[labId] ?? EMPTY_RUN;
-}
-
 /**
  * The lab ids the backend is starting or stopping right now, polled from the long-lived Rust
  * process. The in-memory store above is lost when the window reloads (a dev rebuild, a crash, or
@@ -121,37 +117,7 @@ export function useDeployRun(labId: string): DeployRun {
  * starting" again instead of a bare Start button (which would invite a colliding second start).
  */
 export function useDeployingLabs(pollMs = 4000): Set<string> {
-  const [ids, setIds] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    let alive = true;
-    const read = () =>
-      deployingLabs()
-        .then((l) => alive && setIds(new Set(l)))
-        .catch(ignore("polled again in a moment"));
-    read();
-    const t = setInterval(read, pollMs);
-    const onFocus = () => read();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      alive = false;
-      clearInterval(t);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [pollMs]);
-  return ids;
-}
-
-/**
- * The lab ids the backend is stopping right now (a teardown in flight), polled like
- * `useDeployingLabs`, so a lab being stopped reads "Stopping", never "Deploying".
- */
-export function useStoppingLabs(pollMs = 4000): Set<string> {
-  return usePolledIds(stoppingLabs, pollMs);
-}
-
-/** The lab ids being paused or shut down right now (machines kept), so the sidebar says so. */
-export function useParkingLabs(pollMs = 4000): Set<string> {
-  return usePolledIds(parkingLabs, pollMs);
+  return usePolled(() => deployingLabs().then((l) => new Set(l)), pollMs, new Set<string>(), { onFocus: true })[0];
 }
 
 /** The sidebar's label for an operation, e.g. "Pausing…"; the machine when it targets one. */
@@ -181,39 +147,7 @@ export function operationLabel(o: ActiveOperation): string {
  * every few seconds during a VM start), so the sidebar reads like a live progress line.
  */
 export function useActiveOperations(pollMs = 2000): Map<string, ActiveOperation> {
-  const [ops, setOps] = useState<Map<string, ActiveOperation>>(new Map());
-  useEffect(() => {
-    let alive = true;
-    const tick = () =>
-      activeOperations()
-        .then((l) => alive && setOps(new Map(l.map((o) => [o.labId, o]))))
-        .catch(ignore("polled again in a moment"));
-    tick();
-    const t = setInterval(tick, pollMs);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [pollMs]);
-  return ops;
-}
-
-function usePolledIds(read: () => Promise<string[]>, pollMs: number): Set<string> {
-  const [ids, setIds] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    let alive = true;
-    const tick = () =>
-      read()
-        .then((l) => alive && setIds(new Set(l)))
-        .catch(ignore("polled again in a moment"));
-    tick();
-    const t = setInterval(tick, pollMs);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [read, pollMs]);
-  return ids;
+  return usePolled(() => activeOperations().then((l) => new Map(l.map((o) => [o.labId, o]))), pollMs, new Map<string, ActiveOperation>())[0];
 }
 
 /**
@@ -222,20 +156,9 @@ function usePolledIds(read: () => Promise<string[]>, pollMs: number): Set<string
  * store has no lines of it, the worker's log file has them all.
  */
 export function useWorkerLog(labId: string, active: boolean, pollMs = 1500): string[] {
-  const [lines, setLines] = useState<string[]>([]);
-  useEffect(() => {
-    if (!active) return;
-    let alive = true;
-    const read = () =>
-      labDeployLog(labId)
-        .then((text) => alive && setLines(text.split("\n").filter((l) => l.length > 0)))
-        .catch(ignore("read again in a moment"));
-    read();
-    const t = setInterval(read, pollMs);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [labId, active, pollMs]);
-  return lines;
+  return usePolled(() => labDeployLog(labId).then((text) => text.split("\n").filter((l) => l.length > 0)), pollMs, [] as string[], {
+    enabled: active,
+    restartKey: labId,
+    onError: ignore("read again in a moment"),
+  })[0];
 }
