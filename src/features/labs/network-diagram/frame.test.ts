@@ -1,0 +1,59 @@
+import { describe, expect, it } from "vitest";
+
+import { frameLayout } from "@/features/labs/network-diagram/frame";
+import { layout } from "@/features/labs/network-diagram/layout";
+import { topology } from "@/features/labs/network-diagram/topology";
+import type { Machine } from "@/features/labs/network-diagram/model";
+
+const machine = (name: string, ip: string, network = "default"): Machine => ({
+  name,
+  state: "running",
+  image: `${name}:latest`,
+  ip,
+  ports: [],
+  interfaces: [{ network, ip }],
+  services: [],
+  infra: false,
+});
+
+async function framed(machines: Machine[], networks: { name: string; subnet: string; internal: boolean }[]) {
+  const topo = topology(machines, networks, null);
+  const laid = await layout(topo, () => ({ w: 220, h: 140 }));
+  return { topo, laid, ...frameLayout(topo, laid.boxes, laid.routes, laid.bounds) };
+}
+
+describe("frameLayout", () => {
+  it("frames each network as a zone with its bridge centred on the top edge", async () => {
+    const { topo, laid, zones } = await framed(
+      [machine("web", "10.0.0.2"), machine("db", "10.0.0.3")],
+      [{ name: "default", subnet: "10.0.0.0/24", internal: true }],
+    );
+    expect(zones.length).toBeGreaterThan(0);
+    expect(zones).toHaveLength(topo.zones.length);
+    for (const zone of zones) {
+      const bridge = laid.boxes.get(topo.zones.find((z) => z.id === zone.id)!.members[0])!;
+      const width = Number(zone.style?.width);
+      expect(bridge.x + bridge.w / 2).toBeCloseTo(zone.position.x + width / 2);
+      expect(zone.position.y).toBeCloseTo(bridge.y + bridge.h / 2);
+    }
+  });
+
+  it("widens the bounds to the widest zone", async () => {
+    const { zones, bounds } = await framed([machine("a", "10.0.0.2")], [{ name: "a-network-with-a-long-name", subnet: "10.0.0.0/24", internal: true }]);
+    for (const zone of zones) {
+      expect(zone.position.x).toBeGreaterThanOrEqual(bounds.x);
+      expect(zone.position.x + Number(zone.style?.width)).toBeLessThanOrEqual(bounds.x + bounds.w + 1e-9);
+    }
+  });
+
+  it("runs uplinks straight up from their bridge", async () => {
+    const { topo, laid } = await framed([machine("web", "10.0.0.2")], [{ name: "default", subnet: "10.0.0.0/24", internal: false }]);
+    const uplinks = topo.edges.filter((e) => e.source.startsWith("up-"));
+    expect(uplinks.length).toBeGreaterThan(0);
+    for (const e of uplinks) {
+      const [from, to] = laid.routes.get(e.id)!;
+      expect(from.x).toBe(to.x);
+      expect(from.y).toBeLessThan(to.y);
+    }
+  });
+});

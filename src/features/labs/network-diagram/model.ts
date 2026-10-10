@@ -25,8 +25,8 @@ export function netLabel(name: string) {
   return name === "default" ? translate("diagram.lab") : name;
 }
 
-/** A dashed network segment (area) that frames the nodes inside it. */
-/** `label` is the network's name; `detail` (its subnet) goes on a second line. */
+/** A dashed network segment (area) that frames the nodes inside it. `label` is the network's
+ *  name; `detail` (its subnet) goes on a second line. */
 export type ZoneData = { label: string; detail?: string; tone?: "attack"; isolated?: boolean; labelLeft?: number; portW?: number; portE?: number };
 
 type ServiceType = "database" | "web" | "cache" | "worker" | "ssh" | "service";
@@ -85,9 +85,6 @@ export function serviceType(image: string, name: string): ServiceType {
   return "service";
 }
 
-/** One service row: what it is, and the ports it listens on (inside the container). Publishing
- *  to the host is shown once, by the 127.0.0.1 node below, not here too. */
-
 export type Pt = { x: number; y: number };
 
 export type LinkData = { label?: string; route?: Pt[] };
@@ -102,7 +99,5 @@ export const BRIDGE = { w: 136, h: 60 };
 export const MIN_ZOOM = 0.6;
 export const ANCHOR = 2; // a published port's anchor node, a point on the card's edge
 
-/** The lab as a graph: zones (networks) holding bridges and single-homed machines, pivots
- *  between zones, the attack zone on top and localhost bindings below. Positions come later. */
-
+/** The drawing's extent; `docked` = it has published ports, whose tabs sit on the card's edge. */
 export type Bounds = { x: number; y: number; w: number; h: number; docked: boolean };

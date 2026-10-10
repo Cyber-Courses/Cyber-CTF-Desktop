@@ -3,7 +3,6 @@ import type { LabInterface, LabNetwork } from "@/lib/tauri";
 import { link } from "@/features/labs/network-diagram/edges";
 import { translate } from "@/lib/i18n";
 import {
-  // The lab as a graph (zones, machines, links), before layout.
   ANCHOR,
   Attacker,
   BRIDGE,
@@ -24,8 +23,12 @@ import {
   uniquePorts,
 } from "@/features/labs/network-diagram/model";
 
+// The lab as a graph (zones, machines, links), before layout.
+
 export type Topology = { nodes: Node[]; edges: Edge<LinkData>[]; zones: { id: string; members: string[]; data: Record<string, unknown> }[] };
 
+/** The lab as a graph: zones (networks) holding bridges and single-homed machines, pivots
+ *  between zones, the attack zone on top and localhost bindings below. Positions come later. */
 export function topology(machines: Machine[], networks: LabNetwork[], attacker: Attacker): Topology {
   const atkOn = !!attacker?.running;
 
