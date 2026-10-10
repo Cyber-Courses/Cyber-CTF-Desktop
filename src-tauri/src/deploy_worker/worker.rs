@@ -87,12 +87,18 @@ async fn run_logged(app: &AppHandle, job: Job) -> i32 {
         }
     };
     let result = execute(app, job, &log).await;
+    conclude(&f, &result, log)
+}
+
+/// The end of a run: the failure in the log, the verdict in the status file, the pidfile gone.
+/// Returns the process's exit code.
+fn conclude<T>(f: &files::Files, result: &crate::error::Result<T>, log: impl Fn(String)) -> i32 {
     // The log file says how it ended too, so a page that re-attaches to it after a reload or a
     // relaunch (it has no live verdict) still sees the run failed.
-    if let Err(e) = &result {
+    if let Err(e) = result {
         log(format!("{FAILED_MARK} {e}"));
     }
-    let (status, code) = status_line(&result);
+    let (status, code) = status_line(result);
     let _ = std::fs::write(&f.status, status);
     let _ = std::fs::remove_file(&f.pid);
     code
@@ -108,8 +114,10 @@ fn status_line<T>(result: &crate::error::Result<T>) -> (String, i32) {
 
 #[cfg(test)]
 mod tests {
-    use super::status_line;
+    use super::{conclude, read_job, status_line};
+    use crate::deploy_worker::files::Files;
     use crate::deploy_worker::progress::verdict;
+    use crate::deploy_worker::{Job, Op};
     use crate::error::Error;
 
     #[test]
@@ -118,5 +126,34 @@ mod tests {
         let (line, code) = status_line::<()>(&Err(Error::Invalid("Docker isn't running".into())));
         assert_eq!((line.as_str(), code), ("error: Docker isn't running", 1));
         assert_eq!(verdict(&line).unwrap_err().to_string(), "Docker isn't running");
+    }
+
+    #[test]
+    fn a_job_file_reads_back_or_is_refused() {
+        let dir = crate::deploy_worker::files::tests::temp_dir("job");
+        let path = dir.join("lab-1.json");
+        assert!(read_job(&path).is_none());
+        let job = Job::on_lab("lab-1", Op::AttackVm { box_name: "a/b".into() });
+        std::fs::write(&path, serde_json::to_vec(&job).unwrap()).unwrap();
+        assert_eq!(read_job(&path), Some(job));
+        std::fs::write(&path, "{").unwrap();
+        assert!(read_job(&path).is_none());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn concluding_writes_the_verdict_and_drops_the_pidfile() {
+        let dir = crate::deploy_worker::files::tests::temp_dir("conclude");
+        let f = Files::of(&dir, "lab-1");
+        std::fs::write(&f.pid, "1").unwrap();
+        let lines = std::sync::Mutex::new(Vec::new());
+        let code = conclude(&f, &Err::<(), _>(Error::Invalid("boom".into())), |l| lines.lock().unwrap().push(l));
+        assert_eq!(code, 1);
+        assert_eq!(lines.lock().unwrap().as_slice(), ["✗ boom"]);
+        assert_eq!(std::fs::read_to_string(&f.status).unwrap(), "error: boom");
+        assert!(!f.pid.exists());
+        assert_eq!(conclude(&f, &Ok(()), |_| panic!("no log on success")), 0);
+        assert_eq!(std::fs::read_to_string(&f.status).unwrap(), "ok");
+        std::fs::remove_dir_all(dir).ok();
     }
 }

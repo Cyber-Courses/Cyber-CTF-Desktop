@@ -108,7 +108,12 @@ fn is_worker(cmdline: &str) -> bool {
 /// or died) is removed on the way.
 pub fn running(app: &AppHandle) -> Vec<String> {
     let Ok(d) = files::dir(app) else { return Vec::new() };
-    let Ok(entries) = std::fs::read_dir(&d) else { return Vec::new() };
+    running_in(&d)
+}
+
+/// [`running`] for the workers' folder `d`.
+fn running_in(d: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(d) else { return Vec::new() };
     let mut out = Vec::new();
     for e in entries.flatten() {
         let p = e.path();
@@ -135,10 +140,15 @@ fn pidfile_key(path: &Path) -> Option<String> {
 /// The jobs whose worker runs right now, each with the step its log is at (for the sidebar).
 pub fn running_jobs(app: &AppHandle) -> Vec<(Job, Option<String>)> {
     let Ok(d) = files::dir(app) else { return Vec::new() };
-    running(app)
+    jobs_in(&d)
+}
+
+/// [`running_jobs`] for the workers' folder `d`.
+fn jobs_in(d: &Path) -> Vec<(Job, Option<String>)> {
+    running_in(d)
         .into_iter()
         .filter_map(|key| {
-            let f = Files::of(&d, &key);
+            let f = Files::of(d, &key);
             let job: Job = serde_json::from_slice(&std::fs::read(&f.job).ok()?).ok()?;
             let step = std::fs::read_to_string(&f.log).ok().and_then(|l| super::progress::last_step(&l));
             Some((job, step))
@@ -150,6 +160,11 @@ pub fn running_jobs(app: &AppHandle) -> Vec<(Job, Option<String>)> {
 /// (its process group), if one runs.
 pub fn kill(app: &AppHandle, key: &str) {
     let Ok(f) = files::of(app, key) else { return };
+    kill_files(&f);
+}
+
+/// [`kill`] for a worker's files.
+fn kill_files(f: &Files) {
     if let Some(pid) = f.pid().filter(|p| alive(*p)) {
         #[cfg(unix)]
         signal_group(pid, "-TERM");
@@ -228,5 +243,36 @@ mod tests {
         let pid = child.id();
         child.wait().unwrap();
         assert!(!alive(pid));
+    }
+
+    #[test]
+    fn stale_pidfiles_are_cleared_and_only_live_workers_listed() {
+        let dir = crate::deploy_worker::files::tests::temp_dir("running");
+        let f = Files::of(&dir, "lab-1");
+        std::fs::write(&f.pid, "4000000000").unwrap();
+        std::fs::write(dir.join("lab-2.pid"), "garbage").unwrap();
+        std::fs::write(dir.join("lab-3.log"), "not a pidfile").unwrap();
+        assert!(running_in(&dir).is_empty());
+        assert!(!f.pid.exists() && !dir.join("lab-2.pid").exists());
+        assert!(dir.join("lab-3.log").exists());
+        assert!(jobs_in(&dir).is_empty());
+        assert!(running_in(&dir.join("missing")).is_empty());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn killing_a_worker_that_is_gone_just_drops_its_pidfile() {
+        let dir = crate::deploy_worker::files::tests::temp_dir("kill");
+        let f = Files::of(&dir, "lab-1");
+        std::fs::write(&f.pid, "4000000000").unwrap();
+        kill_files(&f);
+        assert!(!f.pid.exists());
+        kill_files(&f);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
+    async fn a_dead_pid_is_gone_at_once() {
+        assert!(gone_within(4_000_000_000, 3).await);
     }
 }
