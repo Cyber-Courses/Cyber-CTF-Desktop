@@ -33,6 +33,10 @@ on:
         description: "With submit: send it for certification (otherwise it stays a draft to review)"
         type: boolean
         default: false
+      commit_pending:
+        description: "Only send the draft already open in Partner Center for certification (no build)"
+        type: boolean
+        default: false
   # Every published release (release.yml): app version X.Y.Z ships as MSIX (X+1).Y.Z.0, which
   # stays above the 1.1.0.0 the Store got by hand and keeps rising with each release.
   workflow_call:
@@ -57,7 +61,7 @@ jobs:
   # One MSIX per architecture, each built natively; the bundle job below joins them so the Store
   # gives every PC its own (Windows on Arm gets the Arm64 build, not x64 under emulation).
   msix:
-    if: ${{ !inputs.check_only }}
+    if: ${{ !inputs.check_only && !inputs.commit_pending }}
     strategy:
       matrix:
         include:
@@ -278,3 +282,35 @@ jobs:
           STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
           STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
         run: ./.github/scripts/store-submit.ps1 -Package pkg/CyberCTF.msixbundle -StoreDir store -Commit $${{ inputs.commit && 'true' || 'false' }}
+
+  # Sends the submission that is open in Partner Center (a draft left by a release, or edited by
+  # hand) for certification.
+  commit-pending:
+    if: ${{ inputs.commit_pending }}
+    runs-on: ubuntu-latest
+    steps:
+      - shell: pwsh
+        env:
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $api = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$env:STORE_PRODUCT_ID"
+          function H { @{ Authorization = "Bearer " + (Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$env:STORE_TENANT_ID/oauth2/token" -Body @{
+            grant_type = "client_credentials"; client_id = $env:STORE_CLIENT_ID; client_secret = $env:STORE_CLIENT_SECRET; resource = "https://manage.devcenter.microsoft.com" }).access_token } }
+          $pending = (Invoke-RestMethod -Uri $api -Headers (H)).pendingApplicationSubmission
+          if (-not $pending) { Write-Host "::error::No open submission in Partner Center."; exit 1 }
+          $id = $pending.id
+          Write-Host "Submitting $id for certification"
+          Invoke-RestMethod -Method Post -Uri "$api/submissions/$id/commit" -Headers (H) | Out-Null
+          do {
+            Start-Sleep -Seconds 20
+            $status = Invoke-RestMethod -Uri "$api/submissions/$id/status" -Headers (H)
+            Write-Host "Status: $($status.status)"
+          } while ($status.status -eq "CommitStarted")
+          if ($status.status -eq "CommitFailed") {
+            Write-Host "::error::The Store refused submission $($id): $($status.statusDetails | ConvertTo-Json -Depth 10)"
+            exit 1
+          }
+          Write-Host "Submission $id is in certification ($($status.status))."
