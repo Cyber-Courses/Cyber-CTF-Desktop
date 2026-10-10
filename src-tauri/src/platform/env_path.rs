@@ -9,20 +9,17 @@ use std::path::PathBuf;
 /// SDK, per user, from the Cloud setup) is then found without a restart, since PATH is only
 /// set once at startup.
 fn future_dirs() -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = Vec::new();
-    #[cfg(target_os = "linux")]
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-        dirs.push(home.join("google-cloud-sdk/bin"));
-    }
-    dirs
+    let gcloud_sdk = if cfg!(target_os = "linux") { super::home_dir().map(|home| home.join("google-cloud-sdk/bin")) } else { None };
+    gcloud_sdk.into_iter().collect()
 }
 
+/// Where the tools live when they are installed, on this OS.
 fn extra_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
     #[cfg(unix)]
     {
         dirs.extend(["/usr/local/bin", "/usr/local/sbin", "/opt/homebrew/bin", "/opt/homebrew/sbin"].map(PathBuf::from));
-        if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        if let Some(home) = super::home_dir() {
             // Docker Desktop's per-user CLI install, and user-level installs.
             dirs.push(home.join(".docker/bin"));
             dirs.push(home.join(".local/bin"));

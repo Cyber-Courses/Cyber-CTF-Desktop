@@ -70,6 +70,16 @@ fn extract(tarball: &[u8], dest: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The lab's GitHub tarball at `commit`.
+async fn download(repository: &str, commit: &str) -> Result<impl AsRef<[u8]>> {
+    let failed = |e: reqwest::Error| Error::Invalid(format!("download failed: {e}"));
+    let res = reqwest::get(format!("https://codeload.github.com/{repository}/tar.gz/{commit}")).await.map_err(failed)?;
+    if !res.status().is_success() {
+        return Err(Error::Invalid(format!("download failed: HTTP {}", res.status())));
+    }
+    res.bytes().await.map_err(failed)
+}
+
 /// Downloads the lab into `<app data>/labs/<lab id>/` unless that exact commit is
 /// already installed. Extracts next to it, then swaps, so a failed download
 /// never leaves a half-installed lab.
@@ -98,17 +108,12 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
     }
 
     log(format!("Downloading {repository}@{}", &commit[..12]));
-    let url = format!("https://codeload.github.com/{repository}/tar.gz/{commit}");
-    let res = reqwest::get(&url).await.map_err(|e| Error::Invalid(format!("download failed: {e}")))?;
-    if !res.status().is_success() {
-        return Err(Error::Invalid(format!("download failed: HTTP {}", res.status())));
-    }
-    let bytes = res.bytes().await.map_err(|e| Error::Invalid(format!("download failed: {e}")))?;
+    let bytes = download(repository, commit).await?;
 
     let staging = labs.join(format!(".{lab_id}.staging"));
     let _ = std::fs::remove_dir_all(&staging);
     std::fs::create_dir_all(&staging)?;
-    extract(&bytes, &staging)?;
+    extract(bytes.as_ref(), &staging)?;
     std::fs::write(staging.join(".cyberctf-commit"), commit)?;
     // Terraform targets fetch the lab themselves, from this repository at that commit.
     std::fs::write(staging.join(".cyberctf-repository"), repository)?;
@@ -159,10 +164,10 @@ pub(crate) async fn run(
     Ok(runtime::primary_url(&dir, &launch.lab_id, launch.runtime).await)
 }
 
-#[tauri::command]
 /// `attackbox_image` starts an attack box next to the lab on a server host (where the
 /// lab network isn't reachable from this machine). `default_ports` publishes a container lab's
 /// services on their own ports instead of random free ones.
+#[tauri::command]
 pub async fn lab_launch(
     app: AppHandle,
     lab_id: String,

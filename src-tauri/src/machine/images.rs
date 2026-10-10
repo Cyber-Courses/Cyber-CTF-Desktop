@@ -23,14 +23,6 @@ fn hub_ref(image: &str) -> Option<(String, String)> {
     Some((repo, tag.to_string()))
 }
 
-/// Same guard as the attack box: a normal `registry/name:tag@digest`, nothing that reads as a flag.
-fn valid(image: &str) -> bool {
-    !image.is_empty()
-        && image.len() <= 200
-        && !image.starts_with('-')
-        && image.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':' | '@'))
-}
-
 /// Docker Hub's name for this machine's CPU architecture.
 fn hub_arch() -> &'static str {
     match std::env::consts::ARCH {
@@ -43,7 +35,8 @@ fn hub_arch() -> &'static str {
 /// Compressed download size in bytes of `image` for this machine, from Docker Hub.
 #[tauri::command]
 pub async fn image_download_size(image: String) -> Option<u64> {
-    if !valid(&image) {
+    // Same guard as the attack box.
+    if !crate::exec::valid_image(&image) {
         return None;
     }
     let (repo, tag) = hub_ref(&image)?;

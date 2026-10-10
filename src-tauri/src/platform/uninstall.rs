@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager};
 
-use super::install::{Dependency, Step, run_step, step};
+use super::install::Dependency;
+use super::steps::{Step, channel_log, run_steps, step};
 use crate::error::{Error, Result};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -86,7 +87,7 @@ fn mac_admin(script: &str, note: &str) -> Step {
 fn plan(dep: Dependency) -> Result<Vec<Step>> {
     #[cfg(target_os = "macos")]
     {
-        let brew = super::install::brew_bin().ok_or_else(|| Error::Invalid("Homebrew is needed to remove this tool.".into()))?;
+        let brew = super::brew_bin().ok_or_else(|| Error::Invalid("Homebrew is needed to remove this tool.".into()))?;
         Ok(match dep {
             Dependency::Terraform => vec![step(brew, &["uninstall", "hashicorp/tap/terraform"])],
             Dependency::Qemu => vec![step(brew, &["uninstall", "qemu"])],
@@ -156,15 +157,8 @@ pub async fn uninstall_dependency(app: AppHandle, dependency: Dependency, logs: 
     if !load(&app).iter().any(|t| t.dependency == dependency) {
         return Err(Error::Invalid("Cyber CTF didn't install this tool, so it won't remove it.".into()));
     }
-    let mut on_line = move |line: String| {
-        let _ = logs.send(line);
-    };
-    for s in &plan(dependency)? {
-        if s.note.is_none() {
-            on_line(format!("$ {} {}", s.program, s.args.join(" ")));
-        }
-        run_step(s, &mut on_line).await?;
-    }
+    let mut on_line = channel_log(logs);
+    run_steps(&plan(dependency)?, &mut on_line).await?;
     update(&app, |tools| tools.retain(|t| t.dependency != dependency));
     on_line("Removed.".into());
     Ok(())
@@ -177,7 +171,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn every_macos_tool_has_a_way_out() {
-        if super::super::install::brew_bin().is_none() {
+        if super::super::brew_bin().is_none() {
             return; // CI without Homebrew: the brew-based plans can't be built.
         }
         for dep in [

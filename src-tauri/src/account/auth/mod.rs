@@ -1,0 +1,190 @@
+//! Login with cyber-auth: OAuth authorization code + PKCE (RFC 7636) through the
+//! system browser and a loopback redirect (RFC 8252). Tokens live in the OS
+//! keychain and never reach the webview; API calls go through `api.rs`.
+
+mod callback;
+mod store;
+mod tokens;
+
+use std::time::Duration;
+
+use serde::Serialize;
+use tauri::AppHandle;
+use tauri_plugin_opener::OpenerExt;
+
+use crate::config;
+use crate::error::{Error, Result};
+use store::Session;
+use tokens::{code_challenge, now, random_b64, session_from, token_request};
+
+const SCOPES: &str = "openid profile email offline_access";
+const LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
+/// An access token this close to expiry is refreshed before use.
+const REFRESH_MARGIN_SECS: u64 = 60;
+
+/// What a call needing the account says when there is no session (never signed in, signed out,
+/// or the keychain lost it). The app matches on "signed out" to flip to its signed-out state.
+pub const SIGNED_OUT: &str = "You're signed out. Sign in again to continue.";
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthStatus {
+    logged_in: bool,
+    name: Option<String>,
+    email: Option<String>,
+    /// Why the session couldn't be read (the keychain is locked, its prompt was dismissed, or
+    /// there is no Secret Service), when that is why the player shows as signed out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    keychain_error: Option<String>,
+}
+
+/// The session, or the error a call needing the account returns: signed out, or why the
+/// keychain couldn't be read.
+async fn session_or_signed_out() -> Result<Session> {
+    match store::read().await {
+        Ok(Some(s)) => Ok(s),
+        Ok(None) => Err(Error::Invalid(SIGNED_OUT.into())),
+        Err(why) => Err(Error::Invalid(why)),
+    }
+}
+
+/// Whether a session's access token is still good for a call now.
+fn fresh(session: &Session) -> bool {
+    session.expires_at > now() + REFRESH_MARGIN_SECS
+}
+
+/// A valid access token for CyberBackend, refreshed if it expires within a minute.
+///
+/// One refresh at a time: at start-up the agent and the first API calls all find the same
+/// expired token and would each send the same refresh token. With refresh-token rotation the
+/// second one is rejected (`invalid_grant`), and that used to wipe the session: the app came
+/// back signed out after every restart past the token's lifetime. Callers queue here and re-read
+/// the session once they hold the lock, so the first refresh serves them all.
+pub async fn access_token() -> Result<String> {
+    static REFRESH: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+    let session = session_or_signed_out().await?;
+    if fresh(&session) {
+        return Ok(session.access_token);
+    }
+    let _one_at_a_time = REFRESH.get_or_init(|| tokio::sync::Mutex::new(())).lock().await;
+    let session = session_or_signed_out().await?;
+    if fresh(&session) {
+        return Ok(session.access_token);
+    }
+    let refresh = session.refresh_token.clone().ok_or_else(|| Error::Invalid("Your session expired: you're signed out. Sign in again to continue.".into()))?;
+    let (client_id, api) = (config::client_id(), config::api_url());
+    let tokens = match token_request(&[("grant_type", "refresh_token"), ("refresh_token", &refresh), ("client_id", &client_id), ("resource", &api)]).await {
+        Ok(tokens) => tokens,
+        Err(e) => {
+            // Only drop the session when the server explicitly rejected the refresh token
+            // (OAuth `invalid_grant`). On a transient failure (network, 5xx) keep it, so a blip
+            // near expiry doesn't log the user out and stop the background agent.
+            if e.to_string().contains("invalid_grant") {
+                store::clear().await;
+            }
+            return Err(e);
+        }
+    };
+    let renewed = session_from(tokens, Some(&session));
+    let token = renewed.access_token.clone();
+    store::store(renewed).await?;
+    Ok(token)
+}
+
+/// The authorize URL the browser opens.
+fn authorize_url(client_id: &str, redirect_uri: &str, state: &str, verifier: &str, api: &str) -> Result<url::Url> {
+    let mut authorize = url::Url::parse(&format!("{}/oauth2/authorize", config::auth_base())).map_err(|e| Error::Invalid(e.to_string()))?;
+    authorize
+        .query_pairs_mut()
+        .append_pair("response_type", "code")
+        .append_pair("client_id", client_id)
+        .append_pair("redirect_uri", redirect_uri)
+        .append_pair("scope", SCOPES)
+        .append_pair("state", state)
+        .append_pair("code_challenge", &code_challenge(verifier))
+        .append_pair("code_challenge_method", "S256")
+        // The system browser may already be signed in, possibly as someone else: let the player
+        // confirm the account or pick another instead of signing in silently.
+        .append_pair("prompt", "select_account")
+        .append_pair("resource", api);
+    Ok(authorize)
+}
+
+#[tauri::command]
+pub async fn auth_login(app: AppHandle) -> Result<AuthStatus> {
+    let (listener, port) = callback::bind_loopback().await?;
+    let redirect_uri = format!("http://127.0.0.1:{port}/callback");
+    let verifier = random_b64(32);
+    let state = random_b64(16);
+    let (client_id, api) = (config::client_id(), config::api_url());
+
+    let authorize = authorize_url(&client_id, &redirect_uri, &state, &verifier, &api)?;
+    app.opener()
+        .open_url(authorize.as_str(), None::<&str>)
+        .map_err(|_| Error::Invalid("No browser opened for sign-in. Set a default web browser for this account and try again.".into()))?;
+
+    let (code, returned_state) = tokio::time::timeout(LOGIN_TIMEOUT, callback::receive(listener))
+        .await
+        .map_err(|_| Error::Invalid("Sign-in wasn't finished within 5 minutes, so it was cancelled. Try again.".into()))??;
+    if returned_state != state {
+        return Err(Error::Invalid("login state mismatch".into()));
+    }
+
+    let tokens = token_request(&[
+        ("grant_type", "authorization_code"),
+        ("code", &code),
+        ("redirect_uri", &redirect_uri),
+        ("client_id", &client_id),
+        ("code_verifier", &verifier),
+        ("resource", &api),
+    ])
+    .await?;
+    let session = session_from(tokens, None);
+    let (name, email) = (session.name.clone(), session.email.clone());
+    store::ask_keychain_again();
+    // Signed in at cyber-auth, but the session can't be kept: say so, so the app doesn't look
+    // like the login was never accepted.
+    store::store(session).await.map_err(|e| Error::Invalid(format!("You signed in, but the session wasn't saved. {e}")))?;
+    Ok(AuthStatus { logged_in: true, name, email, keychain_error: None })
+}
+
+/// Async so the keychain is read off the UI thread: a locked GNOME keyring shows its unlock
+/// prompt and waits, which froze the window while this ran on the main thread.
+#[tauri::command]
+pub async fn auth_status() -> AuthStatus {
+    match store::read().await {
+        Ok(Some(s)) => AuthStatus { logged_in: true, name: s.name, email: s.email, keychain_error: None },
+        Ok(None) => AuthStatus { logged_in: false, name: None, email: None, keychain_error: None },
+        Err(why) => AuthStatus { logged_in: false, name: None, email: None, keychain_error: Some(why) },
+    }
+}
+
+#[tauri::command]
+pub async fn auth_logout() {
+    store::clear().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_authorize_url_asks_for_pkce_and_an_account_choice() {
+        let url = authorize_url("client", "http://127.0.0.1:47290/callback", "st", "verifier", "https://api.example").unwrap();
+        let q: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
+        assert_eq!(q["code_challenge"], code_challenge("verifier"));
+        assert_eq!(q["code_challenge_method"], "S256");
+        assert_eq!(q["prompt"], "select_account");
+        assert_eq!(q["redirect_uri"], "http://127.0.0.1:47290/callback");
+        assert_eq!(q["scope"], SCOPES);
+        assert!(url.path().ends_with("/oauth2/authorize"));
+    }
+
+    #[test]
+    fn a_token_near_expiry_is_not_fresh() {
+        let session = |expires_at| Session { access_token: "a".into(), refresh_token: None, expires_at, name: None, email: None };
+        assert!(fresh(&session(now() + 3600)));
+        assert!(!fresh(&session(now() + 30)));
+        assert!(!fresh(&session(0)));
+    }
+}

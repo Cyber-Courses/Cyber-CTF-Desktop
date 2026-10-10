@@ -1,11 +1,12 @@
-//! The Docker images provisioning uses (Terraform to create, Ansible to configure), so
-//! the UI can show them as present / pullable. Both run in containers, no host binaries.
+//! The Docker images provisioning uses, so the UI can show them as present / pullable. Ansible
+//! runs in a container; Terraform runs from a local binary (a dependency install instead).
 
 use serde::Serialize;
 use tauri::ipc::Channel;
 
 use crate::error::{Error, Result};
-use crate::exec::{run, stream};
+use crate::exec::{run, stream, valid_image};
+use crate::platform::steps::channel_log;
 
 // Ansible is kept as a container image (it runs poorly natively on Windows); Terraform,
 // by contrast, is offered as a local install (simpler state), so it isn't listed here.
@@ -20,15 +21,7 @@ pub struct ImageReq {
     pub present: bool,
 }
 
-fn valid_image(image: &str) -> bool {
-    !image.is_empty()
-        && image.len() <= 200
-        && !image.starts_with('-')
-        && image.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/' | ':' | '@'))
-}
-
-/// The provisioning images and whether each is pulled locally (Ansible; Terraform runs
-/// from a local binary, so it's handled as a dependency install instead).
+/// The provisioning images and whether each is pulled locally.
 #[tauri::command]
 pub async fn provisioning_images() -> Vec<ImageReq> {
     let mut out = Vec::new();
@@ -45,8 +38,5 @@ pub async fn provisioning_pull(image: String, logs: Channel<String>) -> Result<(
     if !valid_image(&image) {
         return Err(Error::Invalid(format!("invalid image `{image}`")));
     }
-    let on_line = move |line: String| {
-        let _ = logs.send(line);
-    };
-    stream("docker", &["pull", &image], None, &[], on_line).await
+    stream("docker", &["pull", &image], None, &[], channel_log(logs)).await
 }

@@ -1,0 +1,64 @@
+//! Live machine health, polled by the Machine screen.
+
+use std::path::Path;
+use std::time::Duration;
+
+use serde::Serialize;
+use sysinfo::{Disks, System};
+
+use crate::exec::run_read;
+
+/// CPU usage needs two samples a moment apart.
+const CPU_SAMPLE_GAP: Duration = Duration::from_millis(220);
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineMetrics {
+    /// Overall CPU usage, 0-100.
+    pub cpu: f32,
+    pub mem_used: u64,
+    pub mem_total: u64,
+    pub disk_used: u64,
+    pub disk_total: u64,
+    pub uptime_secs: u64,
+    pub cores: usize,
+    /// Running Docker containers right now (0 when the engine is down).
+    pub containers: u32,
+}
+
+#[tauri::command]
+pub async fn machine_metrics() -> MachineMetrics {
+    let mut sys = System::new();
+    sys.refresh_cpu_usage();
+    tokio::time::sleep(CPU_SAMPLE_GAP).await;
+    sys.refresh_cpu_usage();
+    sys.refresh_memory();
+
+    let (disk_used, disk_total) = system_disk();
+    MachineMetrics {
+        cpu: sys.global_cpu_usage(),
+        mem_used: sys.used_memory(),
+        mem_total: sys.total_memory(),
+        disk_used,
+        disk_total,
+        uptime_secs: System::uptime(),
+        cores: sys.cpus().len(),
+        containers: running_containers().await,
+    }
+}
+
+/// (used, total) bytes of the root disk, else of the largest one.
+fn system_disk() -> (u64, u64) {
+    let disks = Disks::new_with_refreshed_list();
+    let (total, available) = disks
+        .iter()
+        .find(|d| d.mount_point() == Path::new("/"))
+        .or_else(|| disks.iter().max_by_key(|d| d.total_space()))
+        .map(|d| (d.total_space(), d.available_space()))
+        .unwrap_or((0, 0));
+    (total.saturating_sub(available), total)
+}
+
+async fn running_containers() -> u32 {
+    run_read("docker", &["ps", "--format", "{{.ID}}"], None).await.ok().map(|o| o.lines().filter(|l| !l.trim().is_empty()).count() as u32).unwrap_or(0)
+}
