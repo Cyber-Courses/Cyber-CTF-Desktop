@@ -63,10 +63,10 @@ async fn start_here(
     // collides on its published host ports); if an earlier start left stopped or partial
     // infrastructure behind, clear it so this start is clean.
     ensure_local_slot_free(dir, id, log).await?;
-    match runtime {
+    match local_run(runtime, provider)? {
         // A container lab in a VM on this machine: Isoloom's docker-vm (Docker on one VM), with
         // the attack box next to it inside the VM (the lab network isn't reachable from here).
-        Runtime::Docker if let Some(provider) = provider.filter(|p| !p.is_remote()) => {
+        LocalRun::DockerInVm(provider) => {
             let spec = lab::prepare(dir, lab::vagrant_target(runtime))?;
             mark_local_vm(dir, Some(provider))?;
             log(format!("Running in a {} VM on this machine", provider.id()));
@@ -76,12 +76,8 @@ async fn start_here(
             finish_vagrant(dir, &spec, runtime, log);
             Ok(())
         }
-        Runtime::Docker => start_on_docker(dir, id, env, log).await,
-        Runtime::Vm => {
-            let provider = provider.ok_or_else(|| Error::Invalid("VM labs need a provider".into()))?;
-            if provider.is_remote() {
-                return Err(Error::Invalid("pick a server host to run on ESXi or Proxmox".into()));
-            }
+        LocalRun::Docker => start_on_docker(dir, id, env, log).await,
+        LocalRun::Vm(provider) => {
             let spec = lab::prepare(dir, lab::vagrant_target(runtime))?;
             warn_if_low_memory(&spec, log);
             if provider == Provider::Qemu {
@@ -118,6 +114,35 @@ pub(super) async fn start_on_docker(dir: &Path, id: &str, env: &[(String, String
         log_lines(&m, log);
     }
     Ok(())
+}
+
+/// How a lab runs on this machine.
+#[derive(Debug, PartialEq)]
+enum LocalRun {
+    /// A container lab in one VM on this hypervisor (Isoloom's docker-vm).
+    DockerInVm(Provider),
+    /// A container lab on this machine's Docker.
+    Docker,
+    /// A VM lab, one VM per machine on this hypervisor.
+    Vm(Provider),
+}
+
+/// The local run for `runtime` on `provider`: a container lab with a local hypervisor runs in a
+/// VM there, without one on Docker; a VM lab needs a local hypervisor.
+fn local_run(runtime: Runtime, provider: Option<Provider>) -> Result<LocalRun> {
+    match runtime {
+        Runtime::Docker => Ok(match provider.filter(|p| !p.is_remote()) {
+            Some(p) => LocalRun::DockerInVm(p),
+            None => LocalRun::Docker,
+        }),
+        Runtime::Vm => {
+            let provider = provider.ok_or_else(|| Error::Invalid("VM labs need a provider".into()))?;
+            if provider.is_remote() {
+                return Err(Error::Invalid("pick a server host to run on ESXi or Proxmox".into()));
+            }
+            Ok(LocalRun::Vm(provider))
+        }
+    }
 }
 
 async fn start_on_server(
@@ -175,10 +200,6 @@ async fn start_terraform(
     let provider = conn.provider;
     let (module, target) = lab::terraform(dir, runtime, tf)?;
     let spec = lab::prepare(dir, target)?;
-    let mut vars = conn.tf_vars.clone();
-    if let Some(inputs) = lab::inputs_json(&spec, env) {
-        vars.push(("inputs".into(), inputs));
-    }
     // The launcher's key: Terraform copies the lab over SSH with it, and "Open shell"
     // reaches the attack box on the lab host.
     let (key, public) = ssh::ensure_key(app).await?;
@@ -187,15 +208,10 @@ async fn start_terraform(
     let jump = server::proxmox_jump(app, dir, &key, &public).await?;
     if jump.is_some() {
         log("The lab bridge is internal to the node: reaching the lab VM through the node.".into());
-        vars.push(("ssh_via_node".into(), "true".into()));
     }
-    vars.push(("ssh_public_key".into(), public));
-    vars.push(("ssh_private_key_file".into(), key.to_string_lossy().to_string()));
-    if provider.is_cloud() {
-        // Every cloud firewall opens SSH and the published ports to this machine's
-        // public IP only.
-        vars.push(("allowed_cidr".into(), format!("{}/32", public_ip().await?)));
-    }
+    // Every cloud firewall opens SSH and the published ports to this machine's public IP only.
+    let allowed_ip = if provider.is_cloud() { Some(public_ip().await?) } else { None };
+    let vars = terraform_vars(&conn.tf_vars, lab::inputs_json(&spec, env), jump.is_some(), public, &key, allowed_ip.as_deref());
     if provider == Provider::Aws {
         check_aws_budget(app, host, log).await?;
     }
@@ -221,10 +237,41 @@ async fn start_terraform(
     Ok(())
 }
 
+/// The variables a lab's Terraform is applied with: the host's own, then the lab's declared
+/// inputs, whether to reach the VM through the Proxmox node, the launcher's SSH key and (on a
+/// cloud) this machine's public IP as the only one the firewall lets in.
+fn terraform_vars(
+    host: &[(String, String)],
+    inputs: Option<String>,
+    via_node: bool,
+    public_key: String,
+    private_key: &Path,
+    allowed_ip: Option<&str>,
+) -> Vec<(String, String)> {
+    let mut vars = host.to_vec();
+    if let Some(inputs) = inputs {
+        vars.push(("inputs".into(), inputs));
+    }
+    if via_node {
+        vars.push(("ssh_via_node".into(), "true".into()));
+    }
+    vars.push(("ssh_public_key".into(), public_key));
+    vars.push(("ssh_private_key_file".into(), private_key.to_string_lossy().to_string()));
+    if let Some(ip) = allowed_ip {
+        vars.push(("allowed_cidr".into(), format!("{ip}/32")));
+    }
+    vars
+}
+
 /// Stops before spending if this AWS account is over its monthly budget, or if a budget is set
 /// and the spend is over it; if the spend can't be read, warns and lets the launch go on.
 async fn check_aws_budget(app: &AppHandle, host: &str, log: &mut impl FnMut(String)) -> Result<()> {
-    match server::check_budget(app, host).await {
+    budget_verdict(server::check_budget(app, host).await, log)
+}
+
+/// What a budget check means for the launch: refused over budget, a note when unverifiable.
+fn budget_verdict(check: server::BudgetCheck, log: &mut impl FnMut(String)) -> Result<()> {
+    match check {
         server::BudgetCheck::Over(spent, limit) => Err(Error::Invalid(format!(
             "Monthly budget reached for this account: ${spent:.2} of ${limit:.2} spent this month. Raise the budget in the account settings, or wait until next month."
         ))),
@@ -296,11 +343,18 @@ fn warn_if_low_memory(spec: &isoloom_core::Spec, log: &mut impl FnMut(String)) {
     let mut sys = System::new();
     sys.refresh_memory();
     let available_mb = sys.available_memory() / (1024 * 1024);
-    if available_mb > 0 && needed_mb > available_mb {
-        log(format!(
-            "This lab's VMs ask for about {needed_mb} MB, but only ~{available_mb} MB is free on this machine. It may run slowly or fail to boot; close other apps or stop other labs if it struggles."
-        ));
+    if let Some(warning) = low_memory_warning(needed_mb, available_mb) {
+        log(warning);
     }
+}
+
+/// The warning for a lab needing `needed_mb` of memory with `available_mb` free (0: unknown).
+fn low_memory_warning(needed_mb: u64, available_mb: u64) -> Option<String> {
+    (available_mb > 0 && needed_mb > available_mb).then(|| {
+        format!(
+            "This lab's VMs ask for about {needed_mb} MB, but only ~{available_mb} MB is free on this machine. It may run slowly or fail to boot; close other apps or stop other labs if it struggles."
+        )
+    })
 }
 
 /// The CPUs (`std::env::consts::ARCH` names) a lab's VMs are built for that differ from `host`,
@@ -401,7 +455,111 @@ fn parse_ipv4(body: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_ipv4, start_on_docker};
+    use std::path::{Path, PathBuf};
+
+    use super::{
+        LocalRun, start_on_docker, Provider, Runtime, budget_verdict, check_qemu, emulated_arches, local_run, log_lines, low_memory_warning, parse_ipv4, terraform_vars,
+    };
+    use super::{server, warn_if_low_memory, welcome};
+
+    fn lab(spec: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("cyberctf-launch-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("isoloom.yml"), spec).unwrap();
+        dir
+    }
+
+    const CONTAINERS: &str = "version: 1\nname: t\nnetworks:\n  lab: { cidr: 10.30.0.0/24 }\nmachines:\n  web:\n    networks: { lab: 10 }\n    services: [{ port: 80, http: true }]\n    docker: { image: nginx:1.27 }\nmessage: |\n  Open the web at {{ machines.web.addresses.lab }}.\n  Then look around.\n";
+
+    const VMS: &str = "version: 1\nname: t\nnetworks:\n  lab: { cidr: 10.30.0.0/24 }\nmachines:\n  a:\n    networks: { lab: 10 }\n    resources: { memory_mb: 1024 }\n    vm: { os: debian-12 }\n  b:\n    arch: arm64\n    networks: { lab: 11 }\n    resources: { memory_mb: 2048 }\n    vm: { os: debian-12 }\n";
+
+    #[test]
+    fn a_local_run_follows_the_runtime_and_the_hypervisor() {
+        assert_eq!(local_run(Runtime::Docker, None).unwrap(), LocalRun::Docker);
+        assert_eq!(local_run(Runtime::Docker, Some(Provider::Virtualbox)).unwrap(), LocalRun::DockerInVm(Provider::Virtualbox));
+        // A server provider is never a local VM: the containers run on this machine's Docker.
+        assert_eq!(local_run(Runtime::Docker, Some(Provider::Proxmox)).unwrap(), LocalRun::Docker);
+        assert_eq!(local_run(Runtime::Vm, Some(Provider::Qemu)).unwrap(), LocalRun::Vm(Provider::Qemu));
+        assert_eq!(local_run(Runtime::Vm, None).unwrap_err().to_string(), "VM labs need a provider");
+        assert_eq!(local_run(Runtime::Vm, Some(Provider::VmwareEsxi)).unwrap_err().to_string(), "pick a server host to run on ESXi or Proxmox");
+    }
+
+    #[test]
+    fn terraform_gets_the_hosts_vars_then_the_launchers() {
+        let key = Path::new("keys").join("id_ed25519");
+        let host = vec![("node".to_string(), "pve".to_string())];
+        let vars = terraform_vars(&host, Some("{}".into()), true, "ssh-ed25519 AAA".into(), &key, Some("203.0.113.7"));
+        let names: Vec<&str> = vars.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(names, ["node", "inputs", "ssh_via_node", "ssh_public_key", "ssh_private_key_file", "allowed_cidr"]);
+        assert_eq!(vars[4].1, key.to_string_lossy());
+        assert_eq!(vars[5].1, "203.0.113.7/32");
+        // No inputs, a routable bridge, not a cloud: only the key.
+        let vars = terraform_vars(&[], None, false, "pk".into(), &key, None);
+        assert_eq!(vars.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(), ["ssh_public_key", "ssh_private_key_file"]);
+    }
+
+    #[test]
+    fn an_aws_budget_blocks_only_when_it_is_known_to_be_over() {
+        let mut lines = Vec::new();
+        assert!(budget_verdict(server::BudgetCheck::Ok, &mut |l| lines.push(l)).is_ok());
+        let err = budget_verdict(server::BudgetCheck::Over(51.5, 50.0), &mut |l| lines.push(l)).unwrap_err().to_string();
+        assert!(err.contains("$51.50 of $50.00"), "{err}");
+        assert!(lines.is_empty());
+        assert!(budget_verdict(server::BudgetCheck::Unverifiable("Cost Explorer is off.".into()), &mut |l| lines.push(l)).is_ok());
+        assert_eq!(lines, ["Monthly budget not checked: Cost Explorer is off. Launching anyway; the lab still auto-stops."]);
+    }
+
+    #[test]
+    fn memory_is_a_warning_only_when_the_lab_needs_more_than_is_free() {
+        assert_eq!(low_memory_warning(4096, 0), None, "unknown free memory");
+        assert_eq!(low_memory_warning(2048, 4096), None);
+        assert!(low_memory_warning(8192, 4096).unwrap().contains("about 8192 MB, but only ~4096 MB"));
+        // The real probe: it never fails, it only may warn.
+        let dir = lab(VMS);
+        let spec = isoloom_core::load(&dir).unwrap();
+        warn_if_low_memory(&spec, &mut |_l| {});
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn qemu_emulates_only_the_vms_built_for_another_cpu() {
+        let dir = lab(VMS);
+        let spec = isoloom_core::load(&dir).unwrap();
+        assert_eq!(emulated_arches(&spec, "x86_64"), ["aarch64"]);
+        assert_eq!(emulated_arches(&spec, "aarch64"), ["x86_64"]);
+        let mut both = emulated_arches(&spec, "riscv64");
+        both.sort();
+        assert_eq!(both, ["aarch64", "x86_64"]);
+        std::fs::remove_dir_all(dir).unwrap();
+        // Containers have no CPU of their own to emulate.
+        let dir = lab(CONTAINERS);
+        let spec = isoloom_core::load(&dir).unwrap();
+        assert!(emulated_arches(&spec, "riscv64").is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_lab_without_vms_needs_no_emulator() {
+        let dir = lab(CONTAINERS);
+        let spec = isoloom_core::load(&dir).unwrap();
+        let mut lines = Vec::new();
+        check_qemu(&spec, &mut |l| lines.push(l)).await.unwrap();
+        assert!(lines.is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_welcome_is_the_labs_message_line_by_line() {
+        let dir = lab(CONTAINERS);
+        let spec = isoloom_core::load(&dir).unwrap();
+        let mut lines = Vec::new();
+        welcome(&dir, &spec, isoloom_core::Target::Vagrant, &mut |l| lines.push(l));
+        assert_eq!(lines, ["Open the web at 10.30.0.10.", "Then look around."]);
+        let mut lines = Vec::new();
+        log_lines("one\ntwo\n", &mut |l| lines.push(l));
+        assert_eq!(lines, ["one", "two"]);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[tokio::test]
     async fn a_docker_start_without_a_lab_spec_fails_before_touching_docker() {
