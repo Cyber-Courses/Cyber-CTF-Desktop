@@ -1,11 +1,16 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import de from "@/messages/de";
 import en from "@/messages/en";
+import es from "@/messages/es";
 import fr from "@/messages/fr";
+import ja from "@/messages/ja";
+import ptBR from "@/messages/pt-BR";
 
 /**
- * The launcher's language: English (the source of truth) or French. Chosen in Settings, else the
+ * The launcher's language: English (the source of truth), French, Spanish, German, Brazilian
+ * Portuguese or Japanese. Chosen in Settings, else the
  * system's; saved on this computer and followed by every window through the `storage` event, like
  * the appearance. No library: typed JSON messages per area (src/messages/<lang>/<area>.json).
  *
@@ -16,9 +21,17 @@ import fr from "@/messages/fr";
  *
  * Outside React (error helpers, notifications): `translate(key, vars)` in the current language.
  */
-export const LOCALES = ["en", "fr"] as const;
+export const LOCALES = ["en", "fr", "es", "de", "pt-BR", "ja"] as const;
 export type Locale = (typeof LOCALES)[number];
-export const LOCALE_NAMES: Record<Locale, string> = { en: "English", fr: "Français" };
+/** Each language in itself, as the language picker shows it. */
+export const LOCALE_NAMES: Record<Locale, string> = {
+  en: "English",
+  fr: "Français",
+  es: "Español",
+  de: "Deutsch",
+  "pt-BR": "Português (Brasil)",
+  ja: "日本語",
+};
 
 type Messages = typeof en;
 // "a.b.c" for every leaf (string, or a { one, other } plural) of the English messages.
@@ -29,21 +42,27 @@ type Paths<T, P extends string = ""> = {
 export type MessageKey = Paths<Messages>;
 export type Vars = Record<string, string | number>;
 
-const CATALOGS: Record<Locale, unknown> = { en, fr };
+const CATALOGS: Record<Locale, unknown> = { en, fr, es, de, "pt-BR": ptBR, ja };
 const KEY = "cyberctf.locale";
 const listeners = new Set<() => void>();
 let current: Locale | null = null;
 
 function parse(v: string | null | undefined): Locale | null {
-  return v === "en" || v === "fr" ? v : null;
+  return (LOCALES as readonly string[]).includes(v ?? "") ? (v as Locale) : null;
+}
+
+/** A system language tag ("pt-PT", "de-CH", "ja-JP") to ours: same language, any region. */
+function fromSystem(tag: string | undefined): Locale | null {
+  const lang = tag?.toLowerCase().split("-")[0];
+  return LOCALES.find((l) => l.toLowerCase().split("-")[0] === lang) ?? null;
 }
 
 /** The system's language, when we have it; English otherwise. */
 function systemLocale(): Locale {
   if (typeof navigator === "undefined") return "en";
   for (const l of navigator.languages ?? [navigator.language]) {
-    const base = parse(l?.slice(0, 2).toLowerCase());
-    if (base) return base;
+    const match = fromSystem(l);
+    if (match) return match;
   }
   return "en";
 }

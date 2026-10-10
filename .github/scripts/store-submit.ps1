@@ -54,7 +54,9 @@ $trailers = @()
 foreach ($file in Get-ChildItem (Join-Path $StoreDir "listings") -Filter "*-*.json") {
   $lang = $file.BaseName                       # en-us, fr-fr
   $l = Get-Content $file.FullName -Raw | ConvertFrom-Json -AsHashtable
+  # A language without its own images yet uses the English ones.
   $img = Join-Path $StoreDir "images/$lang"
+  if (-not (Test-Path $img)) { $img = Join-Path $StoreDir "images/en-us" }
   Write-Host "Listing $lang"
 
   if (-not $sub.listings) { $sub.listings = @{} }
@@ -81,6 +83,7 @@ foreach ($file in Get-ChildItem (Join-Path $StoreDir "listings") -Filter "*-*.js
 
   # One trailer per language, shown on that language's page (its title and thumbnail live there).
   $t = Join-Path $StoreDir "trailers/$lang"
+  if (-not (Test-Path $t)) { $t = Join-Path $StoreDir "trailers/en-us" }
   if ($l.trailer -and (Test-Path (Join-Path $t $l.trailer.video))) {
     $trailers += @{
       videoFileName = (Add-File (Join-Path $t $l.trailer.video) "$lang-trailer.mp4")

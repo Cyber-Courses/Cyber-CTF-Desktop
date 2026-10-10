@@ -158,7 +158,7 @@ jobs:
           # Generate resources.pri: without it the Store reads no languages/resources from
           # the package and the submission commit fails validation.
           Push-Location $layout
-          & "$bin\makepri.exe" createconfig /cf priconfig.xml /dq en-US_fr-FR /o
+          & "$bin\makepri.exe" createconfig /cf priconfig.xml /dq en-US_fr-FR_es-ES_de-DE_pt-BR_ja-JP /o
           & "$bin\makepri.exe" new /pr $layout /cf priconfig.xml /mn "$layout\AppxManifest.xml" /of "$layout\resources.pri" /o
           Remove-Item priconfig.xml -Force
           Pop-Location
