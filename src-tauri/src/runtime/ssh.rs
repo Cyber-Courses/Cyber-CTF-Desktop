@@ -89,7 +89,36 @@ pub fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
+/// The `-o` values every launcher SSH uses: accept a new host's key once, pinned in the
+/// launcher's own `known_hosts` (never the player's ~/.ssh), quiet. `batch` adds no prompts and
+/// a short connect timeout. `known_hosts` goes in as given (quote it for a shell command line).
+pub fn options(batch: bool, known_hosts: &str) -> Vec<String> {
+    let mut opts: Vec<String> = Vec::new();
+    if batch {
+        opts.extend(["BatchMode=yes".into(), "ConnectTimeout=10".into()]);
+    }
+    opts.extend(["StrictHostKeyChecking=accept-new".into(), format!("UserKnownHostsFile={known_hosts}"), "LogLevel=ERROR".into()]);
+    opts
+}
+
+/// `options` as `-o …` words for a shell command line.
+fn shell_options(batch: bool, known_hosts: &Path) -> String {
+    options(batch, &sh_quote(&known_hosts.to_string_lossy())).iter().map(|o| format!("-o {o}")).collect::<Vec<_>>().join(" ")
+}
+
 impl Target {
+    /// A host reached directly on port 22.
+    pub fn direct(host: impl Into<String>, user: impl Into<String>, identity: PathBuf) -> Self {
+        Target { host: host.into(), port: 22, user: user.into(), identity, jump: None }
+    }
+
+    fn check_endpoint(&self) -> Result<()> {
+        if !safe_token(&self.host) || !safe_token(&self.user) {
+            return Err(Error::Invalid("unexpected SSH host or user".into()));
+        }
+        Ok(())
+    }
+
     /// `-o ProxyCommand=…` through the jump host, with the same key and known_hosts.
     fn proxy_option(&self, known_hosts: &Path) -> Result<Option<String>> {
         let Some(jump) = &self.jump else { return Ok(None) };
@@ -97,65 +126,36 @@ impl Target {
         if !safe_token(user) || !safe_token(host) {
             return Err(Error::Invalid("unexpected jump host".into()));
         }
-        Ok(Some(format!(
-            "ProxyCommand=ssh -i {} -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={} -o LogLevel=ERROR -W %h:%p {jump}",
-            sh_quote(&self.identity.to_string_lossy()),
-            sh_quote(&known_hosts.to_string_lossy()),
-        )))
+        Ok(Some(format!("ProxyCommand=ssh -i {} {} -W %h:%p {jump}", sh_quote(&self.identity.to_string_lossy()), shell_options(true, known_hosts),)))
     }
 
     /// The shell command that opens the remote attack box. `known_hosts` keeps the
     /// launcher's host keys away from the player's own ~/.ssh.
     pub fn attack_shell_command(&self, known_hosts: &Path) -> Result<String> {
-        if !safe_token(&self.host) || !safe_token(&self.user) {
-            return Err(Error::Invalid("unexpected SSH host or user".into()));
-        }
+        self.check_endpoint()?;
         let proxy = self.proxy_option(known_hosts)?.map(|p| format!("-o {} ", sh_quote(&p))).unwrap_or_default();
         Ok(format!(
-            "ssh -t -i {} -p {} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={} -o LogLevel=ERROR {proxy}{}@{} sudo docker exec -it attacker bash",
+            "ssh -t -i {} -p {} {} {proxy}{}@{} sudo docker exec -it attacker bash",
             sh_quote(&self.identity.to_string_lossy()),
             self.port,
-            sh_quote(&known_hosts.to_string_lossy()),
+            shell_options(false, known_hosts),
             self.user,
             self.host,
         ))
     }
-}
 
-impl Target {
     /// Runs `command` on the lab host, non-interactively (no password prompt, short
     /// connect timeout). `known_hosts` should be per deployment: a new VM on a reused
     /// address has a new host key.
     pub async fn exec(&self, known_hosts: &Path, command: &str) -> Result<String> {
-        if !safe_token(&self.host) || !safe_token(&self.user) {
-            return Err(Error::Invalid("unexpected SSH host or user".into()));
+        self.check_endpoint()?;
+        let mut args: Vec<String> = vec!["-i".into(), self.identity.to_string_lossy().to_string(), "-p".into(), self.port.to_string()];
+        for o in options(true, &known_hosts.to_string_lossy()).into_iter().chain(self.proxy_option(known_hosts)?) {
+            args.extend(["-o".into(), o]);
         }
-        let identity = self.identity.to_string_lossy().to_string();
-        let port = self.port.to_string();
-        let known = format!("UserKnownHostsFile={}", known_hosts.to_string_lossy());
-        let dest = format!("{}@{}", self.user, self.host);
-        let proxy = self.proxy_option(known_hosts)?;
-        let mut args: Vec<&str> = vec![
-            "-i",
-            &identity,
-            "-p",
-            &port,
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "ConnectTimeout=10",
-            "-o",
-            "StrictHostKeyChecking=accept-new",
-            "-o",
-            &known,
-            "-o",
-            "LogLevel=ERROR",
-        ];
-        if let Some(p) = &proxy {
-            args.extend(["-o", p.as_str()]);
-        }
-        args.extend([dest.as_str(), command]);
-        run("ssh", &args, None).await
+        args.extend([format!("{}@{}", self.user, self.host), command.to_string()]);
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        run("ssh", &refs, None).await
     }
 }
 
@@ -185,5 +185,36 @@ mod tests {
         let bad = Target { host: "10.0.0.5;rm".into(), ..t };
         assert!(bad.attack_shell_command(Path::new("/x")).is_err());
         assert_eq!(sh_quote("it's"), r"'it'\''s'");
+    }
+
+    #[test]
+    fn attack_shell_command_is_unchanged() {
+        let t = Target::direct("10.0.0.5", "debian", "/k/id".into());
+        assert_eq!(
+            t.attack_shell_command(Path::new("/x/kh")).unwrap(),
+            "ssh -t -i '/k/id' -p 22 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile='/x/kh' -o LogLevel=ERROR debian@10.0.0.5 sudo docker exec -it attacker bash"
+        );
+    }
+
+    #[test]
+    fn jump_hosts_become_a_proxy_command() {
+        let t = Target { jump: Some("root@pve.lan".into()), ..Target::direct("10.10.0.5", "isoloom", "/k/id".into()) };
+        assert_eq!(
+            t.proxy_option(Path::new("/x/kh")).unwrap().unwrap(),
+            "ProxyCommand=ssh -i '/k/id' -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile='/x/kh' -o LogLevel=ERROR -W %h:%p root@pve.lan"
+        );
+        let cmd = t.attack_shell_command(Path::new("/x/kh")).unwrap();
+        assert!(cmd.contains("-o 'ProxyCommand=ssh -i '\\''/k/id'\\''"), "{cmd}");
+        for bad in ["nobody", "root@pve;rm", "-o@x"] {
+            let t = Target { jump: Some(bad.into()), ..Target::direct("10.10.0.5", "isoloom", "/k/id".into()) };
+            assert!(t.proxy_option(Path::new("/x")).is_err(), "{bad}");
+        }
+        assert_eq!(Target::direct("h", "u", "/k".into()).proxy_option(Path::new("/x")).unwrap(), None);
+    }
+
+    #[test]
+    fn options_add_batch_mode_only_when_asked() {
+        assert_eq!(options(false, "/kh"), ["StrictHostKeyChecking=accept-new", "UserKnownHostsFile=/kh", "LogLevel=ERROR"]);
+        assert_eq!(options(true, "/kh")[..2], ["BatchMode=yes", "ConnectTimeout=10"]);
     }
 }
