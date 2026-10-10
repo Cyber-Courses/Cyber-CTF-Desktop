@@ -1,85 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ArrowRight, Cloud, ExternalLink, Play, RotateCcw, Server, TriangleAlert } from "lucide-react";
-import { KeyValue, Panel, PanelHeader } from "@/components/ui/panel";
+import { useState } from "react";
+import { ArrowRight, Cloud, ExternalLink, Play, Server, TriangleAlert } from "lucide-react";
+import { Panel, PanelHeader } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
-import { Spinner } from "@/components/ui/spinner";
-import { StatusDot, StatusPill } from "@/components/ui/status-pill";
-import { TypeIcon } from "@/components/ui/type-icon";
 import { LabRow, emulatorReady } from "@/features/labs/lab-row";
 import { useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
 import { CalloutRow, StatCard } from "@/features/machine/machine-parts";
-import { StepRow } from "@/features/machine/step-row";
+import { usage } from "@/features/machine/machine-status";
+import { useMachineMetrics } from "@/features/machine/use-machine-metrics";
+import { DeployPanel } from "@/features/home/deploy-panel";
+import { JumpBackPanel } from "@/features/home/jump-back-panel";
+import { MachineSummaryPanel } from "@/features/home/machine-summary-panel";
+import { dockerReadiness, greetingKey, heroStatus, labContainerCount, recentLabs, runningLabs } from "@/features/home/home-model";
 import { getLastRun } from "@/lib/last-run";
-import { formatAgo } from "@/lib/format";
-import { operationLabel, useActiveOperations } from "@/lib/deploy-store";
+import { useActiveOperations } from "@/lib/deploy-store";
 import { assessRam } from "@/features/home/capacity";
-import { machineMetrics, machineOpenSetup, type ActiveOperation, type AuthStatus, type MachineMetrics, type SystemReport } from "@/lib/tauri";
-import { ignore, tell } from "@/lib/failure";
-import { useFormat, useT, type T } from "@/lib/i18n";
+import { machineOpenSetup, type AuthStatus, type SystemReport } from "@/lib/tauri";
+import { tell } from "@/lib/failure";
+import { useFormat, useT } from "@/lib/i18n";
 
 type Tab = "labs" | "machine" | "setup" | "server" | "cloud" | "settings";
-
-const HISTORY = 20;
-const push = (a: number[], v: number) => [...a, v].slice(-HISTORY);
-
-/** "Good morning / afternoon / evening" from the local hour. */
-function greeting(t: T, hour: number) {
-  return t(hour < 12 ? "home.greeting.morning" : hour < 18 ? "home.greeting.afternoon" : "home.greeting.evening");
-}
-
-/** The second column of the Overview: what is being deployed right now, step by step. */
-function DeployPanel({ ops, labs, onOpen }: { ops: ActiveOperation[]; labs: Lab[]; onOpen: (slug: string) => void }) {
-  const t = useT();
-  const one = ops.length === 1 ? ops[0] : null;
-  const labOf = (id: string) => labs.find((l) => l.id === id);
-  const oneLab = one ? labOf(one.labId) : undefined;
-  return (
-    <Panel>
-      <PanelHeader
-        title={
-          <>
-            <StatusDot tone="warn" pulse />
-            <span className="truncate">{one ? (oneLab?.slug ?? one.labId) : t("home.deploy.inProgress")}</span>
-          </>
-        }
-        meta={one ? operationLabel(one).replace(/…$/, "").toLowerCase() : t("home.running.labs", { count: ops.length })}
-        action={
-          oneLab && (
-            <Button variant="ghost" size="xs" onClick={() => onOpen(oneLab.slug)}>
-              {t("home.deploy.view")}
-            </Button>
-          )
-        }
-      />
-      <div className="py-1.5">
-        {ops.map((o) => {
-          const lab = labOf(o.labId);
-          return (
-            <StepRow
-              key={o.labId}
-              state="run"
-              label={o.step ?? operationLabel(o)}
-              detail={one ? undefined : (lab?.title ?? o.labId)}
-              meta={o.machine?.replace(/^isoloom-/, "") ?? t("home.deploy.running")}
-              action={
-                !one &&
-                lab && (
-                  <Button variant="ghost" size="xs" onClick={() => onOpen(lab.slug)}>
-                    {t("home.deploy.view")}
-                  </Button>
-                )
-              }
-            />
-          );
-        })}
-      </div>
-    </Panel>
-  );
-}
 
 export function HomeScreen({
   report,
@@ -94,69 +37,27 @@ export function HomeScreen({
   const format = useFormat();
   /** Gigabytes with one decimal, without a trailing ".0" (19.5, 32). */
   const gb = (bytes: number) => format.number(bytes / 1e9, { maximumFractionDigits: 1, useGrouping: false });
-  const { labs, statuses, refreshStatus } = useLabs(auth?.loggedIn ?? false);
+  const loggedIn = auth?.loggedIn ?? false;
+  const { labs, statuses, refreshStatus } = useLabs(loggedIn);
   const { runs, launch, stop, resume } = useLabActions(refreshStatus);
   const ops = useActiveOperations();
-  const [metrics, setMetrics] = useState<MachineMetrics | null>(null);
   // A rolling window of the 3 s polls, for the stat card sparklines.
-  const [hist, setHist] = useState<{ cpu: number[]; mem: number[]; disk: number[] }>({ cpu: [], mem: [], disk: [] });
+  const { metrics, history: hist } = useMachineMetrics(3000);
   // "Now" for the "last run" labels and the greeting, taken once per visit.
   const [now] = useState(() => Date.now());
 
-  useEffect(() => {
-    let alive = true;
-    const tick = () =>
-      machineMetrics()
-        .then((m) => {
-          if (!alive) return;
-          setMetrics(m);
-          setHist((h) => ({
-            cpu: push(h.cpu, m.cpu),
-            mem: push(h.mem, m.memTotal ? (m.memUsed / m.memTotal) * 100 : 0),
-            disk: push(h.disk, m.diskTotal ? (m.diskUsed / m.diskTotal) * 100 : 0),
-          }));
-        })
-        .catch(ignore("polled again in a moment"));
-    tick();
-    const t = setInterval(tick, 3000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, []);
-
-  // Unknown until the machine report is in: no "set up" call to action for a Docker that is
-  // simply not probed yet.
-  const dockerReady = report ? report.docker.installed && report.dockerRunning : null;
-  const running = (labs ?? []).filter((l) => statuses[l.id]?.running);
-  // The running labs' own containers: the engine's total also counts the player's other projects.
-  const labContainers = running
-    .filter((l) => l.runtime?.runtime === "DOCKER" && (statuses[l.id]?.place ?? "container") === "container")
-    .reduce((n, l) => n + (statuses[l.id]?.machines.length ?? 0), 0);
+  const dockerReady = dockerReadiness(report);
+  const running = runningLabs(labs ?? [], statuses);
+  const labContainers = labContainerCount(running, statuses);
   const preview = (labs ?? []).slice(0, 6);
   const activeOps = [...ops.values()];
-
-  // "Jump back in": recently launched labs (local history), most recent first, not already running.
-  const recent = (labs ?? [])
-    .map((lab) => ({ lab, ts: getLastRun(lab.id) }))
-    .filter((r): r is { lab: Lab; ts: number } => r.ts !== null && !statuses[r.lab.id]?.running)
-    .sort((a, b) => b.ts - a.ts)
-    .slice(0, 3);
+  const recent = recentLabs(labs ?? [], statuses, getLastRun);
 
   const name = auth?.name?.split(" ")[0];
-  const memPct = metrics && metrics.memTotal ? (metrics.memUsed / metrics.memTotal) * 100 : null;
-  const diskPct = metrics && metrics.diskTotal ? (metrics.diskUsed / metrics.diskTotal) * 100 : null;
+  const use = metrics ? usage(metrics) : null;
   const capacity = metrics ? assessRam(metrics.memTotal) : null;
-  const hello = greeting(t, new Date(now).getHours());
-
-  const heroStatus =
-    dockerReady === null
-      ? t("home.status.checking")
-      : !dockerReady
-        ? t("home.status.setUpDocker")
-        : running.length > 0
-          ? t("home.status.running", { count: running.length })
-          : t("home.status.ready");
+  const hello = t(greetingKey(new Date(now).getHours()));
+  const openLab = (slug: string) => onNavigate("labs", slug);
 
   const labRow = (lab: Lab) => (
     <LabRow
@@ -165,10 +66,10 @@ export function HomeScreen({
       status={statuses[lab.id]}
       busy={!!runs[lab.id]?.busy}
       operation={runs[lab.id]?.op}
-      loggedIn={auth?.loggedIn ?? false}
+      loggedIn={loggedIn}
       hostArch={report?.arch ?? ""}
       emulates={emulatorReady(report)}
-      onOpen={() => onNavigate("labs", lab.slug)}
+      onOpen={() => openLab(lab.slug)}
       onStop={() => stop(lab)}
       onResume={() => resume(lab)}
     />
@@ -188,7 +89,7 @@ export function HomeScreen({
             <>{t.rich("home.title.welcome", { em: (s) => <em>{s}</em> })}</>
           )
         }
-        lead={heroStatus}
+        lead={t(`home.status.${heroStatus(dockerReady, running.length)}`, { count: running.length })}
         actions={
           dockerReady === false ? (
             <Button size="sm" onClick={() => machineOpenSetup().catch(tell(t("home.actions.setUpFailed")))}>
@@ -213,13 +114,13 @@ export function HomeScreen({
         <StatCard
           label={t("home.stats.memory")}
           detail={metrics ? t("home.stats.usage", { used: gb(metrics.memUsed), total: gb(metrics.memTotal) }) : ""}
-          value={memPct}
+          value={use && metrics?.memTotal ? use.memPct : null}
           history={hist.mem}
         />
         <StatCard
           label={t("home.stats.disk")}
           detail={metrics ? t("home.stats.usage", { used: gb(metrics.diskUsed), total: gb(metrics.diskTotal) }) : ""}
-          value={diskPct}
+          value={use && metrics?.diskTotal ? use.diskPct : null}
           history={hist.disk}
         />
       </div>
@@ -260,67 +161,23 @@ export function HomeScreen({
         </Panel>
 
         {activeOps.length > 0 ? (
-          <DeployPanel ops={activeOps} labs={labs ?? []} onOpen={(slug) => onNavigate("labs", slug)} />
+          <DeployPanel ops={activeOps} labs={labs ?? []} onOpen={openLab} />
         ) : (
-          <Panel>
-            <PanelHeader
-              title={t("home.machine.title")}
-              action={
-                <Button variant="ghost" size="xs" onClick={() => onNavigate("machine")}>
-                  {t("home.machine.open")} <ArrowRight />
-                </Button>
-              }
-            />
-            <KeyValue k={t("home.machine.dockerEngine")}>
-              {report ? (
-                <StatusPill tone={report.dockerRunning ? "ok" : "warn"}>
-                  {report.dockerRunning ? t("home.machine.running") : t("home.machine.stopped")}
-                </StatusPill>
-              ) : (
-                "…"
-              )}
-            </KeyValue>
-            <KeyValue k={t("home.machine.containers")}>{metrics ? `${metrics.containers}` : dockerReady ? "0" : t("home.machine.none")}</KeyValue>
-            <KeyValue k={t("home.machine.cores")}>{metrics ? `${metrics.cores}` : "…"}</KeyValue>
-          </Panel>
+          <MachineSummaryPanel report={report} metrics={metrics} dockerReady={dockerReady} onOpen={() => onNavigate("machine")} />
         )}
       </div>
 
       {recent.length > 0 && (
-        <Panel>
-          <PanelHeader title={t("home.jumpBack.title")} meta={t("home.jumpBack.meta")} />
-          {recent.map(({ lab, ts }) => (
-            <div
-              key={lab.id}
-              className="flex h-13 items-center gap-3.5 border-t border-border px-4 text-[0.8125rem] transition-colors first:border-t-0 hover:bg-glass"
-            >
-              <TypeIcon>
-                <RotateCcw className="size-3.5" />
-              </TypeIcon>
-              <button onClick={() => onNavigate("labs", lab.slug)} className="min-w-0 flex-1 text-left">
-                <span className="block truncate font-medium text-foreground">{lab.title}</span>
-                <span className="block truncate font-mono text-[0.6875rem] text-faint">
-                  {t("home.jumpBack.lastRun", { slug: lab.slug, ago: formatAgo(ts, now) })}
-                </span>
-              </button>
-              <Button
-                size="xs"
-                // A shut-down or paused lab comes back as it was; a fresh launch would
-                // start over on top of its kept machines.
-                onClick={() => (statuses[lab.id]?.parked ? resume(lab) : launch(lab, undefined, undefined, report))}
-                disabled={!!runs[lab.id]?.busy || !(auth?.loggedIn ?? false) || !lab.runtime}
-              >
-                {runs[lab.id]?.busy ? (
-                  <Spinner className="size-3" />
-                ) : (
-                  <>
-                    <Play /> {t("home.jumpBack.resume")}
-                  </>
-                )}
-              </Button>
-            </div>
-          ))}
-        </Panel>
+        <JumpBackPanel
+          recent={recent}
+          now={now}
+          isBusy={(lab) => !!runs[lab.id]?.busy}
+          canStart={(lab) => loggedIn && !!lab.runtime}
+          onOpen={(lab) => openLab(lab.slug)}
+          // A shut-down or paused lab comes back as it was; a fresh launch would start over on
+          // top of its kept machines.
+          onStart={(lab) => (statuses[lab.id]?.parked ? resume(lab) : launch(lab, undefined, undefined, report))}
+        />
       )}
 
       <Panel>
