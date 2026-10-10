@@ -21,6 +21,12 @@ export default defineConfig({
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/**/*.test.{ts,tsx}", "src/test/**", "src/messages/**", "src/app/**", "src/lib/dev-mock.ts"],
       reporter: ["text", "text-summary", "json-summary"],
+      // The floor CI enforces: 2 points under the level reached, so it can only go up. Raise
+      // it as tests are added.
+      thresholds: {
+        lines: 82,
+        functions: 76,
+      },
     },
   },
   resolve: {
