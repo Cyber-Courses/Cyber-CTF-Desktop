@@ -40,16 +40,35 @@ pub async fn cloud_login(provider: Cloud, logs: Channel<String>) -> Result<()> {
     let on_line = move |line: String| {
         let _ = logs.send(line);
     };
-    let (program, args): (&'static str, &[&str]) = match provider {
+    let (program, args) = login_command(&provider);
+    on_line(format!("$ {program} {}", args.join(" ")));
+    stream(program, args, None, &[], on_line).await
+}
+
+/// The CLI sign-in for a cloud.
+fn login_command(provider: &Cloud) -> (&'static str, &'static [&'static str]) {
+    match provider {
         Cloud::Aws => ("aws", &["sso", "login"]),
         Cloud::Azure => ("az", &["login"]),
         // One browser flow that authenticates the gcloud CLI (so `gcloud projects list` works)
         // AND writes Application Default Credentials (what Terraform's google provider reads).
         // Plain `auth application-default login` only does the latter, leaving the CLI unauthed.
         Cloud::Gcp => ("gcloud", &["auth", "login", "--update-adc"]),
-    };
-    on_line(format!("$ {program} {}", args.join(" ")));
-    stream(program, args, None, &[], on_line).await
+    }
+}
+
+/// `args`, then `--profile <p>` when a profile is given.
+fn with_profile<'a>(mut args: Vec<&'a str>, profile: Option<&'a str>) -> Vec<&'a str> {
+    if let Some(p) = profile {
+        args.push("--profile");
+        args.push(p);
+    }
+    args
+}
+
+/// A CLI's one-line answer, trimmed; None when blank.
+fn non_empty(out: String) -> Option<String> {
+    Some(out.trim().to_string()).filter(|s| !s.is_empty())
 }
 
 /// The identity the host AWS CLI resolves (for the given profile, or the default chain),
@@ -57,12 +76,8 @@ pub async fn cloud_login(provider: Cloud, logs: Channel<String>) -> Result<()> {
 /// pasting keys. None when the CLI is missing or that profile has no usable credentials.
 #[tauri::command]
 pub async fn aws_cli_identity(profile: Option<String>) -> Option<String> {
-    let mut args = vec!["sts", "get-caller-identity", "--query", "Arn", "--output", "text"];
-    if let Some(p) = profile.as_deref() {
-        args.push("--profile");
-        args.push(p);
-    }
-    run("aws", &args, None).await.ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    let args = with_profile(vec!["sts", "get-caller-identity", "--query", "Arn", "--output", "text"], profile.as_deref());
+    run("aws", &args, None).await.ok().and_then(non_empty)
 }
 
 /// The Cost Explorer time period for this month so far: Start = the 1st, End = tomorrow
@@ -79,11 +94,17 @@ pub(crate) fn month_period() -> String {
 #[tauri::command]
 pub async fn aws_month_to_date_cost(profile: Option<String>) -> Option<f64> {
     let period = month_period();
-    let mut args = vec![
+    let args = with_profile(cost_args(&period), profile.as_deref());
+    run("aws", &args, None).await.ok().and_then(|s| s.trim().parse::<f64>().ok())
+}
+
+/// `aws ce get-cost-and-usage` for `period`, printing just the amount.
+fn cost_args(period: &str) -> Vec<&str> {
+    vec![
         "ce",
         "get-cost-and-usage",
         "--time-period",
-        &period,
+        period,
         "--granularity",
         "MONTHLY",
         "--metrics",
@@ -92,23 +113,19 @@ pub async fn aws_month_to_date_cost(profile: Option<String>) -> Option<f64> {
         "ResultsByTime[0].Total.UnblendedCost.Amount",
         "--output",
         "text",
-    ];
-    if let Some(p) = profile.as_deref() {
-        args.push("--profile");
-        args.push(p);
-    }
-    run("aws", &args, None).await.ok().and_then(|s| s.trim().parse::<f64>().ok())
+    ]
 }
 
 /// The AWS CLI profiles configured on this machine (`aws configure list-profiles`), so the
 /// user can pick one when they have several. Empty when the CLI is missing or has none.
 #[tauri::command]
 pub async fn aws_profiles() -> Vec<String> {
-    run("aws", &["configure", "list-profiles"], None)
-        .await
-        .ok()
-        .map(|s| s.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
-        .unwrap_or_default()
+    run("aws", &["configure", "list-profiles"], None).await.ok().map(|s| lines(&s)).unwrap_or_default()
+}
+
+/// The non-blank lines of a CLI's output, trimmed.
+fn lines(out: &str) -> Vec<String> {
+    out.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
 }
 
 /// An Azure subscription the signed-in account can use.
@@ -128,8 +145,13 @@ pub async fn azure_subscriptions() -> Vec<AzureSubscription> {
     run("az", &["account", "list", "--query", "[].{name:name,id:id,isDefault:isDefault}", "--output", "json"], None)
         .await
         .ok()
-        .and_then(|out| serde_json::from_str::<Vec<AzureSubscription>>(&out).ok())
+        .map(|out| subscriptions(&out))
         .unwrap_or_default()
+}
+
+/// `az account list` output (the query above) as subscriptions; none when it doesn't parse.
+fn subscriptions(out: &str) -> Vec<AzureSubscription> {
+    serde_json::from_str::<Vec<AzureSubscription>>(out).unwrap_or_default()
 }
 
 /// A GCP billing account the signed-in user can see.
@@ -167,6 +189,11 @@ pub async fn oci_config() -> OciConfig {
         .or_else(|| std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(|h| std::path::PathBuf::from(h).join(".oci").join("config")));
     let Some(path) = path else { return OciConfig::default() };
     let Ok(text) = std::fs::read_to_string(&path) else { return OciConfig::default() };
+    parse_oci_config(&text)
+}
+
+/// The DEFAULT profile's tenancy and region in an OCI config file's text.
+fn parse_oci_config(text: &str) -> OciConfig {
     let (mut tenancy, mut region) = (String::new(), String::new());
     let mut in_default = false;
     for line in text.lines() {
@@ -196,11 +223,7 @@ pub async fn oci_config() -> OciConfig {
 /// again instead of showing an empty billing list.
 #[tauri::command]
 pub async fn gcp_account() -> Option<String> {
-    let email = run("gcloud", &["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"], None)
-        .await
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())?;
+    let email = run("gcloud", &["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"], None).await.ok().and_then(non_empty)?;
     run("gcloud", &["auth", "print-access-token", "--quiet"], None).await.ok()?;
     Some(email)
 }
@@ -209,41 +232,44 @@ pub async fn gcp_account() -> Option<String> {
 /// pick one for the per-lab projects. Empty when the CLI is missing or not signed in.
 #[tauri::command]
 pub async fn gcp_billing_accounts() -> Vec<GcpBillingAccount> {
-    run("gcloud", &["billing", "accounts", "list", "--format", "json"], None)
-        .await
-        .ok()
-        .and_then(|out| serde_json::from_str::<Vec<serde_json::Value>>(&out).ok())
-        .map(|arr| {
-            arr.into_iter()
-                .map(|v| GcpBillingAccount {
-                    id: v["name"].as_str().unwrap_or_default().trim_start_matches("billingAccounts/").to_string(),
-                    name: v["displayName"].as_str().unwrap_or_default().to_string(),
-                    open: v["open"].as_bool().unwrap_or(false),
-                })
-                .filter(|b| !b.id.is_empty())
-                .collect()
+    run("gcloud", &["billing", "accounts", "list", "--format", "json"], None).await.ok().map(|out| billing_accounts(&out)).unwrap_or_default()
+}
+
+/// The entries of a gcloud JSON list; none when it doesn't parse.
+fn json_list(out: &str) -> Vec<serde_json::Value> {
+    serde_json::from_str::<Vec<serde_json::Value>>(out).unwrap_or_default()
+}
+
+/// `gcloud billing accounts list --format json` as billing accounts (ids without their prefix).
+fn billing_accounts(out: &str) -> Vec<GcpBillingAccount> {
+    json_list(out)
+        .into_iter()
+        .map(|v| GcpBillingAccount {
+            id: v["name"].as_str().unwrap_or_default().trim_start_matches("billingAccounts/").to_string(),
+            name: v["displayName"].as_str().unwrap_or_default().to_string(),
+            open: v["open"].as_bool().unwrap_or(false),
         })
-        .unwrap_or_default()
+        .filter(|b| !b.id.is_empty())
+        .collect()
 }
 
 /// The GCP organizations the signed-in user belongs to (`gcloud organizations list`). Empty for
 /// a personal / no-org account, so the user can create projects without a parent.
 #[tauri::command]
 pub async fn gcp_organizations() -> Vec<GcpOrganization> {
-    run("gcloud", &["organizations", "list", "--format", "json"], None)
-        .await
-        .ok()
-        .and_then(|out| serde_json::from_str::<Vec<serde_json::Value>>(&out).ok())
-        .map(|arr| {
-            arr.into_iter()
-                .map(|v| GcpOrganization {
-                    id: v["name"].as_str().unwrap_or_default().trim_start_matches("organizations/").to_string(),
-                    name: v["displayName"].as_str().unwrap_or_default().to_string(),
-                })
-                .filter(|o| !o.id.is_empty())
-                .collect()
+    run("gcloud", &["organizations", "list", "--format", "json"], None).await.ok().map(|out| organizations(&out)).unwrap_or_default()
+}
+
+/// `gcloud organizations list --format json` as organizations (ids without their prefix).
+fn organizations(out: &str) -> Vec<GcpOrganization> {
+    json_list(out)
+        .into_iter()
+        .map(|v| GcpOrganization {
+            id: v["name"].as_str().unwrap_or_default().trim_start_matches("organizations/").to_string(),
+            name: v["displayName"].as_str().unwrap_or_default().to_string(),
         })
-        .unwrap_or_default()
+        .filter(|o| !o.id.is_empty())
+        .collect()
 }
 
 /// Signs in to AWS in the browser (`aws login`, AWS CLI >= 2.32.0): console credentials for
@@ -254,18 +280,77 @@ pub async fn aws_login(profile: Option<String>, logs: Channel<String>) -> Result
     let on_line = move |line: String| {
         let _ = logs.send(line);
     };
-    let mut args = vec!["login"];
-    if let Some(p) = profile.as_deref() {
-        args.push("--profile");
-        args.push(p);
-    }
+    let args = with_profile(vec!["login"], profile.as_deref());
     on_line(format!("$ aws {}", args.join(" ")));
     stream("aws", &args, None, &[], on_line).await
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{month_period, ymd_from_secs};
+    use super::*;
+
+    #[test]
+    fn each_cloud_signs_in_with_its_own_cli() {
+        assert_eq!(login_command(&Cloud::Aws), ("aws", &["sso", "login"][..]));
+        assert_eq!(login_command(&Cloud::Azure), ("az", &["login"][..]));
+        // gcloud's login also writes the credentials Terraform reads.
+        assert_eq!(login_command(&Cloud::Gcp), ("gcloud", &["auth", "login", "--update-adc"][..]));
+    }
+
+    #[test]
+    fn a_profile_is_passed_only_when_chosen() {
+        assert_eq!(with_profile(vec!["login"], None), ["login"]);
+        assert_eq!(with_profile(vec!["login"], Some("work")), ["login", "--profile", "work"]);
+        let cost = with_profile(cost_args("Start=2026-10-01,End=2026-10-11"), Some("p"));
+        assert_eq!(cost[..4], ["ce", "get-cost-and-usage", "--time-period", "Start=2026-10-01,End=2026-10-11"]);
+        assert_eq!(cost[cost.len() - 2..], ["--profile", "p"]);
+    }
+
+    #[test]
+    fn cli_answers_are_trimmed_lines() {
+        assert_eq!(non_empty(" arn:aws:iam::1:user/a \n".into()).as_deref(), Some("arn:aws:iam::1:user/a"));
+        assert_eq!(non_empty("  \n".into()), None);
+        assert_eq!(lines("default\n  work \n\n"), ["default", "work"]);
+        assert!(lines("").is_empty());
+    }
+
+    #[test]
+    fn azure_subscriptions_parse_or_are_none() {
+        let subs = subscriptions(r#"[{"name": "Pay-As-You-Go", "id": "0000", "isDefault": true}, {"name": "Dev", "id": "1111"}]"#);
+        assert_eq!(subs.len(), 2);
+        assert_eq!((subs[0].name.as_str(), subs[0].id.as_str(), subs[0].is_default), ("Pay-As-You-Go", "0000", true));
+        assert!(!subs[1].is_default);
+        assert!(subscriptions("Please run 'az login'").is_empty());
+    }
+
+    #[test]
+    fn gcp_lists_drop_prefixes_and_nameless_entries() {
+        let accounts = billing_accounts(
+            r#"[{"name": "billingAccounts/0X0X0X-0X0X0X-0X0X0X", "displayName": "Main", "open": true}, {"displayName": "No id"}, {"name": "billingAccounts/AAAAAA-BBBBBB-CCCCCC"}]"#,
+        );
+        assert_eq!(accounts.len(), 2);
+        assert_eq!((accounts[0].id.as_str(), accounts[0].name.as_str(), accounts[0].open), ("0X0X0X-0X0X0X-0X0X0X", "Main", true));
+        assert!(!accounts[1].open && accounts[1].name.is_empty());
+        let orgs = organizations(r#"[{"name": "organizations/1234567890", "displayName": "example.com"}, {}]"#);
+        assert_eq!(orgs.len(), 1);
+        assert_eq!((orgs[0].id.as_str(), orgs[0].name.as_str()), ("1234567890", "example.com"));
+        assert!(billing_accounts("not json").is_empty());
+        assert!(organizations("").is_empty());
+    }
+
+    #[test]
+    fn the_oci_config_is_read_from_its_default_profile() {
+        let text = "[OTHER]\ntenancy=ocid1.tenancy.oc1..other\n\n[DEFAULT]\nuser=ocid1.user.oc1..u\n tenancy = ocid1.tenancy.oc1..main \nregion=eu-frankfurt-1\nnot a pair\n[LATER]\nregion=us-ashburn-1\n";
+        let c = parse_oci_config(text);
+        assert!(c.configured);
+        assert_eq!(c.tenancy, "ocid1.tenancy.oc1..main");
+        assert_eq!(c.region, "eu-frankfurt-1");
+        // The profile name is matched case-insensitively.
+        assert_eq!(parse_oci_config("[default]\nregion=x\n").region, "x");
+        // A file without a DEFAULT profile is still a config, with nothing to prefill.
+        let c = parse_oci_config("[PROD]\nregion=x\n");
+        assert!(c.configured && c.region.is_empty() && c.tenancy.is_empty());
+    }
 
     #[test]
     fn civil_date_from_unix_timestamp() {
