@@ -20,7 +20,7 @@ pub(super) async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runti
     }
 }
 
-async fn local_status(dir: &Path, id: &str, runtime: Runtime) -> Result<LabStatus> {
+pub(super) async fn local_status(dir: &Path, id: &str, runtime: Runtime) -> Result<LabStatus> {
     let s = match runtime {
         // Shown like a remote lab (the attack box lives in the VM, reached over SSH).
         Runtime::Docker if let Some(p) = local_vm(dir) => {

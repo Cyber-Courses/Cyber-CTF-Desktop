@@ -76,19 +76,7 @@ async fn start_here(
             finish_vagrant(dir, &spec, runtime, log);
             Ok(())
         }
-        Runtime::Docker => {
-            let spec = lab::prepare(dir, isoloom_core::Target::Docker)?;
-            mark_local_vm(dir, None)?;
-            docker::start(dir, id, env, &mut *log).await?;
-            exegol::rejoin(id).await;
-            registry::record_docker(dir, &spec, docker::project(id));
-            // Its ports here are the ones picked at its first start, not the spec's.
-            let published = docker::published(dir, id, env).await;
-            if let Some(m) = lab::message_at(dir, &spec, isoloom_core::Target::Docker, &published) {
-                log_lines(&m, log);
-            }
-            Ok(())
-        }
+        Runtime::Docker => start_on_docker(dir, id, env, log).await,
         Runtime::Vm => {
             let provider = provider.ok_or_else(|| Error::Invalid("VM labs need a provider".into()))?;
             if provider.is_remote() {
@@ -113,6 +101,23 @@ async fn start_here(
             Ok(())
         }
     }
+}
+
+/// A container lab on this machine's Docker: generate its Compose project, bring it up, plug a
+/// running attack box back into its networks, and record it for Isoloom. Takes the lab folder
+/// (no app handle), so the real-lab tests run exactly this.
+pub(super) async fn start_on_docker(dir: &Path, id: &str, env: &[(String, String)], log: &mut impl FnMut(String)) -> Result<()> {
+    let spec = lab::prepare(dir, isoloom_core::Target::Docker)?;
+    mark_local_vm(dir, None)?;
+    docker::start(dir, id, env, &mut *log).await?;
+    exegol::rejoin(id).await;
+    registry::record_docker(dir, &spec, docker::project(id));
+    // Its ports here are the ones picked at its first start, not the spec's.
+    let published = docker::published(dir, id, env).await;
+    if let Some(m) = lab::message_at(dir, &spec, isoloom_core::Target::Docker, &published) {
+        log_lines(&m, log);
+    }
+    Ok(())
 }
 
 async fn start_on_server(
@@ -396,7 +401,21 @@ fn parse_ipv4(body: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_ipv4;
+    use super::{parse_ipv4, start_on_docker};
+
+    #[tokio::test]
+    async fn a_docker_start_without_a_lab_spec_fails_before_touching_docker() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-nolab-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut logged = Vec::new();
+        let res = start_on_docker(&dir, "no-lab", &[], &mut |l| logged.push(l)).await;
+        // Nothing generated, no marker written, nothing run.
+        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().collect();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(res.is_err());
+        assert!(logged.is_empty(), "{logged:?}");
+        assert!(left.is_empty());
+    }
 
     #[test]
     fn resolver_answers_must_be_one_ipv4() {

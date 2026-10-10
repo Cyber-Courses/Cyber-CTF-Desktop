@@ -129,31 +129,47 @@ pub(super) async fn stop(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime
 /// The body of `stop`, assuming the caller already holds the lab lock. The reaper uses this so
 /// it can re-check expiry under the same lock before tearing a lab down (the lock is not
 /// reentrant, so it must not call `stop`, which would deadlock).
-async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, mut log: impl FnMut(String)) -> Result<()> {
+async fn stop_locked(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, log: impl FnMut(String)) -> Result<()> {
     let _deploy = DeployGuard::new(id, Action::Stop);
-    let result = match server::lab_connection(app, dir)? {
-        None if runtime == Runtime::Docker && local_vm(dir).is_some() => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,
-        None if runtime == Runtime::Docker => docker::stop(dir, id, log).await,
-        None => {
+    let Some(c) = server::lab_connection(app, dir)? else { return stop_here(dir, id, runtime, log).await };
+    let result = match server::terraform_target(c.provider) {
+        Some(tf) => {
+            let module = lab::terraform_to_destroy(dir, runtime, tf)?;
+            terraform::destroy(&module, &state_dir(app, id, tf)?, &c.tf_vars, &c.tf_env, log).await
+        }
+        None => vm::stop(&lab::vagrant_dir(dir, runtime), &c.env, log).await,
+    };
+    if result.is_ok() {
+        forget_run(dir)?;
+    }
+    result
+}
+
+/// Stops a lab that runs on this machine (its containers, a local VM, or its VMs) and, once it
+/// is gone, clears what marked it as running. Takes the lab folder (no app handle), so the
+/// real-lab tests run exactly this.
+pub(super) async fn stop_here(dir: &Path, id: &str, runtime: Runtime, mut log: impl FnMut(String)) -> Result<()> {
+    let result = match runtime {
+        Runtime::Docker if local_vm(dir).is_some() => vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await,
+        Runtime::Docker => docker::stop(dir, id, log).await,
+        Runtime::Vm => {
             // The learner's attack VM goes with the lab it was started beside.
             attack_vm::stop(dir, &mut log).await;
             vm::stop(&lab::vagrant_dir(dir, runtime), &[], log).await
         }
-        Some(c) => match server::terraform_target(c.provider) {
-            Some(tf) => {
-                let module = lab::terraform_to_destroy(dir, runtime, tf)?;
-                terraform::destroy(&module, &state_dir(app, id, tf)?, &c.tf_vars, &c.tf_env, log).await
-            }
-            None => vm::stop(&lab::vagrant_dir(dir, runtime), &c.env, log).await,
-        },
     };
     if result.is_ok() {
-        server::mark_lab(dir, None)?;
-        mark_local_vm(dir, None)?;
-        registry::forget(dir);
-        mark_parked(dir, None)?;
+        forget_run(dir)?;
     }
     result
+}
+
+/// A stopped lab's markers: where it ran, its local VM, Isoloom's registry entry, parked.
+fn forget_run(dir: &Path) -> Result<()> {
+    server::mark_lab(dir, None)?;
+    mark_local_vm(dir, None)?;
+    registry::forget(dir);
+    mark_parked(dir, None)
 }
 
 /// Destroys a parked lab's machines before the lab folder is replaced by a newer version of the
