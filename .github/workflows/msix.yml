@@ -37,6 +37,10 @@ on:
         description: "Only send the draft already open in Partner Center for certification (no build)"
         type: boolean
         default: false
+      discard_pending:
+        description: "Only delete the submission open in Partner Center (a refused or unwanted draft)"
+        type: boolean
+        default: false
   # Every published release (release.yml): app version X.Y.Z ships as MSIX (X+1).Y.Z.0, which
   # stays above the 1.1.0.0 the Store got by hand and keeps rising with each release.
   workflow_call:
@@ -61,7 +65,7 @@ jobs:
   # One MSIX per architecture, each built natively; the bundle job below joins them so the Store
   # gives every PC its own (Windows on Arm gets the Arm64 build, not x64 under emulation).
   msix:
-    if: ${{ !inputs.check_only && !inputs.commit_pending }}
+    if: ${{ !inputs.check_only && !inputs.commit_pending && !inputs.discard_pending }}
     strategy:
       matrix:
         include:
@@ -319,3 +323,26 @@ jobs:
             exit 1
           }
           Write-Host "Submission $id is in certification ($($status.status))."
+
+  # Deletes the submission open in Partner Center, so the next release can create its own.
+  discard-pending:
+    if: ${{ inputs.discard_pending }}
+    runs-on: ubuntu-latest
+    steps:
+      - shell: pwsh
+        env:
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $api = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$env:STORE_PRODUCT_ID"
+          $token = (Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$env:STORE_TENANT_ID/oauth2/token" -Body @{
+              grant_type = "client_credentials"; client_id = $env:STORE_CLIENT_ID; client_secret = $env:STORE_CLIENT_SECRET
+              resource = "https://manage.devcenter.microsoft.com"
+            }).access_token
+          $headers = @{ Authorization = "Bearer $token" }
+          $pending = (Invoke-RestMethod -Uri $api -Headers $headers).pendingApplicationSubmission
+          if (-not $pending) { Write-Host "No open submission."; exit 0 }
+          Invoke-RestMethod -Method Delete -Uri "$api/submissions/$($pending.id)" -Headers $headers | Out-Null
+          Write-Host "Deleted submission $($pending.id)."
