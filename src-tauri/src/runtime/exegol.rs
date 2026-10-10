@@ -155,6 +155,48 @@ pub fn shell_command(id: &str) -> String {
     format!("docker exec -it {} bash", container(id))
 }
 
+/// Marks the processes of one in-app shell inside the attack box (inherited by what it runs).
+const SESSION_VAR: &str = "CYBERCTF_SHELL";
+
+/// [`shell_command`] for an in-app shell, its processes marked with `tag` so
+/// [`end_session`] can find them.
+pub fn tagged_shell_command(id: &str, tag: &str) -> String {
+    format!("docker exec -it -e {SESSION_VAR}={tag} {} bash", container(id))
+}
+
+/// The script that hangs up the processes an in-app shell started in the attack box (none for a
+/// tag that isn't one of ours).
+fn end_session_script(tag: &str) -> Option<String> {
+    if tag.is_empty() || !tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return None;
+    }
+    Some(format!(
+        "for e in /proc/[0-9]*/environ; do tr '\\0' '\\n' < \"$e\" 2>/dev/null | grep -qx '{SESSION_VAR}={tag}' || continue; p=${{e#/proc/}}; kill -HUP \"${{p%/environ}}\" 2>/dev/null; done; true"
+    ))
+}
+
+/// Hangs up the processes an in-app shell started in the attack box. Docker leaves a
+/// `docker exec` process running when its client goes away, so every closed shell window kept
+/// an idle bash (and whatever it was running) until the box stopped.
+pub async fn end_session(container: &str, tag: &str) {
+    if let Some(script) = end_session_script(tag) {
+        let _ = crate::exec::run_env_timed("docker", &["exec", container, "sh", "-c", &script], None, &[], std::time::Duration::from_secs(10)).await;
+    }
+}
+
+/// [`end_session`], blocking: for when the app is quitting and nothing async will run again.
+pub fn end_session_blocking(container: &str, tag: &str) {
+    if let Some(script) = end_session_script(tag) {
+        let mut cmd = std::process::Command::new("docker");
+        cmd.args(["exec", container, "sh", "-c", &script])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        crate::exec::headless_std(&mut cmd);
+        let _ = cmd.status();
+    }
+}
+
 /// Opens the player's own terminal attached to the attack box.
 pub fn shell(id: &str) -> Result<()> {
     open_terminal(&shell_command(id))
@@ -230,7 +272,7 @@ pub fn open_terminal(command: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{applescript_string, main_first};
+    use super::{SESSION_VAR, applescript_string, end_session_script, main_first};
 
     #[test]
     fn main_lab_network_comes_first() {
@@ -247,5 +289,22 @@ mod tests {
     fn applescript_escaping_keeps_shell_quoting_intact() {
         let line = r#"ssh -i '/Users/a b/key' x@h echo "hi" 'it'\''s'"#;
         assert_eq!(applescript_string(line), r#"ssh -i '/Users/a b/key' x@h echo \"hi\" 'it'\\''s'"#);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn ending_a_session_hangs_up_only_its_marked_processes() {
+        // The script as it runs in the attack box, against processes here (same /proc).
+        let spawn = |tag: &str| std::process::Command::new("sleep").arg("30").env(SESSION_VAR, tag).spawn().unwrap();
+        let (mut mine, mut other) = (spawn("4242-7"), spawn("4242-8"));
+        let status = std::process::Command::new("sh").args(["-c", &end_session_script("4242-7").unwrap()]).status().unwrap();
+        assert!(status.success());
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert!(mine.try_wait().unwrap().is_some(), "the marked shell was hung up");
+        assert!(other.try_wait().unwrap().is_none(), "another shell was left alone");
+        let _ = other.kill();
+        let _ = other.wait();
+        // A tag that could inject shell is refused.
+        assert!(end_session_script("1'; rm -rf /; '").is_none() && end_session_script("").is_none());
     }
 }
