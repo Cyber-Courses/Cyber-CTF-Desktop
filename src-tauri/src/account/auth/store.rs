@@ -43,13 +43,29 @@ fn dev_session_path() -> Option<std::path::PathBuf> {
     Some(std::path::PathBuf::from(home).join(".cyberctf").join("dev-session.json"))
 }
 
+/// The session kept in a dev session file, if it is there and parses.
+#[cfg(debug_assertions)]
+fn load_file(path: &std::path::Path) -> Option<Session> {
+    std::fs::read_to_string(path).ok().and_then(|raw| serde_json::from_str(&raw).ok())
+}
+
+/// Writes the session to a dev session file, creating its folder.
+#[cfg(debug_assertions)]
+fn save_file(path: &std::path::Path, raw: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, raw)?;
+    Ok(())
+}
+
 /// The stored session: `Ok(None)` when there is none, `Err` when the keychain couldn't be read.
 /// Blocking (the Secret Service may show its unlock prompt and wait): call `read`.
 fn load_blocking() -> std::result::Result<Option<Session>, String> {
     #[cfg(debug_assertions)]
     {
         let Some(path) = dev_session_path() else { return Ok(None) };
-        Ok(std::fs::read_to_string(path).ok().and_then(|raw| serde_json::from_str(&raw).ok()))
+        Ok(load_file(&path))
     }
     #[cfg(not(debug_assertions))]
     {
@@ -107,11 +123,7 @@ fn save_blocking(session: &Session) -> Result<()> {
     #[cfg(debug_assertions)]
     {
         let path = dev_session_path().ok_or_else(|| Error::Invalid("no home directory".into()))?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, raw)?;
-        Ok(())
+        save_file(&path, &raw)
     }
     #[cfg(not(debug_assertions))]
     {
@@ -144,4 +156,32 @@ fn clear_blocking() {
 /// Forgets the session, on a blocking thread.
 pub(super) async fn clear() {
     let _ = tokio::task::spawn_blocking(clear_blocking).await;
+}
+
+#[cfg(all(test, debug_assertions))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_dev_session_file_round_trips_and_a_bad_one_reads_as_none() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-session-{}", rand::random::<u64>()));
+        let path = dir.join("nested").join("dev-session.json");
+        assert!(load_file(&path).is_none());
+        let session = Session { access_token: "a".into(), refresh_token: Some("r".into()), expires_at: 42, name: Some("N".into()), email: None };
+        save_file(&path, &serde_json::to_string(&session).unwrap()).unwrap();
+        let back = load_file(&path).unwrap();
+        assert_eq!((back.access_token.as_str(), back.refresh_token.as_deref(), back.expires_at), ("a", Some("r"), 42));
+        assert_eq!(back.name.as_deref(), Some("N"));
+        std::fs::write(&path, "not json").unwrap();
+        assert!(load_file(&path).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_dev_session_lives_in_the_home_folder() {
+        if let Some(p) = dev_session_path() {
+            assert!(p.ends_with(std::path::Path::new(".cyberctf").join("dev-session.json")));
+        }
+        ask_keychain_again();
+    }
 }

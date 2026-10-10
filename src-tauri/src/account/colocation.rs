@@ -172,4 +172,34 @@ mod tests {
         assert!(!is_loopback_origin("http://localhost/path"));
         assert!(!is_loopback_origin("http://localhost:not-a-port"));
     }
+
+    #[test]
+    fn options_preflight_and_other_methods() {
+        let pre = build_response("OPTIONS /health HTTP/1.1\r\nOrigin: https://cyberctf.org\r\n\r\n", "t", "n");
+        assert!(pre.starts_with("HTTP/1.1 204") && pre.contains("Access-Control-Allow-Origin: https://cyberctf.org"));
+        assert!(build_response("POST /health?token=t HTTP/1.1\r\n\r\n", "t", "n").starts_with("HTTP/1.1 405"));
+        assert!(build_response("", "t", "n").starts_with("HTTP/1.1 405"));
+        assert!(!super::ct_eq("abc", "abd") && !super::ct_eq("abc", "ab") && super::ct_eq("abc", "abc"));
+        assert!(!super::is_loopback_origin("ftp://localhost") && !super::is_loopback_origin("http://localhost:"));
+    }
+
+    async fn health(port: u16, token: &str) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut s = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        s.write_all(format!("GET /health?token={token} HTTP/1.1\r\n\r\n").as_bytes()).await.unwrap();
+        let mut out = String::new();
+        let _ = s.read_to_string(&mut out).await;
+        out
+    }
+
+    #[tokio::test]
+    async fn serve_answers_on_loopback_and_retires_the_previous_server() {
+        let port = super::serve("tok1".into(), "nonce1".into()).await.unwrap();
+        let ok = health(port, "tok1").await;
+        assert!(ok.starts_with("HTTP/1.1 200") && ok.contains("nonce1"), "{ok}");
+        assert!(health(port, "bad").await.starts_with("HTTP/1.1 403"));
+        let second = super::serve("tok2".into(), "nonce2".into()).await.unwrap();
+        assert_ne!(port, second);
+        assert!(health(second, "tok2").await.contains("nonce2"));
+    }
 }
