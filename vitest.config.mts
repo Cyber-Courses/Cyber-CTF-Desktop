@@ -15,16 +15,11 @@ export default defineConfig({
     // graph can take seconds on slow CI runners. Tests themselves stay fast.
     testTimeout: 20_000,
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    setupFiles: ["src/test/setup.ts"],
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
-      exclude: [
-        "src/**/*.test.{ts,tsx}",
-        "src/test/**",
-        "src/messages/**",
-        "src/app/**",
-        "src/lib/dev-mock.ts",
-      ],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/test/**", "src/messages/**", "src/app/**", "src/lib/dev-mock.ts"],
       reporter: ["text", "text-summary", "json-summary"],
     },
   },
