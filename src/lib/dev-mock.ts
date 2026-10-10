@@ -162,7 +162,7 @@ function openWindow(path: string) {
   window.open(`${path}${path.includes("?") ? "&" : "?"}mock`, "_blank");
 }
 
-function answer(cmd: string, args: Record<string, unknown> | undefined): unknown {
+export function answer(cmd: string, args: Record<string, unknown> | undefined): unknown {
   switch (cmd) {
     case "system_check":
       return report;
