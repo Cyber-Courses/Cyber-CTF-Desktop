@@ -67,6 +67,13 @@ pub fn stop_lingering() {
     LINGERING.store(false, Ordering::SeqCst);
 }
 
+/// Whether a quit gets the prompt: a window can show it, and it wasn't just shown (a second quit
+/// right after it is the user insisting).
+fn should_prompt(visible: bool, prompted_at: Option<Instant>) -> bool {
+    let insisting = prompted_at.is_some_and(|t| t.elapsed() < QUIT_AGAIN_WINDOW);
+    visible && !insisting
+}
+
 /// If an in-app operation is in progress (and the user hasn't already confirmed), keep the app
 /// open and ask the frontend to confirm. Returns true when the quit was intercepted. Nothing is
 /// intercepted when no window could show the prompt (the app already lingers hidden), nor on a
@@ -77,8 +84,7 @@ pub fn intercept(app: &AppHandle) -> bool {
     }
     let visible = app.webview_windows().values().any(|w| w.is_visible().unwrap_or(false));
     let mut prompted = QUIT_PROMPTED_AT.lock().unwrap_or_else(|e| e.into_inner());
-    let insisting = prompted.is_some_and(|t| t.elapsed() < QUIT_AGAIN_WINDOW);
-    if !visible || insisting {
+    if !should_prompt(visible, *prompted) {
         FORCE_QUIT.store(true, Ordering::SeqCst);
         return false;
     }
@@ -88,4 +94,25 @@ pub fn intercept(app: &AppHandle) -> bool {
         let _ = w.set_focus();
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_quit_is_held_once_and_only_with_a_window_to_ask_in() {
+        assert!(should_prompt(true, None));
+        assert!(!should_prompt(false, None));
+        assert!(!should_prompt(true, Some(Instant::now())));
+        if let Some(long_ago) = Instant::now().checked_sub(QUIT_AGAIN_WINDOW + Duration::from_secs(1)) {
+            assert!(should_prompt(true, Some(long_ago)));
+        }
+    }
+
+    #[test]
+    fn a_relaunch_stops_lingering() {
+        stop_lingering();
+        assert!(!LINGERING.load(Ordering::SeqCst));
+    }
 }

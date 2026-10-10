@@ -219,4 +219,21 @@ mod tests {
         assert_eq!(super::lab_ids_from_vmrun(out), vec!["goad-light".to_string()]);
         assert_eq!(super::lab_ids_from_vmrun("Total running VMs: 0\n"), Vec::<String>::new());
     }
+
+    #[test]
+    fn installed_labs_are_found_by_their_isoloom_name() {
+        let labs = std::env::temp_dir().join(format!("cyberctf-discover-{}", rand::random::<u32>()));
+        assert!(super::lab_names(&labs).is_empty(), "no labs folder yet");
+        for (id, yaml) in [("minilab-1", Some("name: minilab\n")), ("no-name", Some("version: 1\n")), ("no-spec", None), ("bad id!", Some("name: x\n"))] {
+            let d = labs.join(id);
+            std::fs::create_dir_all(&d).unwrap();
+            if let Some(y) = yaml {
+                std::fs::write(d.join("isoloom.yml"), y).unwrap();
+            }
+        }
+        let by_name = super::lab_names(&labs);
+        assert_eq!(by_name.len(), 1);
+        assert_eq!(by_name["minilab"], "minilab-1");
+        std::fs::remove_dir_all(labs).unwrap();
+    }
 }

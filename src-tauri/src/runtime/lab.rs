@@ -333,6 +333,15 @@ mod tests {
     }
 
     #[test]
+    fn lists_every_mistake_of_a_spec_that_parses() {
+        let dir = lab("version: 1\nname: t\nnetworks:\n  lab: { cidr: 10.30.0.0/24 }\nmachines:\n  a:\n    networks: { lab: 10 }\n    vm: { os: debian-12 }\n");
+        let err = spec(&dir).unwrap_err().to_string();
+        assert!(err.starts_with("this lab's isoloom.yml has mistakes:\n"), "{err}");
+        assert!(err.contains("machines.a.vm.provision"), "{err}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn passes_only_declared_inputs() {
         let dir = lab(SPEC);
         let spec = spec(&dir).unwrap();

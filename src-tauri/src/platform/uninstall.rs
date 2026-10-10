@@ -26,21 +26,30 @@ fn records_file(app: &AppHandle) -> Option<PathBuf> {
 }
 
 fn load(app: &AppHandle) -> Vec<InstalledTool> {
-    records_file(app).and_then(|f| std::fs::read(f).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    records_file(app).map(|f| load_at(&f)).unwrap_or_default()
+}
+
+/// The records in `f`; none when it is missing or unreadable.
+fn load_at(f: &std::path::Path) -> Vec<InstalledTool> {
+    std::fs::read(f).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }
 
 /// Written whole through a temporary file and a rename, so a crash mid-write can't leave a
 /// half file that reads as "nothing installed".
 fn save(app: &AppHandle, tools: &[InstalledTool]) {
     if let Some(f) = records_file(app) {
-        if let Some(dir) = f.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        if let Ok(json) = serde_json::to_vec_pretty(tools) {
-            let tmp = f.with_extension("json.tmp");
-            if std::fs::write(&tmp, json).is_ok() {
-                let _ = std::fs::rename(&tmp, &f);
-            }
+        save_at(&f, tools);
+    }
+}
+
+fn save_at(f: &std::path::Path, tools: &[InstalledTool]) {
+    if let Some(dir) = f.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(json) = serde_json::to_vec_pretty(tools) {
+        let tmp = f.with_extension("json.tmp");
+        if std::fs::write(&tmp, json).is_ok() {
+            let _ = std::fs::rename(&tmp, f);
         }
     }
 }
@@ -59,11 +68,14 @@ fn update(app: &AppHandle, f: impl FnOnce(&mut Vec<InstalledTool>)) {
 
 /// Remembers that Cyber CTF installed `dependency` (called after a successful install).
 pub fn record(app: &AppHandle, dependency: Dependency) {
+    update(app, |tools| remember(tools, dependency));
+}
+
+/// `tools` with `dependency` recorded once, as installed now.
+fn remember(tools: &mut Vec<InstalledTool>, dependency: Dependency) {
     let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    update(app, |tools| {
-        tools.retain(|t| t.dependency != dependency);
-        tools.push(InstalledTool { dependency, at });
-    });
+    tools.retain(|t| t.dependency != dependency);
+    tools.push(InstalledTool { dependency, at });
 }
 
 /// The tools Cyber CTF installed on this machine (and hasn't removed since).
@@ -166,9 +178,46 @@ pub async fn uninstall_dependency(app: AppHandle, dependency: Dependency, logs: 
 
 #[cfg(test)]
 mod tests {
-    // Every test here is for macOS or Linux.
-    #[cfg_attr(windows, allow(unused_imports))]
     use super::*;
+
+    #[test]
+    fn records_round_trip_through_their_file_and_keep_one_entry_per_tool() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-tools-{}", rand::random::<u32>()));
+        let f = dir.join("data").join("installed-tools.json");
+        assert!(load_at(&f).is_empty());
+        let mut tools = load_at(&f);
+        remember(&mut tools, Dependency::Vagrant);
+        remember(&mut tools, Dependency::Docker);
+        remember(&mut tools, Dependency::Vagrant);
+        save_at(&f, &tools);
+        let back = load_at(&f);
+        assert_eq!(back.iter().map(|t| t.dependency).collect::<Vec<_>>(), [Dependency::Docker, Dependency::Vagrant]);
+        assert!(back.iter().all(|t| t.at > 0));
+        assert!(!f.with_extension("json.tmp").exists());
+        let json = serde_json::to_value(&back[0]).unwrap();
+        assert_eq!(json["dependency"], "docker");
+        std::fs::write(&f, "[{").unwrap();
+        assert!(load_at(&f).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn every_windows_tool_is_removed_through_winget() {
+        for dep in [
+            Dependency::Docker,
+            Dependency::Vagrant,
+            Dependency::Terraform,
+            Dependency::Virtualbox,
+            Dependency::Qemu,
+            Dependency::Awscli,
+            Dependency::Azurecli,
+            Dependency::Gcloud,
+        ] {
+            assert_eq!(plan(dep).unwrap()[0].program, "winget", "{dep:?}");
+        }
+        assert!(plan(Dependency::Wsl).is_err() && plan(Dependency::Utm).is_err() && plan(Dependency::Libvirt).is_err());
+    }
 
     #[cfg(target_os = "macos")]
     #[test]

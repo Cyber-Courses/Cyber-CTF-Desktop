@@ -22,8 +22,14 @@ pub async fn graphql(query: &str, variables: Value, require_login: bool) -> Resu
     let res = req.send().await.map_err(|e| Error::Invalid(format!("API unreachable: {e}")))?;
     let status = res.status();
     let text = res.text().await.map_err(|e| Error::Invalid(format!("API response interrupted: {e}")))?;
+    parse_response(status, &text)
+}
+
+/// A GraphQL response body as its `data`, or the first error message, or (for a body that
+/// isn't JSON) the HTTP status and the start of the body.
+fn parse_response(status: reqwest::StatusCode, text: &str) -> Result<Value> {
     // Platform errors (e.g. a timed-out cold start) are not GraphQL JSON.
-    let body: Value = serde_json::from_str(&text).map_err(|_| {
+    let body: Value = serde_json::from_str(text).map_err(|_| {
         let excerpt: String = text.chars().take(160).collect();
         Error::Invalid(format!("API error (HTTP {status}): {excerpt}"))
     })?;
@@ -40,6 +46,26 @@ pub async fn api_query(query: String, variables: Option<Value>) -> Result<Value>
 
 #[cfg(test)]
 mod tests {
+    use super::parse_response;
+    use reqwest::StatusCode;
+    use serde_json::json;
+
+    #[test]
+    fn a_response_gives_its_data_or_its_first_error() {
+        assert_eq!(parse_response(StatusCode::OK, r#"{"data":{"me":{"id":"1"}}}"#).unwrap(), json!({ "me": { "id": "1" } }));
+        assert_eq!(parse_response(StatusCode::OK, r#"{"other":1}"#).unwrap(), serde_json::Value::Null);
+        let err = parse_response(StatusCode::OK, r#"{"errors":[{"message":"nope"},{"message":"two"}],"data":null}"#).unwrap_err();
+        assert_eq!(err.to_string(), "nope");
+    }
+
+    #[test]
+    fn a_non_json_body_names_the_status_and_an_excerpt() {
+        let long = "x".repeat(500);
+        let err = parse_response(StatusCode::BAD_GATEWAY, &format!("<html>{long}")).unwrap_err().to_string();
+        assert!(err.starts_with("API error (HTTP 502 Bad Gateway): <html>xx"), "{err}");
+        assert!(err.len() < 220);
+    }
+
     /// Hits the real CyberBackend anonymously: `cargo test -- --ignored`.
     #[tokio::test]
     #[ignore = "network"]

@@ -15,25 +15,30 @@ use crate::runtime::providers::Provider;
 pub(super) async fn month_to_date_cost(h: &HostProfile, password: &str) -> Result<f64> {
     let env = terraform_env(h, password);
     let period = crate::cloud::month_period();
-    let out = aws_cmd(
-        h,
-        &env,
-        &[
-            "ce",
-            "get-cost-and-usage",
-            "--time-period",
-            period.as_str(),
-            "--granularity",
-            "MONTHLY",
-            "--metrics",
-            "UnblendedCost",
-            "--query",
-            "ResultsByTime[0].Total.UnblendedCost.Amount",
-            "--output",
-            "text",
-        ],
-    )
-    .await?;
+    let out = aws_cmd(h, &env, &cost_args(&period)).await?;
+    parse_spend(&out)
+}
+
+/// `aws ce get-cost-and-usage` for `period`, printing just the amount.
+fn cost_args(period: &str) -> [&str; 12] {
+    [
+        "ce",
+        "get-cost-and-usage",
+        "--time-period",
+        period,
+        "--granularity",
+        "MONTHLY",
+        "--metrics",
+        "UnblendedCost",
+        "--query",
+        "ResultsByTime[0].Total.UnblendedCost.Amount",
+        "--output",
+        "text",
+    ]
+}
+
+/// Cost Explorer's amount (text output) as a number.
+fn parse_spend(out: &str) -> Result<f64> {
     out.trim().parse::<f64>().map_err(|_| Error::Invalid(format!("couldn't read the spend figure from Cost Explorer: {:?}", out.trim())))
 }
 
@@ -52,14 +57,24 @@ pub enum BudgetCheck {
 /// Checks an account against its monthly budget before a launch.
 pub async fn check_budget(app: &AppHandle, id: &str) -> BudgetCheck {
     let Ok(host) = load_host(app, id) else { return BudgetCheck::Ok };
-    if host.provider != Provider::Aws {
-        return BudgetCheck::Ok;
-    }
-    let Some(limit) = host.monthly_limit.filter(|v| *v > 0.0) else { return BudgetCheck::Ok };
+    let Some(limit) = budget_limit(&host) else { return BudgetCheck::Ok };
     let Ok(password) = host_secret(&host) else {
         return BudgetCheck::Unverifiable("No stored credentials for this account. Re-enter its access keys, then launch again.".into());
     };
-    match month_to_date_cost(&host, &password).await {
+    verdict(limit, month_to_date_cost(&host, &password).await)
+}
+
+/// The monthly limit a launch is checked against: AWS accounts with a positive limit only.
+fn budget_limit(host: &HostProfile) -> Option<f64> {
+    if host.provider != Provider::Aws {
+        return None;
+    }
+    host.monthly_limit.filter(|v| *v > 0.0)
+}
+
+/// This month's spend (or why it couldn't be read) against `limit`.
+fn verdict(limit: f64, spent: Result<f64>) -> BudgetCheck {
+    match spent {
         Ok(spent) if spent >= limit => BudgetCheck::Over(spent, limit),
         Ok(_) => BudgetCheck::Ok,
         Err(e) => BudgetCheck::Unverifiable(budget_unverifiable_message(&e.to_string())),
@@ -85,7 +100,40 @@ pub(super) fn budget_unverifiable_message(err: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::budget_unverifiable_message;
+    use super::*;
+    use crate::runtime::server::profile::tests::profile;
+
+    #[test]
+    fn spend_figures_parse_or_say_what_came_back() {
+        assert_eq!(parse_spend("12.5\n").unwrap(), 12.5);
+        assert_eq!(parse_spend(" 0 ").unwrap(), 0.0);
+        assert_eq!(parse_spend("None\n").unwrap_err().to_string(), "couldn't read the spend figure from Cost Explorer: \"None\"");
+    }
+
+    #[test]
+    fn cost_explorer_is_asked_for_this_period_only() {
+        let args = cost_args("Start=2026-10-01,End=2026-10-11");
+        assert_eq!(args[..4], ["ce", "get-cost-and-usage", "--time-period", "Start=2026-10-01,End=2026-10-11"]);
+        assert_eq!(args[args.len() - 2..], ["--output", "text"]);
+    }
+
+    #[test]
+    fn only_aws_accounts_with_a_positive_limit_are_checked() {
+        assert_eq!(budget_limit(&HostProfile { monthly_limit: Some(40.0), ..profile(Provider::Aws) }), Some(40.0));
+        assert_eq!(budget_limit(&HostProfile { monthly_limit: Some(0.0), ..profile(Provider::Aws) }), None);
+        assert_eq!(budget_limit(&profile(Provider::Aws)), None);
+        assert_eq!(budget_limit(&HostProfile { monthly_limit: Some(40.0), ..profile(Provider::Azure) }), None);
+    }
+
+    #[test]
+    fn the_verdict_blocks_only_a_readable_spend_over_the_limit() {
+        assert!(matches!(verdict(40.0, Ok(40.0)), BudgetCheck::Over(s, l) if s == 40.0 && l == 40.0));
+        assert!(matches!(verdict(40.0, Ok(39.99)), BudgetCheck::Ok));
+        match verdict(40.0, Err(Error::Invalid("Cost Explorer is not enabled".into()))) {
+            BudgetCheck::Unverifiable(why) => assert!(why.contains("Cost Explorer isn't enabled"), "{why}"),
+            _ => panic!("should be unverifiable"),
+        }
+    }
 
     #[test]
     fn budget_message_calls_out_an_expired_session_first() {

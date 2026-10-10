@@ -117,6 +117,42 @@ mod tests {
         (k.to_string(), v.to_string())
     }
 
+    #[tokio::test]
+    async fn destroying_without_state_is_a_no_op_that_warns_when_a_deploy_was_recorded() {
+        let state = temp_state();
+        let mut lines = Vec::new();
+        destroy(&state.join("module"), &state, &[], &[], |l| lines.push(l)).await.unwrap();
+        assert!(lines.is_empty(), "never deployed: nothing to say");
+        std::fs::write(state.join(RUN_FILE), "{}").unwrap();
+        destroy(&state.join("module"), &state, &[], &[], |l| lines.push(l)).await.unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].starts_with("No Terraform state for this lab"));
+        std::fs::remove_dir_all(state).unwrap();
+    }
+
+    #[tokio::test]
+    async fn destroying_with_state_needs_the_labs_module() {
+        let state = temp_state();
+        std::fs::write(state.join(STATE_FILE), "{}").unwrap();
+        std::fs::write(state.join(RUN_FILE), r#"{"allowed_cidr":"1.2.3.4/32"}"#).unwrap();
+        let err = destroy(&state.join("module"), &state, &[pair("region", "r")], &[], |_| {}).await.unwrap_err();
+        assert!(err.to_string().contains("no Terraform module"), "{err}");
+        // The state is kept for a retry once the module is back.
+        assert!(state.join(STATE_FILE).is_file());
+        std::fs::remove_dir_all(state).unwrap();
+    }
+
+    #[tokio::test]
+    async fn apply_records_the_run_before_terraform() {
+        let state = temp_state().join("nested");
+        let vars = vec![pair("ssh_public_key", "ssh-ed25519 AAAA"), pair("proxmox_password", "secret")];
+        let err = apply(&state.join("module"), &state, &vars, &[], |_| {}).await.unwrap_err();
+        assert!(err.to_string().contains("no Terraform module"), "{err}");
+        let run = std::fs::read_to_string(state.join(RUN_FILE)).unwrap();
+        assert!(run.contains("ssh-ed25519 AAAA") && !run.contains("secret"), "{run}");
+        std::fs::remove_dir_all(state.parent().unwrap()).unwrap();
+    }
+
     #[test]
     fn with_env_prefixes_vars_and_appends_raw_env() {
         let vars = vec![pair("region", "eu-west-3")];

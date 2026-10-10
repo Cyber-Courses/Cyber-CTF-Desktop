@@ -20,25 +20,14 @@ pub async fn labs_project(app: &AppHandle, id: &str) -> Result<String> {
         return Ok(p.to_string());
     }
     let project = format!("cyberctf-labs-{}", random_hex(3));
-    let mut create = vec!["projects", "create", project.as_str(), "--name", "Cyber CTF labs"];
     let org = host.node.clone().map(|o| format!("--organization={o}"));
-    if let Some(o) = org.as_deref() {
-        create.push(o);
-    }
+    let create = create_args(&project, org.as_deref());
     crate::exec::run("gcloud", &create, None)
         .await
         .map_err(|e| Error::Invalid(format!("couldn't create the Cyber CTF labs project: {}", last_error_line(&e))))?;
     if let Err(e) = crate::exec::run("gcloud", &["billing", "projects", "link", &project, "--billing-account", &host.username], None).await {
         let _ = crate::exec::run("gcloud", &["projects", "delete", &project, "--quiet"], None).await;
-        let why = last_error_line(&e);
-        return Err(Error::Invalid(if why.contains("quota") || why.contains("Precondition") {
-            format!(
-                "No free project slot on billing account {}: Google allows only a few projects per billing account. Unlink one you don't use (gcloud billing projects unlink <project>) or request an increase at https://support.google.com/code/contact/billing_quota_increase",
-                host.username
-            )
-        } else {
-            format!("couldn't link the labs project to billing account {}: {why}", host.username)
-        }));
+        return Err(Error::Invalid(link_failure(&host.username, &last_error_line(&e))));
     }
     crate::exec::run("gcloud", &["services", "enable", "compute.googleapis.com", "--project", &project], None)
         .await
@@ -48,6 +37,27 @@ pub async fn labs_project(app: &AppHandle, id: &str) -> Result<String> {
     }
     save(app, &store)?;
     Ok(project)
+}
+
+/// `gcloud projects create` for the labs project, under the organization flag when one is set.
+fn create_args<'a>(project: &'a str, org: Option<&'a str>) -> Vec<&'a str> {
+    let mut create = vec!["projects", "create", project, "--name", "Cyber CTF labs"];
+    if let Some(o) = org {
+        create.push(o);
+    }
+    create
+}
+
+/// Why the labs project couldn't be linked to `billing`: no free project slot (said plainly,
+/// with the way out), or gcloud's own reason.
+fn link_failure(billing: &str, why: &str) -> String {
+    if why.contains("quota") || why.contains("Precondition") {
+        format!(
+            "No free project slot on billing account {billing}: Google allows only a few projects per billing account. Unlink one you don't use (gcloud billing projects unlink <project>) or request an increase at https://support.google.com/code/contact/billing_quota_increase"
+        )
+    } else {
+        format!("couldn't link the labs project to billing account {billing}: {why}")
+    }
 }
 
 /// The last non-blank line of a failed gcloud's stderr (its error), else the error itself.
@@ -61,6 +71,21 @@ fn last_error_line(e: &Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_labs_project_is_created_under_the_organization_when_set() {
+        assert_eq!(create_args("cyberctf-labs-abc", None), ["projects", "create", "cyberctf-labs-abc", "--name", "Cyber CTF labs"]);
+        assert_eq!(create_args("p", Some("--organization=42")).last(), Some(&"--organization=42"));
+    }
+
+    #[test]
+    fn a_full_billing_account_is_explained() {
+        for why in ["ERROR: Cloud billing quota exceeded", "FAILED_PRECONDITION: Precondition check failed."] {
+            let msg = link_failure("0X0X0X-0X0X0X-0X0X0X", why);
+            assert!(msg.starts_with("No free project slot on billing account 0X0X0X-0X0X0X-0X0X0X"), "{msg}");
+        }
+        assert_eq!(link_failure("B", "permission denied"), "couldn't link the labs project to billing account B: permission denied");
+    }
 
     #[test]
     fn last_error_line_skips_trailing_blank_lines() {

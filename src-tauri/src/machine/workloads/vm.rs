@@ -95,10 +95,14 @@ pub(super) async fn workloads(app: &AppHandle) -> Vec<Workload> {
     };
     let labs = labs_dir(app).ok();
     let selftest_dir = selftest::work_dir(app, "vm").ok();
+    running_by_owner(&out, labs.as_deref(), selftest_dir.as_deref())
+}
 
+/// The app's running local VMs in `vagrant global-status` output, one workload per lab.
+fn running_by_owner(out: &str, labs: Option<&Path>, selftest_dir: Option<&Path>) -> Vec<Workload> {
     let mut by_lab: BTreeMap<String, (u32, String)> = BTreeMap::new();
-    for r in machines(&out).into_iter().filter(|r| r.state == "running" && !REMOTE_PROVIDERS.contains(&r.provider.as_str())) {
-        let Some(id) = owner(Path::new(&r.home), labs.as_deref(), selftest_dir.as_deref()) else { continue };
+    for r in machines(out).into_iter().filter(|r| r.state == "running" && !REMOTE_PROVIDERS.contains(&r.provider.as_str())) {
+        let Some(id) = owner(Path::new(&r.home), labs, selftest_dir) else { continue };
         let e = by_lab.entry(id).or_insert((0, r.provider.clone()));
         e.0 += 1;
     }
@@ -147,5 +151,27 @@ mod tests {
         assert_eq!(owner(Path::new("/data/labs/goad/.isoloom/vagrant"), Some(labs), Some(selftest)).as_deref(), Some("goad"));
         assert_eq!(owner(selftest, Some(labs), Some(selftest)).as_deref(), Some("selftest"));
         assert_eq!(owner(Path::new("/home/me/other"), Some(labs), Some(selftest)), None);
+    }
+
+    #[test]
+    fn only_the_apps_running_local_vms_count() {
+        let labs = std::env::temp_dir().join("labs");
+        let selftest = std::env::temp_dir().join("selftest").join("vm");
+        let home = |p: &Path| p.display().to_string();
+        let goad = home(&labs.join("goad").join(".isoloom").join("vagrant"));
+        let out = format!(
+            "1,,machine-id,a\n1,,provider-name,virtualbox\n1,,machine-home,{goad}\n1,,state,running\n\
+             2,,machine-id,b\n2,,provider-name,virtualbox\n2,,machine-home,{goad}\n2,,state,running\n\
+             3,,machine-id,c\n3,,provider-name,virtualbox\n3,,machine-home,{goad}\n3,,state,poweroff\n\
+             4,,machine-id,d\n4,,provider-name,vmware_esxi\n4,,machine-home,{goad}\n4,,state,running\n\
+             5,,machine-id,e\n5,,provider-name,qemu\n5,,machine-home,{}\n5,,state,running\n\
+             6,,machine-id,f\n6,,provider-name,qemu\n6,,machine-home,/elsewhere\n6,,state,running\n",
+            home(&selftest)
+        );
+        let w = running_by_owner(&out, Some(&labs), Some(&selftest));
+        assert_eq!(w.len(), 2);
+        assert_eq!((w[0].id.as_str(), w[0].count, w[0].provider.as_deref()), ("goad", 2, Some("virtualbox")));
+        assert_eq!((w[1].id.as_str(), w[1].count, w[1].kind), ("selftest", 1, "vm"));
+        assert!(running_by_owner(&out, None, None).is_empty());
     }
 }

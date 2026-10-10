@@ -138,6 +138,9 @@ pub(super) mod tests {
         assert_eq!(terraform_target(Provider::Proxmox), Some("proxmox"));
         assert_eq!(terraform_target(Provider::Aws), Some("aws"));
         assert_eq!(terraform_target(Provider::Oci), Some("oci"));
+        for cloud in [Provider::Azure, Provider::Gcp, Provider::DigitalOcean, Provider::Linode] {
+            assert_eq!(terraform_target(cloud), Some(cloud.id()), "{cloud:?}");
+        }
         // ESXi and local hypervisors run through Vagrant, not Terraform.
         assert_eq!(terraform_target(Provider::VmwareEsxi), None);
         assert_eq!(terraform_target(Provider::Virtualbox), None);

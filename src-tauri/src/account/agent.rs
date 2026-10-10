@@ -27,8 +27,12 @@ use crate::runtime::{Runtime, server};
 /// dir. It is the merge key for the agent, so reinstalling re-registers the same machine
 /// and two machines never collide even when they share a display name.
 fn install_id(app: &AppHandle) -> Result<String> {
-    let path = app.path().app_data_dir().map_err(|e| Error::Invalid(e.to_string()))?.join("install-id");
-    if let Ok(existing) = std::fs::read_to_string(&path) {
+    install_id_at(&app.path().app_data_dir().map_err(|e| Error::Invalid(e.to_string()))?.join("install-id"))
+}
+
+/// The install id kept at `path`, generated and written there the first time.
+fn install_id_at(path: &std::path::Path) -> Result<String> {
+    if let Ok(existing) = std::fs::read_to_string(path) {
         let trimmed = existing.trim();
         if !trimmed.is_empty() {
             return Ok(trimmed.to_string());
@@ -38,7 +42,7 @@ fn install_id(app: &AppHandle) -> Result<String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&path, &id)?;
+    std::fs::write(path, &id)?;
     Ok(id)
 }
 
@@ -49,13 +53,19 @@ fn random_hex() -> String {
 
 /// A human label for this machine (editable server-side later). Not an identifier.
 fn machine_name() -> String {
-    if let Ok(n) = std::env::var("CYBERCTF_AGENT_NAME")
+    let user = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).ok();
+    machine_name_from(std::env::var("CYBERCTF_AGENT_NAME").ok(), user, std::env::consts::OS)
+}
+
+/// The machine label from an explicit name, else the user and the OS.
+fn machine_name_from(explicit: Option<String>, user: Option<String>, os: &str) -> String {
+    if let Some(n) = explicit
         && !n.trim().is_empty()
     {
         return n.trim().to_string();
     }
-    let user = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).ok().filter(|s| !s.trim().is_empty());
-    let os = match std::env::consts::OS {
+    let user = user.filter(|s| !s.trim().is_empty());
+    let os = match os {
         "macos" => "Mac",
         "windows" => "PC",
         "linux" => "Linux",
@@ -160,11 +170,16 @@ async fn confirm_cloud_launch(app: &AppHandle, session_id: &str, repo: &str, com
 /// Where a claimed launch runs: the target picked on the website (one of this launcher's hosts
 /// or cloud accounts); else VM labs go to the default server host and Docker labs run here.
 fn launch_host(app: &AppHandle, claim: &Value) -> Result<Option<String>> {
+    pick_launch_host(claim, |target| server::host_name(app, target), || server::default_host(app))
+}
+
+/// `launch_host` given how to name a host (`None` when it isn't set up) and the default host.
+fn pick_launch_host(claim: &Value, host_name: impl Fn(&str) -> Option<String>, default_host: impl FnOnce() -> Option<String>) -> Result<Option<String>> {
     Ok(match claim["target"].as_str() {
-        Some(target) => Some(
-            server::host_name(app, target).map(|_| target.to_string()).ok_or_else(|| Error::Invalid("that host is no longer set up in the launcher".into()))?,
-        ),
-        None => (claim["runtime"] == "VM").then(|| server::default_host(app)).flatten(),
+        Some(target) => {
+            Some(host_name(target).map(|_| target.to_string()).ok_or_else(|| Error::Invalid("that host is no longer set up in the launcher".into()))?)
+        }
+        None => (claim["runtime"] == "VM").then(default_host).flatten(),
     })
 }
 
@@ -333,5 +348,58 @@ mod tests {
         let (a, b) = (random_hex(), random_hex());
         assert!(a.len() == 32 && a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn the_install_id_is_made_once_and_kept() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-install-{}", random_hex()));
+        let path = dir.join("data").join("install-id");
+        let first = install_id_at(&path).unwrap();
+        assert_eq!(first.len(), 32);
+        assert_eq!(install_id_at(&path).unwrap(), first);
+        std::fs::write(&path, "  kept-id \n").unwrap();
+        assert_eq!(install_id_at(&path).unwrap(), "kept-id");
+        std::fs::write(&path, "   ").unwrap();
+        let regenerated = install_id_at(&path).unwrap();
+        assert_eq!(regenerated.len(), 32);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_machine_name_prefers_the_explicit_name_then_the_user() {
+        assert_eq!(machine_name_from(Some("  Lab box ".into()), Some("ada".into()), "linux"), "Lab box");
+        assert_eq!(machine_name_from(Some("  ".into()), Some("ada".into()), "macos"), "ada's Mac");
+        assert_eq!(machine_name_from(None, Some("bob".into()), "windows"), "bob's PC");
+        assert_eq!(machine_name_from(None, Some(" ".into()), "linux"), "Cyber CTF Linux");
+        assert_eq!(machine_name_from(None, None, "freebsd"), "Cyber CTF freebsd");
+        assert!(!machine_name().is_empty());
+        assert_eq!(capabilities(), vec!["docker".to_string()]);
+        assert_eq!(arch(), std::env::consts::ARCH);
+    }
+
+    #[test]
+    fn a_launch_goes_to_its_target_or_vm_labs_to_the_default_host() {
+        let known = |t: &str| (t == "esxi-1").then(|| "My ESXi".to_string());
+        let default = || Some("proxmox-1".to_string());
+        assert_eq!(pick_launch_host(&json!({ "target": "esxi-1" }), known, default).unwrap().as_deref(), Some("esxi-1"));
+        let gone = pick_launch_host(&json!({ "target": "old" }), known, default).unwrap_err();
+        assert_eq!(gone.to_string(), "that host is no longer set up in the launcher");
+        assert_eq!(pick_launch_host(&json!({ "runtime": "VM" }), known, default).unwrap().as_deref(), Some("proxmox-1"));
+        assert_eq!(pick_launch_host(&json!({ "runtime": "VM" }), known, || None).unwrap(), None);
+        assert_eq!(pick_launch_host(&json!({ "runtime": "DOCKER" }), known, default).unwrap(), None);
+    }
+
+    #[test]
+    fn confirm_launch_answers_the_waiting_prompt_once() {
+        let (tx, mut rx) = oneshot::channel();
+        pending_confirmations().lock().unwrap().insert("s-confirm".into(), tx);
+        confirm_launch("s-other".into(), true);
+        assert!(rx.try_recv().is_err());
+        confirm_launch("s-confirm".into(), true);
+        assert!(rx.try_recv().unwrap());
+        assert!(!pending_confirmations().lock().unwrap().contains_key("s-confirm"));
+        let p = Progress::default();
+        assert!(p.local_url.is_none() && p.control_url.is_none() && p.token.is_none() && p.nonce.is_none() && p.message.is_none());
+        assert_eq!(DEFAULT_ATTACK_IMAGE, "cyberctf/attack-box");
     }
 }

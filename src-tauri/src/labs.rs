@@ -94,7 +94,7 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
     let marker = dir.join(".cyberctf-commit");
     // Docker's networks now, so a new lab's instance lands on blocks nothing else holds.
     let in_use = runtime::subnets_in_use(lab_id).await;
-    if std::fs::read_to_string(&marker).is_ok_and(|c| c.trim() == commit) {
+    if installed(&marker, commit) {
         runtime::lab::ensure_instance(&labs, &dir, &in_use, &runtime::lab::registry_instances(&dir))?;
         return Ok(dir);
     }
@@ -110,10 +110,29 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
     log(format!("Downloading {repository}@{}", &commit[..12]));
     let bytes = download(repository, commit).await?;
 
+    let staging = stage(&labs, lab_id, &dir, bytes.as_ref(), repository, commit)?;
+    // A paused copy of the previous version would be orphaned at the hypervisor once its
+    // folder (and Vagrant's record of it) is gone: take it down first.
+    runtime::clear_parked(&dir, lab_id, log).await;
+    swap_in(&staging, &dir)?;
+    // Its own room on this machine (networks, names), so it runs beside the other labs.
+    runtime::lab::ensure_instance(&labs, &dir, &in_use, &runtime::lab::registry_instances(&dir))?;
+    log("Lab installed".into());
+    Ok(dir)
+}
+
+/// Whether the lab at `commit` is the one installed (its commit marker says so).
+fn installed(marker: &Path, commit: &str) -> bool {
+    std::fs::read_to_string(marker).is_ok_and(|c| c.trim() == commit)
+}
+
+/// Extracts the downloaded lab into a staging folder next to `dir`, with its source markers and
+/// the markers of where the installed copy runs. Returns the staging folder.
+fn stage(labs: &Path, lab_id: &str, dir: &Path, tarball: &[u8], repository: &str, commit: &str) -> Result<PathBuf> {
     let staging = labs.join(format!(".{lab_id}.staging"));
     let _ = std::fs::remove_dir_all(&staging);
     std::fs::create_dir_all(&staging)?;
-    extract(bytes.as_ref(), &staging)?;
+    extract(tarball, &staging)?;
     std::fs::write(staging.join(".cyberctf-commit"), commit)?;
     // Terraform targets fetch the lab themselves, from this repository at that commit.
     std::fs::write(staging.join(".cyberctf-repository"), repository)?;
@@ -124,15 +143,30 @@ async fn install(app: &AppHandle, lab_id: &str, repository: &str, commit: &str, 
             std::fs::write(staging.join(marker), value)?;
         }
     }
-    // A paused copy of the previous version would be orphaned at the hypervisor once its
-    // folder (and Vagrant's record of it) is gone: take it down first.
-    runtime::clear_parked(&dir, lab_id, log).await;
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::rename(&staging, &dir)?;
-    // Its own room on this machine (networks, names), so it runs beside the other labs.
-    runtime::lab::ensure_instance(&labs, &dir, &in_use, &runtime::lab::registry_instances(&dir))?;
-    log("Lab installed".into());
-    Ok(dir)
+    Ok(staging)
+}
+
+/// Replaces the installed lab with the staged one.
+fn swap_in(staging: &Path, dir: &Path) -> Result<()> {
+    let _ = std::fs::remove_dir_all(dir);
+    std::fs::rename(staging, dir)?;
+    Ok(())
+}
+
+/// The environment a launch runs with: only the evidence claim's two variables from the
+/// backend, then the attack-box image and the default-ports switch when asked for.
+fn launch_env(env: Vec<EnvVar>, attackbox_image: Option<&str>, default_ports: bool) -> Vec<(String, String)> {
+    env.into_iter()
+        .filter(|v| v.name == "CTF_API_URL" || v.name == "CTF_LAUNCH_TOKEN")
+        .map(|v| (v.name, v.value))
+        .chain(attackbox_image.map(|i| ("CYBERCTF_ATTACKBOX_IMAGE".to_string(), i.to_string())))
+        .chain(default_ports.then(|| (runtime::PORTS_ENV.to_string(), "default".to_string())))
+        .collect()
+}
+
+/// A `startLab` / `claimLaunch` payload.
+fn parse_launch(launch_json: serde_json::Value) -> Result<Launch> {
+    serde_json::from_value(launch_json).map_err(|e| Error::Invalid(format!("invalid launch spec: {e}")))
 }
 
 /// Installs and starts a lab from a launch spec (the `startLab`/`claimLaunch` shape:
@@ -148,17 +182,10 @@ pub(crate) async fn run(
     default_ports: bool,
     log: impl Fn(String),
 ) -> Result<Option<String>> {
-    let launch: Launch = serde_json::from_value(launch_json).map_err(|e| Error::Invalid(format!("invalid launch spec: {e}")))?;
+    let launch = parse_launch(launch_json)?;
     let dir = install(app, &launch.lab_id, &launch.repository, &launch.commit, &log).await?;
     // Fixed names for every lab; the evidence itself is never in the environment.
-    let env: Vec<(String, String)> = launch
-        .env
-        .into_iter()
-        .filter(|v| v.name == "CTF_API_URL" || v.name == "CTF_LAUNCH_TOKEN")
-        .map(|v| (v.name, v.value))
-        .chain(attackbox_image.map(|i| ("CYBERCTF_ATTACKBOX_IMAGE".to_string(), i.to_string())))
-        .chain(default_ports.then(|| (runtime::PORTS_ENV.to_string(), "default".to_string())))
-        .collect();
+    let env = launch_env(launch.env, attackbox_image, default_ports);
     runtime::start(app, &dir, &launch.lab_id, launch.runtime, provider, host, &env, log).await?;
     // Where the lab's target is reachable on this machine, for the website to open.
     Ok(runtime::primary_url(&dir, &launch.lab_id, launch.runtime).await)
@@ -243,6 +270,80 @@ mod tests {
         assert_eq!(std::fs::read_to_string(dir.join("docker-compose.yml")).unwrap(), "services: {}");
         assert!(dir.join("evidence/claim.sh").is_file());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_launch_passes_only_the_evidence_variables_and_the_asked_extras() {
+        let env = |pairs: &[(&str, &str)]| pairs.iter().map(|(n, v)| EnvVar { name: n.to_string(), value: v.to_string() }).collect::<Vec<_>>();
+        let backend = env(&[("CTF_API_URL", "https://api"), ("PATH", "/evil"), ("CTF_LAUNCH_TOKEN", "t0k")]);
+        assert_eq!(launch_env(backend, None, false), [("CTF_API_URL".to_string(), "https://api".to_string()), ("CTF_LAUNCH_TOKEN".into(), "t0k".into())]);
+        let extras = launch_env(env(&[]), Some("ghcr.io/x/box:1"), true);
+        assert_eq!(extras, [("CYBERCTF_ATTACKBOX_IMAGE".to_string(), "ghcr.io/x/box:1".to_string()), (runtime::PORTS_ENV.to_string(), "default".to_string())]);
+    }
+
+    #[test]
+    fn launch_specs_parse_or_say_why_not() {
+        let sha = "0123456789abcdef0123456789abcdef01234567";
+        let l = parse_launch(serde_json::json!({
+            "labId": "invoice", "runtime": "DOCKER", "repository": "CyberCTF/invoice", "commit": sha,
+            "env": [{"name": "CTF_API_URL", "value": "https://api"}]
+        }))
+        .unwrap();
+        assert_eq!(
+            (l.lab_id.as_str(), l.runtime, l.repository.as_str(), l.commit.as_str(), l.env.len()),
+            ("invoice", Runtime::Docker, "CyberCTF/invoice", sha, 1)
+        );
+        let err = parse_launch(serde_json::json!({ "labId": "x" })).err().unwrap().to_string();
+        assert!(err.starts_with("invalid launch spec: "), "{err}");
+    }
+
+    #[test]
+    fn staging_carries_the_source_and_where_the_old_copy_runs() {
+        let labs = std::env::temp_dir().join(format!("cyberctf-stage-{}", rand::random::<u32>()));
+        let dir = labs.join("invoice");
+        let sha = "0123456789abcdef0123456789abcdef01234567";
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(".cyberctf-host"), "pve1").unwrap();
+        std::fs::write(dir.join(runtime::LOCAL_VM_MARKER), "virtualbox").unwrap();
+        std::fs::write(dir.join("old.txt"), "old").unwrap();
+        // Nothing is installed at that commit yet.
+        assert!(!installed(&dir.join(".cyberctf-commit"), sha));
+
+        let staging = stage(&labs, "invoice", &dir, &tarball(&[("lab-abc/isoloom.yml", b"name: invoice")]), "CyberCTF/invoice", sha).unwrap();
+        assert_eq!(staging, labs.join(".invoice.staging"));
+        assert_eq!(std::fs::read_to_string(staging.join("isoloom.yml")).unwrap(), "name: invoice");
+        assert_eq!(std::fs::read_to_string(staging.join(".cyberctf-repository")).unwrap(), "CyberCTF/invoice");
+        assert_eq!(std::fs::read_to_string(staging.join(".cyberctf-host")).unwrap(), "pve1");
+        assert_eq!(std::fs::read_to_string(staging.join(runtime::LOCAL_VM_MARKER)).unwrap(), "virtualbox");
+        assert!(!staging.join(runtime::lab::INSTANCE_MARKER).exists());
+
+        swap_in(&staging, &dir).unwrap();
+        assert!(!staging.exists());
+        assert!(!dir.join("old.txt").exists());
+        assert!(installed(&dir.join(".cyberctf-commit"), sha));
+        assert!(!installed(&dir.join(".cyberctf-commit"), "ffffffffffffffffffffffffffffffffffffffff"));
+        std::fs::remove_dir_all(labs).unwrap();
+    }
+
+    #[test]
+    fn links_and_the_top_level_folder_entry_are_skipped() {
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()));
+        let mut dir = tar::Header::new_gnu();
+        dir.set_entry_type(tar::EntryType::Directory);
+        dir.set_size(0);
+        dir.set_mode(0o755);
+        builder.append_data(&mut dir.clone(), "lab-abc/", &[][..]).unwrap();
+        builder.append_data(&mut dir, "lab-abc/docs/", &[][..]).unwrap();
+        let mut link = tar::Header::new_gnu();
+        link.set_entry_type(tar::EntryType::Symlink);
+        link.set_size(0);
+        builder.append_link(&mut link, "lab-abc/passwd", "/etc/passwd").unwrap();
+        let gz = builder.into_inner().unwrap().finish().unwrap();
+        let dest = std::env::temp_dir().join(format!("cyberctf-extract-{}", rand::random::<u32>()));
+        extract(&gz, &dest).unwrap();
+        assert!(dest.join("docs").is_dir());
+        assert!(std::fs::symlink_metadata(dest.join("passwd")).is_err());
+        std::fs::remove_dir_all(dest).unwrap();
     }
 
     #[test]

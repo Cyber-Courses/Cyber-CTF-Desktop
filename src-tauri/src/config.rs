@@ -28,3 +28,23 @@ pub const REDIRECT_PORTS: [u16; 3] = [47290, 47291, 47292];
 // Used by the keychain-backed session store in release builds (dev stores a file).
 #[cfg_attr(debug_assertions, allow(dead_code))]
 pub const KEYCHAIN_SERVICE: &str = "org.cyberctf.desktop";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_unset_setting_is_the_build_value_else_the_default() {
+        // A name nothing sets (tests don't touch the environment: other threads read it).
+        let name = "CYBERCTF_CONFIG_TEST_ONLY_SETTING";
+        assert_eq!(setting(name, None, "https://default"), "https://default");
+        assert_eq!(setting(name, Some("https://built"), "https://default"), "https://built");
+    }
+
+    #[test]
+    fn the_endpoints_have_values() {
+        assert!(auth_base().starts_with("http"));
+        assert!(api_url().starts_with("http"));
+        assert!(!client_id().is_empty());
+    }
+}

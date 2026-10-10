@@ -22,7 +22,12 @@ fn app_data(app: &AppHandle) -> Result<PathBuf> {
 /// An installed lab's folder.
 pub(super) fn lab_dir(app: &AppHandle, id: &str) -> Result<PathBuf> {
     validate_id(id)?;
-    let dir = app_data(app)?.join("labs").join(id);
+    lab_dir_in(&app_data(app)?, id)
+}
+
+/// [`lab_dir`] under the app data folder `base` (the id already validated).
+fn lab_dir_in(base: &Path, id: &str) -> Result<PathBuf> {
+    let dir = base.join("labs").join(id);
     if !dir.is_dir() {
         return Err(Error::Invalid(format!("lab `{id}` is not installed")));
     }
@@ -32,7 +37,19 @@ pub(super) fn lab_dir(app: &AppHandle, id: &str) -> Result<PathBuf> {
 /// Terraform state for a lab's target, outside the lab folder.
 pub(super) fn state_dir(app: &AppHandle, id: &str, target: &str) -> Result<PathBuf> {
     validate_id(id)?;
-    Ok(app_data(app)?.join("deployments").join(id).join(target))
+    Ok(state_dir_in(&app_data(app)?, id, target))
+}
+
+/// [`state_dir`] under the app data folder `base`.
+fn state_dir_in(base: &Path, id: &str, target: &str) -> PathBuf {
+    base.join("deployments").join(id).join(target)
+}
+
+/// The ids with a Terraform deployment under the app data folder `base` (valid ids only): the
+/// labs the expired-lab reaper looks at.
+pub(super) fn deployed_ids(base: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(base.join("deployments")) else { return Vec::new() };
+    entries.flatten().filter_map(|e| e.file_name().into_string().ok()).filter(|id| validate_id(id).is_ok()).collect()
 }
 
 /// The lab's vagrant folders (Docker on one VM, one VM per machine) that hold a Vagrantfile, i.e.
@@ -101,7 +118,10 @@ pub(super) fn parked(dir: &Path) -> Option<Park> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PARKED_MARKER, Park, Provider, Runtime, local_vm, mark_local_vm, mark_parked, parked, record_runtime, recorded_runtime, validate_id};
+    use super::{
+        PARKED_MARKER, Park, Provider, Runtime, deployed_ids, lab_dir_in, local_vm, mark_local_vm, mark_parked, parked, record_runtime, recorded_runtime,
+        state_dir_in, vagrant_dirs, validate_id,
+    };
 
     fn temp_dir(prefix: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("{prefix}-{}", rand::random::<u32>()));
@@ -161,5 +181,50 @@ mod tests {
         for good in ["web-1", "sqli_basic", "3f2a9c1e-7b1d-4c4e-9a53-2d1c8f0e6b7a"] {
             assert!(validate_id(good).is_ok(), "{good:?} should be accepted");
         }
+    }
+
+    #[test]
+    fn a_lab_folder_must_be_installed() {
+        let base = temp_dir("cyberctf-appdata");
+        let err = lab_dir_in(&base, "web-1").unwrap_err().to_string();
+        assert_eq!(err, "lab `web-1` is not installed");
+        std::fs::create_dir_all(base.join("labs").join("web-1")).unwrap();
+        assert_eq!(lab_dir_in(&base, "web-1").unwrap(), base.join("labs").join("web-1"));
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn state_lives_outside_the_lab_folder_per_target() {
+        let base = std::path::Path::new("base");
+        assert_eq!(state_dir_in(base, "web-1", "aws"), base.join("deployments").join("web-1").join("aws"));
+    }
+
+    #[test]
+    fn deployed_ids_skip_names_that_are_not_lab_ids() {
+        let base = temp_dir("cyberctf-deployed");
+        assert!(deployed_ids(&base).is_empty(), "no deployments folder yet");
+        for name in ["web-1", "sqli_basic", "not a lab", ".hidden"] {
+            std::fs::create_dir_all(base.join("deployments").join(name)).unwrap();
+        }
+        let mut ids = deployed_ids(&base);
+        ids.sort();
+        assert_eq!(ids, ["sqli_basic", "web-1"]);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn vagrant_dirs_lists_only_folders_with_a_vagrantfile() {
+        let dir = temp_dir("cyberctf-vagrantdirs");
+        assert_eq!(vagrant_dirs(&dir).count(), 0);
+        let vm = crate::runtime::lab::vagrant_dir(&dir, Runtime::Vm);
+        std::fs::create_dir_all(&vm).unwrap();
+        assert_eq!(vagrant_dirs(&dir).count(), 0, "a folder without a Vagrantfile is no VM");
+        std::fs::write(vm.join("Vagrantfile"), "").unwrap();
+        assert_eq!(vagrant_dirs(&dir).collect::<Vec<_>>(), std::slice::from_ref(&vm));
+        let docker_vm = crate::runtime::lab::vagrant_dir(&dir, Runtime::Docker);
+        std::fs::create_dir_all(&docker_vm).unwrap();
+        std::fs::write(docker_vm.join("Vagrantfile"), "").unwrap();
+        assert_eq!(vagrant_dirs(&dir).collect::<Vec<_>>(), [docker_vm, vm]);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

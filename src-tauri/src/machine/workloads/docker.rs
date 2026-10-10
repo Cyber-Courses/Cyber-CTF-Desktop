@@ -83,10 +83,15 @@ pub(super) async fn workloads() -> Vec<Workload> {
     let mut args = vec!["stats", "--no-stream", "--format", "{{.ID}}\t{{.MemUsage}}"];
     args.extend(by_lab.values().flatten().map(String::as_str));
     let mem = memory_by_container(&run_read("docker", &args, None).await.unwrap_or_default());
+    workloads_from(by_lab, &mem)
+}
+
+/// One workload per lab: its containers and their memory summed.
+fn workloads_from(by_lab: BTreeMap<String, Vec<String>>, mem: &BTreeMap<String, u64>) -> Vec<Workload> {
     by_lab
         .into_iter()
         .map(|(id, cids)| {
-            let mem_bytes = cids.iter().map(|c| memory_of(c, &mem)).sum();
+            let mem_bytes = cids.iter().map(|c| memory_of(c, mem)).sum();
             Workload { id, kind: "docker", count: cids.len() as u32, mem_bytes, provider: None }
         })
         .collect()
@@ -135,5 +140,22 @@ mod tests {
         // Ids shortened differently still match.
         assert_eq!(memory_of("bbb222", &mem), 1024 * 1024);
         assert_eq!(memory_of("zzz", &mem), 0);
+    }
+
+    #[test]
+    fn a_lab_workload_counts_its_containers_and_their_memory() {
+        let by_lab = containers_by_lab("aaa\tcyberctf-sqli-web-1\tcyberctf-sqli\nbbb\tcyberctf-sqli-exegol\t\nccc\tcyberctf-xss-web-1\tcyberctf-xss\n");
+        let mem = memory_by_container("aaa\t1kB / 1GiB\nbbb\t2KiB / 1GiB\n");
+        let w = workloads_from(by_lab, &mem);
+        assert_eq!(w.len(), 2);
+        assert_eq!((w[0].id.as_str(), w[0].kind, w[0].count, w[0].mem_bytes), ("sqli", "docker", 2, 1000 + 2048));
+        assert_eq!((w[1].id.as_str(), w[1].mem_bytes), ("xss", 0));
+        assert!(w[0].provider.is_none());
+        assert_eq!(parse_size("3MB"), 3_000_000);
+        assert_eq!(parse_size("1TB"), 1_000_000_000_000);
+        assert_eq!(parse_size("1TiB"), 1024u64.pow(4));
+        assert_eq!(parse_size("2GB"), 2_000_000_000);
+        assert_eq!(parse_size("7 parsecs"), 0);
+        assert!(containers_by_lab("lonely-line\n").is_empty());
     }
 }

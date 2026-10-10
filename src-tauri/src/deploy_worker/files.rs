@@ -33,6 +33,14 @@ impl Files {
     pub fn pid(&self) -> Option<u32> {
         read_pid(&self.pid)
     }
+
+    /// Whether this worker's last finished run failed (none still running, `error: …` status).
+    pub fn failed(&self) -> bool {
+        if self.pid().is_some_and(alive) {
+            return false;
+        }
+        std::fs::read_to_string(&self.status).is_ok_and(|s| s.trim_start().starts_with("error"))
+    }
 }
 
 /// The workers' folder, created if missing.
@@ -55,10 +63,7 @@ pub fn read_pid(path: &Path) -> Option<u32> {
 /// progress, or none at all, isn't a failure.
 pub fn last_deploy_failed(app: &AppHandle, lab_id: &str) -> bool {
     let Ok(f) = of(app, lab_id) else { return false };
-    if f.pid().is_some_and(alive) {
-        return false;
-    }
-    std::fs::read_to_string(&f.status).is_ok_and(|s| s.trim_start().starts_with("error"))
+    f.failed()
 }
 
 /// The log of a lab's latest deploy so far, for an app that (re)attaches to a running worker.
@@ -69,7 +74,7 @@ pub fn log_so_far(app: &AppHandle, lab_id: &str) -> Result<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -91,6 +96,28 @@ mod tests {
         std::fs::write(&p, "nope").unwrap();
         assert_eq!(read_pid(&p), None);
         assert_eq!(read_pid(&dir.join("missing.pid")), None);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// A fresh folder under the temp dir for one test.
+    pub(in crate::deploy_worker) fn temp_dir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("cyberctf-{tag}-{}-{}", std::process::id(), rand::random::<u32>()));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn only_a_finished_error_status_is_a_failed_deploy() {
+        let dir = temp_dir("failed");
+        let f = Files::of(&dir, "lab-1");
+        assert!(!f.failed(), "no run at all");
+        std::fs::write(&f.status, "ok\n").unwrap();
+        assert!(!f.failed());
+        std::fs::write(&f.status, "  error: Docker isn't running").unwrap();
+        assert!(f.failed());
+        // A pidfile naming no live worker doesn't hide the verdict.
+        std::fs::write(&f.pid, "4000000000").unwrap();
+        assert!(f.failed());
         std::fs::remove_dir_all(dir).ok();
     }
 }

@@ -85,11 +85,7 @@ pub async fn check(dir: &Path, id: &str) -> Result<Check> {
         let before = results.len();
         let run_args = ["--profile", "check", "run", "--rm", "--no-deps", service.as_str()];
         let run = compose::stream(dir, &project, &run_args, &[], |l| {
-            match checks::parse_line(&l) {
-                Some(Line::Pass(name)) => results.push(CheckResult { name, from: from.clone(), ok: true, reason: String::new() }),
-                Some(Line::Fail(name, why)) => results.push(CheckResult { name, from: from.clone(), ok: false, reason: why }),
-                Some(Line::End(..)) | None => {}
-            }
+            record(&mut results, &from, &l);
             lines.push(l);
         });
         // A runner that hangs (a target that never answers) must not run forever: past the limit
@@ -103,10 +99,7 @@ pub async fn check(dir: &Path, id: &str) -> Result<Check> {
             }
         };
         // A runner that stopped before reporting: the checks it owned, failed with that reason.
-        let reported = results.len() - before;
-        for c in group.iter().skip(reported) {
-            results.push(CheckResult { name: c.name.clone(), from: from.clone(), ok: false, reason: "the runner stopped before this check".into() });
-        }
+        fail_unreported(&mut results, before, &group, &from);
         if res.is_err() {
             ran = false;
         }
@@ -115,18 +108,11 @@ pub async fn check(dir: &Path, id: &str) -> Result<Check> {
             let from = format!("inside {m}");
             let before = results.len();
             let res = compose::stream_with_stdin(dir, &project, &["exec", "-T", m, "sh", "-s"], &file, |l| {
-                match checks::parse_line(&l) {
-                    Some(Line::Pass(name)) => results.push(CheckResult { name, from: from.clone(), ok: true, reason: String::new() }),
-                    Some(Line::Fail(name, why)) => results.push(CheckResult { name, from: from.clone(), ok: false, reason: why }),
-                    Some(Line::End(..)) | None => {}
-                }
+                record(&mut results, &from, &l);
                 lines.push(l);
             })
             .await;
-            let reported = results.len() - before;
-            for c in execs.iter().skip(reported) {
-                results.push(CheckResult { name: c.name.clone(), from: from.clone(), ok: false, reason: "the runner stopped before this check".into() });
-            }
+            fail_unreported(&mut results, before, &execs, &from);
             if res.is_err() {
                 ran = false;
             }
@@ -136,9 +122,81 @@ pub async fn check(dir: &Path, id: &str) -> Result<Check> {
     Ok(Check { available: true, ok, output: lines.join("\n"), results })
 }
 
+/// Reads one line of a check runner's output into `results` (a pass or a fail, run `from`).
+fn record(results: &mut Vec<CheckResult>, from: &str, line: &str) {
+    match checks::parse_line(line) {
+        Some(Line::Pass(name)) => results.push(CheckResult { name, from: from.to_string(), ok: true, reason: String::new() }),
+        Some(Line::Fail(name, why)) => results.push(CheckResult { name, from: from.to_string(), ok: false, reason: why }),
+        Some(Line::End(..)) | None => {}
+    }
+}
+
+/// The checks of `group` a runner didn't report on (it reported `results[before..]`, in order),
+/// failed: it stopped before them.
+fn fail_unreported(results: &mut Vec<CheckResult>, before: usize, group: &[&checks::Resolved], from: &str) {
+    let reported = results.len() - before;
+    for c in group.iter().skip(reported) {
+        results.push(CheckResult { name: c.name.clone(), from: from.to_string(), ok: false, reason: "the runner stopped before this check".into() });
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::stand_ins;
+    use super::{CheckResult, check, fail_unreported, record, stand_ins};
+
+    fn lab(spec: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("cyberctf-check-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("isoloom.yml"), spec).unwrap();
+        dir
+    }
+
+    #[test]
+    fn runner_lines_become_results() {
+        let mut results = Vec::new();
+        record(&mut results, "from web", "isoloom-check: PASS login works");
+        record(&mut results, "from web", "web-1  | isoloom-check: FAIL flag readable: 404");
+        record(&mut results, "from web", "isoloom-check: END 1 1");
+        record(&mut results, "from web", "some other output");
+        assert_eq!(
+            results,
+            [
+                CheckResult { name: "login works".into(), from: "from web".into(), ok: true, reason: String::new() },
+                CheckResult { name: "flag readable".into(), from: "from web".into(), ok: false, reason: "404".into() },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_lab_without_checks_has_nothing_to_verify() {
+        let dir = lab(
+            "version: 1\nname: t\nnetworks:\n  lab: { cidr: 10.30.0.0/24 }\nmachines:\n  box:\n    networks: { lab: 10 }\n    docker: { image: alpine:3, idle: true }\n",
+        );
+        let c = check(&dir, "t").await.unwrap();
+        assert!(!c.available && !c.ok && c.results.is_empty() && c.output.is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn checks_a_runner_never_reported_fail() {
+        let dir = lab(
+            "version: 1\nname: t\nnetworks:\n  lab: { cidr: 10.30.0.0/24 }\nmachines:\n  web:\n    networks: { lab: 10 }\n    services: [{ port: 80, http: true }]\n    docker: { image: nginx:1.27 }\nchecks:\n  - { http: \"http://web/\" }\n  - { tcp: \"web:80\" }\n",
+        );
+        let spec = crate::runtime::lab::spec(&dir).unwrap();
+        let plan = isoloom_core::checks::plan(&spec);
+        assert!(plan.len() >= 2, "derived checks: {}", plan.len());
+        let group: Vec<_> = plan.iter().collect();
+        // The runner reported the first check, then stopped.
+        let mut results = vec![CheckResult { name: "earlier".into(), from: "x".into(), ok: true, reason: String::new() }];
+        let before = results.len();
+        record(&mut results, "from the networks", &format!("isoloom-check: PASS {}", group[0].name));
+        fail_unreported(&mut results, before, &group, "from the networks");
+        assert_eq!(results.len(), 1 + group.len());
+        assert!(results[1].ok);
+        assert!(results[2..].iter().all(|r| !r.ok && r.reason == "the runner stopped before this check"));
+        assert_eq!(results.last().unwrap().name, group.last().unwrap().name);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn the_access_stand_in_is_found_by_its_service_name() {

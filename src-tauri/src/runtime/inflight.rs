@@ -99,7 +99,16 @@ pub(super) async fn lock_lab(id: &str) -> OwnedMutexGuard<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Action, DeployGuard, active_actions, deploying_labs, lock_lab, parking_labs, stopping_labs};
+    use super::{Action, DeployGuard, active_actions, active_deploys, deploying_labs, lock_lab, parking_labs, stopping_labs};
+
+    #[test]
+    fn every_guard_counts_as_an_operation_in_flight() {
+        // Other tests hold guards of their own meanwhile: only a lower bound holds.
+        let a = DeployGuard::new("inflight-test-count-a", Action::Start);
+        let b = DeployGuard::new("inflight-test-count-b", Action::Stop);
+        assert!(active_deploys() >= 2);
+        drop((a, b));
+    }
 
     // The registry is process-wide: each test uses its own lab ids and only looks at those.
     fn action_of(id: &str) -> Option<Action> {

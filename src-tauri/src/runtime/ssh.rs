@@ -148,14 +148,20 @@ impl Target {
     /// connect timeout). `known_hosts` should be per deployment: a new VM on a reused
     /// address has a new host key.
     pub async fn exec(&self, known_hosts: &Path, command: &str) -> Result<String> {
+        let args = self.exec_args(known_hosts, command)?;
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        run("ssh", &refs, None).await
+    }
+
+    /// The `ssh` arguments of [`Target::exec`].
+    fn exec_args(&self, known_hosts: &Path, command: &str) -> Result<Vec<String>> {
         self.check_endpoint()?;
         let mut args: Vec<String> = vec!["-i".into(), self.identity.to_string_lossy().to_string(), "-p".into(), self.port.to_string()];
         for o in options(true, &known_hosts.to_string_lossy()).into_iter().chain(self.proxy_option(known_hosts)?) {
             args.extend(["-o".into(), o]);
         }
         args.extend([format!("{}@{}", self.user, self.host), command.to_string()]);
-        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        run("ssh", &refs, None).await
+        Ok(args)
     }
 }
 
@@ -216,5 +222,43 @@ mod tests {
     fn options_add_batch_mode_only_when_asked() {
         assert_eq!(options(false, "/kh"), ["StrictHostKeyChecking=accept-new", "UserKnownHostsFile=/kh", "LogLevel=ERROR"]);
         assert_eq!(options(true, "/kh")[..2], ["BatchMode=yes", "ConnectTimeout=10"]);
+    }
+
+    #[test]
+    fn exec_runs_batch_mode_with_the_key_and_port() {
+        let t = Target { port: 2222, ..Target::direct("10.0.0.5", "debian", "/k/id".into()) };
+        let args = t.exec_args(Path::new("/x/kh"), "uptime").unwrap();
+        assert_eq!(args[..4], ["-i", "/k/id", "-p", "2222"]);
+        assert!(args.contains(&"BatchMode=yes".to_string()));
+        assert!(args.contains(&"UserKnownHostsFile=/x/kh".to_string()));
+        assert_eq!(args[args.len() - 2..], ["debian@10.0.0.5", "uptime"]);
+        // Through a jump host: one more -o, the proxy command.
+        let jumped = Target { jump: Some("root@pve.lan".into()), ..Target::direct("10.10.0.5", "isoloom", "/k/id".into()) };
+        assert!(jumped.exec_args(Path::new("/x/kh"), "true").unwrap().iter().any(|a| a.starts_with("ProxyCommand=ssh -i ")));
+    }
+
+    #[tokio::test]
+    async fn exec_refuses_odd_hosts_before_running_ssh() {
+        let bad = Target::direct("-oProxyCommand=x", "debian", "/k".into());
+        assert!(bad.exec(Path::new("/x/kh"), "true").await.is_err());
+        let bad_user = Target::direct("10.0.0.5", "a b", "/k".into());
+        assert!(bad_user.exec(Path::new("/x/kh"), "true").await.is_err());
+        let bad_jump = Target { jump: Some("nobody".into()), ..Target::direct("10.0.0.5", "debian", "/k".into()) };
+        assert!(bad_jump.exec(Path::new("/x/kh"), "true").await.is_err());
+    }
+
+    #[test]
+    fn ssh_config_needs_host_user_and_key() {
+        assert_eq!(parse_ssh_config("Host x\n  User vagrant\n  IdentityFile /k\n"), None);
+        let t = parse_ssh_config("  HostName h\n  User u\n  Port nope\n  IdentityFile /a\n  IdentityFile /b\n").unwrap();
+        assert_eq!((t.port, t.identity), (22, PathBuf::from("/a")));
+        let t = parse_ssh_config("HostName h\nUser u\nPort 2200\nIdentityFile /a\n").unwrap();
+        assert_eq!(t.port, 2200);
+    }
+
+    #[test]
+    fn safe_tokens_are_plain_hosts_and_users() {
+        assert!(safe_token("192.168.1.5") && safe_token("fd00::1") && safe_token("pve_lan-1"));
+        assert!(!safe_token("") && !safe_token("-x") && !safe_token("a b") && !safe_token(&"a".repeat(254)));
     }
 }

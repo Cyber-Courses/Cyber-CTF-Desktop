@@ -108,4 +108,33 @@ mod tests {
         assert!(login_page(false).contains("Sign-in didn't finish"));
         assert!(html_response("hi").ends_with("Content-Length: 2\r\nConnection: close\r\n\r\nhi"));
     }
+
+    async fn send(port: u16, request: &str) -> String {
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut out = String::new();
+        let _ = stream.read_to_string(&mut out).await;
+        out
+    }
+
+    #[tokio::test]
+    async fn receive_skips_other_paths_and_returns_the_callback() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let waiting = tokio::spawn(receive(listener));
+        assert!(send(port, "GET /favicon.ico HTTP/1.1\r\n\r\n").await.starts_with("HTTP/1.1 404"));
+        let page = send(port, "GET /callback?code=c1&state=s1 HTTP/1.1\r\n\r\n").await;
+        assert!(page.starts_with("HTTP/1.1 200") && page.contains("You're signed in"));
+        assert_eq!(waiting.await.unwrap().unwrap(), ("c1".to_string(), "s1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn receive_shows_the_failure_page_on_an_error() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let waiting = tokio::spawn(receive(listener));
+        let page = send(port, "GET /callback?error=access_denied HTTP/1.1\r\n\r\n").await;
+        assert!(page.contains("Sign-in didn't finish"));
+        assert!(waiting.await.unwrap().is_err());
+    }
 }

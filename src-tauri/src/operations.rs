@@ -85,14 +85,19 @@ fn in_app_op(action: Action) -> &'static str {
 /// in-process ones. A lab with a worker is listed once, as the worker's operation.
 #[tauri::command]
 pub fn active_operations(app: AppHandle) -> Vec<ActiveOperation> {
-    let mut out: Vec<ActiveOperation> = deploy_worker::running_jobs(&app)
+    merge_operations(deploy_worker::running_jobs(&app), runtime::active_actions())
+}
+
+/// The workers' operations (with their step), then the in-process ones on other labs, by lab id.
+fn merge_operations(jobs: Vec<(deploy_worker::Job, Option<String>)>, actions: Vec<(String, Action)>) -> Vec<ActiveOperation> {
+    let mut out: Vec<ActiveOperation> = jobs
         .into_iter()
         .map(|(job, step)| {
             let (op, machine) = worker_op(&job.op);
             ActiveOperation { lab_id: job.lab_id, op, machine, step }
         })
         .collect();
-    for (id, action) in runtime::active_actions() {
+    for (id, action) in actions {
         if !out.iter().any(|o| o.lab_id == id) {
             out.push(ActiveOperation { lab_id: id, op: in_app_op(action), machine: None, step: None });
         }
@@ -117,6 +122,34 @@ mod tests {
     fn worker_lab_ids_are_added_once_after_the_in_app_ones() {
         let ids = merge_unique(vec!["b".into(), "a".into()], ["a".to_string(), "c".to_string(), "c".to_string()]);
         assert_eq!(ids, ["b", "a", "c"]);
+    }
+
+    #[test]
+    fn a_lab_with_a_worker_is_listed_once_as_the_workers_operation() {
+        let jobs = vec![
+            (deploy_worker::Job::on_lab("web", Op::Launch), Some("Pulling images".to_string())),
+            (deploy_worker::Job::on_lab("ad", Op::Provision { runtime: Runtime::Vm, machine: Some("dc01".into()) }), None),
+        ];
+        let actions = vec![("web".to_string(), Action::Stop), ("ctf".to_string(), Action::Park)];
+        let ops = merge_operations(jobs, actions);
+        assert_eq!(
+            ops,
+            [
+                ActiveOperation { lab_id: "ad".into(), op: "provision", machine: Some("dc01".into()), step: None },
+                ActiveOperation { lab_id: "ctf".into(), op: "pause", machine: None, step: None },
+                ActiveOperation { lab_id: "web".into(), op: "launch", machine: None, step: Some("Pulling images".into()) },
+            ]
+        );
+        assert!(merge_operations(Vec::new(), Vec::new()).is_empty());
+        // Serialized for the sidebar in camelCase.
+        assert_eq!(serde_json::to_value(&ops[0]).unwrap()["labId"], "ad");
+    }
+
+    #[test]
+    fn the_in_process_lists_come_from_the_flight_registry() {
+        // Nothing of these ids is in flight in this test process.
+        assert!(!stopping_labs().iter().any(|id| id == "no-such-lab"));
+        assert!(!parking_labs().iter().any(|id| id == "no-such-lab"));
     }
 
     #[test]

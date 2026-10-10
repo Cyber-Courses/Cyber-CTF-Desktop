@@ -138,16 +138,21 @@ fn parse_images(out: &str) -> Vec<StoredItem> {
         .collect()
 }
 
+/// The boxes of `boxes` downloaded under `home`, with their size on disk.
+fn present_boxes(home: &Path, boxes: &BTreeSet<String>) -> Vec<StoredItem> {
+    boxes
+        .iter()
+        .filter_map(|b| {
+            let dir = box_dir(home, b);
+            dir.is_dir().then(|| StoredItem { name: b.clone(), bytes: dir_size(&dir) })
+        })
+        .collect()
+}
+
 async fn present(images: &BTreeSet<String>, boxes: &BTreeSet<String>) -> Storage {
     let found_images = if images.is_empty() { Vec::new() } else { parse_images(&inspect_images(images).await) };
     let found_boxes = match vagrant_home() {
-        Some(home) => boxes
-            .iter()
-            .filter_map(|b| {
-                let dir = box_dir(&home, b);
-                dir.is_dir().then(|| StoredItem { name: b.clone(), bytes: dir_size(&dir) })
-            })
-            .collect(),
+        Some(home) => present_boxes(&home, boxes),
         None => Vec::new(),
     };
     Storage { images: found_images, boxes: found_boxes }
@@ -208,5 +213,29 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!((items[0].name.as_str(), items[0].bytes), ("busybox:1.36", 4261550));
         assert_eq!(items[1].bytes, 0);
+    }
+
+    #[test]
+    fn present_boxes_are_the_downloaded_ones_with_their_size() {
+        let home = std::env::temp_dir().join(format!("cyberctf-vhome-{}", rand::random::<u32>()));
+        let bx = box_dir(&home, "bento/debian-12").join("0").join("virtualbox");
+        std::fs::create_dir_all(&bx).unwrap();
+        std::fs::write(bx.join("box.vmdk"), vec![0u8; 1000]).unwrap();
+        std::fs::write(bx.join("metadata.json"), "{}").unwrap();
+        let wanted: BTreeSet<String> = ["bento/debian-12".to_string(), "generic/alpine319".to_string()].into();
+        let found = present_boxes(&home, &wanted);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].name.as_str(), found[0].bytes), ("bento/debian-12", 1002));
+        assert_eq!(dir_size(&home.join("missing")), 0);
+        let storage = Storage { images: vec![StoredItem { name: "i".into(), bytes: 5 }], boxes: found };
+        assert_eq!(storage.total(), 1007);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_missing_vagrantfile_names_no_boxes() {
+        assert!(vagrantfile_boxes(Path::new("/definitely/not/here/Vagrantfile")).is_empty());
+        assert_eq!(box_assignment("config.vm.box = \"unterminated"), None);
+        assert_eq!(box_assignment("no box here"), None);
     }
 }

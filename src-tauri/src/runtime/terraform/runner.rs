@@ -85,24 +85,28 @@ async fn terraform_container(dir: &Path, state: &Path, env: &[(String, String)],
     let full = run_env(env, state);
     let mounts = container_mounts(dir, state, env);
     let workdir = dir.display().to_string();
-    let docker_args = |tf_args: &[&str]| -> Vec<String> {
-        let mut args: Vec<String> = vec!["run".into(), "--rm".into(), "-i".into(), "-w".into(), workdir.clone()];
-        for m in &mounts {
-            args.extend(["-v".into(), format!("{m}:{m}")]);
-        }
-        for (k, _) in &full {
-            args.extend(["-e".into(), k.clone()]);
-        }
-        args.push(TERRAFORM_IMAGE.into());
-        args.extend(tf_args.iter().map(|a| a.to_string()));
-        args
-    };
+    let docker_args = |tf_args: &[&str]| container_args(&workdir, &mounts, &full, tf_args);
     log("Running Terraform in its container (macOS keeps third-party tools off the local network).".into());
     let backend = backend_arg(state);
     let init = docker_args(&["init", "-input=false", "-no-color", &backend]);
     stream("docker", &as_strs(&init), Some(dir), &full, &mut log).await?;
     let cmd = docker_args(&[command, "-auto-approve", "-input=false", "-no-color"]);
     stream("docker", &as_strs(&cmd), Some(dir), &full, log).await
+}
+
+/// `docker run` of the Terraform image in `workdir`, with `mounts` at their own paths and the
+/// names (never the values) of `env` passed through.
+fn container_args(workdir: &str, mounts: &[String], env: &[(String, String)], tf_args: &[&str]) -> Vec<String> {
+    let mut args: Vec<String> = vec!["run".into(), "--rm".into(), "-i".into(), "-w".into(), workdir.to_string()];
+    for m in mounts {
+        args.extend(["-v".into(), format!("{m}:{m}")]);
+    }
+    for (k, _) in env {
+        args.extend(["-e".into(), k.clone()]);
+    }
+    args.push(TERRAFORM_IMAGE.into());
+    args.extend(tf_args.iter().map(|a| a.to_string()));
+    args
 }
 
 fn as_strs(args: &[String]) -> Vec<&str> {
@@ -115,6 +119,15 @@ fn is_download_failure(message: &str) -> bool {
     ["registry", "no such host", "timeout", "tls", "connection", "network is unreachable", "could not download"].iter().any(|m| s.contains(m))
 }
 
+/// A failed `init`, said plainly when it couldn't download the provider plugins.
+fn init_failure(e: Error) -> Error {
+    if is_download_failure(&e.to_string()) {
+        Error::Invalid("Couldn't download the Terraform provider plugins (the first run needs internet). Check your connection and try again.".into())
+    } else {
+        e
+    }
+}
+
 /// Runs terraform from the host PATH (init, then the command). State lives in `state` as
 /// plain files on the host.
 async fn terraform_host(dir: &Path, state: &Path, env: &[(String, String)], command: &str, mut log: impl FnMut(String)) -> Result<()> {
@@ -124,13 +137,7 @@ async fn terraform_host(dir: &Path, state: &Path, env: &[(String, String)], comm
     // downloads the provider plugins the first time, which needs the network; say so plainly if
     // that's what failed (otherwise a destroy of an existing lab can look impossible when it's
     // just offline).
-    stream("terraform", &["init", "-input=false", "-no-color", backend.as_str()], Some(dir), &full, &mut log).await.map_err(|e| {
-        if is_download_failure(&e.to_string()) {
-            Error::Invalid("Couldn't download the Terraform provider plugins (the first run needs internet). Check your connection and try again.".into())
-        } else {
-            e
-        }
-    })?;
+    stream("terraform", &["init", "-input=false", "-no-color", backend.as_str()], Some(dir), &full, &mut log).await.map_err(init_failure)?;
     stream("terraform", &[command, "-auto-approve", "-input=false", "-no-color"], Some(dir), &full, log).await
 }
 
@@ -166,6 +173,34 @@ mod tests {
         assert!(env.contains(&("TF_DATA_DIR".to_string(), Path::new("/s").join(".terraform").display().to_string())));
         assert!(env.contains(&("TF_IN_AUTOMATION".to_string(), "1".to_string())));
         assert_eq!(backend_arg(Path::new("/s")), format!("-backend-config=path={}", Path::new("/s").join("terraform.tfstate").display()));
+    }
+
+    #[test]
+    fn the_container_gets_mounts_and_variable_names_only() {
+        let env = vec![("TF_VAR_password".to_string(), "s3cret".to_string())];
+        let args = container_args("/lab/m", &["/lab".into(), "/state".into()], &env, &["apply", "-auto-approve"]);
+        assert_eq!(
+            args,
+            ["run", "--rm", "-i", "-w", "/lab/m", "-v", "/lab:/lab", "-v", "/state:/state", "-e", "TF_VAR_password", TERRAFORM_IMAGE, "apply", "-auto-approve"]
+        );
+        assert!(!args.iter().any(|a| a.contains("s3cret")));
+        assert_eq!(as_strs(&["a".to_string()]), ["a"]);
+    }
+
+    #[test]
+    fn init_failures_name_the_download() {
+        let offline = init_failure(Error::CommandFailed { command: "terraform init".into(), stderr: "no such host".into() });
+        assert!(offline.to_string().contains("provider plugins"), "{offline}");
+        let other = init_failure(Error::Invalid("Unsupported argument".into()));
+        assert_eq!(other.to_string(), Error::Invalid("Unsupported argument".into()).to_string());
+    }
+
+    #[tokio::test]
+    async fn a_lab_without_a_module_is_refused_before_terraform_runs() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-tf-nomodule-{}", rand::random::<u32>()));
+        let err = terraform(&dir, &dir.join("state"), &[], "apply", |_| {}).await.unwrap_err();
+        assert!(err.to_string().contains("no Terraform module"), "{err}");
+        assert!(!dir.exists(), "nothing is created");
     }
 
     #[test]

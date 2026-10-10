@@ -60,5 +60,31 @@ fn system_disk() -> (u64, u64) {
 }
 
 async fn running_containers() -> u32 {
-    run_read("docker", &["ps", "--format", "{{.ID}}"], None).await.ok().map(|o| o.lines().filter(|l| !l.trim().is_empty()).count() as u32).unwrap_or(0)
+    run_read("docker", &["ps", "--format", "{{.ID}}"], None).await.ok().map(|o| count_ids(&o)).unwrap_or(0)
+}
+
+/// The container ids in `docker ps` output, one per non-empty line.
+fn count_ids(out: &str) -> u32 {
+    out.lines().filter(|l| !l.trim().is_empty()).count() as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn counts_one_container_per_non_empty_line() {
+        assert_eq!(count_ids("abc\n\n def \n"), 2);
+        assert_eq!(count_ids(""), 0);
+    }
+
+    #[test]
+    fn the_system_disk_is_used_out_of_total() {
+        let (used, total) = system_disk();
+        assert!(used <= total);
+        let m = MachineMetrics { cpu: 1.5, mem_used: 1, mem_total: 2, disk_used: used, disk_total: total, uptime_secs: 3, cores: 4, containers: 0 };
+        let v = serde_json::to_value(&m).unwrap();
+        assert_eq!(v["memTotal"], 2);
+        assert_eq!(v["uptimeSecs"], 3);
+    }
 }

@@ -8,7 +8,7 @@ use tauri::AppHandle;
 use super::HOST_MARKER;
 use super::profile::{DEFAULT_AUTO_STOP_HOURS, HostProfile};
 use super::secrets::{get_secret, host_secret};
-use super::store::{load, load_host, saved_host};
+use super::store::{Store, load, load_host, saved_host};
 use crate::error::Result;
 use crate::runtime::providers::Provider;
 use crate::runtime::proxmox;
@@ -178,19 +178,29 @@ pub fn connection(app: &AppHandle, id: &str) -> Result<Connection> {
     let host = load_host(app, id)?;
     // CLI-credential hosts keep no secret; Terraform uses the CLI's own sign-in.
     let password = host_secret(&host)?;
-    Ok(Connection {
+    Ok(connection_for(&host, &password))
+}
+
+/// What a launch on `host` is given, with its secret.
+fn connection_for(host: &HostProfile, password: &str) -> Connection {
+    Connection {
         provider: host.provider,
         name: host.name.clone(),
-        env: connection_env(&host, &password),
-        tf_vars: terraform_vars(&host, &password),
-        tf_env: terraform_env(&host, &password),
-    })
+        env: connection_env(host, password),
+        tf_vars: terraform_vars(host, password),
+        tf_env: terraform_env(host, password),
+    }
 }
 
 /// The player's hosts and cloud accounts as launch targets for the website
 /// (`{ id, name, provider }`), reported by the launcher agent.
 pub fn launch_targets(app: &AppHandle) -> Vec<serde_json::Value> {
-    load(app).map(|s| s.hosts.iter().map(|h| serde_json::json!({ "id": h.id, "name": h.name, "provider": h.provider.id() })).collect()).unwrap_or_default()
+    load(app).map(|s| targets_of(&s)).unwrap_or_default()
+}
+
+/// `launch_targets` of a loaded store.
+fn targets_of(store: &Store) -> Vec<serde_json::Value> {
+    store.hosts.iter().map(|h| serde_json::json!({ "id": h.id, "name": h.name, "provider": h.provider.id() })).collect()
 }
 
 /// A host's display name, if it exists.
@@ -205,7 +215,11 @@ pub fn host_provider(app: &AppHandle, id: &str) -> Option<Provider> {
 
 /// The host marked as default, if any (used for VM labs launched from the website).
 pub fn default_host(app: &AppHandle) -> Option<String> {
-    let store = load(app).ok()?;
+    default_of(load(app).ok()?)
+}
+
+/// `default_host` of a loaded store.
+fn default_of(store: Store) -> Option<String> {
     // Only server hosts: a cloud account is never used implicitly (it costs money).
     store.default.filter(|id| store.hosts.iter().any(|h| &h.id == id && !h.provider.is_cloud()))
 }
@@ -265,6 +279,53 @@ mod tests {
     /// A bare profile: no storage, network or node set.
     fn profile(provider: Provider) -> HostProfile {
         HostProfile { port: 8006, username: "root".into(), datastore: None, network: None, node: None, ..full_profile(provider) }
+    }
+
+    #[test]
+    fn a_connection_gathers_env_vars_and_terraform_env() {
+        let c = connection_for(&full_profile(Provider::Proxmox), "pw");
+        assert_eq!((c.provider, c.name.as_str()), (Provider::Proxmox, "Lab"));
+        assert_eq!(get(&c.env, "CYBERCTF_PROXMOX_PASSWORD"), Some("pw"));
+        assert_eq!(get(&c.tf_vars, "proxmox_password"), Some("pw"));
+        assert!(c.tf_env.is_empty());
+        let c = connection_for(&HostProfile { host: "eu-west-3".into(), username: "AKIAEXAMPLE".into(), ..full_profile(Provider::Aws) }, "key");
+        assert_eq!(get(&c.tf_env, "AWS_SECRET_ACCESS_KEY"), Some("key"));
+        assert_eq!(get(&c.tf_vars, "region"), Some("eu-west-3"));
+    }
+
+    #[test]
+    fn launch_targets_list_every_host_and_account() {
+        let store = Store {
+            default: None,
+            hosts: vec![HostProfile { id: "pve1".into(), ..full_profile(Provider::Proxmox) }, HostProfile { id: "aws1".into(), ..full_profile(Provider::Aws) }],
+        };
+        let targets = targets_of(&store);
+        assert_eq!(targets.len(), 2);
+        assert_eq!(targets[0], serde_json::json!({ "id": "pve1", "name": "Lab", "provider": "proxmox" }));
+        assert_eq!(targets[1]["provider"], "aws");
+    }
+
+    #[test]
+    fn the_default_host_is_a_saved_server_never_a_cloud() {
+        let hosts =
+            vec![HostProfile { id: "pve1".into(), ..full_profile(Provider::Proxmox) }, HostProfile { id: "aws1".into(), ..full_profile(Provider::Aws) }];
+        assert_eq!(default_of(Store { default: Some("pve1".into()), hosts: hosts.clone() }).as_deref(), Some("pve1"));
+        assert_eq!(default_of(Store { default: Some("aws1".into()), hosts: hosts.clone() }), None);
+        assert_eq!(default_of(Store { default: Some("gone".into()), hosts: hosts.clone() }), None);
+        assert_eq!(default_of(Store { default: None, hosts }), None);
+    }
+
+    #[test]
+    fn mark_lab_writes_and_clears_the_marker() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-mark-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        mark_lab(&dir, Some("pve1")).unwrap();
+        assert_eq!(marked_host(&dir).as_deref(), Some("pve1"));
+        mark_lab(&dir, None).unwrap();
+        assert_eq!(marked_host(&dir), None);
+        // Clearing an absent marker is fine.
+        mark_lab(&dir, None).unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

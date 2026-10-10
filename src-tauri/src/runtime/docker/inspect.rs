@@ -144,7 +144,7 @@ async fn lab_networks(id: &str) -> Vec<Network> {
     let Ok(names) = run_read("docker", &["network", "ls", "--filter", &filter, "--format", "{{.Name}}"], None).await else {
         return Vec::new();
     };
-    let names: Vec<&str> = names.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let names = listed_names(&names);
     if names.is_empty() {
         return Vec::new();
     }
@@ -164,13 +164,23 @@ pub async fn subnets_in_use(except: &str) -> Vec<String> {
         return Vec::new();
     };
     let own = compose::project(except);
-    let names: Vec<&str> = names.lines().map(str::trim).filter(|n| !n.is_empty() && !n.starts_with(&own)).collect();
+    let names: Vec<&str> = listed_names(&names).into_iter().filter(|n| !n.starts_with(&own)).collect();
     if names.is_empty() {
         return Vec::new();
     }
     let mut args = vec!["network", "inspect", "-f", "{{range .IPAM.Config}}{{.Subnet}} {{end}}"];
     args.extend(names);
-    run_read("docker", &args, None).await.map(|out| out.split_whitespace().filter(|s| !s.contains(':')).map(str::to_string).collect()).unwrap_or_default()
+    run_read("docker", &args, None).await.map(|out| ipv4_subnets(&out)).unwrap_or_default()
+}
+
+/// The names `docker network ls --format {{.Name}}` printed.
+fn listed_names(out: &str) -> Vec<&str> {
+    out.lines().map(str::trim).filter(|l| !l.is_empty()).collect()
+}
+
+/// The IPv4 subnets among those `docker network inspect` printed (IPv6 ones skipped).
+fn ipv4_subnets(out: &str) -> Vec<String> {
+    out.split_whitespace().filter(|s| !s.contains(':')).map(str::to_string).collect()
 }
 
 fn parse_networks(project: &str, out: &str) -> Vec<Network> {
@@ -364,6 +374,24 @@ mod tests {
         HostProbe, declared_services, down_serving, first_published_url, is_datastore, is_running, parse_inspect, parse_networks, short_network,
         status_from_host, tcp_ports,
     };
+    use super::{build_status, ipv4_subnets, listed_names};
+
+    #[test]
+    fn network_listings_skip_blanks_and_ipv6() {
+        assert_eq!(listed_names(" bridge \n\ncyberctf-x_lab\n"), ["bridge", "cyberctf-x_lab"]);
+        assert_eq!(ipv4_subnets("172.17.0.0/16 fd00::/64\n10.30.0.0/24 \n"), ["172.17.0.0/16", "10.30.0.0/24"]);
+    }
+
+    #[test]
+    fn a_serving_container_that_died_still_shows_on_the_diagram() {
+        let entries =
+            parse_ps(r#"[{"Service":"web","State":"exited","Name":"p-web-1"},{"Service":"db","State":"running","Name":"p-db-1","Health":"unhealthy"}]"#);
+        let status = build_status(entries, Default::default(), Vec::new(), &["web".into()]);
+        assert!(status.running);
+        let states: Vec<(&str, &str)> = status.machines.iter().map(|m| (m.name.as_str(), m.state.as_str())).collect();
+        assert_eq!(states, [("db", "unhealthy"), ("web", "exited")]);
+        assert_eq!(status.provider.as_deref(), Some("docker"));
+    }
 
     #[test]
     fn a_remote_lab_host_reports_its_containers_and_the_attack_box() {

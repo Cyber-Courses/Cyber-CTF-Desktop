@@ -34,6 +34,29 @@ fn parse_progress(first_line: &str) -> Progress {
     }
 }
 
+/// Reads one answer of the lab host (its status line, then its log's tail): the end of the wait
+/// (ready, or failed with the log), or None while it is still going (a new step is logged).
+fn report(out: &str, last_step: &mut String, log: &mut impl FnMut(String)) -> Option<Result<()>> {
+    let mut lines = out.lines();
+    match parse_progress(lines.next().unwrap_or_default()) {
+        Progress::Ready => {
+            log("Lab host ready.".into());
+            Some(Ok(()))
+        }
+        Progress::Failed(step) => {
+            let tail: Vec<&str> = lines.filter(|l| !l.trim().is_empty()).collect();
+            Some(Err(Error::CommandFailed { command: format!("lab host: {step}"), stderr: tail.join("\n") }))
+        }
+        Progress::Running(step) => {
+            if step != *last_step {
+                log(format!("Lab host: {step}…"));
+                *last_step = step;
+            }
+            None
+        }
+    }
+}
+
 /// Waits for the bootstrap's `ready_file` over SSH; a failed bootstrap fails the launch with
 /// its log. Modules without a `ready_file` output (older labs) are not waited on.
 pub(super) async fn wait_ready(state: &Path, log: &mut impl FnMut(String)) -> Result<()> {
@@ -53,22 +76,8 @@ pub(super) async fn wait_ready(state: &Path, log: &mut impl FnMut(String)) -> Re
         match target.exec(&known_hosts, &command).await {
             Ok(out) => {
                 reached = true;
-                let mut lines = out.lines();
-                match parse_progress(lines.next().unwrap_or_default()) {
-                    Progress::Ready => {
-                        log("Lab host ready.".into());
-                        return Ok(());
-                    }
-                    Progress::Failed(step) => {
-                        let tail: Vec<&str> = lines.filter(|l| !l.trim().is_empty()).collect();
-                        return Err(Error::CommandFailed { command: format!("lab host: {step}"), stderr: tail.join("\n") });
-                    }
-                    Progress::Running(step) => {
-                        if step != last_step {
-                            log(format!("Lab host: {step}…"));
-                            last_step = step;
-                        }
-                    }
+                if let Some(done) = report(&out, &mut last_step, log) {
+                    return done;
                 }
             }
             Err(_) if !reached && started.elapsed() >= SSH_TIMEOUT => {
@@ -101,6 +110,36 @@ mod tests {
         assert_eq!(parse_progress("failed: starting the lab"), Progress::Failed("starting the lab".into()));
         // No status file yet: cloud-init hasn't reached the bootstrap.
         assert_eq!(parse_progress(""), Progress::Running("booting".into()));
+    }
+
+    #[test]
+    fn each_answer_logs_a_new_step_once_and_ends_on_ready_or_failed() {
+        let mut lines = Vec::new();
+        let mut last = String::new();
+        assert!(report("running: pulling images\n", &mut last, &mut |l| lines.push(l)).is_none());
+        assert!(report("running: pulling images\n", &mut last, &mut |l| lines.push(l)).is_none());
+        assert!(report("\n", &mut last, &mut |l| lines.push(l)).is_none());
+        assert_eq!(lines, ["Lab host: pulling images…", "Lab host: booting…"]);
+        assert!(matches!(report("ready\n", &mut last, &mut |l| lines.push(l)), Some(Ok(()))));
+        assert_eq!(lines.last().unwrap(), "Lab host ready.");
+        match report("failed: starting the lab\n\nerror: port taken\n  \nexit 1\n", &mut last, &mut |l| lines.push(l)) {
+            Some(Err(Error::CommandFailed { command, stderr })) => {
+                assert_eq!(command, "lab host: starting the lab");
+                assert_eq!(stderr, "error: port taken\nexit 1");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_ready_file_without_an_address_is_not_waited_on() {
+        let dir = temp_state();
+        std::fs::write(dir.join("terraform.tfstate"), r#"{"outputs":{"ready_file":{"value":"/var/lib/cyberctf/ready"}}}"#).unwrap();
+        let mut lines = Vec::new();
+        wait_ready(&dir, &mut |l| lines.push(l)).await.unwrap();
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].starts_with("Can't reach the lab host over SSH"), "{lines:?}");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[tokio::test]

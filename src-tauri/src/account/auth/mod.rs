@@ -41,7 +41,12 @@ pub struct AuthStatus {
 /// The session, or the error a call needing the account returns: signed out, or why the
 /// keychain couldn't be read.
 async fn session_or_signed_out() -> Result<Session> {
-    match store::read().await {
+    session_from_read(store::read().await)
+}
+
+/// A session read as the session, or the error a call needing the account returns.
+fn session_from_read(read: std::result::Result<Option<Session>, String>) -> Result<Session> {
+    match read {
         Ok(Some(s)) => Ok(s),
         Ok(None) => Err(Error::Invalid(SIGNED_OUT.into())),
         Err(why) => Err(Error::Invalid(why)),
@@ -152,7 +157,12 @@ pub async fn auth_login(app: AppHandle) -> Result<AuthStatus> {
 /// prompt and waits, which froze the window while this ran on the main thread.
 #[tauri::command]
 pub async fn auth_status() -> AuthStatus {
-    match store::read().await {
+    status_from_read(store::read().await)
+}
+
+/// What the app shows for a session read: signed in as someone, signed out, or why the keychain failed.
+fn status_from_read(read: std::result::Result<Option<Session>, String>) -> AuthStatus {
+    match read {
         Ok(Some(s)) => AuthStatus { logged_in: true, name: s.name, email: s.email, keychain_error: None },
         Ok(None) => AuthStatus { logged_in: false, name: None, email: None, keychain_error: None },
         Err(why) => AuthStatus { logged_in: false, name: None, email: None, keychain_error: Some(why) },
@@ -186,5 +196,29 @@ mod tests {
         assert!(fresh(&session(now() + 3600)));
         assert!(!fresh(&session(now() + 30)));
         assert!(!fresh(&session(0)));
+    }
+
+    fn session() -> Session {
+        Session { access_token: "tok".into(), refresh_token: None, expires_at: 1, name: Some("Ada".into()), email: Some("ada@example.com".into()) }
+    }
+
+    #[test]
+    fn a_missing_session_is_signed_out_and_a_keychain_failure_says_why() {
+        assert_eq!(session_from_read(Ok(Some(session()))).unwrap().access_token, "tok");
+        assert_eq!(session_from_read(Ok(None)).err().unwrap().to_string(), SIGNED_OUT);
+        assert_eq!(session_from_read(Err("locked".into())).err().unwrap().to_string(), "locked");
+    }
+
+    #[test]
+    fn the_status_shows_who_is_signed_in_or_why_not() {
+        let json = |s: AuthStatus| serde_json::to_value(s).unwrap();
+        let signed_in = json(status_from_read(Ok(Some(session()))));
+        assert_eq!(signed_in, serde_json::json!({ "loggedIn": true, "name": "Ada", "email": "ada@example.com" }));
+        let out = json(status_from_read(Ok(None)));
+        assert_eq!(out["loggedIn"], false);
+        assert!(out.get("keychainError").is_none());
+        let failed = json(status_from_read(Err("no Secret Service".into())));
+        assert_eq!(failed["keychainError"], "no Secret Service");
+        assert_eq!(failed["loggedIn"], false);
     }
 }

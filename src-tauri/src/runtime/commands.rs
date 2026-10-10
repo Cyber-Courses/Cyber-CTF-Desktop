@@ -193,7 +193,41 @@ pub async fn attack_vm_shell(app: AppHandle, id: String) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_box, check_image, valid_machine_name};
+    use super::{channel_log, check_box, check_image, exegol_shell, exegol_start, exegol_status, exegol_stop, valid_machine_name};
+    use tauri::ipc::{Channel, InvokeResponseBody};
+
+    /// A channel whose messages land in `sink`.
+    fn channel(sink: std::sync::Arc<std::sync::Mutex<Vec<String>>>) -> Channel<String> {
+        Channel::new(move |body| {
+            if let InvokeResponseBody::Json(j) = body {
+                sink.lock().unwrap().push(j);
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn logs_stream_line_by_line_to_the_ui() {
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = channel_log(channel(sink.clone()));
+        log("Starting…".into());
+        log("Done".into());
+        assert_eq!(*sink.lock().unwrap(), ["\"Starting…\"", "\"Done\""]);
+    }
+
+    #[tokio::test]
+    async fn attack_box_commands_refuse_bad_ids_and_images_before_touching_docker() {
+        let bad_id = exegol_status("../x".into(), "nwodtuhs/exegol:free".into()).await.err().unwrap().to_string();
+        assert_eq!(bad_id, "invalid lab id `../x`");
+        let bad_image = exegol_status("web-1".into(), "-x".into()).await.err().unwrap().to_string();
+        assert_eq!(bad_image, "invalid attack-box image `-x`");
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        assert!(exegol_start("a b".into(), "nwodtuhs/exegol:free".into(), channel(sink.clone())).await.is_err());
+        assert!(exegol_start("web-1".into(), "x;y".into(), channel(sink.clone())).await.is_err());
+        assert!(exegol_stop("a;rm".into(), channel(sink.clone())).await.is_err());
+        assert!(exegol_shell(String::new()).await.is_err());
+        assert!(sink.lock().unwrap().is_empty(), "nothing ran");
+    }
 
     #[test]
     fn machine_names_are_plain() {

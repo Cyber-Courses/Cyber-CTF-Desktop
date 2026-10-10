@@ -58,3 +58,39 @@ pub enum Runtime {
     Docker,
     Vm,
 }
+
+/// Builders shared by the runtime's unit tests.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::{LabStatus, Machine};
+
+    /// A machine in `state`, with nothing else known about it.
+    pub(crate) fn machine(name: &str, state: &str) -> Machine {
+        Machine {
+            name: name.to_string(),
+            state: state.to_string(),
+            image: String::new(),
+            ip: String::new(),
+            ports: Vec::new(),
+            interfaces: Vec::new(),
+            services: Vec::new(),
+            infra: false,
+        }
+    }
+
+    /// A lab status with these running machines and nothing else set.
+    pub(crate) fn status_with(running: bool, machines: &[&str]) -> LabStatus {
+        LabStatus {
+            running,
+            parked: None,
+            machines: machines.iter().map(|n| machine(n, "running")).collect(),
+            networks: Vec::new(),
+            url: None,
+            host: None,
+            expires_at: None,
+            place: None,
+            provider: None,
+            attacker: None,
+        }
+    }
+}

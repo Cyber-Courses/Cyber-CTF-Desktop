@@ -235,4 +235,35 @@ mod tests {
         assert!(!vagrantfile(Provider::Utm, "x", false).contains(VM_IP));
         assert_eq!(ping_args("10.0.0.1")[4], "10.0.0.1");
     }
+
+    #[test]
+    fn every_provider_gets_its_own_vm_settings() {
+        for (p, needle) in [
+            (Provider::Virtualbox, "h.name = \"CyberCTF test VM\""),
+            (Provider::VmwareDesktop, "h.vmx[\"displayName\"]"),
+            (Provider::Parallels, "h.name = "),
+            (Provider::Libvirt, "h.default_prefix = \"cyberctf-\""),
+            (Provider::Hyperv, "h.vmname = "),
+            (Provider::Utm, "h.name = "),
+        ] {
+            let v = vagrantfile(p, "box/x", false);
+            assert!(v.contains(needle) && v.contains(&format!("config.vm.provider \"{}\"", p.id())), "{v}");
+            assert!(v.starts_with("Vagrant.configure") && v.ends_with("end\n"));
+        }
+    }
+
+    #[test]
+    fn probes_and_boxes_per_provider() {
+        assert_eq!(responds(Provider::Virtualbox).map(|r| r.0), Some("VBoxManage"));
+        assert_eq!(responds(Provider::VmwareDesktop).map(|r| r.0), Some("vmrun"));
+        assert_eq!(responds(Provider::Parallels).map(|r| r.0), Some("prlctl"));
+        assert_eq!(responds(Provider::Libvirt).map(|r| r.0), Some("virsh"));
+        assert!(responds(Provider::Utm).is_some_and(|r| r.0.ends_with("utmctl")));
+        assert!(responds(Provider::Qemu).is_none());
+        assert_eq!(candidate_boxes(Provider::Virtualbox, false), ["generic/alpine319", "bento/debian-12"]);
+        assert_eq!(candidate_boxes(Provider::Parallels, true), ["bento/debian-12"]);
+        assert_eq!(candidate_boxes(Provider::Utm, true), ["utm/bookworm"]);
+        assert_eq!(candidate_boxes(Provider::Qemu, true), ["generic/alpine319"]);
+        assert!(has_private_network(Provider::Libvirt) && !has_private_network(Provider::Qemu) && !has_private_network(Provider::Hyperv));
+    }
 }

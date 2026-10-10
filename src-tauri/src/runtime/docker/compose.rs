@@ -99,27 +99,31 @@ pub(super) async fn remove_one_off(project: &str, service: &str) {
     let p = format!("label=com.docker.compose.project={project}");
     let s = format!("label=com.docker.compose.service={service}");
     if let Ok(ids) = crate::exec::run("docker", &["ps", "-aq", "--filter", &p, "--filter", &s, "--filter", "label=com.docker.compose.oneoff=True"], None).await
+        && let Some(args) = rm_args(&ids)
     {
-        let ids: Vec<&str> = ids.split_whitespace().collect();
-        if !ids.is_empty() {
-            let mut args = vec!["rm", "-f"];
-            args.extend(ids);
-            let _ = crate::exec::run("docker", &args, None).await;
-        }
+        let _ = crate::exec::run("docker", &args, None).await;
     }
+}
+
+/// `docker rm -f` of the containers `docker ps -q` listed; None when it listed none.
+fn rm_args(ids: &str) -> Option<Vec<&str>> {
+    let ids: Vec<&str> = ids.split_whitespace().collect();
+    if ids.is_empty() {
+        return None;
+    }
+    let mut args = vec!["rm", "-f"];
+    args.extend(ids);
+    Some(args)
 }
 
 /// Removes every container of a Compose project, one-off `run` containers included (`down`
 /// leaves those, so a check runner still going kept a removed lab "running").
 pub(super) async fn remove_all_containers(project: &str) {
     let filter = format!("label=com.docker.compose.project={project}");
-    if let Ok(ids) = crate::exec::run("docker", &["ps", "-aq", "--filter", &filter], None).await {
-        let ids: Vec<&str> = ids.split_whitespace().collect();
-        if !ids.is_empty() {
-            let mut args = vec!["rm", "-f"];
-            args.extend(ids);
-            let _ = crate::exec::run("docker", &args, None).await;
-        }
+    if let Ok(ids) = crate::exec::run("docker", &["ps", "-aq", "--filter", &filter], None).await
+        && let Some(args) = rm_args(&ids)
+    {
+        let _ = crate::exec::run("docker", &args, None).await;
     }
 }
 
@@ -335,6 +339,14 @@ mod tests {
         let a = args(&dir, "cyberctf-x", &["ps"]);
         assert_eq!(a[3..], ["-f".to_string(), file.display().to_string(), "-f".into(), PORTS_FILE.into(), "ps".into()]);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn removes_exactly_the_listed_containers() {
+        use super::rm_args;
+        assert_eq!(rm_args(""), None);
+        assert_eq!(rm_args(" \n"), None);
+        assert_eq!(rm_args("abc\ndef\n"), Some(vec!["rm", "-f", "abc", "def"]));
     }
 
     #[test]

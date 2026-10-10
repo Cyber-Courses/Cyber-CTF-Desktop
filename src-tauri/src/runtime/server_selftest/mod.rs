@@ -152,6 +152,62 @@ mod tests {
         assert_eq!(err.to_string(), "no answer on 127.0.0.1:0");
     }
 
+    use std::sync::{Arc, Mutex};
+
+    /// A reporter whose events land in the returned list, as the JSON the UI would get.
+    fn reporter() -> (Reporter, Arc<Mutex<Vec<serde_json::Value>>>) {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let sink = events.clone();
+        let channel = Channel::new(move |body| {
+            if let tauri::ipc::InvokeResponseBody::Json(json) = body {
+                sink.lock().unwrap().push(serde_json::from_str(&json).unwrap());
+            }
+            Ok(())
+        });
+        (Reporter(channel), events)
+    }
+
+    #[tokio::test]
+    async fn a_step_reports_running_then_its_outcome() {
+        let (r, events) = reporter();
+        let v = r.step("prepare", PREPARE, async { Ok((7, Some("done".to_string()))) }).await.unwrap();
+        assert_eq!(v, 7);
+        let err = r.step("up", BOOT, async { Err::<((), Option<String>), _>(Error::Invalid("no space".into())) }).await.unwrap_err();
+        assert_eq!(err.to_string(), "no space");
+        let events = events.lock().unwrap();
+        let states: Vec<(&str, &str)> = events.iter().map(|e| (e["step"].as_str().unwrap(), e["state"].as_str().unwrap())).collect();
+        assert_eq!(states, [("prepare", "running"), ("prepare", "ok"), ("up", "running"), ("up", "fail")]);
+        assert_eq!(events[0]["label"], PREPARE);
+        assert_eq!(events[1]["detail"], "done");
+        assert_eq!(events[3]["detail"], "no space");
+    }
+
+    #[tokio::test]
+    async fn progress_lines_are_trimmed_short_and_never_blank() {
+        let (r, events) = reporter();
+        r.progress("up", BOOT, "   ".into());
+        r.progress("up", BOOT, format!("  {}  ", "x".repeat(300)));
+        let events = events.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["state"], "running");
+        assert_eq!(events[0]["detail"].as_str().unwrap().len(), 160);
+    }
+
+    #[tokio::test]
+    async fn retry_until_stops_at_the_first_success() {
+        let tries = std::sync::atomic::AtomicU32::new(0);
+        assert!(
+            retry_until(Duration::from_secs(60), || {
+                let n = tries.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async move { n == 0 }
+            })
+            .await
+        );
+        assert_eq!(tries.load(std::sync::atomic::Ordering::SeqCst), 1);
+        // Past the deadline, a failing probe is tried once and given up on.
+        assert!(!retry_until(Duration::ZERO, || async { false }).await);
+    }
+
     #[tokio::test]
     async fn wait_tcp_from_needs_a_login() {
         assert!(wait_tcp_from("pve.lan", Path::new("/k/id"), "10.0.0.5", 22, Duration::ZERO).await.is_err());

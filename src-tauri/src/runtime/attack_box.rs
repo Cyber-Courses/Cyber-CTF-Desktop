@@ -123,4 +123,14 @@ mod tests {
         assert!(s.contains("docker pull -q 'repo/img:tag'"), "{s}");
         assert!(s.contains("--network \"${networks[0]}\" 'repo/img:tag' sleep infinity"), "{s}");
     }
+
+    #[tokio::test]
+    async fn no_attack_box_picked_means_nothing_to_start_in_the_lab_vm() {
+        let spec: isoloom_core::Spec = serde_yaml_ng::from_str("version: 1\nname: t\nmachines: {}\n").unwrap();
+        let mut lines = Vec::new();
+        // No pick, or a pick that is a Vagrant box shape but not a valid image: nothing runs.
+        super::in_lab_vm_or_note(std::path::Path::new("lab"), &spec, &[], &mut |l| lines.push(l)).await;
+        super::in_lab_vm_or_note(std::path::Path::new("lab"), &spec, &env("x; rm"), &mut |l| lines.push(l)).await;
+        assert!(lines.is_empty());
+    }
 }

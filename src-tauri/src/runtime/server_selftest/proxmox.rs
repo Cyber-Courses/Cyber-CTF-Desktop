@@ -35,11 +35,7 @@ pub(super) async fn run(app: &AppHandle, id: &str, r: &Reporter, conn: &server::
     })
     .await?;
 
-    let mut vars = conn.tf_vars.clone();
-    vars.push(("ssh_public_key".into(), pubkey));
-    vars.push(("cores".into(), CORES.into()));
-    vars.push(("memory_mb".into(), MEMORY_MB.into()));
-    vars.push(("disk_gb".into(), DISK_GB.into()));
+    let vars = test_vars(&conn.tf_vars, pubkey);
 
     // `apply` creates the VM and, because the agent is enabled, blocks until it boots and
     // reports an address. Terraform's own output streams as the step's detail.
@@ -72,7 +68,7 @@ pub(super) async fn run(app: &AppHandle, id: &str, r: &Reporter, conn: &server::
                     None => wait_tcp(&ip, 22, Duration::from_secs(90)).await?,
                     Some(login) => wait_tcp_from(login, &key, &ip, 22, Duration::from_secs(90)).await?,
                 }
-                Ok(((), Some(if jump.is_some() { format!("{ip}:22 open (through the node)") } else { format!("{ip}:22 open") })))
+                Ok(((), Some(ssh_detail(&ip, jump.is_some()))))
             })
             .await;
     }
@@ -89,6 +85,21 @@ async fn destroy(r: &Reporter, conn: &server::Connection, module: &Path, state: 
             Ok(((), Some("removed".into())))
         })
         .await;
+}
+
+/// The host's Terraform variables plus the test VM's: the launcher's key and a small size.
+fn test_vars(host_vars: &[(String, String)], pubkey: String) -> Vec<(String, String)> {
+    let mut vars = host_vars.to_vec();
+    vars.push(("ssh_public_key".into(), pubkey));
+    vars.push(("cores".into(), CORES.into()));
+    vars.push(("memory_mb".into(), MEMORY_MB.into()));
+    vars.push(("disk_gb".into(), DISK_GB.into()));
+    vars
+}
+
+/// The SSH step's detail: the VM's SSH port answered, directly or from the node.
+fn ssh_detail(ip: &str, through_node: bool) -> String {
+    if through_node { format!("{ip}:22 open (through the node)") } else { format!("{ip}:22 open") }
 }
 
 /// Writes the minimal, self-contained Terraform module (no lab fetch) to `dir`.
@@ -116,6 +127,17 @@ mod tests {
         }
         assert!(OUTPUTS_TF.contains("output \"ip\""));
         assert!(LOCK_HCL.contains("registry.terraform.io/bpg/proxmox"));
+    }
+
+    #[test]
+    fn the_test_vm_is_small_and_takes_the_launchers_key() {
+        let vars = test_vars(&[("node".into(), "pve".into())], "ssh-ed25519 AAAA".into());
+        let get = |k: &str| vars.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
+        assert_eq!(get("node"), Some("pve"));
+        assert_eq!(get("ssh_public_key"), Some("ssh-ed25519 AAAA"));
+        assert_eq!((get("cores"), get("memory_mb"), get("disk_gb")), (Some(CORES), Some(MEMORY_MB), Some(DISK_GB)));
+        assert_eq!(ssh_detail("10.0.0.9", false), "10.0.0.9:22 open");
+        assert_eq!(ssh_detail("10.0.0.9", true), "10.0.0.9:22 open (through the node)");
     }
 
     #[test]

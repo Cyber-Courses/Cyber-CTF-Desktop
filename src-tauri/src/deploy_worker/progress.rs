@@ -141,4 +141,32 @@ mod tests {
         assert_eq!(buf.rest().as_deref(), Some("thr"));
         assert_eq!(buf.rest(), None);
     }
+
+    fn spawned(tag: &str) -> (std::path::PathBuf, Spawned) {
+        let dir = crate::deploy_worker::files::tests::temp_dir(tag);
+        let files = crate::deploy_worker::files::Files::of(&dir, "lab-1");
+        (dir, Spawned { files, pid: 4_000_000_000 })
+    }
+
+    #[tokio::test]
+    async fn tail_follows_the_log_to_the_verdict() {
+        let (dir, s) = spawned("tail-ok");
+        std::fs::write(&s.files.log, "one\ntwo\n✗ failed\ncut").unwrap();
+        std::fs::write(&s.files.status, "error: it broke").unwrap();
+        let mut lines = Vec::new();
+        let err = tail(&s, |l| lines.push(l)).await.unwrap_err();
+        assert_eq!(err.to_string(), "it broke");
+        assert_eq!(lines, ["one", "two", "cut"]);
+        std::fs::write(&s.files.status, "ok").unwrap();
+        assert!(tail(&s, |_| {}).await.is_ok());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
+    async fn a_worker_gone_without_a_status_is_an_error() {
+        let (dir, s) = spawned("tail-lost");
+        let err = tail(&s, |_| {}).await.unwrap_err();
+        assert!(err.to_string().contains("without a result"));
+        std::fs::remove_dir_all(dir).ok();
+    }
 }
