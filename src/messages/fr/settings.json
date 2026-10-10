@@ -115,7 +115,10 @@
   },
   "installedTools": {
     "title": "Outils installés par Cyber CTF",
-    "count": { "one": "{count} installé", "other": "{count} installés" },
+    "count": {
+      "one": "{count} installé",
+      "other": "{count} installés"
+    },
     "intro": "Installés pendant la configuration. Supprimez ceux dont vous n'avez plus besoin ; les outils que vous aviez déjà ne sont pas listés.",
     "installedAgo": "installé {ago}",
     "remove": "Supprimer",
@@ -156,5 +159,12 @@
     "firstRun": "Configuration initiale",
     "firstRunDescription": "Refaire l'accueil. Vos réglages et vos labs sont conservés.",
     "replay": "Relancer"
+  },
+  "sharedFolder": {
+    "title": "Dossier partagé",
+    "description": "Un dossier de cet ordinateur que votre attack box voit dans {mount} : vos outils y entrent, votre butin en sort. Il reste quand un lab est supprimé.",
+    "pick": "Dossier à partager avec l'attack box",
+    "change": "Changer…",
+    "open": "Ouvrir le dossier"
   }
 }

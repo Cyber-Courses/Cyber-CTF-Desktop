@@ -10,6 +10,7 @@ mod machine;
 mod platform;
 mod provisioning;
 mod runtime;
+mod shared_folder;
 mod terminal;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -253,6 +254,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
@@ -307,6 +309,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            shared_folder::init(app.handle());
             // Linux and Windows dev builds: register cyberctf:// at runtime (installers do it otherwise).
             #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
             {
@@ -388,6 +391,9 @@ pub fn run() {
             terminal::terminal_resize,
             terminal::terminal_close,
             terminal::terminal_window,
+            shared_folder::shared_folder_get,
+            shared_folder::shared_folder_set,
+            shared_folder::shared_folder_open,
             runtime::server::server_list,
             runtime::server::server_save,
             runtime::server::server_remove,

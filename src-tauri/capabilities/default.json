@@ -19,6 +19,7 @@
           "url": "x-apple.systempreferences:*"
         }
       ]
-    }
+    },
+    "dialog:allow-open"
   ]
 }

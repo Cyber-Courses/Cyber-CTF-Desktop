@@ -18,6 +18,7 @@ import {
   setAutoAttackBox,
 } from "@/lib/settings";
 import { Row } from "@/features/settings/settings-layout";
+import { SharedFolderControl } from "@/features/settings/shared-folder";
 import { RadioList, RadioRow } from "@/components/ui/radio-row";
 import { formatBytes } from "@/lib/format";
 import { useImageSizes } from "@/lib/use-image-sizes";
@@ -128,6 +129,10 @@ export function AttackBoxRows({ onSaved }: { onSaved: () => void }) {
       </Row>
 
       <AttackVmRow onSaved={onSaved} />
+
+      <div className="border-t border-border px-4 py-3.5">
+        <SharedFolderControl onSaved={onSaved} />
+      </div>
 
       <Row
         title={t("settings.attackBox.autoStart")}
