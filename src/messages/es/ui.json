@@ -1,20 +1,20 @@
 {
   "confirm": {
-    "cancel": "Cancel"
+    "cancel": "Cancelar"
   },
   "copy": {
-    "title": "Copy {text}"
+    "title": "Copiar {text}"
   },
   "log": {
-    "output": "Output",
+    "output": "Salida",
     "running": "{title}…",
-    "failed": "{title} failed",
-    "done": "{title} · done"
+    "failed": "{title}: error",
+    "done": "{title} · listo"
   },
   "toast": {
-    "dismiss": "Dismiss"
+    "dismiss": "Descartar"
   },
   "spinner": {
-    "loading": "Loading"
+    "loading": "Cargando"
   }
 }

@@ -1,82 +1,82 @@
 {
   "tabs": {
-    "home": "Overview",
+    "home": "Resumen",
     "labs": "Labs",
-    "machine": "Machine",
-    "setup": "Setup",
-    "server": "Servers",
-    "cloud": "Cloud",
-    "events": "Events",
-    "settings": "Settings"
+    "machine": "Máquina",
+    "setup": "Configuración",
+    "server": "Servidores",
+    "cloud": "Nube",
+    "events": "Eventos",
+    "settings": "Ajustes"
   },
   "sidebar": {
-    "find": "Find…",
-    "soon": "Soon",
-    "running": "Running",
-    "labRunning": "running"
+    "find": "Buscar…",
+    "soon": "Pronto",
+    "running": "En ejecución",
+    "labRunning": "en ejecución"
   },
   "header": {
-    "thisMachine": "This machine",
-    "dockerNotRunning": "Docker not running",
-    "checkFailed": "machine check failed",
-    "checking": "checking…"
+    "thisMachine": "Esta máquina",
+    "dockerNotRunning": "Docker no está en ejecución",
+    "checkFailed": "falló la comprobación",
+    "checking": "comprobando…"
   },
   "palette": {
-    "label": "Command menu",
-    "placeholder": "Search labs, screens, actions…",
-    "noResults": "No results",
-    "findLab": "Find a lab",
-    "findLabKeywords": "labs search ctf",
-    "openSettings": "Open Settings",
-    "openSettingsKeywords": "settings preferences appearance theme",
-    "goTo": "Go to {screen}",
+    "label": "Menú de comandos",
+    "placeholder": "Buscar labs, pantallas, acciones…",
+    "noResults": "Sin resultados",
+    "findLab": "Buscar un lab",
+    "findLabKeywords": "labs search ctf buscar búsqueda",
+    "openSettings": "Abrir Ajustes",
+    "openSettingsKeywords": "settings ajustes preferencias configuración apariencia tema",
+    "goTo": "Ir a {screen}",
     "labKeywords": "lab {category}",
     "groups": {
-      "actions": "Actions",
-      "screens": "Screens",
+      "actions": "Acciones",
+      "screens": "Pantallas",
       "labs": "Labs"
     }
   },
   "screen": {
-    "checkFailed": "Couldn’t check this machine",
-    "tryAgain": "Try again",
-    "checking": "Checking this machine…",
-    "loading": "Loading…",
-    "comingSoon": "{title} is on the way",
-    "eventsDescription": "Join live CTF events where labs are hosted by Cyber CTF: nothing to run on your machine, each participant gets their own lab for the event's duration."
+    "checkFailed": "No se pudo comprobar esta máquina",
+    "tryAgain": "Reintentar",
+    "checking": "Comprobando esta máquina…",
+    "loading": "Cargando…",
+    "comingSoon": "{title} llegará pronto",
+    "eventsDescription": "Únete a eventos CTF en directo cuyos labs aloja Cyber CTF: no tienes que ejecutar nada en tu máquina, cada participante tiene su propio lab durante todo el evento."
   },
   "failures": {
-    "openSettings": "Couldn't open Settings",
-    "restart": "Couldn't restart Cyber CTF"
+    "openSettings": "No se pudieron abrir los Ajustes",
+    "restart": "No se pudo reiniciar Cyber CTF"
   },
   "update": {
-    "installed": "Update installed. Restarting Cyber CTF…",
-    "failed": "Update failed. Try again later.",
-    "available": "Version <version>{version}</version> is available.",
-    "restartNow": "Restart now",
-    "updating": "Updating…",
-    "update": "Update"
+    "installed": "Actualización instalada. Reiniciando Cyber CTF…",
+    "failed": "Error al actualizar. Inténtalo más tarde.",
+    "available": "La versión <version>{version}</version> está disponible.",
+    "restartNow": "Reiniciar",
+    "updating": "Actualizando…",
+    "update": "Actualizar"
   },
   "error": {
-    "title": "Something went wrong",
-    "description": "Cyber CTF hit an unexpected error. Your labs keep running. Try again, and if it happens again, copy the details and send them to us.",
-    "stepDescription": "This step hit an unexpected error. Try again, or go back a step. If it keeps happening, copy the details and send them to us.",
-    "unknown": "Unknown error",
-    "tryAgain": "Try again",
-    "reload": "Reload",
-    "copied": "Copied",
-    "copyDetails": "Copy details"
+    "title": "Algo salió mal",
+    "description": "Cyber CTF encontró un error inesperado. Tus labs siguen en ejecución. Vuelve a intentarlo y, si se repite, copia los detalles y envíanoslos.",
+    "stepDescription": "Este paso encontró un error inesperado. Vuelve a intentarlo o retrocede un paso. Si sigue ocurriendo, copia los detalles y envíanoslos.",
+    "unknown": "Error desconocido",
+    "tryAgain": "Reintentar",
+    "reload": "Recargar",
+    "copied": "Copiado",
+    "copyDetails": "Copiar detalles"
   },
   "terminal": {
-    "connecting": "connecting…",
-    "open": "attack box",
-    "ended": "session ended",
-    "failed": "couldn't connect",
-    "systemTerminal": "System terminal",
-    "systemTerminalHint": "Open this shell in your own terminal app",
-    "shellEnded": "The shell ended.",
-    "shellEndedWithCode": "The shell ended (exit {code}).",
-    "reconnect": "Reconnect",
-    "close": "Close"
+    "connecting": "conectando…",
+    "open": "máquina de ataque",
+    "ended": "sesión finalizada",
+    "failed": "no se pudo conectar",
+    "systemTerminal": "Terminal del sistema",
+    "systemTerminalHint": "Abrir esta shell en tu propia app de terminal",
+    "shellEnded": "La shell ha terminado.",
+    "shellEndedWithCode": "La shell ha terminado (código {code}).",
+    "reconnect": "Reconectar",
+    "close": "Cerrar"
   }
 }

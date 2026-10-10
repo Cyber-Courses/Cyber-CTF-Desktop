@@ -1,170 +1,170 @@
 {
   "appearance": {
-    "title": "Appearance",
-    "description": "How the launcher looks and which language it speaks. Saved on this computer.",
-    "theme": "Theme",
+    "title": "Apariencia",
+    "description": "El aspecto del launcher y el idioma que usa. Se guarda en este ordenador.",
+    "theme": "Tema",
     "themes": {
-      "dark": "Dark",
-      "black": "Black",
-      "light": "Light"
+      "dark": "Oscuro",
+      "black": "Negro",
+      "light": "Claro"
     },
     "themeDescriptions": {
-      "dark": "Dark uses deep neutral greys, easy on the eyes.",
-      "black": "Black uses true black, for OLED screens.",
-      "light": "Light uses warm paper tones, for bright rooms."
+      "dark": "Oscuro usa grises neutros profundos, descansa la vista.",
+      "black": "Negro usa negro puro, para pantallas OLED.",
+      "light": "Claro usa tonos cálidos de papel, para entornos luminosos."
     },
-    "language": "Language",
-    "languageDescription": "The launcher's language. System follows your computer's.",
-    "languageSystem": "System"
+    "language": "Idioma",
+    "languageDescription": "El idioma del launcher. Sistema sigue el de tu ordenador.",
+    "languageSystem": "Sistema"
   },
   "tabs": {
-    "label": "Settings sections",
-    "account": "Account",
-    "appearance": "Appearance",
+    "label": "Secciones de ajustes",
+    "account": "Cuenta",
+    "appearance": "Apariencia",
     "labs": "Labs",
-    "maintenance": "Maintenance",
-    "about": "About"
+    "maintenance": "Mantenimiento",
+    "about": "Acerca de"
   },
-  "saved": "Saved",
+  "saved": "Guardado",
   "account": {
-    "title": "Account",
-    "description": "Signing in registers this machine, so labs you launch from the website run here.",
-    "checking": "Checking…",
-    "signedIn": "Signed in",
-    "signOut": "Sign out",
-    "thisMachine": "This machine",
-    "online": "Online",
-    "offline": "Offline",
-    "runs": "runs {list}",
-    "registering": "Registering…",
-    "notSignedIn": "Not signed in",
-    "signInHint": "Sign in with your Cyber account to sync labs and run them from any device.",
-    "waitingBrowser": "Waiting for the browser…",
-    "signIn": "Sign in"
+    "title": "Cuenta",
+    "description": "Al iniciar sesión se registra esta máquina, para que los labs que lances desde el sitio web se ejecuten aquí.",
+    "checking": "Comprobando…",
+    "signedIn": "Sesión iniciada",
+    "signOut": "Cerrar sesión",
+    "thisMachine": "Esta máquina",
+    "online": "En línea",
+    "offline": "Sin conexión",
+    "runs": "ejecuta {list}",
+    "registering": "Registrando…",
+    "notSignedIn": "Sin sesión iniciada",
+    "signInHint": "Inicia sesión con tu cuenta Cyber para sincronizar labs y ejecutarlos desde cualquier dispositivo.",
+    "waitingBrowser": "Esperando al navegador…",
+    "signIn": "Iniciar sesión"
   },
   "labs": {
     "title": "Labs",
-    "description": "How labs start on this machine. Saved on this computer only."
+    "description": "Cómo se inician los labs en esta máquina. Se guarda solo en este ordenador."
   },
   "labPorts": {
-    "title": "Lab ports",
-    "default": "Each service on its own port, like CTFd on 8000. A start stops when another lab or app already holds one.",
-    "random": "Each service on a free random port. Never collides with another lab or app.",
-    "ask": "Asks before each container lab starts on this machine: random free ports, or the lab's own.",
+    "title": "Puertos de los labs",
+    "default": "Cada servicio en su propio puerto, como CTFd en el 8000. El inicio se detiene si otro lab o app ya ocupa uno.",
+    "random": "Cada servicio en un puerto libre aleatorio. Nunca choca con otro lab o app.",
+    "ask": "Pregunta antes de iniciar cada lab de contenedores en esta máquina: puertos libres aleatorios o los del propio lab.",
     "options": {
-      "ask": "Ask",
-      "random": "Random",
-      "default": "Default"
+      "ask": "Preguntar",
+      "random": "Aleatorio",
+      "default": "Por defecto"
     }
   },
   "attackBox": {
-    "title": "Attack box image",
-    "description": "Runs on each lab’s network as your toolbox. The first launch of an image downloads it, which can take a while.",
-    "default": "Default",
-    "largeDownload": "Large download",
+    "title": "Imagen de la máquina de ataque",
+    "description": "Se ejecuta en la red de cada lab como tu caja de herramientas. El primer lanzamiento de una imagen la descarga, lo que puede tardar un rato.",
+    "default": "Por defecto",
+    "largeDownload": "Descarga grande",
     "presets": {
-      "cyberctf": "Kali with its standard toolset, ready to use",
-      "kali": "Official Kali base, add tools as needed",
-      "parrot": "Parrot Security toolset",
-      "exegolFree": "Exegol Community: full toolkit, updated after Full; for learning and personal use",
-      "exegolFull": "The latest Exegol toolkit; needs an Exegol Pro, Team or Enterprise plan"
+      "cyberctf": "Kali con su conjunto de herramientas estándar, lista para usar",
+      "kali": "Base oficial de Kali, añade herramientas según las necesites",
+      "parrot": "Herramientas de Parrot Security",
+      "exegolFree": "Exegol Community: kit completo, actualizado después de Full; para aprendizaje y uso personal",
+      "exegolFull": "El kit de Exegol más reciente; requiere un plan Exegol Pro, Team o Enterprise"
     },
     "terms": {
-      "nonCommercial": "Non-commercial use",
-      "paidPlan": "Paid plan"
+      "nonCommercial": "Uso no comercial",
+      "paidPlan": "Plan de pago"
     },
-    "customImage": "Custom image",
-    "customImageNote": "Any Docker image or registry tag.",
-    "save": "Save",
-    "autoStart": "Start the attack box with the lab",
-    "autoStartDescription": "Starts it as soon as a lab is up on this machine: the container on a container lab, the VM beside a VM lab. You can still start or stop it from the lab."
+    "customImage": "Imagen personalizada",
+    "customImageNote": "Cualquier imagen de Docker o tag de registro.",
+    "save": "Guardar",
+    "autoStart": "Iniciar la máquina de ataque con el lab",
+    "autoStartDescription": "La inicia en cuanto un lab está activo en esta máquina: el contenedor en un lab de contenedores, la VM junto a un lab de VM. Aun así puedes iniciarla o detenerla desde el lab."
   },
   "attackVm": {
-    "title": "Attack VM for VM labs",
-    "description": "A VM lab’s networks live inside the hypervisor, so your attacker is a VM beside it: this Vagrant box, plugged into every lab network, with the internet to install tools. The first start downloads the box.",
-    "label": "Attack VM box",
+    "title": "VM de ataque para labs de VM",
+    "description": "Las redes de un lab de VM viven dentro del hipervisor, así que tu atacante es una VM junto a él: este box de Vagrant, conectado a cada red del lab, con internet para instalar herramientas. El primer inicio descarga el box.",
+    "label": "Box de la VM de ataque",
     "presets": {
-      "kali": "Official Kali box; it has the internet, add tools as you go",
-      "debian12": "A plain base to build your own toolset on"
+      "kali": "Box oficial de Kali; tiene internet, añade herramientas sobre la marcha",
+      "debian12": "Una base limpia sobre la que montar tus propias herramientas"
     },
-    "customBox": "Custom box",
-    "customBoxNote": "Any Vagrant Cloud box (owner/name) built for your hypervisor."
+    "customBox": "Box personalizado",
+    "customBoxNote": "Cualquier box de Vagrant Cloud (owner/name) creado para tu hipervisor."
   },
   "hypervisor": {
-    "title": "Hypervisor for VM labs",
-    "checking": "Checking hypervisors…",
-    "setupLink": "Set one up on the Machine page",
-    "noneInstalled": "No hypervisor is installed on this machine yet.",
-    "current": "VM labs and the VM test run on {name}.",
-    "noneReady": "None of the installed hypervisors can run VM labs yet. Install its Vagrant add-on below.",
-    "automatic": "Automatic",
-    "automaticNote": "Uses {name}, the first ready hypervisor.",
-    "readyPlugin": "Ready · Vagrant add-on {plugin}",
-    "readyBuiltIn": "Ready · built into Vagrant",
-    "needsPlugin": "Installed · needs the Vagrant add-on {plugin}",
-    "notReady": "Installed · not ready for VM labs",
-    "installing": "Installing…",
-    "installAddon": "Install add-on",
-    "logInstalling": "Installing the Vagrant add-on {plugin}…",
-    "logInstalled": "✓ Installed",
-    "logTitle": "Vagrant add-on"
+    "title": "Hipervisor para labs de VM",
+    "checking": "Comprobando hipervisores…",
+    "setupLink": "Configura uno en la página Máquina",
+    "noneInstalled": "Todavía no hay ningún hipervisor instalado en esta máquina.",
+    "current": "Los labs de VM y la prueba de VM se ejecutan en {name}.",
+    "noneReady": "Ninguno de los hipervisores instalados puede ejecutar labs de VM todavía. Instala su complemento de Vagrant abajo.",
+    "automatic": "Automático",
+    "automaticNote": "Usa {name}, el primer hipervisor listo.",
+    "readyPlugin": "Listo · complemento de Vagrant {plugin}",
+    "readyBuiltIn": "Listo · integrado en Vagrant",
+    "needsPlugin": "Instalado · necesita el complemento de Vagrant {plugin}",
+    "notReady": "Instalado · no está listo para labs de VM",
+    "installing": "Instalando…",
+    "installAddon": "Instalar complemento",
+    "logInstalling": "Instalando el complemento de Vagrant {plugin}…",
+    "logInstalled": "✓ Instalado",
+    "logTitle": "Complemento de Vagrant"
   },
   "cleanup": {
-    "title": "Cleanup",
-    "description": "Tear down anything still running on this machine (a leftover or stuck lab), reclaim disk from downloaded images and VM boxes, and remove tools Cyber CTF installed."
+    "title": "Limpieza",
+    "description": "Elimina todo lo que siga en ejecución en esta máquina (un lab sobrante o bloqueado), recupera disco de imágenes descargadas y boxes de VM, y quita las herramientas que instaló Cyber CTF."
   },
   "installedTools": {
-    "title": "Tools Cyber CTF installed",
+    "title": "Herramientas instaladas por Cyber CTF",
     "count": {
-      "one": "{count} installed",
-      "other": "{count} installed"
+      "one": "{count} instalada",
+      "other": "{count} instaladas"
     },
-    "intro": "Installed during setup. Remove the ones you no longer need; tools you had before aren't listed.",
-    "installedAgo": "installed {ago}",
-    "remove": "Remove",
-    "removing": "Removing…",
-    "logRemoving": "Removing {name}…",
-    "confirmTitle": "Remove {name}?",
-    "confirmBody": "Labs that need {name} won't start until it's installed again (setup can reinstall it). Your labs and settings are kept."
+    "intro": "Instaladas durante la configuración. Quita las que ya no necesites; las herramientas que ya tenías no aparecen.",
+    "installedAgo": "instalada {ago}",
+    "remove": "Quitar",
+    "removing": "Quitando…",
+    "logRemoving": "Quitando {name}…",
+    "confirmTitle": "¿Quitar {name}?",
+    "confirmBody": "Los labs que necesitan {name} no se iniciarán hasta que vuelva a instalarse (la configuración puede reinstalarlo). Tus labs y ajustes se conservan."
   },
   "about": {
-    "title": "About",
-    "description": "Version, updates and what to send us when something breaks.",
-    "version": "Version",
-    "system": "System",
-    "installId": "Install ID",
-    "updates": "Updates",
-    "updateAvailable": "Update available",
+    "title": "Acerca de",
+    "description": "Versión, actualizaciones y qué enviarnos cuando algo falla.",
+    "version": "Versión",
+    "system": "Sistema",
+    "installId": "ID de instalación",
+    "updates": "Actualizaciones",
+    "updateAvailable": "Actualización disponible",
     "status": {
-      "checking": "Checking for updates…",
-      "latest": "You’re on the latest version.",
-      "latestAt": "You’re on the latest version, checked at {time}.",
-      "error": "Couldn’t reach the update server. Check your connection and try again.",
-      "available": "Version {version} is available.",
-      "installing": "Downloading and installing {version}…",
-      "installed": "Version {version} is installed. Restarting Cyber CTF…",
-      "idle": "Updates install automatically when you accept them from the banner."
+      "checking": "Buscando actualizaciones…",
+      "latest": "Tienes la última versión.",
+      "latestAt": "Tienes la última versión, comprobado a las {time}.",
+      "error": "No se pudo conectar con el servidor de actualizaciones. Revisa tu conexión y vuelve a intentarlo.",
+      "available": "La versión {version} está disponible.",
+      "installing": "Descargando e instalando {version}…",
+      "installed": "La versión {version} está instalada. Reiniciando Cyber CTF…",
+      "idle": "Las actualizaciones se instalan automáticamente cuando las aceptas desde el aviso."
     },
-    "installing": "Installing…",
-    "installUpdate": "Install update",
-    "restartNow": "Restart now",
-    "checking": "Checking…",
-    "checkUpdates": "Check for updates",
-    "restartFailed": "Couldn't restart Cyber CTF",
-    "replayFailed": "Couldn't replay the setup",
-    "diagnostics": "Diagnostics",
-    "diagnosticsDescription": "Copies your version, OS and setup status, for a bug report or a support request.",
-    "copied": "Copied",
-    "copy": "Copy",
-    "firstRun": "First-run setup",
-    "firstRunDescription": "Walk through the onboarding again. Your settings and labs are kept.",
-    "replay": "Replay"
+    "installing": "Instalando…",
+    "installUpdate": "Instalar actualización",
+    "restartNow": "Reiniciar ahora",
+    "checking": "Comprobando…",
+    "checkUpdates": "Buscar actualizaciones",
+    "restartFailed": "No se pudo reiniciar Cyber CTF",
+    "replayFailed": "No se pudo repetir la configuración",
+    "diagnostics": "Diagnóstico",
+    "diagnosticsDescription": "Copia tu versión, sistema operativo y estado de configuración, para un informe de error o una solicitud de soporte.",
+    "copied": "Copiado",
+    "copy": "Copiar",
+    "firstRun": "Configuración inicial",
+    "firstRunDescription": "Vuelve a recorrer la bienvenida. Tus ajustes y labs se conservan.",
+    "replay": "Repetir"
   },
   "sharedFolder": {
-    "title": "Shared folder",
-    "description": "A folder on this computer that your attack box sees at {mount}: tools in, loot out. It stays when a lab is removed.",
-    "pick": "Folder to share with the attack box",
-    "change": "Change…",
-    "open": "Open the folder"
+    "title": "Carpeta compartida",
+    "description": "Una carpeta de este ordenador que tu máquina de ataque ve en {mount}: entran herramientas, sale el botín. Se mantiene cuando se elimina un lab.",
+    "pick": "Carpeta para compartir con la máquina de ataque",
+    "change": "Cambiar…",
+    "open": "Abrir la carpeta"
   }
 }

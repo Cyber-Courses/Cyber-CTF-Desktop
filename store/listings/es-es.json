@@ -1,0 +1,60 @@
+{
+  "title": "Cyber CTF",
+  "shortDescription": "Labs prácticos de ciberseguridad en tu propia máquina, servidor o nube. Inicia un lab en un clic, obtén una máquina de ataque en su red y practica ataques reales de forma segura.",
+  "description": "Cyber CTF es el launcher de escritorio para labs prácticos de ciberseguridad. Elige un lab, pulsa Iniciar y se monta solo un entorno deliberadamente vulnerable, con tu propia máquina de ataque ya conectada a la red del lab. Practica ataques web, Active Directory, contenedores y configuraciones erróneas en la nube sobre sistemas reales, y luego envía lo que encuentres.\n\nEjecuta los labs donde mejor te venga:\n- En este ordenador, como contenedores (Docker Desktop) o como máquinas virtuales (VirtualBox o VMware Workstation)\n- En tu propio servidor: Proxmox VE o VMware ESXi, para labs más grandes de varias máquinas\n- En tu propia cuenta en la nube: AWS, Microsoft Azure o Google Cloud, con parada automática para que solo pagues mientras practicas\n\nCada lab incluye un mapa de red en vivo de sus máquinas, servicios y puertos publicados, y una máquina de ataque que abres en un clic, dentro de la propia app. Los labs lanzados desde www.cyberctf.org se abren directamente en el launcher, y tu progreso se sincroniza con tu cuenta de Cyber CTF.\n\nPensado para estudiantes, profesionales de la seguridad y cualquiera que esté aprendiendo hacking ético. Ataca solo los labs que Cyber CTF crea para ti.\n\nRequisitos: Docker Desktop para los labs de contenedores; VirtualBox o VMware Workstation para los labs de VM en este ordenador. El launcher te ayuda a instalar lo que falte.",
+  "releaseNotes": "- La app ya está disponible en español y francés\n- Versión nativa para Windows on Arm\n- Comparte una carpeta con tu máquina de ataque: entran tus herramientas, sale tu botín\n- Tu máquina de ataque se abre en un terminal dentro de la app\n- Mapa de red: las máquinas, servicios y máquina de ataque de cada lab, con los puertos publicados enlazados al servicio que los atiende\n- Labs en servidores Proxmox y ESXi: configuración más fiable, labs en redes internas de Proxmox y el lab completo en el mapa\n- Eliminar un lab ahora siempre limpia todo lo que inició\n- Muchas correcciones y mejoras de velocidad",
+  "features": [
+    "Cientos de labs prácticos: web, Active Directory, contenedores y nube",
+    "Inicio en un clic: el lab se monta solo en tu máquina",
+    "Máquina de ataque en la red del lab, con terminal integrado",
+    "Mapa de red en vivo de máquinas, servicios y puertos",
+    "Ejecuta labs como contenedores o máquinas virtuales en este ordenador",
+    "Usa tu propio servidor Proxmox VE o VMware ESXi para labs más grandes",
+    "Ejecuta labs en tu propia cuenta de AWS, Azure o Google Cloud",
+    "Los labs en la nube se detienen solos para contener los costes",
+    "Lanza labs desde www.cyberctf.org directamente en la app",
+    "Progreso sincronizado con tu cuenta de Cyber CTF",
+    "Temas Oscuro, Negro y Claro, en español, inglés y francés"
+  ],
+  "keywords": [
+    "ciberseguridad",
+    "CTF",
+    "hacking ético",
+    "pruebas de penetración",
+    "laboratorios de hacking",
+    "Active Directory",
+    "formación ciberseguridad"
+  ],
+  "copyrightAndTrademarkInfo": "© 2026 Cyber CTF",
+  "websiteUrl": "https://www.cyberctf.org",
+  "privacyPolicy": "https://www.cyberctf.org/privacy",
+  "supportContact": "https://www.cyberctf.org/contact",
+  "screenshots": [
+    {
+      "file": "screenshot-1.png",
+      "caption": "Tus labs, lo que está en ejecución y el estado de tu máquina de un vistazo"
+    },
+    {
+      "file": "screenshot-2.png",
+      "caption": "Un mapa en vivo de cada lab: máquinas, servicios, puertos y tu máquina de ataque"
+    },
+    {
+      "file": "screenshot-3.png",
+      "caption": "Busca labs prácticos por habilidad, dificultad y dónde pueden ejecutarse"
+    },
+    {
+      "file": "screenshot-4.png",
+      "caption": "Ejecuta labs más grandes en tu propio servidor Proxmox VE o VMware ESXi"
+    },
+    {
+      "file": "screenshot-5.png",
+      "caption": "O en tu propia cuenta de AWS, Azure o Google Cloud, con parada automática"
+    }
+  ],
+  "poster": "poster.png",
+  "trailer": {
+    "title": "Cyber CTF",
+    "video": "trailer.mp4",
+    "thumbnail": "thumbnail.png"
+  }
+}

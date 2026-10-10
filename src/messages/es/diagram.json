@@ -1,45 +1,45 @@
 {
   "host": {
-    "yourMachine": "Your machine",
-    "serverSub": "server · docker host",
+    "yourMachine": "Tu máquina",
+    "serverSub": "servidor · host de docker",
     "host": "host",
-    "online": "online",
-    "portTab": "Published on this machine. Click to copy {url}"
+    "online": "en línea",
+    "portTab": "Publicado en esta máquina. Haz clic para copiar {url}"
   },
   "copy": {
-    "title": "Copy {text}",
-    "failed": "Couldn't copy to the clipboard"
+    "title": "Copiar {text}",
+    "failed": "No se pudo copiar al portapapeles"
   },
   "lab": "lab",
-  "bridge": "{name} bridge",
+  "bridge": "puente {name}",
   "zone": {
-    "network": "{name} network",
-    "noInternet": "no internet"
+    "network": "red {name}",
+    "noInternet": "sin internet"
   },
   "attacker": {
-    "you": "YOU",
-    "kicker": "ATTACKER",
-    "label": "Attack box",
-    "attached": "attached",
-    "notAttached": "not attached"
+    "you": "TÚ",
+    "kicker": "ATACANTE",
+    "label": "Máquina de ataque",
+    "attached": "conectada",
+    "notAttached": "no conectada"
   },
-  "published": "published",
+  "published": "publicado",
   "computer": {
-    "resolving": "resolving…",
-    "noPorts": "no ports"
+    "resolving": "resolviendo…",
+    "noPorts": "sin puertos"
   },
   "states": {
-    "running": "running",
-    "paused": "paused",
-    "off": "off",
-    "stopped": "stopped"
+    "running": "en ejecución",
+    "paused": "en pausa",
+    "off": "apagada",
+    "stopped": "detenida"
   },
   "services": {
-    "database": "database",
+    "database": "base de datos",
     "web": "web / api",
-    "cache": "cache",
+    "cache": "caché",
     "worker": "worker",
     "ssh": "ssh",
-    "service": "service"
+    "service": "servicio"
   }
 }
