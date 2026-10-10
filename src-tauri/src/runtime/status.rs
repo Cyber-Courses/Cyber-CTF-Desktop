@@ -23,16 +23,22 @@ pub(super) async fn status(app: &AppHandle, dir: &Path, id: &str, runtime: Runti
 pub(super) async fn local_status(dir: &Path, id: &str, runtime: Runtime) -> Result<LabStatus> {
     let s = match runtime {
         // Shown like a remote lab (the attack box lives in the VM, reached over SSH).
-        Runtime::Docker if let Some(p) = local_vm(dir) => {
-            let status = vm::status(&lab::vagrant_dir(dir, runtime), &[]).await?;
-            LabStatus { host: Some(format!("{} VM on this machine", vm_label(&p))), place: Some(Place::LocalVm), provider: Some(p), ..status }
-        }
+        Runtime::Docker if let Some(p) = local_vm(dir) => in_local_vm(vm::status(&lab::vagrant_dir(dir, runtime), &[]).await?, p),
         Runtime::Docker => LabStatus { place: Some(Place::Container), ..docker::status(dir, id).await? },
         Runtime::Vm => LabStatus { place: Some(Place::LocalVm), ..vm::status(&lab::vagrant_dir(dir, runtime), &[]).await? },
     };
-    // Parked = the launcher parked it and it is still down; a lab someone started again by
-    // hand (or that is up for any reason) is simply running.
-    Ok(LabStatus { parked: parked(dir).filter(|_| !s.running), ..s })
+    Ok(with_parked(s, parked(dir)))
+}
+
+/// A container lab's VM status, as the lab's: on `provider` (a hypervisor id) on this machine.
+fn in_local_vm(status: LabStatus, provider: String) -> LabStatus {
+    LabStatus { host: Some(format!("{} VM on this machine", vm_label(&provider))), place: Some(Place::LocalVm), provider: Some(provider), ..status }
+}
+
+/// Parked = the launcher parked it (`parked`) and it is still down; a lab someone started again
+/// by hand (or that is up for any reason) is simply running.
+fn with_parked(s: LabStatus, parked: Option<super::Park>) -> LabStatus {
+    LabStatus { parked: parked.filter(|_| !s.running), ..s }
 }
 
 async fn server_status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, c: server::Connection) -> Result<LabStatus> {
@@ -53,8 +59,13 @@ async fn server_status(app: &AppHandle, dir: &Path, id: &str, runtime: Runtime, 
         },
         _ => status,
     };
-    let place = if c.provider.is_cloud() { Place::Cloud } else { Place::Server };
-    Ok(LabStatus { host: Some(c.name), place: Some(place), provider: Some(c.provider.id().to_string()), ..status })
+    Ok(on_server(status, c.name, c.provider))
+}
+
+/// A lab's status as running on the server host `name` (a cloud account, or a server).
+fn on_server(status: LabStatus, name: String, provider: super::providers::Provider) -> LabStatus {
+    let place = if provider.is_cloud() { Place::Cloud } else { Place::Server };
+    LabStatus { host: Some(name), place: Some(place), provider: Some(provider.id().to_string()), ..status }
 }
 
 /// A hypervisor's display name, from its Vagrant provider id.
@@ -86,7 +97,7 @@ fn compose_name(compose: &str) -> Option<String> {
 /// The containers on a Terraform lab host (and the attack box beside them), in the shape of a
 /// local Docker lab's status. None when the host can't be read; the caller keeps the VM view.
 async fn remote_containers(app: &AppHandle, id: &str, dir: &Path, state: &Path) -> Option<LabStatus> {
-    let cached = REMOTE_PROBES.lock().ok().and_then(|g| g.as_ref()?.get(id).filter(|(at, _)| at.elapsed() < REMOTE_PROBE_TTL).map(|(_, s)| s.clone()));
+    let cached = cached_probe(id);
     if cached.is_some() {
         return cached;
     }
@@ -99,10 +110,19 @@ async fn remote_containers(app: &AppHandle, id: &str, dir: &Path, state: &Path) 
         return None;
     }
     let status = LabStatus { attacker: attacker.map(|(ip, lab_network)| AttackerAt { ip, lab_network }), ..found };
+    remember_probe(id, &status);
+    Some(status)
+}
+
+/// The lab's remote container list read less than [`REMOTE_PROBE_TTL`] ago.
+fn cached_probe(id: &str) -> Option<LabStatus> {
+    REMOTE_PROBES.lock().ok().and_then(|g| g.as_ref()?.get(id).filter(|(at, _)| at.elapsed() < REMOTE_PROBE_TTL).map(|(_, s)| s.clone()))
+}
+
+fn remember_probe(id: &str, status: &LabStatus) {
     if let Ok(mut g) = REMOTE_PROBES.lock() {
         g.get_or_insert_with(HashMap::new).insert(id.to_string(), (Instant::now(), status.clone()));
     }
-    Some(status)
 }
 
 /// Whether the lab runs on this machine right now: its containers, or a local VM of it. An
@@ -138,7 +158,72 @@ pub async fn primary_url(dir: &Path, id: &str, runtime: Runtime) -> Option<Strin
 
 #[cfg(test)]
 mod tests {
-    use super::{compose_name, vm_label};
+    use super::{Place, cached_probe, compose_name, compose_project_name, in_local_vm, on_server, primary_url, remember_probe, vm_label, with_parked};
+    use crate::runtime::providers::Provider;
+    use crate::runtime::test_support::status_with;
+    use crate::runtime::{Park, Runtime};
+
+    #[test]
+    fn a_container_lab_in_a_vm_reads_as_that_vm() {
+        let s = in_local_vm(status_with(true, &["docker-vm"]), "vmware_desktop".into());
+        assert_eq!(s.host.as_deref(), Some("VMware VM on this machine"));
+        assert!(matches!(s.place, Some(Place::LocalVm)));
+        assert_eq!(s.provider.as_deref(), Some("vmware_desktop"));
+        assert!(s.running);
+    }
+
+    #[test]
+    fn only_a_lab_that_is_down_reads_as_parked() {
+        assert_eq!(with_parked(status_with(false, &[]), Some(Park::Pause)).parked, Some(Park::Pause));
+        assert_eq!(with_parked(status_with(true, &["web"]), Some(Park::Pause)).parked, None, "started again by hand");
+        assert_eq!(with_parked(status_with(false, &[]), None).parked, None);
+    }
+
+    #[test]
+    fn a_server_lab_says_where_it_runs() {
+        let s = on_server(status_with(true, &["web"]), "My AWS".into(), Provider::Aws);
+        assert_eq!((s.host.as_deref(), s.provider.as_deref()), (Some("My AWS"), Some("aws")));
+        assert!(matches!(s.place, Some(Place::Cloud)));
+        let s = on_server(status_with(true, &["web"]), "pve".into(), Provider::Proxmox);
+        assert!(matches!(s.place, Some(Place::Server)));
+        assert_eq!(s.provider.as_deref(), Some("proxmox"));
+    }
+
+    #[test]
+    fn remote_probes_are_reused_for_a_while() {
+        let id = "status-test-probe-cache";
+        assert!(cached_probe(id).is_none());
+        remember_probe(id, &status_with(true, &["web", "db"]));
+        let cached = cached_probe(id).unwrap();
+        assert_eq!(cached.machines.len(), 2);
+        assert!(cached_probe("status-test-probe-other").is_none());
+    }
+
+    #[test]
+    fn the_compose_project_comes_from_the_generated_file() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-status-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(compose_project_name(&dir), None);
+        let file = crate::runtime::lab::compose_file(&dir);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, "name: t-2\nservices: {}\n").unwrap();
+        assert_eq!(compose_project_name(&dir).as_deref(), Some("t-2"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn only_a_local_container_lab_has_a_url_here() {
+        let dir = std::env::temp_dir().join(format!("cyberctf-status-url-{}", rand::random::<u32>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // A VM lab, a lab on a server host, a container lab in a local VM: no Docker probe at all.
+        assert_eq!(primary_url(&dir, "t", Runtime::Vm).await, None);
+        crate::runtime::paths::mark_local_vm(&dir, Some(Provider::Virtualbox)).unwrap();
+        assert_eq!(primary_url(&dir, "t", Runtime::Docker).await, None);
+        crate::runtime::paths::mark_local_vm(&dir, None).unwrap();
+        std::fs::write(dir.join(crate::runtime::server::HOST_MARKER), "h").unwrap();
+        assert_eq!(primary_url(&dir, "t", Runtime::Docker).await, None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn compose_name_is_the_top_level_name_unquoted() {
