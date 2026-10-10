@@ -2,7 +2,8 @@
  * Browser preview of the UI (development only): `pnpm dev`, then open
  * http://localhost:3000/?mock. Outside Tauri there is no Rust core, so this answers the
  * commands the screens call with plausible sample data (a signed-in player, two running labs,
- * a server, an AWS account). Never loaded in a production build or inside the app.
+ * a server, an AWS account); Settings and the server setup open in new tabs. Never loaded in
+ * a production build or inside the app.
  */
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 
@@ -154,6 +155,12 @@ const report = {
 };
 
 let cpu = 38;
+let sharedFolder = { enabled: false, path: "/Users/florian/cyberctf-share", mountPoint: "/workspace/share" };
+
+/** The app opens Settings and the server setup in their own windows; here, a browser tab. */
+function openWindow(path: string) {
+  window.open(`${path}${path.includes("?") ? "&" : "?"}mock`, "_blank");
+}
 
 function answer(cmd: string, args: Record<string, unknown> | undefined): unknown {
   switch (cmd) {
@@ -268,7 +275,21 @@ function answer(cmd: string, args: Record<string, unknown> | undefined): unknown
     case "image_download_size":
       return 4.1 * GB;
     case "provisioning_images":
+    case "installed_tools":
       return [];
+    case "shared_folder_get":
+      return sharedFolder;
+    case "shared_folder_set":
+      sharedFolder = { ...sharedFolder, enabled: !!args?.enabled, path: String(args?.path ?? sharedFolder.path) };
+      return sharedFolder;
+    case "open_settings":
+      openWindow("/?window=settings");
+      return null;
+    case "server_open_setup": {
+      const id = args?.id ? `?id=${encodeURIComponent(String(args.id))}` : args?.kind === "cloud" ? "?kind=cloud" : "";
+      openWindow(`/server-setup${id}`);
+      return null;
+    }
     case "plugin:app|version":
       return "0.3.2";
     case "plugin:notification|is_permission_granted":
