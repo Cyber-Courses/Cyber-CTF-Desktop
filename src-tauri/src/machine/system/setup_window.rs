@@ -1,0 +1,55 @@
+//! The guided "set up this machine" flow, in its own window.
+
+use tauri::{AppHandle, Emitter, Manager};
+
+use crate::error::{Error, Result};
+use crate::window;
+
+const LABEL: &str = "machine-setup";
+
+/// The setup steps the window can open at. Only these reach its URL.
+const STEPS: [&str; 8] = ["pkgmgr", "virtualization", "docker", "docker-test", "attack", "vm", "vagrant", "vm-test"];
+
+/// The window's page, opened at `step` when given.
+fn page(step: Option<&str>) -> String {
+    match step {
+        Some(s) => format!("{LABEL}?step={s}"),
+        None => LABEL.to_string(),
+    }
+}
+
+/// Opens the guided "set up this machine" flow in its own window (label `machine-setup`),
+/// mirroring the server setup window. Focuses it if already open, moved to `step`.
+#[tauri::command]
+pub async fn machine_open_setup(app: AppHandle, step: Option<String>) -> Result<()> {
+    let step = step.filter(|s| STEPS.contains(&s.as_str()));
+    if let Some(existing) = app.get_webview_window(LABEL) {
+        if let Some(step) = &step {
+            let _ = existing.emit("machine-setup-step", step);
+        }
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+    let builder = window::builder(&app, LABEL, page(step.as_deref()))
+        .title("Set up this machine")
+        // Tall enough for the longest step (the attack-machine toolset choice pushed its buttons
+        // below the fold at 760), clamped to the screen so it never opens off-screen; the body
+        // scrolls if a step is still taller. The minimum keeps a shrunk window usable.
+        .inner_size(760.0, window::height_fitting(&app, 920.0))
+        .min_inner_size(640.0, window::height_fitting(&app, 760.0))
+        .resizable(true);
+    window::child_of_main(&app, builder)
+        .map_err(|e| Error::Invalid(e.to_string()))?
+        .build()
+        .map_err(|e| Error::Invalid(format!("could not open the setup window: {e}")))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn opens_at_a_step_only_when_given_one() {
+        assert_eq!(super::page(None), "machine-setup");
+        assert_eq!(super::page(Some("docker-test")), "machine-setup?step=docker-test");
+    }
+}

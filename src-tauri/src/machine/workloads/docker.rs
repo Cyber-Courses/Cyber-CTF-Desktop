@@ -1,0 +1,139 @@
+//! Lab containers running on this machine, grouped per lab with their memory.
+
+use std::collections::BTreeMap;
+
+use super::Workload;
+use crate::error::Result;
+use crate::exec::{run, run_read};
+
+/// `123.4MiB` / `1.2GiB` / `512kB` → bytes.
+fn parse_size(s: &str) -> u64 {
+    let s = s.trim();
+    let split = s.find(|c: char| c.is_ascii_alphabetic()).unwrap_or(s.len());
+    let (num, unit) = s.split_at(split);
+    let n: f64 = num.trim().parse().unwrap_or(0.0);
+    let mult = match unit.trim() {
+        "B" => 1.0,
+        "kB" | "KB" => 1e3,
+        "KiB" => 1024.0,
+        "MB" => 1e6,
+        "MiB" => 1024.0 * 1024.0,
+        "GB" => 1e9,
+        "GiB" => 1024.0 * 1024.0 * 1024.0,
+        "TB" => 1e12,
+        "TiB" => 1024f64.powi(4),
+        _ => 0.0,
+    };
+    (n * mult) as u64
+}
+
+/// Lab id from a container: its compose project (`cyberctf-<id>`) or, for the attack box
+/// (`docker run`, no project), its name `cyberctf-<id>-attacker`.
+fn lab_of(name: &str, project: &str) -> Option<String> {
+    if let Some(id) = project.strip_prefix("cyberctf-") {
+        return Some(id.to_string());
+    }
+    let rest = name.strip_prefix("cyberctf-")?;
+    let id = rest.strip_suffix("-attacker").or_else(|| rest.strip_suffix("-exegol")).unwrap_or(rest);
+    Some(id.to_string())
+}
+
+/// Container ids per lab, from `docker ps` lines of `id\tname\tcompose project`.
+fn containers_by_lab(ps: &str) -> BTreeMap<String, Vec<String>> {
+    let mut by_lab: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for line in ps.lines() {
+        let mut f = line.split('\t');
+        let (Some(cid), Some(name)) = (f.next(), f.next()) else { continue };
+        let project = f.next().unwrap_or("");
+        if let Some(id) = lab_of(name, project) {
+            by_lab.entry(id).or_default().push(cid.to_string());
+        }
+    }
+    by_lab
+}
+
+/// Memory per container id, from `docker stats` lines of `id\tused / limit`.
+fn memory_by_container(stats: &str) -> BTreeMap<String, u64> {
+    stats
+        .lines()
+        .filter_map(|l| {
+            let (id, usage) = l.split_once('\t')?;
+            Some((id.to_string(), parse_size(usage.split('/').next().unwrap_or(""))))
+        })
+        .collect()
+}
+
+/// A container's memory: `docker ps` and `docker stats` may shorten ids differently, so either
+/// may be a prefix of the other.
+fn memory_of(container: &str, mem: &BTreeMap<String, u64>) -> u64 {
+    mem.iter().find(|(k, _)| container.starts_with(k.as_str()) || k.starts_with(container)).map(|(_, v)| *v).unwrap_or(0)
+}
+
+pub(super) async fn workloads() -> Vec<Workload> {
+    let Ok(ps) =
+        run_read("docker", &["ps", "--filter", "name=^cyberctf-", "--format", "{{.ID}}\t{{.Names}}\t{{.Label \"com.docker.compose.project\"}}"], None).await
+    else {
+        return Vec::new();
+    };
+    let by_lab = containers_by_lab(&ps);
+    if by_lab.is_empty() {
+        return Vec::new();
+    }
+    // Memory per container, in one call.
+    let mut args = vec!["stats", "--no-stream", "--format", "{{.ID}}\t{{.MemUsage}}"];
+    args.extend(by_lab.values().flatten().map(String::as_str));
+    let mem = memory_by_container(&run_read("docker", &args, None).await.unwrap_or_default());
+    by_lab
+        .into_iter()
+        .map(|(id, cids)| {
+            let mem_bytes = cids.iter().map(|c| memory_of(c, &mem)).sum();
+            Workload { id, kind: "docker", count: cids.len() as u32, mem_bytes, provider: None }
+        })
+        .collect()
+}
+
+/// Removes a lab's containers, its attack box included.
+pub(super) async fn stop(id: &str) -> Result<()> {
+    let project = format!("cyberctf-{id}");
+    let _ = run("docker", &["compose", "-p", &project, "down", "-t", "5", "--remove-orphans"], None).await;
+    // Whatever is left with the lab's name prefix (the attack box is a plain `docker run`).
+    let left = run("docker", &["ps", "-aq", "--filter", &format!("name=^{project}-")], None).await.unwrap_or_default();
+    let ids: Vec<&str> = left.split_whitespace().collect();
+    if !ids.is_empty() {
+        let mut args = vec!["rm", "-f"];
+        args.extend(ids);
+        run("docker", &args, None).await?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_docker_sizes() {
+        assert_eq!(parse_size("512B"), 512);
+        assert_eq!(parse_size("1.5GiB"), (1.5 * 1024.0 * 1024.0 * 1024.0) as u64);
+        assert_eq!(parse_size(" 20MiB "), 20 * 1024 * 1024);
+    }
+
+    #[test]
+    fn maps_containers_to_labs() {
+        assert_eq!(lab_of("cyberctf-sqli-web-1", "cyberctf-sqli").as_deref(), Some("sqli"));
+        assert_eq!(lab_of("cyberctf-sqli-attacker", "").as_deref(), Some("sqli"));
+        assert_eq!(lab_of("postgres", ""), None);
+    }
+
+    #[test]
+    fn groups_containers_and_sums_their_memory() {
+        let by_lab = containers_by_lab("aaa111\tcyberctf-sqli-web-1\tcyberctf-sqli\nbbb222\tcyberctf-sqli-attacker\t\nccc333\tpostgres\t\n");
+        assert_eq!(by_lab.get("sqli").map(Vec::len), Some(2));
+        assert_eq!(by_lab.len(), 1);
+        let mem = memory_by_container("aaa111\t10MiB / 1GiB\nbbb222000\t1MiB / 1GiB\n");
+        assert_eq!(memory_of("aaa111", &mem), 10 * 1024 * 1024);
+        // Ids shortened differently still match.
+        assert_eq!(memory_of("bbb222", &mem), 1024 * 1024);
+        assert_eq!(memory_of("zzz", &mem), 0);
+    }
+}

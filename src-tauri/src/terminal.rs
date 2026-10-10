@@ -192,34 +192,34 @@ pub fn close_all() {
     }
 }
 
+/// A page-supplied title, safe for a window's title bar: no control characters, kept short.
+fn window_title(title: &str) -> String {
+    title.chars().filter(|c| !c.is_control()).take(80).collect()
+}
+
 /// Opens (or focuses) a lab's shell window.
 #[tauri::command]
 pub fn terminal_window(app: AppHandle, id: String, kind: ShellKind, runtime: Runtime, title: String) -> Result<()> {
-    use tauri::Manager;
     crate::runtime::validate_id(&id)?;
     let k = match kind {
         ShellKind::Lab => "lab",
         ShellKind::AttackVm => "attackVm",
     };
     let label = format!("shell-{k}-{id}");
-    if let Some(w) = app.get_webview_window(&label) {
-        let _ = w.set_focus();
+    if crate::window::focus_existing(&app, &label) {
         return Ok(());
     }
     let rt = match runtime {
         Runtime::Docker => "DOCKER",
         Runtime::Vm => "VM",
     };
-    let path = format!("shell?id={id}&kind={k}&runtime={rt}");
-    let title: String = title.chars().filter(|c| !c.is_control()).take(80).collect();
-    let builder = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(path.into()))
-        .title(format!("{title} · attack box"))
+    let window = crate::window::builder(&app, &label, format!("shell?id={id}&kind={k}&runtime={rt}"))
+        .title(format!("{} · attack box", window_title(&title)))
         .inner_size(900.0, 560.0)
         .min_inner_size(480.0, 280.0)
-        .resizable(true);
-    #[cfg(target_os = "macos")]
-    let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
-    let window = builder.build().map_err(|e| Error::Invalid(format!("could not open the shell window: {e}")))?;
+        .resizable(true)
+        .build()
+        .map_err(|e| Error::Invalid(format!("could not open the shell window: {e}")))?;
     window.on_window_event(move |e| {
         if matches!(e, tauri::WindowEvent::Destroyed) {
             close_window(&label);
@@ -243,6 +243,12 @@ mod tests {
         assert!(buf.is_empty());
         let mut bad = vec![b'x', 0xff, b'y'];
         assert_eq!(take_text(&mut bad), "x\u{fffd}y");
+    }
+
+    #[test]
+    fn window_titles_drop_control_characters_and_stay_short() {
+        assert_eq!(window_title("SQLi\n lab\u{7}"), "SQLi lab");
+        assert_eq!(window_title(&"x".repeat(200)).chars().count(), 80);
     }
 
     #[cfg(unix)]

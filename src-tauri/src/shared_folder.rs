@@ -33,7 +33,7 @@ pub fn init(app: &AppHandle) {
 
 /// The suggested folder: `CyberCTF/shared` in the home folder.
 pub fn default_path() -> Option<PathBuf> {
-    std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(|h| PathBuf::from(h).join("CyberCTF").join("shared"))
+    crate::platform::home_dir().map(|h| h.join("CyberCTF").join("shared"))
 }
 
 fn load() -> SharedFolder {
