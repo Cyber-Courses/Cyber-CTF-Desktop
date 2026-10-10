@@ -137,6 +137,9 @@ function AttackerNode({ data }: NodeProps<Node<{ label: string; subtitle: string
     </div>
   );
 }
+
+/** One service row: what it is, and the ports it listens on (inside the container). Publishing
+ *  to the host is shown once, by the 127.0.0.1 node below, not here too. */
 function ServiceChip({ row, ip }: { row: ServiceRow; ip: string }) {
   const t = useT();
   const meta = serviceMeta[row.type];

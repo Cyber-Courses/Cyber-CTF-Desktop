@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback } from "react";
-import { serverList, labLaunch, labPark, labProvision, labResume, labStop, type Park, type Provider } from "@/lib/tauri";
+import { serverList, labLaunch, labPark, labProvision, labResume, labStop, type ActiveOperation, type Park, type Provider } from "@/lib/tauri";
 import { getAttackBox, getAttackImage, getAutoAttackBox, getPortMode, getVmProvider, type PortMode } from "@/lib/settings";
 import { askPortMode } from "@/features/labs/port-mode-prompt";
 import { notify } from "@/lib/notify";
-import type { Lab } from "@/features/labs/use-labs";
-import { localProviders, runsNatively } from "@/features/labs/lab-row";
+import type { Lab, LabRuntimeInfo } from "@/features/labs/use-labs";
+import { localProviders, pickLocalHypervisor, readyHypervisors, runsNatively } from "@/features/labs/lab-runtime";
 import { setLastRun } from "@/lib/last-run";
 import { appendDeployLog, beginDeploy, endDeploy, useDeploy } from "@/lib/deploy-store";
 import { translate } from "@/lib/i18n";
@@ -30,6 +30,23 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
       endDeploy(lab.id);
     },
     [refresh],
+  );
+
+  // One operation on a lab: a run in the deploy store, its output streamed into the run's log,
+  // a failure as the log's last (✗) line.
+  const operate = useCallback(
+    async (lab: Lab, op: ActiveOperation["op"], body: (log: (line: string) => void, runtime: LabRuntimeInfo) => Promise<void>) => {
+      if (!lab.runtime) return;
+      beginDeploy(lab.id, op);
+      try {
+        await body((line) => appendDeployLog(lab.id, line), lab.runtime);
+      } catch (e) {
+        appendDeployLog(lab.id, `✗ ${String(e)}`);
+      } finally {
+        await settle(lab);
+      }
+    },
+    [settle],
   );
 
   /**
@@ -57,42 +74,25 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
       const containersHere = lab.runtime.runtime !== "VM" && host == null && !vmProvider;
       const ports = containersHere ? (chosenPorts ?? getPortMode() ?? (await askPortMode(lab.title))) : null;
       if (containersHere && !ports) return;
-      beginDeploy(lab.id, "launch");
-      try {
-        const vm = lab.runtime.runtime === "VM";
+      await operate(lab, "launch", async (log, rt) => {
+        const vm = rt.runtime === "VM";
         if (vm && host === undefined) host = await defaultHostFor(lab);
         // Docker labs go to a server host only when one is picked explicitly.
         const remote = host != null;
         const preferred = getVmProvider();
         // Hypervisors ready on this machine (Vagrant + the tool), the Settings default first;
         // unknown (undefined) until the machine report has loaded.
-        const ready: Provider[] | undefined = report
-          ? (() => {
-              const r = report.vagrant.installed
-                ? report.vmProviders.filter((p) => !p.remote && p.available && p.hypervisor !== false).map((p) => p.provider)
-                : [];
-              return preferred && r.includes(preferred) ? [preferred, ...r.filter((p) => p !== preferred)] : r;
-            })()
-          : undefined;
-        // Locally: a ready hypervisor among those the lab supports. Never the lab's first
-        // listed provider: the catalogue lists them alphabetically, and picking e.g. "parallels"
-        // on a VirtualBox machine fails at once with "prlctl was not found". With no report yet,
-        // fall back to the Settings preference, then the first supported one. A VM lab built for
-        // another CPU (x86 Windows on Apple Silicon) runs here only emulated, on QEMU.
-        const local: Provider[] = localProviders(lab.runtime, report?.arch);
-        const foreign = vm && !!report?.arch && !runsNatively(lab.runtime, report.arch);
+        const ready = report ? readyHypervisors(report, preferred) : undefined;
+        // A VM lab built for another CPU (x86 Windows on Apple Silicon) runs here only emulated,
+        // on QEMU.
+        const local = localProviders(rt, report?.arch);
+        const foreign = vm && !!report?.arch && !runsNatively(rt, report.arch);
         const inLocalVm = !vm && !remote && !!vmProvider;
-        const provider = inLocalVm
-          ? vmProvider!
-          : vm && !remote
-            ? ready === undefined
-              ? ((preferred && local.includes(preferred) ? preferred : local[0]) ?? null)
-              : (ready.find((p) => local.includes(p)) ?? null)
-            : null;
+        const provider = inLocalVm ? vmProvider! : vm && !remote ? pickLocalHypervisor(local, ready, preferred) : null;
         // x86 VMs (Windows AD labs) boot on an Apple Silicon Mac only under QEMU's emulation; say
         // so up front instead of failing deep in Vagrant.
         if (!remote && foreign && provider === null) {
-          throw new Error(translate("labs.actions.foreignCpu", { archs: lab.runtime.architectures.join(", "), arch: report!.arch ?? "" }));
+          throw new Error(translate("labs.actions.foreignCpu", { archs: rt.architectures.join(", "), arch: report!.arch ?? "" }));
         }
         if (vm && !remote && provider === null) {
           throw new Error(translate("labs.actions.noHypervisor", { providers: local.join(", ") || translate("labs.actions.none") }));
@@ -101,89 +101,57 @@ export function useLabActions(refresh: (lab: Lab, opts?: { fresh?: boolean }) =>
         // Remotely or inside a local VM: the container attack box image. A VM lab here: the
         // attack VM's Vagrant box, when Settings start the attack box with each lab.
         const attackbox = remote || inLocalVm ? getAttackImage() : vm && getAutoAttackBox() ? getAttackBox() : null;
-        await labLaunch(lab.id, provider, remote ? host! : null, attackbox, ports === "default", (line) => appendDeployLog(lab.id, line));
-        appendDeployLog(lab.id, translate("labs.actions.labRunning"));
+        await labLaunch(lab.id, provider, remote ? host! : null, attackbox, ports === "default", log);
+        log(translate("labs.actions.labRunning"));
         setLastRun(lab.id);
         notify(
           translate("labs.actions.labReady"),
           translate(remote ? "labs.actions.readyOnServer" : inLocalVm ? "labs.actions.readyInVm" : "labs.actions.readyHere", { title: lab.title }),
         );
-      } catch (e) {
-        appendDeployLog(lab.id, `✗ ${String(e)}`);
-      } finally {
-        await settle(lab);
-      }
+      });
     },
-    [settle],
+    [operate],
   );
 
   const stop = useCallback(
-    async (lab: Lab) => {
-      if (!lab.runtime) return;
-      beginDeploy(lab.id, "stop");
-      try {
-        await labStop(lab.id, lab.runtime.runtime, (line) => appendDeployLog(lab.id, line));
-        appendDeployLog(lab.id, translate("labs.actions.labStopped"));
-      } catch (e) {
-        appendDeployLog(lab.id, `✗ ${String(e)}`);
-      } finally {
-        await settle(lab);
-      }
-    },
-    [settle],
+    (lab: Lab) =>
+      operate(lab, "stop", async (log, rt) => {
+        await labStop(lab.id, rt.runtime, log);
+        log(translate("labs.actions.labStopped"));
+      }),
+    [operate],
   );
 
   /** Pause (state saved) or shut down (powered off) a lab, keeping its machines for `resume`. */
   const park = useCallback(
-    async (lab: Lab, mode: Park) => {
-      if (!lab.runtime) return;
-      beginDeploy(lab.id, mode);
-      try {
-        await labPark(lab.id, lab.runtime.runtime, mode, (line) => appendDeployLog(lab.id, line));
-        appendDeployLog(lab.id, translate(mode === "pause" ? "labs.actions.labPaused" : "labs.actions.labShutDown"));
-      } catch (e) {
-        appendDeployLog(lab.id, `✗ ${String(e)}`);
-      } finally {
-        await settle(lab);
-      }
-    },
-    [settle],
+    (lab: Lab, mode: Park) =>
+      operate(lab, mode, async (log, rt) => {
+        await labPark(lab.id, rt.runtime, mode, log);
+        log(translate(mode === "pause" ? "labs.actions.labPaused" : "labs.actions.labShutDown"));
+      }),
+    [operate],
   );
 
   /** Bring a parked lab back as it was: no rebuild, no new launch. */
   const resume = useCallback(
-    async (lab: Lab) => {
-      if (!lab.runtime) return;
-      beginDeploy(lab.id, "resume");
-      try {
-        await labResume(lab.id, lab.runtime.runtime, (line) => appendDeployLog(lab.id, line));
-        appendDeployLog(lab.id, translate("labs.actions.labRunning"));
+    (lab: Lab) =>
+      operate(lab, "resume", async (log, rt) => {
+        await labResume(lab.id, rt.runtime, log);
+        log(translate("labs.actions.labRunning"));
         setLastRun(lab.id);
         notify(translate("labs.actions.labReady"), translate("labs.actions.back", { title: lab.title }));
-      } catch (e) {
-        appendDeployLog(lab.id, `✗ ${String(e)}`);
-      } finally {
-        await settle(lab);
-      }
-    },
-    [settle],
+      }),
+    [operate],
   );
 
   /** Re-run a VM lab's provisioning on one machine (or all), streamed into its deploy log. */
   const provision = useCallback(
-    async (lab: Lab, machine: string | null) => {
-      if (!lab.runtime) return;
-      beginDeploy(lab.id, "provision");
-      try {
-        await labProvision(lab.id, lab.runtime.runtime, machine, (line) => appendDeployLog(lab.id, line));
-        appendDeployLog(lab.id, machine ? translate("labs.actions.machineProvisioned", { machine }) : translate("labs.actions.labProvisioned"));
-      } catch (e) {
-        appendDeployLog(lab.id, `✗ ${String(e)}`);
-      } finally {
-        await settle(lab);
-      }
-    },
-    [settle],
+    (lab: Lab, machine: string | null) =>
+      operate(lab, "provision", async (log, rt) => {
+        await labProvision(lab.id, rt.runtime, machine, log);
+        log(machine ? translate("labs.actions.machineProvisioned", { machine }) : translate("labs.actions.labProvisioned"));
+      }),
+    [operate],
   );
 
   return { runs, launch, stop, park, resume, provision };

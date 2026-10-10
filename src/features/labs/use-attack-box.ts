@@ -8,7 +8,7 @@ import { translate } from "@/lib/i18n";
 
 /** What the attack box is: a container on a container lab's networks, or the learner's own VM
  *  (a Vagrant box) beside a VM lab, on the same hypervisor. */
-export type AttackBoxKind = "container" | "vm";
+type AttackBoxKind = "container" | "vm";
 
 /**
  * The lab's attack box: polled while a lab is up on this machine (so running / IP stay

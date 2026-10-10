@@ -1,29 +1,47 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
 import { Panel, PanelHeader } from "@/components/ui/panel";
 import { PageHeader } from "@/components/ui/page-header";
-import { Input } from "@/components/ui/input";
 import { StatusDot } from "@/components/ui/status-pill";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EMULATORS, LabRow } from "@/features/labs/lab-row";
+import { LabRow } from "@/features/labs/lab-row";
+import { EMULATORS, readyHypervisors } from "@/features/labs/lab-runtime";
 import { LabDetail } from "@/features/labs/lab-detail";
-import { difficultyLabel, useLabs, type Lab } from "@/features/labs/use-labs";
+import { filterLabs, NO_FILTERS, type LabFilters } from "@/features/labs/lab-filters";
+import { LabsFilterBar } from "@/features/labs/labs-filter-bar";
+import { useLabs, type Lab } from "@/features/labs/use-labs";
 import { useLabActions } from "@/features/labs/use-lab-actions";
 import { setupNeeded } from "@/features/labs/lab-readiness";
 import { useDeployingLabs } from "@/lib/deploy-store";
 import { serverList, type ServerHost, type SystemReport } from "@/lib/tauri";
 import { getVmProvider } from "@/lib/settings";
-import { Segmented } from "@/components/ui/segmented";
 import { useT } from "@/lib/i18n";
 
-type StatusFilter = "all" | "todo" | "running" | "solved";
-/** CLOUD = labs that can run in the player's cloud account (AWS is a supported target). */
-type RuntimeFilter = "all" | "DOCKER" | "VM" | "CLOUD";
+/** The lab list's placeholder rows while the catalogue loads. */
+function LabListSkeleton() {
+  return (
+    <Panel>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div key={i} className="flex h-13 items-center gap-3.5 border-t border-border px-4 first:border-t-0">
+          <Skeleton className="size-2 rounded-full" />
+          <div className="flex-1">
+            <Skeleton className="h-3 w-44" />
+            <Skeleton className="mt-1.5 h-2.5 w-64 max-w-full" />
+          </div>
+          <Skeleton className="hidden h-2.5 w-20 md:block" />
+          <Skeleton className="hidden h-4 w-14 rounded-full md:block" />
+          <Skeleton className="h-7 w-16 rounded-full" />
+        </div>
+      ))}
+    </Panel>
+  );
+}
 
+/** The Labs screen: the catalogue as a filterable list (running labs pinned on top), or one
+ *  lab's page when one is open. */
 export function Labs({
   loggedIn,
   authReady = true,
@@ -53,19 +71,11 @@ export function Labs({
   // command palette or a deep link shows its page on the first render instead of flashing the
   // list first.
   const [detailSlug, setDetailSlug] = useState<string | null>(() => openLab.slug);
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("all");
-  const [runtime, setRuntime] = useState<RuntimeFilter>("all");
-  const [difficulty, setDifficulty] = useState(0);
+  const [filters, setFilters] = useState<LabFilters>(NO_FILTERS);
   const [servers, setServers] = useState<ServerHost[]>([]);
   // Local hypervisors ready for a lab VM (Vagrant + hypervisor), the Settings default first.
-  const readyVms = useMemo(() => {
-    const ready = (report?.vagrant.installed ? report.vmProviders : [])
-      .filter((p) => !p.remote && p.available && p.hypervisor !== false)
-      .map((p) => p.provider);
-    const preferred = getVmProvider();
-    return preferred && ready.includes(preferred) ? [preferred, ...ready.filter((p) => p !== preferred)] : ready;
-  }, [report]);
+  const readyVms = useMemo(() => (report ? readyHypervisors(report, getVmProvider()) : []), [report]);
+  const emulates = readyVms.some((p) => EMULATORS.includes(p));
 
   // Saved servers count as somewhere a VM lab can run (for the "needs setup" hint).
   useEffect(() => {
@@ -89,20 +99,7 @@ export function Labs({
 
   const isRunning = (l: Lab) => !!statuses[l.id]?.running;
 
-  const filtered = useMemo(() => {
-    if (!labs) return [];
-    const q = query.trim().toLowerCase();
-    return labs.filter((l) => {
-      if (q && !`${l.title} ${l.category} ${l.description ?? ""} ${(l.skills ?? []).map((s) => s.name).join(" ")}`.toLowerCase().includes(q)) return false;
-      if (runtime === "CLOUD" ? !l.runtime?.providers.includes("aws") : runtime !== "all" && l.runtime?.runtime !== runtime) return false;
-      if (difficulty && l.difficulty !== difficulty) return false;
-      const running = !!statuses[l.id]?.running;
-      if (status === "running" && !running) return false;
-      if (status === "solved" && !completed.has(l.id)) return false;
-      if (status === "todo" && (completed.has(l.id) || running)) return false;
-      return true;
-    });
-  }, [labs, query, runtime, difficulty, status, statuses, completed]);
+  const filtered = useMemo(() => (labs ? filterLabs(labs, filters, (l) => !!statuses[l.id]?.running, completed) : []), [labs, filters, statuses, completed]);
 
   // Running labs are pinned on top; the rest follow in one list, by title.
   const running = filtered.filter(isRunning);
@@ -141,8 +138,14 @@ export function Labs({
         onBack={() => setDetailSlug(null)}
         readyVms={readyVms}
         dockerRunning={report ? report.dockerRunning : null}
-        onStart={(t) =>
-          launch(detail, t.kind === "host" ? t.id : null, t.kind === "local-vm" ? t.provider : undefined, report, t.kind === "local" ? t.ports : undefined)
+        onStart={(target) =>
+          launch(
+            detail,
+            target.kind === "host" ? target.id : null,
+            target.kind === "local-vm" ? target.provider : undefined,
+            report,
+            target.kind === "local" ? target.ports : undefined,
+          )
         }
         onStop={() => stop(detail)}
         onPark={(mode) => park(detail, mode)}
@@ -163,7 +166,7 @@ export function Labs({
       loggedIn={loggedIn}
       onLogin={onLogin}
       hostArch={hostArch}
-      emulates={readyVms.some((p) => EMULATORS.includes(p))}
+      emulates={emulates}
       solved={completed.has(lab.id)}
       deploying={deploying.has(lab.id)}
       setup={isRunning(lab) ? null : setupNeeded(lab, report ?? null, servers)}
@@ -191,63 +194,10 @@ export function Labs({
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-48 flex-1 basis-48 sm:max-w-80">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-faint" />
-          <Input
-            data-lab-search
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("labs.list.search")}
-            aria-label={t("labs.list.search")}
-            className="pl-8.5"
-          />
-        </div>
-        <Segmented<StatusFilter>
-          label={t("labs.list.status")}
-          value={status}
-          onChange={setStatus}
-          options={[
-            { value: "all", label: t("labs.list.all") },
-            { value: "todo", label: t("labs.list.todo") },
-            { value: "running", label: t("labs.list.running") },
-            { value: "solved", label: t("labs.list.solved") },
-          ]}
-        />
-        <Segmented<RuntimeFilter>
-          label={t("labs.list.runtime")}
-          value={runtime}
-          onChange={setRuntime}
-          options={[
-            { value: "all", label: t("labs.list.anyRuntime") },
-            { value: "DOCKER", label: t("labs.list.container") },
-            { value: "VM", label: t("labs.list.vm") },
-            { value: "CLOUD", label: t("labs.list.cloud") },
-          ]}
-        />
-        <Segmented<number>
-          label={t("labs.list.level")}
-          value={difficulty}
-          onChange={setDifficulty}
-          options={[{ value: 0, label: t("labs.list.anyLevel") }, ...[1, 2, 3].map((d) => ({ value: d, label: difficultyLabel(t, d) }))]}
-        />
-      </div>
+      <LabsFilterBar filters={filters} onChange={(patch) => setFilters((f) => ({ ...f, ...patch }))} />
 
       {!labs ? (
-        <Panel>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <div key={i} className="flex h-13 items-center gap-3.5 border-t border-border px-4 first:border-t-0">
-              <Skeleton className="size-2 rounded-full" />
-              <div className="flex-1">
-                <Skeleton className="h-3 w-44" />
-                <Skeleton className="mt-1.5 h-2.5 w-64 max-w-full" />
-              </div>
-              <Skeleton className="hidden h-2.5 w-20 md:block" />
-              <Skeleton className="hidden h-4 w-14 rounded-full md:block" />
-              <Skeleton className="h-7 w-16 rounded-full" />
-            </div>
-          ))}
-        </Panel>
+        <LabListSkeleton />
       ) : labs.length === 0 ? (
         <EmptyState icon="labs" title={t("labs.list.emptyTitle")} description={t("labs.list.emptyDescription")} />
       ) : filtered.length === 0 ? (

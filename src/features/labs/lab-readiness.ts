@@ -1,5 +1,5 @@
 import type { Lab } from "@/features/labs/use-labs";
-import { localProviders } from "@/features/labs/lab-row";
+import { localProviders } from "@/features/labs/lab-runtime";
 import { providerLabel } from "@/features/machine/hypervisors";
 import type { ServerHost, SystemReport } from "@/lib/tauri";
 import { translate } from "@/lib/i18n";

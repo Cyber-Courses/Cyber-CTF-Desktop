@@ -9,17 +9,17 @@ import { KIND } from "@/features/servers/host-setup/constants";
 import { ProviderGlyph } from "@/features/servers/provider-glyph";
 import { HypervisorLogo } from "@/features/machine/hypervisor-logo";
 import { PROVIDER_LABELS } from "@/features/machine/hypervisors";
+import { CLOUDS } from "@/features/labs/lab-runtime";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 import type { PortMode } from "@/lib/settings";
 import { useT, type T } from "@/lib/i18n";
 
-export const CLOUDS = new Set(["aws", "azure", "gcp", "digitalocean", "linode", "oci"]);
-
-/** Where a lab starts: this machine (Docker, or a VM on a local hypervisor) or a saved host. */
-/** `ports` on this machine: chosen in the dialog (container labs), else asked at the start. */
+/** Where a lab starts: this machine (Docker, or a VM on a local hypervisor), a saved host, or
+ *  hosted by Cyber CTF. `ports` on this machine: chosen in the dialog (container labs), else
+ *  asked at the start. */
 export type RunTarget = { kind: "local"; ports?: PortMode } | { kind: "local-vm"; provider: Provider } | { kind: "host"; id: string } | { kind: "hosted" };
 
-export const targetKey = (t: RunTarget) => (t.kind === "local" || t.kind === "hosted" ? t.kind : t.kind === "local-vm" ? `vm:${t.provider}` : `host:${t.id}`);
+const targetKey = (t: RunTarget) => (t.kind === "local" || t.kind === "hosted" ? t.kind : t.kind === "local-vm" ? `vm:${t.provider}` : `host:${t.id}`);
 
 /**
  * A centered dialog over the page (Escape or a click on the backdrop closes it). The body
